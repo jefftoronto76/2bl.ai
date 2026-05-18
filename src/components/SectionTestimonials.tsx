@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ChevronUp } from 'lucide-react'
 
 type Relationship = 'Executive' | 'Peer' | 'Direct Report' | 'Friend'
 
@@ -208,6 +209,12 @@ function Card({ q }: { q: Testimonial }) {
 
 export function SectionTestimonials() {
   const [active, setActive] = useState<Filter>('All')
+  const [showAll, setShowAll] = useState(false)
+
+  const setFilterAndReset = (f: Filter) => {
+    setActive(f)
+    setShowAll(false)
+  }
 
   const counts: Record<Filter, number> = {
     All: TESTIMONIALS.length,
@@ -222,6 +229,12 @@ export function SectionTestimonials() {
     active === 'All'
       ? TESTIMONIALS
       : TESTIMONIALS.filter((q) => q.relationship === active)
+
+  // Mobile shows 3 full cards + peek of card 4; md+ shows 2 full rows + peek of row 3.
+  const MOBILE_LIMIT = 3
+  const DESKTOP_LIMIT = 6
+  const showMobileButton = !showAll && visible.length > MOBILE_LIMIT
+  const showDesktopButton = !showAll && visible.length > DESKTOP_LIMIT
 
   return (
     <section id="testimonials" className="py-16 px-6 md:px-12">
@@ -254,7 +267,7 @@ export function SectionTestimonials() {
                 label={f}
                 count={counts[f]}
                 active={active === f}
-                onClick={() => setActive(f)}
+                onClick={() => setFilterAndReset(f)}
               />
             ))}
           </div>
@@ -266,30 +279,69 @@ export function SectionTestimonials() {
           </div>
         </div>
 
-        {/* Scrollable window — 1×3 mobile, 3×2 desktop, peek of next row under fade */}
-        <div className="relative">
-          <div
-            className="overflow-y-auto pr-0 md:pr-2 h-[760px] md:h-[730px] [scrollbar-width:thin] [mask-image:linear-gradient(to_bottom,black_0%,black_calc(100%-56px),transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_calc(100%-56px),transparent_100%)]"
-          >
-            {visible.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-12">
+        {/* Grid — collapsed state clips to first rows + peek via grid-template-rows */}
+        {visible.length > 0 ? (
+          <>
+            <div className="relative">
+              <div
+                className={[
+                  'grid grid-cols-1 md:grid-cols-3 gap-6',
+                  !showAll &&
+                    'overflow-hidden [grid-template-rows:auto_auto_auto_60px] md:[grid-template-rows:auto_auto_60px] [grid-auto-rows:0]',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
                 {visible.map((q, i) => (
                   <Card key={`${active}-${q.name}-${i}`} q={q} />
                 ))}
               </div>
-            ) : (
-              <div className="p-9 text-center bg-surface border border-dashed border-[color:var(--color-border)] rounded-xl font-mono text-[11px] tracking-[0.08em] uppercase text-[color:var(--color-text-dim)]">
-                No references in this group yet.
-              </div>
-            )}
-          </div>
 
-          {/* Bottom fade — decorative; mask above does the actual fade */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-bg via-bg/85 to-transparent"
-          />
-        </div>
+              {!showAll && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg via-bg/85 to-transparent"
+                />
+              )}
+            </div>
+
+            {/* Show all / Show less controls */}
+            {showMobileButton && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="md:hidden mt-6 w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent active:scale-[0.98] transition-transform"
+              >
+                Show all {visible.length}
+              </button>
+            )}
+
+            {showDesktopButton && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="hidden md:flex mt-6 mx-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent hover:bg-[color:var(--color-accent-hover)] transition-colors"
+              >
+                Show all {visible.length}
+              </button>
+            )}
+
+            {showAll && (
+              <button
+                type="button"
+                onClick={() => setShowAll(false)}
+                className="mt-6 mx-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-[color:var(--color-border)] text-[color:var(--color-text-muted)] font-body text-[13px] font-medium hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)] transition-colors"
+              >
+                Show less
+                <ChevronUp size={14} strokeWidth={1.8} />
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="p-9 text-center bg-surface border border-dashed border-[color:var(--color-border)] rounded-xl font-mono text-[11px] tracking-[0.08em] uppercase text-[color:var(--color-text-dim)]">
+            No references in this group yet.
+          </div>
+        )}
       </div>
     </section>
   )

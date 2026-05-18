@@ -234,7 +234,7 @@ export function SectionCareer() {
   const [filter, setFilter] = useState<FilterId>('all')
   const [modalRoleId, setModalRoleId] = useState<string | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
-  const [mobileShowAll, setMobileShowAll] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   const visible = CARDS.filter((c) => {
     if (filter === 'roles') return c.kind === 'role'
@@ -265,7 +265,7 @@ export function SectionCareer() {
 
   const setFilterAndReset = (id: FilterId) => {
     setFilter(id)
-    setMobileShowAll(false)
+    setShowAll(false)
     setModalVisible(false)
     setModalRoleId(null)
   }
@@ -283,7 +283,13 @@ export function SectionCareer() {
     { id: 'education', label: 'Education', count: EDU_COUNT },
   ]
 
-  const hiddenOnMobile = Math.max(0, visible.length - 2)
+  // Mobile shows 2 full cards + peek of card 3; md/lg show 1 row + peek of next.
+  // Cards 3 (mobile) / row 2 (md/lg) are clipped to a peek; the rest collapse to
+  // grid-auto-rows: 0. Show-all expansion removes the row template entirely.
+  const MOBILE_LIMIT = 2
+  const DESKTOP_LIMIT = 3
+  const showMobileButton = !showAll && visible.length > MOBILE_LIMIT
+  const showDesktopButton = !showAll && visible.length > DESKTOP_LIMIT
 
   return (
     <section id="career" className="bg-[color:var(--color-surface)] py-16 px-6 md:px-12">
@@ -346,51 +352,62 @@ export function SectionCareer() {
           </div>
         </div>
 
-        {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
-          {visible.map((card, i) => {
-            // On mobile: hide cards beyond the first 2 unless mobileShowAll is on.
-            // On md+ always shown.
-            const hideOnMobile = !mobileShowAll && i >= 2
-            return (
-              <div
-                key={card.id}
-                className={hideOnMobile ? 'hidden md:block' : 'block'}
-              >
+        {/* Grid — collapsed state clips to first row + peek via grid-template-rows */}
+        <div className="relative">
+          <div
+            className={[
+              'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6',
+              !showAll &&
+                'overflow-hidden [grid-template-rows:auto_auto_60px] md:[grid-template-rows:auto_80px] [grid-auto-rows:0]',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {visible.map((card) => (
+              <div key={card.id}>
                 {card.kind === 'role' ? (
-                  <RoleCardView
-                    card={card}
-                    onOpen={() => openModal(card.id)}
-                  />
+                  <RoleCardView card={card} onOpen={() => openModal(card.id)} />
                 ) : (
                   <EducationCardView card={card} />
                 )}
               </div>
-            )
-          })}
+            ))}
+          </div>
+
+          {!showAll && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[color:var(--color-surface)] via-[color:var(--color-surface)]/90 to-transparent"
+            />
+          )}
         </div>
 
-        {/* Mobile reveal control */}
-        {hiddenOnMobile > 0 && !mobileShowAll && (
-          <div className="md:hidden relative -mt-20 pt-20 pointer-events-none bg-gradient-to-b from-transparent via-bg/80 to-bg">
-            <button
-              type="button"
-              onClick={() => setMobileShowAll(true)}
-              className="pointer-events-auto w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent active:scale-[0.98] transition-transform"
-            >
-              Show {hiddenOnMobile} more
-              <span className="font-mono text-[10px] tracking-[0.12em] font-medium opacity-70">
-                02 / {visible.length.toString().padStart(2, '0')}
-              </span>
-            </button>
-          </div>
-        )}
-
-        {hiddenOnMobile > 0 && mobileShowAll && (
+        {/* Show all / Show less controls */}
+        {showMobileButton && (
           <button
             type="button"
-            onClick={() => setMobileShowAll(false)}
-            className="md:hidden mt-4 w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-[color:var(--color-border)] text-[color:var(--color-text-muted)] font-body text-[13px] font-medium"
+            onClick={() => setShowAll(true)}
+            className="md:hidden mt-6 w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent active:scale-[0.98] transition-transform"
+          >
+            Show all {visible.length}
+          </button>
+        )}
+
+        {showDesktopButton && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className="hidden md:flex mt-6 mx-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent hover:bg-[color:var(--color-accent-hover)] transition-colors"
+          >
+            Show all {visible.length}
+          </button>
+        )}
+
+        {showAll && (
+          <button
+            type="button"
+            onClick={() => setShowAll(false)}
+            className="mt-6 mx-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-[color:var(--color-border)] text-[color:var(--color-text-muted)] font-body text-[13px] font-medium hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)] transition-colors"
           >
             Show less
             <ChevronUp size={14} strokeWidth={1.8} />
