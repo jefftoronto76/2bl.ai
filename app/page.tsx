@@ -19,9 +19,9 @@ export default function Page() {
         <Problem />
         <SectionOutcomes />
         <SectionWhy />
+        <SectionProcess />
         <SectionCareer />
         <SectionTestimonials />
-        <SectionProcess />
         {/* <Session /> */}
         <Chat />
       </main>
