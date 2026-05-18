@@ -479,11 +479,8 @@ html[data-palette="inkwell"] {
   --color-border-hover: rgb(234 231 220 / 0.25);
 }
 
-html[data-palette="inkwell"] #problems,
-html[data-palette="inkwell"] #process,
+html[data-palette="inkwell"] #outcomes,
 html[data-palette="inkwell"] #how-it-works,
-html[data-palette="inkwell"] #why,
-html[data-palette="inkwell"] #career,
 html[data-palette="inkwell"] #testimonials {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
