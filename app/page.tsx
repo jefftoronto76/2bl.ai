@@ -5,7 +5,7 @@ import { SectionOutcomes } from '@/components/SectionOutcomes'
 import { SectionWhy } from '@/components/SectionWhy'
 import { SectionCareer } from '@/components/SectionCareer'
 import { SectionTestimonials } from '@/components/SectionTestimonials'
-import { Work } from '@/components/Work'
+import { SectionProcess } from '@/components/SectionProcess'
 import { Session } from '@/components/Session'
 import { Chat } from '@/components/Chat'
 import { Footer } from '@/components/Footer'
@@ -21,7 +21,7 @@ export default function Page() {
         <SectionWhy />
         <SectionCareer />
         <SectionTestimonials />
-        <Work />
+        <SectionProcess />
         {/* <Session /> */}
         <Chat />
       </main>
