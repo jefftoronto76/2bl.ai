@@ -64,7 +64,7 @@ const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
 export function SectionOutcomes() {
   return (
-    <section id="outcomes" className="py-16 px-6 md:px-12">
+    <section id="outcomes" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
           <span>The outcomes I&apos;m built to deliver</span>
@@ -88,7 +88,7 @@ export function SectionOutcomes() {
                 aria-hidden
                 className="text-[color:var(--color-text-primary)] mb-2"
               />
-              <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+              <h3 className="font-body text-lg font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
               <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
