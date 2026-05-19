@@ -428,6 +428,8 @@ body {
     right: 0;
     background: rgb(var(--color-bg));
     z-index: 30;
+    padding-left: 16px;
+    padding-right: 16px;
     padding-bottom: env(safe-area-inset-bottom);
   }
   .stage {
