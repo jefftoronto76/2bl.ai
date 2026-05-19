@@ -58,6 +58,35 @@ body {
   display: inline-block;
 }
 
+.mark-highlight {
+  background-image: linear-gradient(
+    180deg,
+    transparent 58%,
+    rgba(198, 217, 196, 0.32) 58%,
+    rgba(198, 217, 196, 0.32) 92%,
+    transparent 92%
+  );
+  padding: 0 2px;
+  color: var(--color-text-primary);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.mark-highlight--display {
+  background-image: linear-gradient(
+    180deg,
+    transparent 60%,
+    rgba(198, 217, 196, 0.32) 60%,
+    rgba(198, 217, 196, 0.32) 92%,
+    transparent 92%
+  );
+  padding: 0 2px;
+  font-style: normal;
+  color: var(--color-text-primary);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 /* ─── Calendly widget overrides ────────────────────────────────────── */
 .calendly-inline-widget {
   width: 100% !important;
@@ -209,52 +238,63 @@ body {
 .hero{
   position:relative;
   transition:padding .55s cubic-bezier(.2,.7,.2,1), opacity .35s ease, background-color .35s ease, box-shadow .35s ease;
-  padding-top:32px;
+  padding-top:64px;
 }
 .hero .close-x{
   position:absolute;top:0;right:0;
   width:36px;height:36px;border-radius:50%;
-  background:transparent;border:1px solid rgba(26,25,23,0.12);
+  background:transparent;border:1px solid var(--color-border);
   display:flex;align-items:center;justify-content:center;
-  color:rgba(26,25,23,0.55);
+  color:var(--color-text-muted);
   opacity:0;pointer-events:none;transform:scale(.85);
   transition:opacity .35s ease, transform .35s ease, color .15s, border-color .15s, background .15s;
 }
-.hero .close-x:hover{color:#1a1917;border-color:#1a1917;background:#fff}
+.hero .close-x:hover{color:var(--color-text-primary);border-color:var(--color-border-hover);background:rgb(var(--color-surface))}
 .stage.engaged .hero .close-x{opacity:1;pointer-events:auto;transform:scale(1)}
-.hero .eyebrow{
-  font-family:var(--font-mono);font-size:12px;letter-spacing:.22em;
-  text-transform:uppercase;color:rgba(26,25,23,0.42);margin-bottom:36px;
-  transition:font-size .45s ease, margin-bottom .45s ease;
-}
 .hero h1{
   font-family:var(--font-display);font-weight:400;
   font-size:clamp(36px, 4vw, 56px);line-height:1.06;letter-spacing:-.015em;
-  margin-bottom:16px;
+  margin-bottom:32px;
   transition:font-size .55s cubic-bezier(.2,.7,.2,1), margin-bottom .45s ease;
   text-wrap:pretty;
 }
 .hero h1 em{font-style:italic;color:rgb(var(--color-accent));font-weight:400}
 .hero .lede{
-  font-size:17px;line-height:1.6;color:rgba(26,25,23,0.70);
+  font-family:var(--font-display);
+  font-size:clamp(16px, 1.8vw, 20px);line-height:1.5;color:var(--color-text-muted);
+  margin-bottom:48px;
+  transition:font-size .45s ease, max-height .45s ease, opacity .35s ease, margin-bottom .45s ease;
+  overflow:hidden;
+}
+.hero .lede em{font-style:italic}
+.hero .sage-line{
+  font-family:var(--font-body);
+  font-size:16px;line-height:1.5;color:var(--color-text-muted);
   margin-bottom:32px;
   transition:font-size .45s ease, max-height .45s ease, opacity .35s ease, margin-bottom .45s ease;
   overflow:hidden;
+}
+.hero .sage-line .hilite{
+  background-image:none;
+  background-color:rgb(var(--color-surface));
+  border-radius:4px;
+  padding:2px 8px;
+  color:var(--color-text-primary);
 }
 .stage.engaged .hero{
   position:sticky;top:60px;z-index:20;
   padding:14px 0 14px;
   margin:0 -8px;padding-left:8px;padding-right:8px;
   background:transparent;
-  box-shadow:0 8px 16px -12px rgba(26,25,23,0.18), 0 1px 0 0 rgba(26,25,23,0.08);
+  box-shadow:0 8px 16px -12px rgb(var(--ink-rgb, 26 25 23) / 0.18), 0 1px 0 0 var(--color-border);
 }
-.stage.engaged .hero .eyebrow{font-size:10px;margin-bottom:6px}
 .stage.engaged .hero h1{font-size:20px;margin-bottom:0;line-height:1.2;padding-right:48px}
 .stage.engaged .hero .lede{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
+.stage.engaged .hero .sage-line{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 
-.composer-wrap{margin-top:8px;position:relative}
+.composer-wrap{margin-top:32px;position:relative}
 .composer{
-  background:#fff;border:1px solid rgba(26,25,23,0.12);border-radius:18px;
+  background:rgb(var(--color-surface));border:1px solid var(--color-border);border-radius:18px;
   padding:14px 14px 10px;
   box-shadow:0 8px 32px rgba(0,0,0,.05);
   transition:border-color .15s ease, box-shadow .15s ease;
@@ -266,13 +306,13 @@ body {
 .composer .row{display:flex;align-items:flex-end;gap:10px}
 .composer textarea{
   flex:1;border:none;outline:none;resize:none;background:transparent;
-  font-family:var(--font-body);font-size:16px;line-height:1.5;color:#1a1917;
+  font-family:var(--font-body);font-size:16px;line-height:1.5;color:var(--color-text-primary);
   min-height:28px;max-height:140px;padding:6px 6px;
 }
-.composer textarea::placeholder{color:rgba(26,25,23,0.42)}
+.composer textarea::placeholder{color:var(--color-text-dim)}
 .composer .send{
   width:38px;height:38px;border-radius:50%;border:none;
-  background:rgb(var(--color-accent));color:#fff;
+  background:rgb(var(--color-accent));color:rgb(var(--color-surface));
   display:flex;align-items:center;justify-content:center;flex:none;
   cursor:pointer;
   transition:background .15s ease,transform .15s ease,opacity .15s ease;
@@ -281,8 +321,8 @@ body {
 .composer .send:disabled{opacity:.4;cursor:not-allowed}
 .composer .meta{
   display:flex;justify-content:space-between;align-items:center;
-  margin-top:8px;padding-top:8px;border-top:1px solid rgba(26,25,23,0.08);
-  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:rgba(26,25,23,0.42);
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--color-border);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--color-text-dim);
 }
 .composer .meta .left{display:flex;align-items:center;gap:8px}
 .ai-badge{
@@ -301,18 +341,18 @@ body {
   100%{box-shadow:0 0 0 0 rgb(var(--color-accent) / 0)}
 }
 .chips{
-  display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;
   transition:opacity .35s ease, max-height .45s ease, margin-top .35s ease;
   overflow:hidden;
 }
 .stage.engaged .chips{opacity:0;max-height:0;margin-top:0;pointer-events:none}
 .chip{
-  background:#fff;border:1px solid rgba(26,25,23,0.12);
+  background:rgb(var(--color-surface));border:1px solid var(--color-border);
   padding:8px 13px;border-radius:999px;
-  font-family:var(--font-body);font-size:13px;color:rgba(26,25,23,0.70);
+  font-family:var(--font-body);font-size:13px;color:var(--color-text-muted);
   cursor:pointer;transition:all .15s ease;
 }
-.chip:hover{border-color:#1a1917;color:#1a1917}
+.chip:hover{border-color:var(--color-border-hover);color:var(--color-text-primary)}
 .chip .arr{margin-left:6px;color:rgb(var(--color-accent))}
 
 .scroll-hint-wrap {
@@ -334,7 +374,7 @@ body {
   font-size: 11px;
   letter-spacing: .18em;
   text-transform: uppercase;
-  color: rgba(26,25,23,0.35);
+  color: var(--color-text-dim);
   text-align: center;
 }
 
@@ -386,7 +426,7 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: #f9f8f5;
+    background: rgb(var(--color-bg));
     z-index: 30;
     padding-bottom: env(safe-area-inset-bottom);
   }
@@ -404,18 +444,18 @@ body {
     top: auto;
     right: 16px;
     bottom: calc(120px + env(safe-area-inset-bottom) + 12px);
-    background: #1a1917;
+    background: var(--color-text-primary);
     border: none;
-    color: #ffffff;
+    color: rgb(var(--color-bg));
     z-index: 31;
   }
   .hero .close-x:hover {
-    background: #1a1917;
+    background: var(--color-text-primary);
     border: none;
-    color: #ffffff;
+    color: rgb(var(--color-bg));
   }
   .stage.engaged .hero {
-    background: #f9f8f5;
+    background: rgb(var(--color-bg));
   }
   .send-hint {
     display: none;
@@ -423,4 +463,102 @@ body {
   .reply-time {
     display: none;
   }
+}
+
+/* ─── Inkwell palette ────────────────────────────────────────────── */
+html[data-palette="inkwell"] {
+  --color-bg: 24 32 41;
+  --color-surface: 42 56 69;
+  --color-accent: 168 200 168;
+  --color-accent-hover: 192 217 192;
+  --ink-rgb: 234 231 220;
+  --color-text-primary: rgb(234 231 220);
+  --color-text-muted:   rgb(234 231 220 / 0.70);
+  --color-text-dim:     rgb(234 231 220 / 0.42);
+  --color-border:       rgb(234 231 220 / 0.08);
+  --color-border-hover: rgb(234 231 220 / 0.25);
+}
+
+html[data-palette="inkwell"] #outcomes,
+html[data-palette="inkwell"] #how-it-works,
+html[data-palette="inkwell"] #testimonials {
+  --color-bg: 245 244 240;
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  background: rgb(var(--color-bg));
+  color: rgb(var(--ink-rgb));
+  border-bottom: none;
+}
+
+html[data-palette="inkwell"] .bone-card {
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  color: rgb(var(--ink-rgb));
+}
+
+html[data-palette="inkwell"] body {
+  background:
+    radial-gradient(800px 360px at 0% 0%,
+      rgb(var(--color-accent) / 0.10), transparent 70%),
+    radial-gradient(900px 420px at 100% 0%,
+      rgb(80 140 110 / 0.12), transparent 70%),
+    rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] #chat {
+  position: relative;
+  background:
+    radial-gradient(800px 360px at 0% 0%,
+      rgb(var(--color-accent) / 0.10), transparent 70%),
+    radial-gradient(900px 420px at 100% 0%,
+      rgb(80 140 110 / 0.12), transparent 70%),
+    rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] section {
+  border-bottom-color: rgb(var(--ink-rgb) / 0.08);
+}
+
+html[data-palette="inkwell"] #problems .career-card,
+html[data-palette="inkwell"] #process .career-card {
+  box-shadow: 0 4px 24px rgba(24, 32, 41, 0.06);
+}
+
+html[data-palette="inkwell"] .career-card {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+html[data-palette="inkwell"] #process .way .book {
+  background: rgb(var(--ink-rgb));
+  color: rgb(var(--color-bg));
+}
+html[data-palette="inkwell"] #process .way .book:hover {
+  background: rgb(var(--ink-rgb) / 0.9);
+}
+
+html[data-palette="inkwell"] .msg.user .bubble {
+  background: rgb(var(--ink-rgb));
+  color: rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] .hilite {
+  background-image: none;
+  background-color: rgb(var(--color-accent) / 0.22);
+  border-radius: 2px;
+}
+
+html[data-palette="inkwell"] .btn-green,
+html[data-palette="inkwell"] .composer .send,
+html[data-palette="inkwell"] .nav-dock .send-mini,
+html[data-palette="inkwell"] .avatar.sage {
+  color: rgb(var(--color-bg));
 }

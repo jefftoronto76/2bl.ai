@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { useSageStore } from '../lib/store'
 
 const LINKS = [
-  { label: 'Schedule', href: '#work' },
-  { label: 'Chat', href: '#chat' },
+  { label: 'Book', href: '#work' },
+  { label: 'Labs', href: '#' },
+  { label: 'Share', href: '#' },
 ]
 
 export function Nav() {
@@ -44,16 +45,16 @@ export function Nav() {
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', height: '60px',
-        background: scrolled || open ? 'rgba(249,248,245,0.96)' : 'transparent',
+        background: scrolled || open ? 'rgb(var(--color-bg) / 0.96)' : 'transparent',
         backdropFilter: scrolled || open ? 'blur(12px)' : 'none',
-        borderBottom: scrolled || open ? '1px solid rgba(26,25,23,0.08)' : 'none',
+        borderBottom: scrolled || open ? '1px solid var(--color-border)' : 'none',
         transition: 'all 0.3s ease',
       }}>
-        <a href="#hero" style={{
-          fontFamily: 'var(--font-display)', fontSize: '17px', fontWeight: 400,
+        <a href="#hero" className="nr-brand" style={{
+          fontFamily: 'var(--font-display)', fontWeight: 400,
           letterSpacing: '0.02em', color: 'var(--color-text-primary)', textDecoration: 'none',
         }}>
-          Natural Resource
+          Performance-Driven, Heart-Led
         </a>
 
         {/* Desktop links */}
@@ -95,8 +96,8 @@ export function Nav() {
       {open && (
         <div style={{
           position: 'fixed', top: '60px', left: 0, right: 0, zIndex: 49,
-          background: 'rgba(249,248,245,0.98)', backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(26,25,23,0.08)',
+          background: 'rgb(var(--color-bg) / 0.98)', backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid var(--color-border)',
           display: 'flex', flexDirection: 'column',
           padding: '16px 24px 24px',
           gap: '0',
@@ -126,7 +127,7 @@ export function Nav() {
                     : {
                       color: 'var(--color-text-primary)',
                       padding: '16px 0',
-                      borderBottom: '1px solid rgba(26,25,23,0.06)',
+                      borderBottom: '1px solid var(--color-border)',
                     }),
                 }}
               >
@@ -138,9 +139,11 @@ export function Nav() {
       )}
 
       <style>{`
+        .nr-brand { font-size: 17px; }
         @media (max-width: 768px) {
           .nr-desktop-links { display: none !important; }
           .nr-mobile-menu-btn { display: flex !important; }
+          .nr-brand { font-size: 14px; }
         }
       `}</style>
     </>

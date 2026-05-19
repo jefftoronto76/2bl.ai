@@ -35,7 +35,7 @@ export function WhyMe() {
 
   return (
     <>
-      <section id="about" data-nav-trigger="how-i-operate" style={{ padding: sectionPad, borderBottom: '1px solid rgba(26,25,23,0.08)' }}>
+      <section id="why" data-nav-trigger="how-i-operate" style={{ padding: sectionPad, borderBottom: '1px solid rgba(26,25,23,0.08)' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           <p style={labelStyle}>
             <span style={{

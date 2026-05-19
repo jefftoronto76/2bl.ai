@@ -233,18 +233,16 @@ export function Hero() {
           </svg>
         </button>
 
-        <p className="eyebrow">
-          Performance-Driven, <span className="hilite">Heart-Led</span>
-        </p>
-
         <h1>
-          Better close rates.<br />
-          Deeper relationships.<br />
-          <em>Revenue growth, made easier.</em>
+          Hi, I&apos;m <em>Jeff</em>.
         </h1>
 
         <p className="lede">
-          I help technology companies do better.
+          I&apos;m an operator, a coach, and a builder. I help technology companies think clearly, develop their people, and grow in <em>ways that last</em>.
+        </p>
+
+        <p className="sage-line">
+          I built <span className="hilite">Sage</span> to help you figure out if that&apos;s what you need.
         </p>
       </div>
 
