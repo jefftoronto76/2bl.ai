@@ -294,20 +294,15 @@ export function SectionCareer() {
   return (
     <section id="career" className="bg-[color:var(--color-surface)] py-16 px-6 md:px-12">
       <div className="max-w-[1100px] mx-auto">
-        {/* Eyebrow */}
-        <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
-          <span>Career Highlights</span>
-          <span
-            aria-hidden
-            className="flex-1 h-px bg-[color:var(--color-border)] max-w-[160px]"
-          />
-        </p>
-
         {/* Headline */}
-        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-10 md:mb-14 text-balance max-w-[22ch]">
-          Strong outcomes across{' '}
-          <em className="italic font-normal text-accent">diverse businesses.</em>
+        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-4 text-balance max-w-[22ch]">
+          Career Highlights
         </h2>
+
+        {/* Lede */}
+        <p className="font-display text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] max-w-[56ch] mb-10 md:mb-14 text-pretty">
+          Strong outcomes across diverse businesses.
+        </p>
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-7 md:mb-10 pb-5 border-b border-[color:var(--color-border)]">
@@ -357,8 +352,7 @@ export function SectionCareer() {
           <div
             className={[
               'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6',
-              !showAll &&
-                'overflow-hidden [grid-template-rows:auto_auto_60px] md:[grid-template-rows:auto_80px] [grid-auto-rows:0]',
+              !showAll && 'max-h-[60vh] overflow-y-auto',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -389,7 +383,7 @@ export function SectionCareer() {
             onClick={() => setShowAll(true)}
             className="md:hidden mt-6 w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent active:scale-[0.98] transition-transform"
           >
-            Show all {visible.length}
+            Show more
           </button>
         )}
 
@@ -399,7 +393,7 @@ export function SectionCareer() {
             onClick={() => setShowAll(true)}
             className="hidden md:flex mt-6 mx-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent hover:bg-[color:var(--color-accent-hover)] transition-colors"
           >
-            Show all {visible.length}
+            Show more
           </button>
         )}
 
@@ -1109,7 +1103,7 @@ function RoleCardView({
 }) {
   const longMetric = card.metric.length > 8
   return (
-    <article className="relative flex flex-col h-full bg-surface border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 transition-shadow hover:shadow-[0_12px_32px_rgba(26,25,23,0.08)]">
+    <article className="relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 transition-shadow hover:shadow-[0_12px_32px_rgba(26,25,23,0.08)]">
       <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
         {card.year}
       </span>
@@ -1195,7 +1189,7 @@ function RoleCardView({
 
 function EducationCardView({ card }: { card: EducationCard }) {
   return (
-    <article className="relative flex flex-col h-full bg-surface border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7">
+    <article className="relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7">
       <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
         {card.year}
       </span>
