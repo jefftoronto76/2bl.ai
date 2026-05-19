@@ -253,7 +253,7 @@ body {
 .stage.engaged .hero .close-x{opacity:1;pointer-events:auto;transform:scale(1)}
 .hero h1{
   font-family:var(--font-display);font-weight:400;
-  font-size:clamp(48px, 8vw, 96px);line-height:1.06;letter-spacing:-.015em;
+  font-size:clamp(36px, 4vw, 56px);line-height:1.06;letter-spacing:-.015em;
   margin-bottom:16px;
   transition:font-size .55s cubic-bezier(.2,.7,.2,1), margin-bottom .45s ease;
   text-wrap:pretty;
