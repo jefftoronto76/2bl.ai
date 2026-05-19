@@ -3,12 +3,11 @@ import {
   Handshake,
   Users,
   Layers,
-  Unlock,
-  Telescope,
 } from 'lucide-react'
 
 type Outcome = {
-  Icon: typeof TrendingUp
+  Icon?: typeof TrendingUp
+  iconSrc?: string
   title: string
   bodyLead: string
   bodyMark: string
@@ -45,18 +44,18 @@ const OUTCOMES: Outcome[] = [
     bodyTrail: '.',
   },
   {
-    Icon: Unlock,
-    title: 'Unstuck',
-    bodyLead: 'Find the ',
-    bodyMark: 'real constraint',
-    bodyTrail: ' behind stalled growth, teams, or execution.',
+    iconSrc: '/chewing-gum.svg',
+    title: 'Sustainable innovation',
+    bodyLead: 'Practical innovation grounded in better business outcomes.',
+    bodyMark: '',
+    bodyTrail: '',
   },
   {
-    Icon: Telescope,
-    title: 'Diagnose before prescribing',
-    bodyLead: 'Teams that ',
-    bodyMark: 'ask better questions',
-    bodyTrail: ' before reaching for answers.',
+    iconSrc: '/bench.svg',
+    title: 'Deeper benches',
+    bodyLead: 'Building the leaders your business needs before you need them.',
+    bodyMark: '',
+    bodyTrail: '',
   },
 ]
 
@@ -79,14 +78,24 @@ export function SectionOutcomes() {
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
-          {OUTCOMES.map(({ Icon, title, bodyLead, bodyMark, bodyTrail }) => (
+          {OUTCOMES.map(({ Icon, iconSrc, title, bodyLead, bodyMark, bodyTrail }) => (
             <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
-              <Icon
-                size={60}
-                strokeWidth={1.4}
-                aria-hidden
-                className="text-[color:var(--color-text-primary)] mb-2"
-              />
+              {Icon ? (
+                <Icon
+                  size={60}
+                  strokeWidth={1.4}
+                  aria-hidden
+                  className="text-[color:var(--color-text-primary)] mb-2"
+                />
+              ) : iconSrc ? (
+                <img
+                  src={iconSrc}
+                  alt=""
+                  width={60}
+                  height={60}
+                  className="mb-2"
+                />
+              ) : null}
               <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
