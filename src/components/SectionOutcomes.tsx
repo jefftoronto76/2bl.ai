@@ -83,15 +83,15 @@ export function SectionOutcomes() {
           {OUTCOMES.map(({ Icon, title, bodyLead, bodyMark, bodyTrail }) => (
             <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
               <Icon
-                size={64}
+                size={60}
                 strokeWidth={1.4}
                 aria-hidden
                 className="text-[color:var(--color-text-primary)] mb-2"
               />
-              <h3 className="font-body text-2xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+              <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
-              <p className="font-body text-[18px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
+              <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
                 {bodyLead}
                 <span className="mark-highlight">
                   {bodyMark}
