@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState } from 'react'
+import { useRef, useEffect, KeyboardEvent, useState, type CSSProperties } from 'react'
 import { useSageStore } from '../lib/store'
 import { streamSageResponse } from '../lib/sage'
 import { useReveal } from '@/hooks/useReveal'
@@ -288,7 +288,17 @@ export function Chat() {
           background: 'rgb(var(--color-bg))',
           animation: 'expandChat 0.3s ease-out',
           transition: 'height 0.3s ease, top 0.3s ease',
-        }}>
+          '--color-bg': '249 248 245',
+          '--color-surface': '255 255 255',
+          '--color-accent': '45 106 79',
+          '--color-accent-hover': '30 77 57',
+          '--ink-rgb': '26 25 23',
+          '--color-text-primary': '#1a1917',
+          '--color-text-muted': 'rgba(26,25,23,0.70)',
+          '--color-text-dim': 'rgba(26,25,23,0.42)',
+          '--color-border': 'rgba(26,25,23,0.08)',
+          '--color-border-hover': 'rgba(26,25,23,0.25)',
+        } as CSSProperties}>
           <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
             <div className="flex items-center gap-2.5">
               <span
