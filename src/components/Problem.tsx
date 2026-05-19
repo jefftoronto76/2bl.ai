@@ -6,6 +6,7 @@ export function Problem() {
   const ref = useReveal()
   return (
     <>
+    <div style={{ padding: '48px' }}>
     <section id="problem" className="problem-section" style={{
       padding: '64px clamp(24px, 5vw, 48px)',
       borderBottom: '1px solid rgba(26,25,23,0.08)',
@@ -55,6 +56,7 @@ export function Problem() {
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400 }}>The problems get solved either way.</p>
       </div>
     </section>
+    </div>
     <style>{`
       @media (max-width: 768px) {
         .problem-section {
