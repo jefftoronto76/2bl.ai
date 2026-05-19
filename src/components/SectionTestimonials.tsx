@@ -54,15 +54,16 @@ const TESTIMONIALS: Testimonial[] = [
   { name: 'Ryan MacEwing', title: 'Senior Sales Executive', text: 'Small pieces of advice can go a long way, and Jeff has dropped a few that have been useful, and he doesn’t even know it.', relationship: 'Friend', headshot: 'Ryan_M' },
 ]
 
-const FILTERS = ['All', 'Executive', 'Peer', 'Direct Report', 'Friend'] as const
+const FILTERS = ['All', 'Executive', 'Peer', 'Direct Report', 'Customer'] as const
 type Filter = (typeof FILTERS)[number]
 
 // Per-relationship dot colour — calm, on-palette. Matches the design preview.
-const RELATIONSHIP_DOT: Record<Relationship, string> = {
+const RELATIONSHIP_DOT: Record<Relationship | 'Customer', string> = {
   Executive: 'bg-[#2D6A4F]',
   Peer: 'bg-[#526D82]',
   'Direct Report': 'bg-[#A8845A]',
   Friend: 'bg-[#785A8C]',
+  Customer: 'bg-[#5B7553]',
 }
 
 // Quotes longer than this truncate at the previous word boundary with an
@@ -139,7 +140,7 @@ function FilterPill({
           aria-hidden
           className={
             'w-[7px] h-[7px] rounded-full ' +
-            (active ? 'bg-bg' : RELATIONSHIP_DOT[label as Relationship])
+            (active ? 'bg-bg' : RELATIONSHIP_DOT[label as Exclude<Filter, 'All'>])
           }
         />
       )}
@@ -221,14 +222,16 @@ export function SectionTestimonials() {
     Executive: 0,
     Peer: 0,
     'Direct Report': 0,
-    Friend: 0,
+    Customer: 0,
   }
-  for (const q of TESTIMONIALS) counts[q.relationship]++
+  for (const q of TESTIMONIALS) {
+    if (q.relationship !== 'Friend') counts[q.relationship]++
+  }
 
   const visible =
     active === 'All'
       ? TESTIMONIALS
-      : TESTIMONIALS.filter((q) => q.relationship === active)
+      : TESTIMONIALS.filter((q) => (q.relationship as string) === active)
 
   // Mobile shows 3 full cards + peek of card 4; md+ shows 2 full rows + peek of row 3.
   const MOBILE_LIMIT = 3
@@ -239,20 +242,15 @@ export function SectionTestimonials() {
   return (
     <section id="testimonials" className="py-16 px-6 md:px-12">
       <div className="max-w-[1100px] mx-auto">
-        {/* Eyebrow */}
-        <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
-          <span>Testimonials</span>
-          <span
-            aria-hidden
-            className="flex-1 h-px bg-[color:var(--color-border)] max-w-[160px]"
-          />
-        </p>
-
         {/* Headline */}
-        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-10 text-balance max-w-[22ch]">
-          From people who didn&apos;t have to{' '}
-          <em className="italic font-normal text-accent">say anything.</em>
+        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-4 text-balance max-w-[22ch]">
+          Testimonials
         </h2>
+
+        {/* Lede */}
+        <p className="font-display text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] max-w-[56ch] mb-10 text-pretty">
+          A collection of thoughts from the people who&rsquo;ve helped me, and who I&rsquo;ve helped throughout my career and life.
+        </p>
 
         {/* Filter row */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -286,8 +284,7 @@ export function SectionTestimonials() {
               <div
                 className={[
                   'grid grid-cols-1 md:grid-cols-3 gap-6',
-                  !showAll &&
-                    'overflow-hidden [grid-template-rows:auto_auto_auto_60px] md:[grid-template-rows:auto_auto_60px] [grid-auto-rows:0]',
+                  !showAll && 'max-h-[60vh] overflow-y-auto',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -312,7 +309,7 @@ export function SectionTestimonials() {
                 onClick={() => setShowAll(true)}
                 className="md:hidden mt-6 w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent active:scale-[0.98] transition-transform"
               >
-                Show all {visible.length}
+                Show more
               </button>
             )}
 
@@ -322,7 +319,7 @@ export function SectionTestimonials() {
                 onClick={() => setShowAll(true)}
                 className="hidden md:flex mt-6 mx-auto items-center justify-center gap-2.5 px-6 py-3 rounded-xl bg-accent text-bg font-body text-sm font-semibold border border-accent hover:bg-[color:var(--color-accent-hover)] transition-colors"
               >
-                Show all {visible.length}
+                Show more
               </button>
             )}
 
