@@ -64,7 +64,7 @@ const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
 export function SectionWhy() {
   return (
-    <section id="why" className="py-16 px-6 md:px-12">
+    <section id="why" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
           <span>Why work with me</span>
@@ -75,7 +75,8 @@ export function SectionWhy() {
         </p>
 
         <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance max-w-[22ch]">
-          I show up, I listen, and I make the work and the people doing it better.
+          I show up, listen, and contribute.{' '}
+          <em className="italic font-normal text-accent">Whatever that needs to be.</em>
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
@@ -87,7 +88,7 @@ export function SectionWhy() {
                 aria-hidden
                 className="text-[color:var(--color-text-primary)] mb-2"
               />
-              <h3 className="font-body text-2xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+              <h3 className="font-body text-lg font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
               <p className="font-body text-[18px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
