@@ -74,7 +74,7 @@ export function SectionOutcomes() {
           />
         </p>
 
-        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance max-w-[22ch]">
+        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance">
           Fewer fires. Clearer priorities.{' '}
           <em className="italic font-normal text-accent">Progress you can see.</em>
         </h2>
@@ -103,7 +103,7 @@ export function SectionOutcomes() {
         </div>
 
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
-          <p className="font-display italic font-normal text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
+          <p className="font-display italic font-normal text-[20px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
             Underneath all of it: relationships are a moat. Durable businesses{' '}
             <span className="mark-highlight--display font-display">
               know their customers, understand their pains, and help them win
