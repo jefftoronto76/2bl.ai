@@ -269,7 +269,7 @@ body {
 .hero .lede em{font-style:italic}
 .hero .sage-line{
   font-family:var(--font-body);
-  font-size:14px;line-height:1.5;color:var(--color-text-muted);
+  font-size:16px;line-height:1.5;color:var(--color-text-muted);
   margin-bottom:32px;
   transition:font-size .45s ease, max-height .45s ease, opacity .35s ease, margin-bottom .45s ease;
   overflow:hidden;
