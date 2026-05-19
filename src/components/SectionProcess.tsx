@@ -662,7 +662,7 @@ export function SectionProcess({
       <div className="mx-auto max-w-[1100px]">
         {/* Eyebrow */}
         <p className="mb-7 flex items-center gap-4 font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">
-          <span className="hilite">How it works</span>
+          <span className="hilite">One session at a time.</span>
           <span
             aria-hidden
             className="block h-px max-w-[120px] flex-1 bg-[color:var(--color-border)]"
@@ -674,9 +674,7 @@ export function SectionProcess({
           id="how-it-works-h"
           className="mb-4 font-display font-normal text-[clamp(34px,4.2vw,56px)] leading-[1.06] tracking-[-0.02em] text-[color:var(--color-text-primary)] text-pretty"
         >
-          It starts with
-          <br />
-          <em className="font-display italic text-accent">one conversation.</em>
+          Working Together
         </h2>
 
         {/* Per-track subhead */}
