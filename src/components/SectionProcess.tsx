@@ -41,6 +41,7 @@ import {
   ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
+import { useSageStore } from '../lib/store'
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
 
@@ -77,7 +78,7 @@ type Track = {
     /** 0-indexed step the deliverables "come from" — controls the
      *  origin-card accent and the desktop tray's notch position. */
     originStep: 0 | 1 | 2
-    items: [Deliverable, Deliverable, Deliverable]
+    items: Deliverable[]
   }
 }
 
@@ -121,20 +122,14 @@ const TRACKS: Record<TrackId, Track> = {
       originStep: 1,
       items: [
         {
-          icon: 'shield',
-          title: 'Coaching plan',
-          // TODO(copy): confirm coaching-deliverable bodies.
-          body: 'A defined path forward you can act on this week.',
-        },
-        {
           icon: 'transcript',
-          title: 'Session recordings',
-          body: 'Full audio + transcript, indexed for re-listening.',
+          title: 'Call transcript',
+          body: 'You own it. Use it however helps most.',
         },
         {
-          icon: 'docs',
-          title: 'Weekly check-ins',
-          body: '7 days of async back-and-forth on what you took away.',
+          icon: 'shield',
+          title: '100% satisfaction guarantee',
+          body: 'If it wasn’t worth it, you don’t pay.',
         },
       ],
     },
@@ -156,42 +151,39 @@ const TRACKS: Record<TrackId, Track> = {
       'AI plans that aren’t operational',
     ],
     steps: [
-      // TODO(copy): operator-track step copy was carried over from the
-      // earlier "consulting" tier. Confirm with Jeff this still reads
-      // right for the embedded-execution audience.
       {
         title: 'Book a session',
         body:
-          'Bring the problem. We’ll figure out the right scope together in the first conversation.',
+          'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
       },
       {
-        title: 'The work',
+        title: 'Working Session',
         body:
-          'Fast, focused, and grounded in real pattern recognition. You get a thinking partner who’s been in the room before — and an opinion.',
+          'Bring the problem. We’ll leverage ICF competencies, along with our own expertise, to determine the outcome we need and how to achieve it.',
       },
       {
-        title: 'The document',
+        title: 'The shift',
         body:
-          'A playbook, a strategy, a recommendation. Something clear and actionable you can use immediately.',
+          'Clarity on what’s really going on. A defined next move for you to consider.',
       },
     ],
     deliverables: {
       originStep: 1,
       items: [
         {
-          icon: 'shield',
-          title: 'Diagnostic memo',
-          body: 'The real constraint, named. Plus the one thing to fix first.',
+          icon: 'transcript',
+          title: 'Call transcript',
+          body: 'You own it. Use it however helps most.',
         },
         {
-          icon: 'transcript',
-          title: 'Working session(s)',
-          body: 'Recurring cadence with operator-level accountability.',
+          icon: 'shield',
+          title: '100% satisfaction guarantee',
+          body: 'If it wasn’t worth it, you don’t pay.',
         },
         {
           icon: 'docs',
-          title: 'Implementation plan',
-          body: 'Scope, deliverables, owner, and a defined exit.',
+          title: 'Go-forward strategy',
+          body: 'A plan on next steps, focused on clear outcomes, action items, timelines and budget.',
         },
       ],
     },
@@ -317,6 +309,15 @@ function SymptomReveal({
 }) {
   const [open, setOpen] = useState(false)
   const panelId = 'sp-symptom-panel'
+  const expand = useSageStore((s) => s.expand)
+
+  const handleAskSageClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+    if (window.location.hash !== '#chat?mode=question') {
+      history.pushState(null, '', '/#chat?mode=question')
+    }
+    expand('question')
+  }
 
   return (
     <div className="mt-[18px] mb-8">
@@ -327,7 +328,7 @@ function SymptomReveal({
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-2.5 bg-transparent border-0 p-0 py-1.5 cursor-pointer font-mono text-[11px] tracking-[0.22em] uppercase text-[color:var(--color-text-primary)] hover:text-accent transition-colors"
       >
-        <span>Sound like you?</span>
+        <span>What&rsquo;s slowing you down?</span>
         <ChevronDown
           aria-hidden
           size={11}
@@ -355,7 +356,14 @@ function SymptomReveal({
         ].join(' ')}
       >
         <p className="mb-3.5 font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-dim)]">
-          Click on a topic to explore with Sage
+          Click on a topic to explore with{' '}
+          <a
+            href="/#chat?mode=question"
+            onClick={handleAskSageClick}
+            className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent transition-colors cursor-pointer"
+          >
+            Sage
+          </a>
         </p>
 
         <div className="flex flex-wrap gap-2">
