@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { ChevronUp } from 'lucide-react'
 
-type Relationship = 'Executive' | 'Peer' | 'Direct Report' | 'Friend'
+type Relationship = 'Executive' | 'Peer' | 'Direct Report' | 'Friend' | 'Customer'
 
 type Testimonial = {
   name: string
@@ -29,9 +29,9 @@ const TESTIMONIALS: Testimonial[] = [
   { name: 'Pepper Harward', title: 'CEO', text: 'His brilliance is at times unrivaled. He puts his own personality stamp on everything he does, which makes his contributions memorable.', relationship: 'Peer', headshot: 'Pepper_H' },
   { name: 'Chris Chun', title: 'Sales Leader', text: 'I took your advice and went out guns blazing; #1 on my team and #2 in Canada.', relationship: 'Peer', headshot: 'Chris_C' },
   { name: 'Brittany Dallman', title: 'Business Development Rep', text: 'You were such a great coach and so helpful, one of the people I learned the most from.', relationship: 'Peer', headshot: 'Brittany_D' },
-  { name: 'William Tsuei', title: 'Chair, IT Committee', text: 'Jeff is a seasoned executive with in-depth experience. Always willing to go the extra mile.', relationship: 'Peer', headshot: 'Bill_S' },
-  { name: 'Rick Moore', title: null, text: 'Jeff brought us new and innovative products to help resolve outstanding process issues.', relationship: 'Peer', headshot: 'Rick_M' },
-  { name: 'Rajeev Roy', title: 'Director, Digital and Process Transformation', text: 'Jeff spent time understanding how we did business and partnered with us to find better ways.', relationship: 'Peer', headshot: 'Rajeev_R' },
+  { name: 'William Tsuei', title: 'Chair, IT Committee', text: 'Jeff is a seasoned executive with in-depth experience. Always willing to go the extra mile.', relationship: 'Customer', headshot: 'Bill_S' },
+  { name: 'Rick Moore', title: null, text: 'Jeff brought us new and innovative products to help resolve outstanding process issues.', relationship: 'Customer', headshot: 'Rick_M' },
+  { name: 'Rajeev Roy', title: 'Director, Digital and Process Transformation', text: 'Jeff spent time understanding how we did business and partnered with us to find better ways.', relationship: 'Customer', headshot: 'Rajeev_R' },
 
   // Direct reports
   { name: 'Martin Burwell', title: 'Sales Executive', text: 'Jeff is a fantastic business coach who challenged me to view problems from a client’s perspective.', relationship: 'Direct Report', headshot: 'Marty_B' },
