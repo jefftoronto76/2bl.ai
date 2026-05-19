@@ -1103,7 +1103,7 @@ function RoleCardView({
 }) {
   const longMetric = card.metric.length > 8
   return (
-    <article className="relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 transition-shadow hover:shadow-[0_12px_32px_rgba(26,25,23,0.08)]">
+    <article className="bone-card relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 transition-shadow hover:shadow-[0_12px_32px_rgba(26,25,23,0.08)]">
       <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
         {card.year}
       </span>
@@ -1189,7 +1189,7 @@ function RoleCardView({
 
 function EducationCardView({ card }: { card: EducationCard }) {
   return (
-    <article className="relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7">
+    <article className="bone-card relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7">
       <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
         {card.year}
       </span>
