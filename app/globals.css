@@ -261,7 +261,7 @@ body {
 .hero h1 em{font-style:italic;color:rgb(var(--color-accent));font-weight:400}
 .hero .lede{
   font-family:var(--font-display);
-  font-size:clamp(20px, 2.4vw, 28px);line-height:1.5;color:var(--color-text-muted);
+  font-size:clamp(16px, 1.8vw, 20px);line-height:1.5;color:var(--color-text-muted);
   margin-bottom:48px;
   transition:font-size .45s ease, max-height .45s ease, opacity .35s ease, margin-bottom .45s ease;
   overflow:hidden;
