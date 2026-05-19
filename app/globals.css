@@ -238,7 +238,7 @@ body {
 .hero{
   position:relative;
   transition:padding .55s cubic-bezier(.2,.7,.2,1), opacity .35s ease, background-color .35s ease, box-shadow .35s ease;
-  padding-top:32px;
+  padding-top:64px;
 }
 .hero .close-x{
   position:absolute;top:0;right:0;
@@ -254,7 +254,7 @@ body {
 .hero h1{
   font-family:var(--font-display);font-weight:400;
   font-size:clamp(36px, 4vw, 56px);line-height:1.06;letter-spacing:-.015em;
-  margin-bottom:16px;
+  margin-bottom:32px;
   transition:font-size .55s cubic-bezier(.2,.7,.2,1), margin-bottom .45s ease;
   text-wrap:pretty;
 }
@@ -292,7 +292,7 @@ body {
 .stage.engaged .hero .lede{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 .stage.engaged .hero .sage-line{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 
-.composer-wrap{margin-top:8px;position:relative}
+.composer-wrap{margin-top:32px;position:relative}
 .composer{
   background:rgb(var(--color-surface));border:1px solid var(--color-border);border-radius:18px;
   padding:14px 14px 10px;
@@ -341,7 +341,7 @@ body {
   100%{box-shadow:0 0 0 0 rgb(var(--color-accent) / 0)}
 }
 .chips{
-  display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;
   transition:opacity .35s ease, max-height .45s ease, margin-top .35s ease;
   overflow:hidden;
 }
