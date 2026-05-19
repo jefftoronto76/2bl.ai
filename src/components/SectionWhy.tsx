@@ -67,7 +67,7 @@ export function SectionWhy() {
     <section id="why" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
-          <span>Why work with me</span>
+          <span>I show up, listen, and contribute.</span>
           <span
             aria-hidden
             className="flex-1 h-px bg-[color:var(--color-border)] max-w-[160px]"
@@ -75,7 +75,7 @@ export function SectionWhy() {
         </p>
 
         <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance">
-          I show up, listen, and contribute.
+          How I work
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
