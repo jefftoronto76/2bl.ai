@@ -74,24 +74,23 @@ export function SectionWhy() {
           />
         </p>
 
-        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance max-w-[22ch]">
-          I show up, listen, and contribute.{' '}
-          <em className="italic font-normal text-accent">Whatever that needs to be.</em>
+        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance">
+          I show up, listen, and contribute.
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
           {REASONS.map(({ Icon, title, bodyLead, bodyMark, bodyTrail }) => (
             <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
               <Icon
-                size={64}
-                strokeWidth={1.4}
+                size={60}
+                strokeWidth={1.2}
                 aria-hidden
                 className="text-[color:var(--color-text-primary)] mb-2"
               />
-              <h3 className="font-body text-lg font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+              <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
-              <p className="font-body text-[18px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
+              <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
                 {bodyLead}
                 <span className="mark-highlight">
                   {bodyMark}
