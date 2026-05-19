@@ -88,7 +88,7 @@ export function SectionOutcomes() {
                 aria-hidden
                 className="text-[color:var(--color-text-primary)] mb-2"
               />
-              <h3 className="font-body text-lg font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+              <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
                 {title}
               </h3>
               <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
@@ -103,12 +103,12 @@ export function SectionOutcomes() {
         </div>
 
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
-          <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
-            Underneath all of it: relationships always win.{' '}
+          <p className="font-display italic font-normal text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
+            Underneath all of it: relationships are a moat. Durable businesses{' '}
             <span className="mark-highlight--display font-display">
-              Know your customer, understand their pains, help them win.
-            </span>{' '}
-            That&apos;s the cornerstone of a durable business.
+              know their customers, understand their pains, and help them win
+            </span>
+            .
           </p>
           <div
             className="flex flex-wrap gap-2 lg:justify-end"
