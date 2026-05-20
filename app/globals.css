@@ -430,7 +430,7 @@ body {
     z-index: 30;
     padding-left: 16px;
     padding-right: 16px;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
   .stage {
     padding-bottom: calc(120px + env(safe-area-inset-bottom));
