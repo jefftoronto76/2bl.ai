@@ -178,8 +178,14 @@ session start.
 - **Admin interface:** Mantine v7 — components in `/components/admin/`
 - **Public site:** Tailwind — components in `/src/components/`
 - **Shared design tokens:** `/components/admin/theme/mantine-theme.ts`
+- **SBL storefront:** Tailwind — the Second Brain Labs storefront (`2bl.ai`,
+  served from `/secondbrainlabs`) has its own isolated token + font set scoped
+  to `[data-brand="sbl"]`. See "Second Brain Labs storefront palette" below.
 - **Rule:** No new admin screen is built before the relevant Mantine component
   foundation exists. Design system before screens — always.
+
+The token table below is the **jefflougheed.ca + admin palette** (the default
+`:root` / `html[data-palette="inkwell"]` tokens in `app/globals.css`):
 
 | Token | Value |
 |-------|-------|
@@ -192,6 +198,39 @@ session start.
 | Font mono | DM Mono |
 | Min font size | 16px (labels/mono UI: 11px acceptable) |
 | Spacing unit | 4px multiples |
+
+### Second Brain Labs storefront palette
+
+The SBL storefront (`2bl.ai`, served from `/secondbrainlabs`) ships its own
+design tokens, **fully isolated** from the jefflougheed/inkwell palette. They
+live in `app/globals.css` under the `[data-brand="sbl"]` selector (set on the
+`/secondbrainlabs` layout wrapper) and are surfaced as Tailwind utilities in
+`tailwind.config.js` (`paper`, `paper-2`, `paper-3`, `line`, `line-2`, `ink`,
+`ink-2`, `muted`, `dim`, `accent` — terracotta, reusing the alpha-aware
+`rgb(var(--color-accent) / <alpha-value>)` token — `accent-deep`,
+`accent-soft`, `pos`). Because the values are scoped to `[data-brand="sbl"]`,
+the Tailwind tokens are inert everywhere else and **the two token sets do not
+conflict**: jefflougheed's global `:root` palette is untouched on SBL pages, and
+the root layout drops `data-palette="inkwell"` whenever the request is SBL (see
+App Structure & Routing) so the inkwell rules never bleed in.
+
+| SBL token | Value |
+|-----------|-------|
+| Paper (bg) | `#FAF6EE` / `#F2ECDF` / `#ECE3D2` |
+| Line | `#E2D6BC` / `#D2C3A2` |
+| Ink | `#1F1A14` / `#3B3328` |
+| Muted / Dim | `#6B6256` / `#9A917F` |
+| Accent (terracotta) | `rgb(200 84 46)` |
+| Accent deep / soft | `#A93F1D` / `#F4D9CC` |
+| Positive | `#4F7A4A` |
+
+**Fonts are scoped per brand.** Newsreader (serif) and Manrope (sans) are loaded
+via `next/font/google` in `app/secondbrainlabs/layout.tsx` and exposed as
+`--font-serif` / `--font-sans` (Tailwind `font-serif` / `font-sans`) **on the
+SBL layout wrapper only**. jefflougheed.ca keeps Playfair Display / DM Sans /
+DM Mono (`--font-display` / `--font-body` / `--font-mono`), loaded via the
+Google Fonts `<link>` in `app/(jefflougheed)/layout.tsx` and defined in `:root`.
+Neither font set bleeds into the other.
 
 ---
 
@@ -211,6 +250,49 @@ Reusable admin-side components in `/components/admin/primitives/`:
 | `SageParameters` | `app/admin/settings/SageParameters.tsx` | Mantine-based client component rendered inside the Parameters section on the Settings page. Owns the section header row (title + "Add New" button, right-aligned) and the card list below it. Fetches `/api/admin/sage-parameters` on mount. Each existing parameter renders as a Mantine `Card` showing Label (title), Description (subtitle), CTA label, URL, and Open-as (with Embed-code status when `open_as = 'popup'`), plus edit (pencil) / delete (trash) `ActionIcon`s top-right. Edit expands the card inline with `TextInput`s for Label, Description (max 60 chars, live counter), CTA Label (max 20 chars, live counter), and URL; a Mantine `Select` for Open behavior (`New Tab` / `Inline` — the `Inline` option maps to the `open_as = 'popup'` DB value for backwards compatibility); and — only when Inline is selected — a monospace Mantine `Textarea` labeled "Embed Code" (placeholder "Paste your booking tool's popup snippet here") for the `embed_code` value. Switching back to `New Tab` nulls `embed_code` on save. Save validation blocks PATCH when `open_as = 'popup'` and `embed_code` is empty/whitespace ("Embed code is required for inline booking."). Add New prepends an empty editable card to the top of the list. Save and Add both PATCH `/api/admin/sage-parameters` (Add auto-generates `key` from the label, lowercase non-alphanumerics collapsed to `_`; duplicate keys rejected client-side). Delete opens a Mantine `Modal` confirmation and calls `DELETE /api/admin/sage-parameters/[key]`. Surfaces success/error via `@mantine/notifications`. Console logs cover fetch, PATCH dispatch (with `open_as` / `has_embed_code`), success/failure, DELETE, and add-new-card open. |
 | `ChatThresholds` | `app/admin/settings/ChatThresholds.tsx` | Mantine client component rendered as the second section on the Settings page (after Parameters), inside `<section aria-labelledby="thresholds-heading">`. Owns the section header (title "Chat Thresholds" + muted subtitle "How long Sage waits before moving a session from In-progress → Active → Abandoned.") and a single `Card` body with two `NumberInput` fields — `chat_in_progress_idle_seconds` (label "In-progress idle threshold", default 300, step 60) and `chat_active_idle_seconds` (label "Active idle threshold", default 86400, step 3600). Both inputs are seconds; helper `description` text translates the defaults to human units. Fetches `/api/admin/tenant-settings` on mount; PATCHes the same route on Save. Validation: both fields must be positive integers and `in_progress < active` — Save button is disabled while invalid or not dirty (`dirty` compares current input against the last saved snapshot). Reset to defaults button (subtle gray) restores 300 / 86400 in the inputs without writing. Save button (filled green, `loading={saving}`). Surfaces success/error via `@mantine/notifications`. Console logs cover fetch, PATCH dispatch, success, failure, and reset. No view/edit toggle — singleton record with always-visible inputs. |
 | `BookingCard` (+ `parseBookingCards`, `injectInlineEmbed`) | `src/components/Chat.tsx` | Inline Tailwind component and parser used by the public visitor chat. `parseBookingCards(content)` extracts every `[BOOKING: label \| description \| cta_label \| url]` match from an assistant message, strips any trailing incomplete `[BOOKING:` fragment still streaming, collapses leftover blank lines, and returns `{ prose, cards }`. The Chat component also fetches `/api/sage/parameters` on mount, matches each parsed card to a parameter by `url`, and passes `openAs` + `embedCode` as props. `BookingCard` is a white card with `border border-black/10` + `shadow-sm`, bold label, muted description, a `#2d6a4f` CTA, and — directly below the card — a ref'd inline-embed container (`mt-2 w-full min-h-[700px]`, hidden until first click). CTA element type switches on `openAs`: `<a target="_blank" rel="noopener noreferrer">` for `'new_tab'`; `<button>` for `'popup'` (admin label "Inline") that, on click, reveals the container and calls `injectInlineEmbed(container, embedCode)`. `injectInlineEmbed` re-materializes the snippet into live `<script>` / `<link>` nodes scoped to the target container so script tags actually execute (handles both pure inline JS and HTML fragments with `<script src="...">`). The button disables itself after injection to keep the mount idempotent. If `openAs = 'popup'` and `embedCode` is empty, falls back to new-tab behavior and `console.warn`s. When the *effective* open behavior is `new_tab` (either explicitly or via the empty-`embed_code` fallback), a small muted Tailwind `<p>` renders directly below the card: "Heads up — clicking the button will open in a new tab to complete your booking." — suppressed for the in-chat inline case. |
+
+---
+
+## App Structure & Routing
+
+The Next.js `app/` directory serves two domains from one codebase, split by
+route group and resolved at the edge by `middleware.ts`.
+
+- **`app/(jefflougheed)/`** — route group holding the jefflougheed.ca public
+  site (`page.tsx` + `layout.tsx`). The group's `layout.tsx` owns the
+  jefflougheed `<head>`: metadata, favicons/webmanifest, the Google Fonts
+  `<link>` (Playfair Display / DM Sans / DM Mono), and the Calendly widget
+  CSS/JS. Being a route group, `(jefflougheed)` is **not** part of the URL —
+  these pages still serve from `/`.
+- **`app/secondbrainlabs/`** — the Second Brain Labs storefront for `2bl.ai`
+  (`page.tsx` + `layout.tsx`). `layout.tsx` wraps the page in
+  `<div data-brand="sbl">` (scoping the SBL design tokens) and loads Newsreader
+  + Manrope via `next/font/google`.
+- **`app/layout.tsx`** — the shared root layout (`ClerkProvider` + `<html>`).
+  It reads the `x-sbl` request header (set by middleware) and applies
+  `data-palette="inkwell"` to `<html>` only when the request is **not** SBL, so
+  the inkwell palette never bleeds into `/secondbrainlabs`.
+
+### Middleware (`middleware.ts`)
+
+`middleware.ts` wraps Clerk's `clerkMiddleware` and now performs **domain-based
+routing in addition to Clerk auth**:
+
+- **Domain routing (runs first):** `host` is normalized (lowercased, port
+  stripped). For the SBL hosts (`2bl.ai`, `www.2bl.ai`) or any request already
+  under `/secondbrainlabs`, the request is tagged with an `x-sbl: 1` header.
+  SBL-host requests not already on the SBL path are **rewritten** to
+  `/secondbrainlabs` (root `/` → `/secondbrainlabs`, otherwise the path is
+  prefixed). The rewrite is internal — the `2bl.ai` URL is preserved in the
+  address bar.
+- **jefflougheed.ca passes through** to `/` unchanged — no `x-sbl` tag, no
+  rewrite.
+- **Clerk auth (unchanged):** after the domain check, `/admin(.*)` routes are
+  still protected via `auth.protect()`.
+
+The `x-sbl` header is the single signal the root layout uses to choose the
+palette, keeping brand resolution in one place (middleware) rather than
+sniffing the host in every layout.
 
 ---
 

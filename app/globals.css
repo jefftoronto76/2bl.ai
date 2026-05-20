@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Design tokens ───────────────────────────────────────── */
+/* ─── Design tokens ───────────────────────── */
 :root {
   --color-bg: 249 248 245;
   --color-surface: 255 255 255;
@@ -19,7 +19,7 @@
   --font-mono: 'DM Mono', 'Courier New', monospace;
 }
 
-/* ─── Reset ───────────────────────────────────────────── */
+/* ─── Reset ────────────────────── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html { scroll-behavior: smooth; font-size: 16px; }
@@ -34,7 +34,7 @@ body {
 
 ::selection { background: rgba(45,106,79,0.15); }
 
-/* ─── Scroll-reveal animation ────────────────────────────────────────────────── */
+/* ─── Scroll-reveal animation ───────────────────────────── */
 .reveal {
   opacity: 0;
   transform: translateY(28px);
@@ -46,12 +46,12 @@ body {
 .reveal-delay-2 { transition-delay: 0.2s; }
 .reveal-delay-3 { transition-delay: 0.3s; }
 
-/* ─── Scrollbar ────────────────────────────────────────────── */
+/* ─── Scrollbar ───────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: rgb(var(--color-bg)); }
 ::-webkit-scrollbar-thumb { background: rgba(26,25,23,0.15); border-radius: 2px; }
 
-/* ─── Utility ──────────────────────────────────────────────────────────────────────── */
+/* ─── Utility ─────────────────────────────────────── */
 .highlight-marker {
   background: #E8E1CF;
   padding: 2px 8px;
@@ -87,7 +87,7 @@ body {
   box-decoration-break: clone;
 }
 
-/* ─── Calendly widget overrides ────────────────────────────────────── */
+/* ─── Calendly widget overrides ────────────────────── */
 .calendly-inline-widget {
   width: 100% !important;
   max-width: 100% !important;
@@ -180,9 +180,9 @@ body {
   100% { border-bottom-color: rgb(var(--color-accent)); border-left-color: rgb(var(--color-accent)); }
 }
 
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 /* Sage chat overlay — appended for visitor chat redesign   */
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 
 /* Curly quotes on visitor messages. Applied via .sage-visitor-msg
    on the user-reply <p> in Chat.tsx. */
@@ -223,9 +223,9 @@ body {
   }
 }
 
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 /* Chat-first hero stage                                     */
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 
 .stage{
   height:100dvh;display:flex;flex-direction:column;
@@ -417,9 +417,9 @@ body {
   background-repeat: no-repeat;
 }
 
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 /* Mobile: pin Hero composer to viewport bottom (iOS keyboard) */
-/* ──────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────── */
 @media (max-width: 768px) {
   .composer-wrap {
     position: fixed;
@@ -465,7 +465,7 @@ body {
   }
 }
 
-/* ─── Inkwell palette ────────────────────────────────────────────── */
+/* ─── Inkwell palette ──────────────────────────── */
 html[data-palette="inkwell"] {
   --color-bg: 24 32 41;
   --color-surface: 42 56 69;
@@ -561,4 +561,50 @@ html[data-palette="inkwell"] .composer .send,
 html[data-palette="inkwell"] .nav-dock .send-mini,
 html[data-palette="inkwell"] .avatar.sage {
   color: rgb(var(--color-bg));
+}
+
+/* ─── Second Brain Labs storefront palette ─────────────────────────
+   Scoped to [data-brand="sbl"] (set on the /secondbrainlabs layout wrapper) so
+   these tokens never collide with jefflougheed's global :root / inkwell palette.
+   Hex forms feed page.tsx arbitrary values (color-mix, repeating-linear-gradient).
+   Triplet forms feed the alpha-aware Tailwind tokens (bg-paper/90, border-accent/50);
+   `accent` reuses the repo's existing `rgb(var(--color-accent) / <alpha-value>)`
+   token, scoped here to terracotta. */
+[data-brand="sbl"] {
+  /* Warm paper stack */
+  --color-paper:   #FAF6EE;
+  --color-paper-2: #F2ECDF;
+  --color-paper-3: #ECE3D2;
+
+  /* Lines */
+  --color-line:    #E2D6BC;
+  --color-line-2:  #D2C3A2;
+
+  /* Ink */
+  --color-ink:     #1F1A14;
+  --color-ink-2:   #3B3328;
+  --color-muted:   #6B6256;
+  --color-dim:     #9A917F;
+
+  /* Accent — terracotta (rgb triplet for the alpha-aware accent token) */
+  --color-accent:      200 84 46;
+  --color-accent-deep: #A93F1D;
+  --color-accent-soft: #F4D9CC;
+
+  /* Status */
+  --color-pos: #4F7A4A;
+
+  /* Triplet mirror of --color-paper for the alpha-aware `paper` Tailwind token */
+  --color-paper-rgb: 250 246 238;
+}
+
+/* Local keyframes used by the Sage widget + AI envelope tag (referenced via
+   animate-[sb-pulse_...] / animate-[sb-dot_...] arbitrary utilities). */
+@keyframes sb-pulse {
+  0%, 100% { opacity: 0.25; transform: scaleX(0.6); }
+  50%      { opacity: 1;    transform: scaleX(1);   }
+}
+@keyframes sb-dot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(200, 84, 46, 0.18); }
+  50%      { box-shadow: 0 0 0 6px rgba(200, 84, 46, 0.05); }
 }
