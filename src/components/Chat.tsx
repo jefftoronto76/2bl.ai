@@ -71,6 +71,7 @@ export function Chat() {
     }
     vv.addEventListener('resize', onViewportChange)
     vv.addEventListener('scroll', onViewportChange)
+    onViewportChange()
     return () => {
       vv.removeEventListener('resize', onViewportChange)
       vv.removeEventListener('scroll', onViewportChange)
@@ -287,7 +288,6 @@ export function Chat() {
           flexDirection: 'column',
           background: 'rgb(var(--color-bg))',
           animation: 'expandChat 0.3s ease-out',
-          transition: 'height 0.3s ease, top 0.3s ease',
         } as CSSProperties}>
           <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
             <div className="flex items-center gap-2.5">
