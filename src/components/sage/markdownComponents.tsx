@@ -21,7 +21,7 @@ export const markdownComponents = {
       <code style={{
         fontFamily: 'DM Mono, monospace',
         fontSize: '13px',
-        background: 'rgba(26,25,23,0.06)',
+        background: 'var(--color-border)',
         padding: isBlock ? '8px' : '2px 4px',
         borderRadius: isBlock ? '6px' : '3px',
         display: isBlock ? 'block' : 'inline',
