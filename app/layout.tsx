@@ -1,7 +1,12 @@
 import { ClerkProvider } from '@clerk/nextjs'
+import type { Viewport } from 'next'
 import { headers } from 'next/headers'
 import Script from 'next/script'
 import './globals.css'
+
+export const viewport: Viewport = {
+  interactiveWidget: 'resizes-content',
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Brand is resolved in middleware (host/path) and passed via the x-sbl header.
