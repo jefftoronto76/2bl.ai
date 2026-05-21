@@ -12,14 +12,18 @@ type Testimonial = {
   relationship: Relationship
   /** Headshot filename in /public/headshots/, without extension. Optional. */
   headshot?: string
+  /** Company/org name. Surfaced by featured testimonials (SectionProcess). */
+  company?: string
+  /** Marks a testimonial for reuse in the SectionProcess rotation. */
+  featured?: boolean
 }
 
 const TESTIMONIALS: Testimonial[] = [
   // Executives
-  { name: 'Saif Ajani', title: 'CEO', text: 'Jeff brought sales leadership and structure to our revenue as we grew. His coaching approach gave the team a productive path to growth.', relationship: 'Executive', headshot: 'Saif_A' },
+  { name: 'Saif Ajani', title: 'CEO', company: 'Keyhole', featured: true, text: 'Jeff brought sales leadership and structure to our revenue as we grew. His coaching approach gave the team a productive path to growth.', relationship: 'Executive', headshot: 'Saif_A' },
   { name: 'Vlad Chernenko', title: 'CEO', text: 'Overall, Jeff has been instrumental in moving Meal Garden forward.', relationship: 'Executive', headshot: 'Vlad_C' },
   { name: 'Jim Schnepp', title: 'VP, Sales and Marketing', text: 'Jeff proved himself to be a very capable leader, a great coach, an advocate for the customer, and a real partner.', relationship: 'Executive', headshot: 'Jim_S' },
-  { name: 'Rick Bacchus', title: 'President', text: 'He has proven repeatedly that he can perform in the most trying situations.', relationship: 'Executive', headshot: 'Rick_B' },
+  { name: 'Rick Bacchus', title: 'President', company: 'Trapeze', featured: true, text: 'He has proven repeatedly that he can perform in the most trying situations.', relationship: 'Executive', headshot: 'Rick_B' },
   { name: 'Colin McKenzie', title: 'General Manager', text: 'Jeff’s ability to read people, adjust his message for his audience, and speak frankly and openly… was critical to his success.', relationship: 'Executive', headshot: 'Colin_M' },
   { name: 'John Parsons', title: 'VP, Sales', text: 'Jeff got the CFO to confirm their desire to expand scope, then spent months expanding efforts and connections inside the account.', relationship: 'Executive', headshot: 'John_P' },
 
@@ -40,7 +44,7 @@ const TESTIMONIALS: Testimonial[] = [
   { name: 'Dale Mehta', title: 'Sales Executive', text: 'Jeff is one of the most focused and driven individuals I’ve ever had the pleasure of working for.', relationship: 'Direct Report', headshot: 'Dale_M' },
   { name: 'Brendan Samis', title: 'Sales Executive', text: 'Jeff Lougheed has had the single most impact on the development of my career.', relationship: 'Direct Report', headshot: 'Brendan_S' },
   { name: 'Kiki Athanas', title: 'Founder', text: 'Gave me the confidence to get out there and make it happen.', relationship: 'Direct Report', headshot: 'Kiki_A' },
-  { name: 'Iara Rios', title: 'Manager, Content Marketing', text: 'Your question-based coaching had a huge impact on helping me think more creatively in the face of problems that seem unapproachable.', relationship: 'Direct Report', headshot: 'Iara_R' },
+  { name: 'Iara Rios', title: 'Manager, Content Marketing', company: 'Keyhole', featured: true, text: 'Your question-based coaching had a huge impact on helping me think more creatively in the face of problems that seem unapproachable.', relationship: 'Direct Report', headshot: 'Iara_R' },
 
   // Friends
   { name: 'Justin Juscka', title: 'VP, Product & Portfolio Management', text: 'He shows up. No matter what’s happening in his own world, if you need Jeff, he will be there, no questions asked.', relationship: 'Friend', headshot: 'Justin_J' },
@@ -51,8 +55,11 @@ const TESTIMONIALS: Testimonial[] = [
   { name: 'Mike Zinzer', title: 'General Manager', text: 'His enthusiasm and zest for life are special...magnetic. People are drawn to him and it’s effortless.', relationship: 'Friend', headshot: 'Mike_Z' },
   { name: 'Helen Theodosiou', title: 'Owner', text: 'The best part is always the laughter, the kind that is physical, that leaves us bent over, breathless, loud, reminding you why life is good.', relationship: 'Friend', headshot: 'Helen_T' },
   { name: 'Richard Ilnycki', title: 'Advisor', text: 'You’re one of the most interesting people I’ve ever met. I love your direct, inquisitive nature and how you’re always looking to move forward.', relationship: 'Friend', headshot: 'Rick_I' },
-  { name: 'Ryan MacEwing', title: 'Senior Sales Executive', text: 'Small pieces of advice can go a long way, and Jeff has dropped a few that have been useful, and he doesn’t even know it.', relationship: 'Friend', headshot: 'Ryan_M' },
+  { name: 'Ryan MacEwing', title: 'Senior Sales Executive', company: 'RouteThis', featured: true, text: 'Small pieces of advice can go a long way, and Jeff has dropped a few that have been useful, and he doesn’t even know it.', relationship: 'Friend', headshot: 'Ryan_M' },
 ]
+
+/** Subset reused by SectionProcess's rotating testimonial card. */
+export const FEATURED_TESTIMONIALS = TESTIMONIALS.filter((t) => t.featured)
 
 const FILTERS = ['All', 'Executive', 'Peer', 'Direct Report', 'Customer'] as const
 type Filter = (typeof FILTERS)[number]
