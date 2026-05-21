@@ -44,13 +44,23 @@ export function Chat() {
   const retrySessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (isExpanded) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (!isExpanded) return
+    // Hardened scroll lock: freezing the body with position:fixed (not just
+    // overflow:hidden) stops iOS Safari from scrolling the document under the
+    // overlay when an input is focused, keeping visualViewport.offsetTop stable
+    // so the overlay can't detach from the viewport.
+    const scrollY = window.scrollY
+    const body = document.body
+    body.style.position = 'fixed'
+    body.style.top = `-${scrollY}px`
+    body.style.left = '0'
+    body.style.right = '0'
     return () => {
-      document.body.style.overflow = ''
+      body.style.position = ''
+      body.style.top = ''
+      body.style.left = ''
+      body.style.right = ''
+      window.scrollTo(0, scrollY)
     }
   }, [isExpanded])
 
@@ -64,10 +74,15 @@ export function Chat() {
     const vv = window.visualViewport
     if (!vv) return
     const onViewportChange = () => {
-      if (!overlayRef.current) return
-      overlayRef.current.style.top = `${vv.offsetTop}px`
-      overlayRef.current.style.height = `${vv.height}px`
-      setKeyboardOpen(vv.height < window.screen.height * 0.75)
+      const el = overlayRef.current
+      if (!el) return
+      // Pin the overlay to the visual viewport. Drive position with a
+      // compositor transform (not `top`) so tracking is reflow-free and stays
+      // glued to the viewport while the iOS keyboard animates; height shrinks
+      // to the area above the keyboard.
+      el.style.height = `${vv.height}px`
+      el.style.transform = `translateY(${vv.offsetTop}px)`
+      setKeyboardOpen(vv.height < window.innerHeight * 0.75)
     }
     vv.addEventListener('resize', onViewportChange)
     vv.addEventListener('scroll', onViewportChange)
