@@ -18,6 +18,25 @@ function detectModeFromLocation(): 'question' | null {
   return value === 'question' ? 'question' : null
 }
 
+// TEMP DIAGNOSTIC — iOS keyboard / visualViewport probe. Active only with
+// `?debug=true` (pairs with the Eruda mobile console loaded in app/layout.tsx).
+// Logs innerHeight vs visualViewport height/offsetTop (and derived keyboard
+// height) so we can see whether WebKit reports the keyboard and whether the
+// body scroll-lock affects it. Module-scope so it isn't a hook dependency.
+// Remove after diagnosis.
+function logKbdiag(event: string) {
+  if (typeof window === 'undefined') return
+  if (new URLSearchParams(window.location.search).get('debug') !== 'true') return
+  const vv = window.visualViewport
+  const innerH = window.innerHeight
+  const vvH = vv ? vv.height : -1
+  const vvTop = vv ? vv.offsetTop : -1
+  const kb = Math.max(0, innerH - vvH - vvTop)
+  console.log(
+    `[kbdiag] ${event} | innerH=${innerH} vvH=${Math.round(vvH)} vvTop=${Math.round(vvTop)} kb=${Math.round(kb)} bodyPos=${document.body.style.position || 'static'} scrollY=${window.scrollY} screenH=${window.screen.height} dpr=${window.devicePixelRatio}`,
+  )
+}
+
 export function Hero() {
   const {
     messages,
@@ -95,16 +114,32 @@ export function Hero() {
       composer.style.bottom = `${Math.max(0, offset)}px`
     }
 
-    vv.addEventListener('resize', onViewportChange)
-    vv.addEventListener('scroll', onViewportChange)
+    const onResize = () => {
+      onViewportChange()
+      logKbdiag('vv-resize')
+    }
+    const onScroll = () => {
+      onViewportChange()
+      logKbdiag('vv-scroll')
+    }
+
+    logKbdiag('vv-prime')
+    vv.addEventListener('resize', onResize)
+    vv.addEventListener('scroll', onScroll)
     return () => {
-      vv.removeEventListener('resize', onViewportChange)
-      vv.removeEventListener('scroll', onViewportChange)
+      vv.removeEventListener('resize', onResize)
+      vv.removeEventListener('scroll', onScroll)
     }
   }, [])
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
+    logKbdiag('focus')
+    // TEMP DIAGNOSTIC: `?debug=true&nolock=1` skips the body scroll-lock so we
+    // can test whether the lock is suppressing the iOS visualViewport keyboard
+    // signal. Remove after diagnosis.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('debug') === 'true' && params.get('nolock') === '1') return
     document.body.style.position = 'fixed'
     document.body.style.width = '100%'
     document.body.style.top = `-${window.scrollY}px`
@@ -116,6 +151,10 @@ export function Hero() {
   }
 
   const handleComposerBlur = () => {
+    logKbdiag('blur')
+    // Mirror the nolock bypass: when the lock was skipped, leave scroll alone.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('debug') === 'true' && params.get('nolock') === '1') return
     const savedY = parseInt(document.body.style.top || '0') * -1
     document.body.style.position = ''
     document.body.style.width = ''
