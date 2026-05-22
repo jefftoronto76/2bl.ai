@@ -153,14 +153,10 @@ export function Hero() {
     setConversationVisible(true)
     logKbdiag('focus')
     syncViewport() // prime the surface before the first vv event lands
-    // TEMP DIAGNOSTIC: `?debug=true&nolock=1` skips the body scroll-lock so we
-    // can test whether the lock is suppressing the iOS visualViewport keyboard
-    // signal. Remove after diagnosis.
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('debug') === 'true' && params.get('nolock') === '1') return
-    document.body.style.position = 'fixed'
-    document.body.style.width = '100%'
-    document.body.style.top = `-${window.scrollY}px`
+    // No body scroll-lock: on iOS, body { position: fixed } collapses
+    // window.innerHeight to the visual-viewport height and injects a
+    // visualViewport.offsetTop, which breaks keyboard detection and floats the
+    // composer. The .chat-surface--kb fixed overlay masks the page instead.
   }
 
   const handleChipClick = (text: string) => {
@@ -170,14 +166,8 @@ export function Hero() {
 
   const handleComposerBlur = () => {
     logKbdiag('blur')
-    // Mirror the nolock bypass: when the lock was skipped, leave scroll alone.
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('debug') === 'true' && params.get('nolock') === '1') return
-    const savedY = parseInt(document.body.style.top || '0') * -1
-    document.body.style.position = ''
-    document.body.style.width = ''
-    document.body.style.top = ''
-    window.scrollTo({ top: savedY, behavior: 'instant' as ScrollBehavior })
+    // No scroll restore — the page stays where the user left it, next to the
+    // conversation. (The removed body scroll-lock used to restore scrollY here.)
   }
 
   const send = async (override?: string) => {
