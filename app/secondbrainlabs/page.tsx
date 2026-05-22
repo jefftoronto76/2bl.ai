@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TrendingUp, Layers, Sparkles, ShieldCheck } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────────────
 // Data
@@ -40,22 +41,6 @@ const SAGE_STARTERS: ReadonlyArray<SageStarter> = [
   { id: "partner",  label: "Can we partner on something new?",   q: "Can we partner on something new?" },
 ] as const;
 
-type AboutPoint = { readonly icon: ReactNode; readonly body: ReactNode };
-
-const OPERATOR_POINTS: ReadonlyArray<AboutPoint> = [
-  { icon: <IconTarget />,    body: <><b className="text-ink font-semibold">15+ years</b> shipping software across consumer, health, and SMB tooling.</> },
-  { icon: <IconChartUp />,   body: <><b className="text-ink font-semibold">Operator first,</b> engineer second — comfortable in the spreadsheet and the repo.</> },
-  { icon: <IconTriangle />,  body: <>Believes the next decade of software will be built by <b className="text-ink font-semibold">small, weird, agentic teams.</b></> },
-  { icon: <IconGlobe />,     body: <>Writes occasionally. Reads <b className="text-ink font-semibold">obsessively.</b> Available for coffee.</> },
-];
-
-const WORKSHOP_POINTS: ReadonlyArray<AboutPoint> = [
-  { icon: <IconGrid />,      body: <><b className="text-ink font-semibold">Four products,</b> one envelope — shared infra, shared evals, shared voice.</> },
-  { icon: <IconCheck />,     body: <><b className="text-ink font-semibold">Outcomes over outputs.</b> A metric on day one, on the wall by Friday.</> },
-  { icon: <IconStar />,      body: <>Bias toward <b className="text-ink font-semibold">building in public</b> and shipping the unfashionable thing.</> },
-  { icon: <IconPerson />,    body: <>Built for <b className="text-ink font-semibold">humans</b> — operators, families, caregivers, the people doing the actual work.</> },
-];
-
 type StackItem = { readonly layer: string; readonly name: ReactNode; readonly note: ReactNode };
 
 const STACK: ReadonlyArray<StackItem> = [
@@ -79,7 +64,7 @@ export default function LandingPage() {
       <Nav />
       <Hero />
       <Work />
-      <About />
+      <HowIWork />
       <Stack />
       <SiteFooter />
     </main>
@@ -264,64 +249,109 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// About — operator + workshop
+// How I Work — operating principles for the studio
+//
+// Replaces the prior About() section. Four-card grid + serif closing
+// line + capability pills. Single column under 960px (lg:grid-cols-2).
+// Uses the terracotta accent throughout for visual continuity with the
+// rest of the page; do not reintroduce the `pos` (green) token here.
+// Source design: How I Work — Production.html.
 // ──────────────────────────────────────────────────────────────────────
 
-function About() {
-  return (
-    <Bay id="about" label="About" tone="paper-2">
-      <BayHead kicker="About" title={<>One operator. <em className="not-italic"><span className="italic text-accent">One workshop.</span></em></>} />
-
-      <div className="grid grid-cols-1 gap-x-12 gap-y-14 md:grid-cols-2 md:gap-12">
-        <AboutColumn
-          portraitLabel="Portrait · placeholder"
-          heading={<>The <em className="not-italic"><span className="italic text-accent">operator</span></em></>}
-          role="Founder · 2BL"
-          points={OPERATOR_POINTS}
-        />
-        <AboutColumn
-          portraitLabel="Workshop · placeholder"
-          heading={<>The <em className="not-italic"><span className="italic text-accent">workshop</span></em></>}
-          role="Studio · Second Brain Labs"
-          points={WORKSHOP_POINTS}
-        />
-      </div>
-    </Bay>
-  );
-}
-
-type AboutColumnProps = {
-  portraitLabel: string;
-  heading: ReactNode;
-  role: string;
-  points: ReadonlyArray<AboutPoint>;
+type Principle = {
+  readonly id: string;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly body: string;
 };
 
-function AboutColumn({ portraitLabel, heading, role, points }: AboutColumnProps) {
+const PRINCIPLES: ReadonlyArray<Principle> = [
+  {
+    id: "business-case",
+    icon: <TrendingUp size={22} strokeWidth={2} aria-hidden />,
+    label: "Business case first.",
+    body:
+      "Before a single line of code gets written, the question is always: how does this become a business? TAM, monetization, unit economics — these aren't afterthoughts.",
+  },
+  {
+    id: "operational",
+    icon: <Layers size={22} strokeWidth={2} aria-hidden />,
+    label: "Operationally disciplined.",
+    body:
+      "Shipping is only half the job. The other half is the infrastructure around it — the processes, the instrumentation, the feedback loops that make a product improvable over time.",
+  },
+  {
+    id: "experience",
+    icon: <Sparkles size={22} strokeWidth={2} aria-hidden />,
+    label: "Experience forward.",
+    body:
+      "The primary objective is always the end user. Good enough isn't. I understand the trade-offs between speed, cost, and quality — and I know which ones are worth making.",
+  },
+  {
+    id: "zone",
+    icon: <ShieldCheck size={22} strokeWidth={2} aria-hidden />,
+    label: "I know my zone.",
+    body:
+      "I build products. When a problem needs more firepower, I have access to experienced developers who can step in where needed. The work gets done right.",
+  },
+] as const;
+
+const CAPABILITY_PILLS = ["Multi-tenant", "Service Oriented", "HIPAA / SOC 2 Ready"] as const;
+
+function HowIWork() {
   return (
-    <div>
-      {/* TODO: replace placeholder with real <Image /> when art is ready */}
-      <div
-        aria-hidden
-        className="mb-5 grid aspect-[4/5] w-full max-w-[180px] sm:max-w-[240px] place-items-center rounded-xl border border-line font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted bg-[repeating-linear-gradient(135deg,var(--color-paper-3)_0px,var(--color-paper-3)_8px,var(--color-paper-2)_8px,var(--color-paper-2)_16px)]"
+    <Bay id="how-i-work" label="How I work" tone="paper-2">
+      <BayHead
+        kicker="How I work"
+        title={<>General manager. Product builder.</>}
       >
-        {portraitLabel}
-      </div>
-      <h3 className="m-0 mb-2 font-serif font-medium text-[24px] sm:text-[28px] tracking-[-0.01em] text-ink">
-        {heading}
-      </h3>
-      <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">{role}</div>
-      <ul className="m-0 flex list-none flex-col gap-3.5 p-0">
-        {points.map((p, i) => (
-          <li key={i} className="grid grid-cols-[28px_1fr] items-start gap-3.5 text-[14.5px] sm:text-[15px] leading-[1.5] text-ink-2">
-            <span aria-hidden className="grid h-7 w-7 place-items-center rounded-[7px] border border-line bg-paper text-accent">
+        Customer success by design.
+      </BayHead>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
+        {PRINCIPLES.map((p) => (
+          <article
+            key={p.id}
+            className="group flex flex-col gap-3 sm:gap-4 rounded-2xl border border-line bg-paper p-5 sm:p-7 transition-[border-color,transform,box-shadow] hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_18px_36px_-28px_rgba(31,26,20,0.18)]"
+          >
+            <span
+              aria-hidden
+              className="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-[10px] border border-accent/40 bg-accent-soft text-accent"
+            >
               {p.icon}
             </span>
-            <span>{p.body}</span>
-          </li>
+            <h3 className="m-0 font-serif font-medium text-[20px] sm:text-[24px] leading-[1.2] tracking-[-0.012em] text-ink">
+              {p.label}
+            </h3>
+            <p className="m-0 text-[14.5px] sm:text-[15px] leading-[1.55] text-ink-2 text-pretty">
+              {p.body}
+            </p>
+          </article>
         ))}
-      </ul>
-    </div>
+      </div>
+
+      <p
+        className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
+        style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
+      >
+        NLP and language models have changed what's{" "}
+        <em className="font-normal italic text-accent">possible in software</em>.
+      </p>
+
+      <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
+        <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
+          {CAPABILITY_PILLS.map((label) => (
+            <li
+              key={label}
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-3.5 py-2 font-sans text-[13px] font-medium tracking-[-0.005em] text-ink"
+            >
+              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+              {label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Bay>
   );
 }
 
@@ -381,7 +411,7 @@ function SiteFooter() {
             { label: "MealFlow", href: "/mealflow" },
           ]} />
           <FooterCol heading="Studio" links={[
-            { label: "About", href: "#about" },
+            { label: "About", href: "#how-i-work" },
             { label: "Stack", href: "#stack" },
             { label: "Writing", href: "/writing" },
           ]} />
@@ -501,77 +531,5 @@ function Arrow({ className = "" }: { className?: string }) {
     <span aria-hidden className={`inline-block transition-transform group-hover:translate-x-0.5 ${className}`}>
       →
     </span>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Icons (inline, dependency-free)
-// ──────────────────────────────────────────────────────────────────────
-
-function IconTarget() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="8" cy="8" r="5" />
-      <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-    </svg>
-  );
-}
-function IconChartUp() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M2 12 L6 6 L9 9 L14 3" />
-      <path d="M10 3 H14 V7" />
-    </svg>
-  );
-}
-function IconTriangle() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 13 L8 3 L13 13 Z" />
-    </svg>
-  );
-}
-function IconGlobe() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M2 8 H14" />
-      <path d="M8 2 C10 5 10 11 8 14" />
-      <path d="M8 2 C6 5 6 11 8 14" />
-    </svg>
-  );
-}
-function IconGrid() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-      <path d="M2.5 6.5 H13.5" />
-      <path d="M6.5 2.5 V13.5" />
-    </svg>
-  );
-}
-function IconCheck() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 8 L7 12 L13 4" />
-    </svg>
-  );
-}
-function IconStar() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8 2 V14" />
-      <path d="M3 8 H13" />
-      <path d="M5 5 L11 11" />
-      <path d="M11 5 L5 11" />
-    </svg>
-  );
-}
-function IconPerson() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12 C3 8 5 6 8 6 C11 6 13 8 13 12" />
-      <circle cx="8" cy="4" r="1.6" />
-    </svg>
   );
 }
