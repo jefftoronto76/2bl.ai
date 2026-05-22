@@ -1,7 +1,7 @@
 import {
   Globe as GlobeIcon,
   Search as SearchIcon,
-  CalendarClock as CalendarClockIcon,
+  CalendarSync as CalendarSyncIcon,
   MessageSquare as MessageSquareIcon,
   Dumbbell as DumbbellIcon,
   Network as NetworkIcon,
@@ -21,7 +21,7 @@ const CARDS = [
       'I find what’s actually limiting performance — not the symptom everyone’s pointing at.',
   },
   {
-    Icon: CalendarClockIcon,
+    Icon: CalendarSyncIcon,
     label: 'Player-coach',
     body:
       'In the boardroom and on the floor. I go where the work is.',
