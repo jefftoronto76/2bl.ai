@@ -221,7 +221,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
         <div className="mb-10 grid grid-cols-1 items-center gap-6 lg:mb-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
           <h2
             id={`${id}-h`}
-            className="m-0 font-display text-[clamp(34px,4.2vw,56px)] font-normal leading-[1.06] tracking-[-0.02em] text-pretty"
+            className="m-0 font-display text-[clamp(26px,3.2vw,40px)] font-normal leading-[1.06] tracking-[-0.02em] text-pretty"
           >
             It starts with
             <br />
@@ -335,7 +335,7 @@ const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel,
         {eyebrow}
       </div>
 
-      <h3 className="m-0 font-display text-[clamp(36px,3.6vw,48px)] font-normal leading-[1.02] tracking-[-0.02em] text-[color:var(--color-text-primary)]">
+      <h3 className="m-0 font-display text-[clamp(24px,2.6vw,32px)] font-normal leading-[1.02] tracking-[-0.02em] text-[color:var(--color-text-primary)]">
         {headline}
       </h3>
 
@@ -488,7 +488,7 @@ function StepCard({
       ].join(' ')}
     >
       <div className="flex items-baseline justify-between">
-        <span className="font-display font-normal text-[40px] lg:text-[56px] leading-[0.9] tracking-[-0.02em] text-[color:var(--color-text-primary)]/30">
+        <span className="font-mono text-[13px] leading-none tracking-[0.18em] text-[color:var(--color-text-dim)]">
           {number}
         </span>
         <span
