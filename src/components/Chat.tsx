@@ -57,7 +57,7 @@ export function Chat() {
       body.style.top = ''
       body.style.left = ''
       body.style.right = ''
-      window.scrollTo(0, scrollY)
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' })
     }
   }, [isExpanded])
 
