@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useSageStore } from '../lib/store'
 import { streamSageResponse } from '../lib/sage'
 import { parseBookingCards } from './sage/parseBookingCards'
@@ -57,10 +57,17 @@ export function Hero() {
   // the close-x and back on by textarea focus or a chip click. Independent
   // of isEngaged so the compact hero stays compact after dismissing.
   const [conversationVisible, setConversationVisible] = useState(true)
+  // Mobile only: true while the iOS software keyboard is open (derived from the
+  // visualViewport height drop). Promotes the canvas+composer wrapper to a
+  // viewport-synced fixed surface so the composer stays glued to the keyboard
+  // top and the canvas scrolls directly above it. Always false on desktop
+  // (vv.height never drops), so desktop layout is untouched.
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
+  const chatSurfaceRef = useRef<HTMLDivElement>(null)
   const retryMsgsRef = useRef<typeof messages>([])
   const retrySessionIdRef = useRef<string | null>(null)
 
@@ -98,43 +105,54 @@ export function Hero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling — composer offset only. Body lock lives on the
-  // textarea's onFocus/onBlur handlers below so the lock cycle is tied to
-  // actual user interaction, not to visualViewport timing. This effect just
-  // keeps composer.style.bottom tracking the keyboard top on every vv event.
+  // iOS keyboard handling. The body scroll-lock lives on the textarea's
+  // onFocus/onBlur handlers; this syncs the chat surface to the visual
+  // viewport. When the keyboard opens, visualViewport.height shrinks and
+  // offsetTop grows — we mirror both onto the surface (height + a compositor
+  // translateY, no transition) so the surface exactly covers the visible area
+  // above the keyboard. keyboardOpen flips the surface from display:contents
+  // to a fixed flex box (CSS, mobile only). On desktop vv.height never drops,
+  // so keyboardOpen stays false and nothing changes.
+  const syncViewport = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const vv = window.visualViewport
+    if (!vv) return
+    setKeyboardOpen(vv.height < window.innerHeight - 120)
+    const surface = chatSurfaceRef.current
+    if (surface) {
+      surface.style.setProperty('--kb-surface-h', `${vv.height}px`)
+      surface.style.setProperty('--kb-surface-y', `${vv.offsetTop}px`)
+    }
+  }, [])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const vv = window.visualViewport
     if (!vv) return
 
-    const onViewportChange = () => {
-      const composer = composerWrapperRef.current
-      if (!composer) return
-      const offset = window.innerHeight - vv.height - vv.offsetTop
-      composer.style.bottom = `${Math.max(0, offset)}px`
-    }
-
     const onResize = () => {
-      onViewportChange()
+      syncViewport()
       logKbdiag('vv-resize')
     }
     const onScroll = () => {
-      onViewportChange()
+      syncViewport()
       logKbdiag('vv-scroll')
     }
 
     logKbdiag('vv-prime')
+    syncViewport()
     vv.addEventListener('resize', onResize)
     vv.addEventListener('scroll', onScroll)
     return () => {
       vv.removeEventListener('resize', onResize)
       vv.removeEventListener('scroll', onScroll)
     }
-  }, [])
+  }, [syncViewport])
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
     logKbdiag('focus')
+    syncViewport() // prime the surface before the first vv event lands
     // TEMP DIAGNOSTIC: `?debug=true&nolock=1` skips the body scroll-lock so we
     // can test whether the lock is suppressing the iOS visualViewport keyboard
     // signal. Remove after diagnosis.
@@ -285,6 +303,10 @@ export function Hero() {
         </p>
       </div>
 
+      <div
+        className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
+        ref={chatSurfaceRef}
+      >
       {conversationVisible && (
         <div className="hero-conversation flex flex-col gap-6" role="log" aria-live="polite">
           {messages.map((msg) => {
@@ -387,6 +409,7 @@ export function Hero() {
             <button className="chip" onClick={() => handleChipClick('What are companies getting wrong about AI?')} disabled={isStreaming}>What are companies getting wrong about AI?<span className="arr">→</span></button>
           </div>
         )}
+      </div>
       </div>
 
       <div className="scroll-hint-wrap">
