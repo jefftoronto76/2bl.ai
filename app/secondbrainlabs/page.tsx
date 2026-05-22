@@ -41,19 +41,6 @@ const SAGE_STARTERS: ReadonlyArray<SageStarter> = [
   { id: "partner",  label: "Can we partner on something new?",   q: "Can we partner on something new?" },
 ] as const;
 
-type StackItem = { readonly layer: string; readonly name: ReactNode; readonly note: ReactNode };
-
-const STACK: ReadonlyArray<StackItem> = [
-  { layer: "App · 01",         name: <>Next.js <em className="text-accent not-italic font-medium">15</em></>,    note: "App Router on Vercel." },
-  { layer: "UI · 02",          name: <>React <em className="text-accent not-italic font-medium">19</em></>,      note: "Server components, suspense, the works." },
-  { layer: "Language · 03",    name: <>TypeScript</>,                                                            note: <><em className="text-accent not-italic font-medium">Strict</em> mode, everywhere.</> },
-  { layer: "Admin UI · 04",    name: <>Mantine <em className="text-accent not-italic font-medium">v7</em></>,    note: "For internal tooling and admin." },
-  { layer: "Public site · 05", name: <>Tailwind</>,                                                              note: "Marketing surfaces and product chrome." },
-  { layer: "Data · 06",        name: <>Supabase</>,                                                              note: "Postgres, auth, storage, realtime." },
-  { layer: "Auth · 07",        name: <>Clerk</>,                                                                 note: "Admin route protection only." },
-  { layer: "Models · 08",      name: <>Anthropic <em className="text-accent not-italic font-medium">API</em></>, note: "The brains of the envelope." },
-];
-
 // ──────────────────────────────────────────────────────────────────────
 // Page
 // ──────────────────────────────────────────────────────────────────────
@@ -65,7 +52,7 @@ export default function LandingPage() {
       <Hero />
       <Work />
       <HowIWork />
-      <Stack />
+      <HowItWorks />
       <SiteFooter />
     </main>
   );
@@ -355,34 +342,224 @@ function HowIWork() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Stack
+// How it works — three-step process for the C$250 working session.
+// Replaces the prior Stack section. Reuses the Bay / Arrow primitives and
+// the SBL terracotta tokens (accent / accent-deep / accent-soft).
 // ──────────────────────────────────────────────────────────────────────
 
-function Stack() {
+// Bookable session URL — placeholder until the real Calendly link is wired.
+const BOOKING_URL = "https://calendly.com/REPLACE-ME/working-session" as const;
+const SESSION_PRICE = "C$250" as const;
+
+type Step = {
+  readonly id: string;
+  readonly num: string;
+  readonly tag: string;       // small mono caps label (Step / → Yields)
+  readonly isYield?: boolean; // step 02 — different visual treatment
+  readonly title: string;
+  readonly body: string;
+  readonly cta?: { label: string; href: string };
+};
+
+const STEPS: ReadonlyArray<Step> = [
+  {
+    id: "book",
+    num: "01",
+    tag: "Step",
+    title: "Book a session",
+    body:
+      "Talk to Sage if you need to think it through. When you're ready, one session is all it takes to start.",
+    cta: { label: `Book a Session — ${SESSION_PRICE}`, href: BOOKING_URL },
+  },
+  {
+    id: "session",
+    num: "02",
+    tag: "→ Yields",
+    isYield: true,
+    title: "The session",
+    body:
+      "ICF-certified coaching methodology. A conversation that goes beneath the surface — agenda-free, focused on what's actually in the way.",
+  },
+  {
+    id: "shift",
+    num: "03",
+    tag: "Step",
+    title: "The shift",
+    body:
+      "Clarity on what's really going on. A defined next move that's yours to own.",
+  },
+] as const;
+
+type Deliverable = {
+  readonly id: string;
+  readonly icon: "transcript" | "guarantee";
+  readonly title: string;
+  readonly body: string;
+};
+
+const DELIVERABLES: ReadonlyArray<Deliverable> = [
+  {
+    id: "transcript",
+    icon: "transcript",
+    title: "Call transcript",
+    body: "You own it. Use it however helps most.",
+  },
+  {
+    id: "guarantee",
+    icon: "guarantee",
+    title: "100% satisfaction guarantee",
+    body: "If it wasn't worth it, you don't pay.",
+  },
+] as const;
+
+function HowItWorks() {
   return (
-    <Bay id="stack" label="Stack">
-      <div className="mb-7 sm:mb-11 flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <Kicker>The stack</Kicker>
-          <BayTitle>What it's <em className="not-italic"><span className="italic text-accent">made of.</span></em></BayTitle>
-        </div>
-        <p className="m-0 max-w-[42ch] text-[16px] sm:text-[17px] leading-[1.55] text-ink-2 text-pretty">
-          A boring, modern, opinionated stack — chosen so the work compounds across every product in the envelope.
-        </p>
+    <Bay id="how-it-works" label="How it works">
+      {/* Eyebrow row: kicker pill + horizontal rule. */}
+      <div className="mb-6 sm:mb-10 flex items-center gap-4">
+        <span className="inline-block rounded-[3px] bg-accent/15 px-2 py-0.5 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink">
+          How it works
+        </span>
+        <span aria-hidden className="hidden sm:block h-px max-w-[180px] flex-1 bg-ink/10" />
       </div>
 
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
-        {STACK.map((s, i) => (
-          <div key={i} className="flex min-h-0 sm:min-h-[120px] flex-col gap-1 bg-paper p-5 sm:p-[22px_20px]">
-            <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-dim">{s.layer}</div>
-            <div className="font-serif font-medium text-[20px] sm:text-[22px] tracking-[-0.008em] leading-[1.1] text-ink">
-              {s.name}
-            </div>
-            <div className="mt-0.5 text-[13px] leading-[1.4] text-muted">{s.note}</div>
-          </div>
+      {/* Section header */}
+      <header className="mb-10 sm:mb-14 max-w-[720px]">
+        <h2
+          id="how-it-works-h"
+          className="m-0 mb-[18px] font-serif font-normal leading-[1.04] tracking-[-0.02em] text-ink text-balance"
+          style={{ fontSize: "clamp(36px, 4.6vw, 60px)" }}
+        >
+          Want help with your{" "}
+          <em className="italic text-accent font-normal">product?</em>
+        </h2>
+        <p
+          className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
+          style={{ fontSize: "clamp(16px, 1.5vw, 18px)" }}
+        >
+          I&apos;m a revenue focused product builder, and, an executive coach, if you want to
+          explore your product, book time below.
+        </p>
+      </header>
+
+      {/* Three-step grid */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-3.5">
+        {STEPS.map((step) => (
+          <StepCard key={step.id} step={step} />
         ))}
       </div>
+
+      {/* Connector — small upward chevron tying steps → walk-away */}
+      <div aria-hidden className="my-5 sm:my-7 flex justify-center text-ink/25">
+        <svg
+          viewBox="0 0 20 14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-5"
+        >
+          <path d="M2 12 L10 2 L18 12" />
+        </svg>
+      </div>
+
+      {/* Walk-away block */}
+      <section
+        aria-label="What you'll walk away with"
+        className="rounded-[18px] border border-line bg-paper p-5 sm:p-7"
+      >
+        <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-3">
+          <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.22em] text-muted">
+            What you&apos;ll walk away with
+          </span>
+          <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-ink-2 whitespace-nowrap">
+            From step 02
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {DELIVERABLES.map((d) => (
+            <DeliverableCard key={d.id} deliverable={d} />
+          ))}
+        </div>
+      </section>
     </Bay>
+  );
+}
+
+function StepCard({ step }: { step: Step }) {
+  const active = step.isYield === true;
+  return (
+    <article
+      className={[
+        "group relative flex flex-col gap-3.5 rounded-2xl border p-6 sm:p-[28px_26px_26px] shadow-[0_4px_24px_rgba(31,26,20,0.04)] transition-[border-color,transform,box-shadow]",
+        active
+          ? "border-accent bg-[color-mix(in_oklab,var(--color-accent-soft)_60%,var(--color-paper))] shadow-[0_18px_36px_-28px_rgba(200,84,46,0.32)]"
+          : "border-line bg-white hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_18px_36px_-28px_rgba(31,26,20,0.18)]",
+      ].join(" ")}
+      aria-current={active ? "step" : undefined}
+    >
+      <div className="mb-1 flex items-start justify-between">
+        <span
+          className={[
+            "font-serif italic font-normal leading-[0.9] tracking-[-0.02em]",
+            active ? "text-accent-deep" : "text-ink",
+          ].join(" ")}
+          style={{ fontSize: "56px" }}
+        >
+          {step.num}
+        </span>
+        <span
+          className={[
+            "mt-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.22em]",
+            active ? "text-accent-deep" : "text-muted",
+          ].join(" ")}
+        >
+          {step.tag}
+        </span>
+      </div>
+
+      <h3 className="m-0 font-sans text-[17px] font-bold tracking-[-0.008em] text-ink leading-[1.3]">
+        {step.title}
+      </h3>
+
+      <p className="m-0 font-sans text-[14.5px] leading-[1.55] text-ink-2 text-pretty">
+        {step.body}
+      </p>
+
+      {step.cta ? (
+        <Link
+          href={step.cta.href}
+          target={step.cta.href.startsWith("http") ? "_blank" : undefined}
+          rel={step.cta.href.startsWith("http") ? "noopener noreferrer" : undefined}
+          className="mt-auto group/cta inline-flex items-center gap-2.5 self-start whitespace-nowrap rounded-full bg-accent px-[18px] py-3 font-sans text-[13.5px] font-semibold leading-none text-white transition-colors hover:bg-accent-deep"
+        >
+          {step.cta.label}
+          <Arrow className="transition-transform group-hover/cta:translate-x-0.5" />
+        </Link>
+      ) : null}
+    </article>
+  );
+}
+
+function DeliverableCard({ deliverable }: { deliverable: Deliverable }) {
+  return (
+    <div className="flex items-start gap-3.5 rounded-xl border border-line bg-white p-4 sm:p-5 transition-colors hover:border-accent/40">
+      <span
+        aria-hidden
+        className="grid h-8 w-8 sm:h-9 sm:w-9 flex-none place-items-center rounded-[9px] border border-accent/40 bg-accent-soft text-accent"
+      >
+        {deliverable.icon === "transcript" ? <IconTranscript /> : <IconBadgeCheck />}
+      </span>
+      <div>
+        <div className="font-sans text-[15px] font-semibold leading-[1.3] text-ink">
+          {deliverable.title}
+        </div>
+        <div className="mt-0.5 font-sans text-[13px] leading-[1.45] text-muted">
+          {deliverable.body}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -411,7 +588,7 @@ function SiteFooter() {
           ]} />
           <FooterCol heading="Studio" links={[
             { label: "About", href: "#how-i-work" },
-            { label: "Stack", href: "#stack" },
+            { label: "How it works", href: "#how-it-works" },
             { label: "Writing", href: "/writing" },
           ]} />
           <FooterCol heading="Contact" links={[
@@ -530,5 +707,49 @@ function Arrow({ className = "" }: { className?: string }) {
     <span aria-hidden className={`inline-block transition-transform group-hover:translate-x-0.5 ${className}`}>
       →
     </span>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Icons (inline, dependency-free)
+// ──────────────────────────────────────────────────────────────────────
+
+function IconTranscript() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8 H15" />
+      <path d="M9 12 H15" />
+      <path d="M9 16 H13" />
+    </svg>
+  );
+}
+
+function IconBadgeCheck() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2 L14.5 4.5 L18 4 L18.5 7.5 L21.5 9 L20 12 L21.5 15 L18.5 16.5 L18 20 L14.5 19.5 L12 22 L9.5 19.5 L6 20 L5.5 16.5 L2.5 15 L4 12 L2.5 9 L5.5 7.5 L6 4 L9.5 4.5 Z" />
+      <path d="M9 12 L11 14 L15 10" />
+    </svg>
   );
 }
