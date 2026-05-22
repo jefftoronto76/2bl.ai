@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 
 export const metadata: Metadata = {
-  title: 'Natural Resource — Jeff Lougheed',
+  title: 'JL',
   description:
     'Performance-driven, heart-led coaching and embedded execution support. Better close rates, deeper relationships, revenue growth made easier.',
   metadataBase: new URL('https://jefflougheed.ca'),
