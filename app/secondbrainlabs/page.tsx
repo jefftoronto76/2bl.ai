@@ -303,9 +303,9 @@ function HowIWork() {
     <Bay id="how-i-work" label="How I work" tone="paper-2">
       <BayHead
         kicker="How I work"
-        title={<>General manager. Product builder.</>}
+        title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. Product builder.</span>}
       >
-        Customer success by design.
+        NLP and language models have changed what's possible in software.
       </BayHead>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
@@ -334,8 +334,7 @@ function HowIWork() {
         className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
         style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
       >
-        NLP and language models have changed what's{" "}
-        <em className="font-normal italic text-accent">possible in software</em>.
+        I'm building products that change the way people think about their software.
       </p>
 
       <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
