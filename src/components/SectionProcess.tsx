@@ -1,35 +1,46 @@
 /**
  * SectionProcess
  *
- * "How it works" section — lane selector v5.
+ * "How it works" section — lane selector.
  *
- *   Eyebrow ─ headline (with italic accent run) + testimonial card
- *   Two lane cards (Coaching / Embedded Execution)
- *   Dark block with "Ask Sage" CTA
+ *   Eyebrow ─ headline (with italic accent run) + rotating testimonial card
+ *   Two lane cards (Coaching / Embedded Execution) act as a selector
+ *   On select → the chosen lane collapses to a confirmation strip, and the
+ *     step cards + deliverables tray for that lane reveal below
+ *   Dark block with "Ask Sage" CTA (opens Sage in question mode)
  *
- * Colors use the inkwell palette tokens (`bg`/`surface`/`accent` +
- * `var(--color-*)`) rather than inlined hex, so the section stays on the
- * jefflougheed design system. The dark Sage panel uses
- * `var(--color-text-primary)` as its fill: under the live inkwell palette
- * that resolves to the dark navy (#182029, the hero canvas color); under the
- * plain `:root` fallback it is dark near-black. This mirrors how the inkwell
- * theme builds its other dark fills (`rgb(var(--ink-rgb))`).
+ * Colors use the inkwell palette tokens only — no hardcoded hex. The dark
+ * Sage panel uses `var(--color-text-primary)` as its fill: under the live
+ * inkwell palette that resolves to the dark navy (#182029, the hero canvas
+ * color); under the plain `:root` fallback it is dark near-black. Light
+ * `text-bg` copy stays readable on both. This mirrors how the inkwell theme
+ * builds its other dark fills (`rgb(var(--ink-rgb))`).
  *
  * Fonts resolve through `font-display` / `font-body` / `font-mono`, wired to
  * Playfair Display / DM Sans / DM Mono in `tailwind.config.js`.
  *
- * Both CTAs (lane cards + "Ask Sage") open the Sage overlay in question mode
- * via the shared `useSageStore`. The displayed testimonial rotates per page
- * load from the featured set defined in `SectionTestimonials`.
+ * The lane step/deliverable content comes from the TRACKS data below. The
+ * "Ask Sage" / "Not sure which fits?" CTAs open the Sage overlay in question
+ * mode via the shared `useSageStore`. The displayed testimonial rotates per
+ * page load from the featured set defined in `SectionTestimonials`.
  */
 
 'use client';
 
 import { useEffect, useState, type FC, type ReactNode } from 'react';
+import { ShieldCheck, FileText, Files, type LucideIcon } from 'lucide-react';
 import { useSageStore } from '../lib/store';
 import { FEATURED_TESTIMONIALS } from './SectionTestimonials';
 
+/* ─── Wiring defaults ───────────────────────────────────────────────── */
+
+/** Default href for the step-1 "Book a Session — C$250" CTA. Empty renders
+ *  the button disabled until a real booking URL is wired in. */
+const CTA_URL = '';
+
 /* ─── Types ─────────────────────────────────────────────────────────── */
+
+type LaneId = 'coaching' | 'operator';
 
 interface Testimonial {
   quote: string;
@@ -38,18 +49,123 @@ interface Testimonial {
   company: string;
 }
 
+type Step = { title: string; body: string };
+
+type DeliverableIconKind = 'shield' | 'transcript' | 'docs';
+
+type Deliverable = {
+  icon: DeliverableIconKind;
+  title: string;
+  body: string;
+};
+
+type Track = {
+  id: LaneId;
+  steps: [Step, Step, Step];
+  deliverables: {
+    /** 0-indexed step the deliverables "come from" — drives the origin-card
+     *  accent and the desktop tray's notch position. */
+    originStep: 0 | 1 | 2;
+    items: Deliverable[];
+  };
+};
+
+/* ─── Data ──────────────────────────────────────────────────────────── */
+
+/** Display label for each lane, shown in the confirmation strip. Keyed to the
+ *  lane-card eyebrows so the strip echoes the card the visitor chose. */
+const LANE_LABEL: Record<LaneId, string> = {
+  coaching: 'Coaching',
+  operator: 'Embedded Execution',
+};
+
+const TRACKS: Record<LaneId, Track> = {
+  coaching: {
+    id: 'coaching',
+    steps: [
+      {
+        title: 'Book a session',
+        body: 'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+      },
+      {
+        title: 'The session',
+        body: 'ICF-certified coaching methodology. A conversation that goes beneath the surface — agenda-free, focused on what’s actually in the way.',
+      },
+      {
+        title: 'The shift',
+        body: 'Clarity on what’s really going on. A defined next move that’s yours to own.',
+      },
+    ],
+    deliverables: {
+      originStep: 1,
+      items: [
+        { icon: 'transcript', title: 'Call transcript', body: 'You own it. Use it however helps most.' },
+        { icon: 'shield', title: '100% satisfaction guarantee', body: 'If it wasn’t worth it, you don’t pay.' },
+      ],
+    },
+  },
+  operator: {
+    id: 'operator',
+    steps: [
+      {
+        title: 'Book a session',
+        body: 'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+      },
+      {
+        title: 'Working Session',
+        body: 'Bring the problem. We’ll leverage ICF competencies, along with our own expertise, to determine the outcome we need and how to achieve it.',
+      },
+      {
+        title: 'The shift',
+        body: 'Clarity on what’s really going on. A defined next move for you to consider.',
+      },
+    ],
+    deliverables: {
+      originStep: 1,
+      items: [
+        { icon: 'transcript', title: 'Call transcript', body: 'You own it. Use it however helps most.' },
+        { icon: 'shield', title: '100% satisfaction guarantee', body: 'If it wasn’t worth it, you don’t pay.' },
+        {
+          icon: 'docs',
+          title: 'Go-forward strategy',
+          body: 'A plan on next steps, focused on clear outcomes, action items, timelines and budget.',
+        },
+      ],
+    },
+  },
+};
+
+const DELIVERABLE_ICON: Record<DeliverableIconKind, LucideIcon> = {
+  shield: ShieldCheck,
+  transcript: FileText,
+  docs: Files,
+};
+
+/* ─── Static class lookups ──────────────────────────────────────────── */
+
+/** Notch column-center positions for a 3-column grid. Hardcoded so Tailwind
+ *  sees the class strings at build time. */
+const NOTCH_LEFT_BY_STEP = ['left-[16.667%]', 'left-[50%]', 'left-[83.333%]'] as const;
+
+const CARD_DELAY = ['[animation-delay:0ms]', '[animation-delay:50ms]', '[animation-delay:100ms]'] as const;
+
+const DELIV_DELAY = ['[animation-delay:0ms]', '[animation-delay:70ms]', '[animation-delay:140ms]'] as const;
+
+const MOBILE_DELIV_DELAY = [
+  '[animation-delay:140ms]',
+  '[animation-delay:200ms]',
+  '[animation-delay:260ms]',
+] as const;
+
+/* ─── Component ─────────────────────────────────────────────────────── */
+
 export interface SectionProcessProps {
   /** Optional override for the section's id (anchor target). */
   id?: string;
   className?: string;
 }
 
-/* ─── Component ─────────────────────────────────────────────────────── */
-
-export const SectionProcess: FC<SectionProcessProps> = ({
-  id = 'how-it-works',
-  className,
-}) => {
+export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', className }) => {
   const expand = useSageStore((s) => s.expand);
 
   const goToSage = () => {
@@ -58,6 +174,9 @@ export const SectionProcess: FC<SectionProcessProps> = ({
     }
     expand('question');
   };
+
+  // Which lane the visitor selected. null = still choosing (both cards shown).
+  const [selectedLane, setSelectedLane] = useState<LaneId | null>(null);
 
   // Rotating featured testimonial. Seed a deterministic index for SSR + first
   // client render (no hydration mismatch), then pick a random one after mount.
@@ -77,6 +196,8 @@ export const SectionProcess: FC<SectionProcessProps> = ({
         company: source.company ?? '',
       }
     : null;
+
+  const stepsRegionId = `${id}-steps`;
 
   return (
     <section
@@ -110,28 +231,42 @@ export const SectionProcess: FC<SectionProcessProps> = ({
           {testimonial ? <TestimonialCard testimonial={testimonial} /> : null}
         </div>
 
-        {/* Lane cards */}
-        <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-6">
-          <LaneCard
-            eyebrow="Coaching"
-            headline="For ambitious professionals"
-            body="Structured 1:1 coaching engagements to help you sharpen your thinking, navigate complex decisions, and grow into the next version of your leadership."
-            trust="ICF-Certified · Royal Roads University"
-            ctaLabel="This is my lane"
-            onSelect={goToSage}
-          />
-          <LaneCard
-            eyebrow="Embedded Execution"
-            headline="For founders, CEOs, and PE leaders"
-            body="Hands-in-the-business work alongside your team — turning strategy into shipped outcomes when the bar is high and the timeline is short."
-            ctaLabel="This is my lane"
-            onSelect={goToSage}
-          />
-        </div>
+        {/* Lane selector ⇄ confirmation strip + revealed steps */}
+        {selectedLane === null ? (
+          <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-6">
+            <LaneCard
+              eyebrow={LANE_LABEL.coaching}
+              headline="For ambitious professionals"
+              body="Structured 1:1 coaching engagements to help you sharpen your thinking, navigate complex decisions, and grow into the next version of your leadership."
+              trust="ICF-Certified · Royal Roads University"
+              ctaLabel="This is my lane"
+              controls={stepsRegionId}
+              onSelect={() => setSelectedLane('coaching')}
+            />
+            <LaneCard
+              eyebrow={LANE_LABEL.operator}
+              headline="For founders, CEOs, and PE leaders"
+              body="Hands-in-the-business work alongside your team — turning strategy into shipped outcomes when the bar is high and the timeline is short."
+              ctaLabel="This is my lane"
+              controls={stepsRegionId}
+              onSelect={() => setSelectedLane('operator')}
+            />
+          </div>
+        ) : (
+          <>
+            <LaneConfirmStrip
+              label={LANE_LABEL[selectedLane]}
+              onSwitch={() => setSelectedLane(null)}
+            />
+            <LaneReveal id={stepsRegionId} label={LANE_LABEL[selectedLane]} track={TRACKS[selectedLane]} />
+          </>
+        )}
 
         {/* Dark CTA block */}
         <SagePanel onAskSage={goToSage} />
       </div>
+
+      <SectionKeyframes />
     </section>
   );
 };
@@ -189,10 +324,11 @@ interface LaneCardProps {
   body: string;
   trust?: string;
   ctaLabel: string;
+  controls: string;
   onSelect: () => void;
 }
 
-const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel, onSelect }) => {
+const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel, controls, onSelect }) => {
   return (
     <article className="group relative flex min-h-[360px] flex-col gap-5 rounded-[20px] border border-[color:var(--color-border)] bg-surface p-9 pb-9 pt-10 shadow-[0_4px_24px_rgba(26,25,23,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-accent/40 hover:shadow-[0_8px_32px_rgba(26,25,23,0.07)]">
       <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
@@ -221,6 +357,7 @@ const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel,
       <button
         type="button"
         onClick={onSelect}
+        aria-controls={controls}
         className="mt-2 inline-flex items-center gap-2.5 self-start whitespace-nowrap rounded-full border-0 bg-accent px-5 py-3 font-body text-[14.5px] font-semibold tracking-[0.01em] text-bg transition-[background-color,transform] duration-150 hover:bg-[color:var(--color-accent-hover)]"
       >
         {ctaLabel}
@@ -229,6 +366,258 @@ const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel,
     </article>
   );
 };
+
+interface LaneConfirmStripProps {
+  label: string;
+  onSwitch: () => void;
+}
+
+const LaneConfirmStrip: FC<LaneConfirmStripProps> = ({ label, onSwitch }) => {
+  return (
+    <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent/[0.06] px-5 py-4 lg:mb-8">
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full bg-accent text-bg"
+        >
+          <Check />
+        </span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
+          Your lane
+        </span>
+        <span className="truncate font-display text-[20px] font-normal leading-tight tracking-[-0.01em] text-[color:var(--color-text-primary)]">
+          {label}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSwitch}
+        className="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full border border-[color:var(--color-border)] bg-surface px-3.5 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-text-muted)] transition-colors duration-150 hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        Switch lane
+      </button>
+    </div>
+  );
+};
+
+interface LaneRevealProps {
+  id: string;
+  label: string;
+  track: Track;
+}
+
+const LaneReveal: FC<LaneRevealProps> = ({ id, label, track }) => {
+  return (
+    <div id={id} role="region" aria-label={`${label} engagement steps`} key={track.id}>
+      {/* Step cards — 3 cols on desktop, stacked on mobile. Mobile tray slots
+          inline after the originStep card; desktop tray renders separately. */}
+      <div className="mb-10 grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-6">
+        {track.steps.map((s, i) => {
+          const isOrigin = track.deliverables.originStep === i;
+          return (
+            <div key={track.id + 'cell' + i} className="contents lg:contents">
+              <StepCard step={s} index={i} isOrigin={isOrigin} ctaUrl={CTA_URL} />
+              {i === track.deliverables.originStep && (
+                <div className="lg:hidden">
+                  <MobileTray track={track} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop tray with notch (hidden on mobile). */}
+      <div className="mb-10 hidden lg:block">
+        <DesktopTray track={track} />
+      </div>
+    </div>
+  );
+};
+
+function CTAButton({ href }: { href: string }) {
+  const isLive = href.length > 0;
+  return (
+    <a
+      href={isLive ? href : '#'}
+      aria-disabled={!isLive || undefined}
+      tabIndex={isLive ? undefined : -1}
+      onClick={isLive ? undefined : (e) => e.preventDefault()}
+      className={[
+        'mt-[18px] inline-flex items-center gap-2.5 rounded-full px-[18px] py-[11px]',
+        'font-body text-[14px] font-semibold tracking-[0.01em] whitespace-nowrap',
+        'bg-accent text-bg transition-colors duration-150',
+        'hover:bg-[color:var(--color-accent-hover)]',
+        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        !isLive && 'opacity-90 cursor-not-allowed',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      Book a Session &mdash; C$250
+      <ArrowRight />
+    </a>
+  );
+}
+
+function StepCard({
+  step,
+  index,
+  isOrigin,
+  ctaUrl,
+}: {
+  step: Step;
+  index: number;
+  isOrigin: boolean;
+  ctaUrl: string;
+}) {
+  const number = String(index + 1).padStart(2, '0');
+  return (
+    <article
+      data-origin={isOrigin || undefined}
+      className={[
+        'relative flex min-h-[240px] flex-col gap-5 rounded-2xl bg-surface',
+        'border p-7 lg:px-7 lg:py-8',
+        'transition-[border-color,box-shadow] duration-500 ease-[cubic-bezier(0.65,0,0.35,1)]',
+        '[animation:hiwFadeUp_0.32s_ease_both]',
+        CARD_DELAY[index] ?? CARD_DELAY[0],
+        isOrigin
+          ? 'border-accent/60 shadow-[0_6px_28px_rgba(45,106,79,0.10)]'
+          : 'border-[color:var(--color-border)] shadow-[0_4px_24px_rgba(24,32,41,0.04)]',
+      ].join(' ')}
+    >
+      <div className="flex items-baseline justify-between">
+        <span className="font-display font-normal text-[40px] lg:text-[56px] leading-[0.9] tracking-[-0.02em] text-[color:var(--color-text-primary)]/30">
+          {number}
+        </span>
+        <span
+          className={[
+            'font-mono text-[10.5px] tracking-[0.18em] uppercase',
+            'transition-colors duration-500',
+            isOrigin ? 'text-accent' : 'text-[color:var(--color-text-dim)]',
+          ].join(' ')}
+        >
+          {isOrigin ? '→ Yields' : 'Step'}
+        </span>
+      </div>
+
+      <div>
+        <h3 className="mb-2.5 font-body text-[18px] font-semibold leading-[1.35] text-[color:var(--color-text-primary)]">
+          {step.title}
+        </h3>
+        <p className="font-body text-[15px] leading-[1.7] text-[color:var(--color-text-muted)]">
+          {step.body}
+        </p>
+        {index === 0 && <CTAButton href={ctaUrl} />}
+      </div>
+    </article>
+  );
+}
+
+function DeliverableTile({ d, delay }: { d: Deliverable; delay: string }) {
+  const Icon = DELIVERABLE_ICON[d.icon];
+  return (
+    <article
+      className={[
+        'grid grid-cols-[auto_1fr] items-start gap-4 rounded-[14px]',
+        'bg-surface border border-[color:var(--color-border)]',
+        'px-[22px] pt-[22px] pb-6',
+        '[animation:hiwDelivIn_0.45s_ease_both]',
+        delay,
+      ].join(' ')}
+    >
+      <div className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-accent/10 text-accent">
+        <Icon size={20} strokeWidth={1.7} aria-hidden />
+      </div>
+      <div className="min-w-0">
+        <h4 className="mb-1.5 font-body text-[15px] font-semibold leading-[1.3] text-[color:var(--color-text-primary)]">
+          {d.title}
+        </h4>
+        <p className="font-body text-[13.5px] leading-[1.6] text-[color:var(--color-text-muted)]">
+          {d.body}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function DesktopTray({ track }: { track: Track }) {
+  const { originStep, items } = track.deliverables;
+  const notchLeft = NOTCH_LEFT_BY_STEP[originStep];
+  const fromLabel = `From step ${String(originStep + 1).padStart(2, '0')}`;
+
+  return (
+    <div className="relative rounded-[20px] border border-accent/[0.16] bg-accent/[0.045] px-6 pt-8 pb-7">
+      <span
+        aria-hidden
+        className={[
+          'absolute -top-[8px] block h-[14px] w-[14px] -translate-x-1/2 rotate-45',
+          'border-l border-t border-accent/35 bg-accent/[0.045]',
+          notchLeft,
+        ].join(' ')}
+      />
+
+      <div className="mb-[18px] flex items-center gap-3">
+        <p className="m-0 font-mono text-[11px] tracking-[0.22em] uppercase text-accent">
+          What you&rsquo;ll walk away with
+        </p>
+        <span className="inline-flex items-center rounded-full border border-[color:var(--color-border)] bg-surface px-2 py-1 font-mono text-[10.5px] tracking-[0.18em] uppercase text-[color:var(--color-text-dim)] [animation:hiwPop_0.4s_ease_both]">
+          {fromLabel}
+        </span>
+        <span aria-hidden className="h-px flex-1 bg-accent/[0.16]" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {items.map((d, i) => (
+          <DeliverableTile key={track.id + 'd' + i} d={d} delay={DELIV_DELAY[i] ?? DELIV_DELAY[0]} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileTray({ track }: { track: Track }) {
+  const { items } = track.deliverables;
+  return (
+    <div className="rounded-[14px] border border-accent/25 bg-accent/[0.045] px-[18px] py-5 overflow-hidden [animation:hiwMobileTrayIn_0.45s_cubic-bezier(0.65,0,0.35,1)_both]">
+      <div className="mb-3.5 flex items-center gap-2.5">
+        <p className="m-0 font-mono text-[10px] tracking-[0.22em] uppercase text-accent">
+          What&rsquo;s included
+        </p>
+        <span aria-hidden className="h-px flex-1 bg-accent/[0.18]" />
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {items.map((d, i) => {
+          const Icon = DELIVERABLE_ICON[d.icon];
+          return (
+            <div
+              key={track.id + 'md' + i}
+              className={[
+                'grid grid-cols-[auto_1fr] items-start gap-3',
+                '[animation:hiwMobileTrayItem_0.45s_ease_both]',
+                MOBILE_DELIV_DELAY[i] ?? MOBILE_DELIV_DELAY[0],
+              ].join(' ')}
+            >
+              <div className="flex h-8 w-8 flex-none items-center justify-center rounded-[9px] border border-accent/20 bg-surface text-accent">
+                <Icon size={16} strokeWidth={1.7} aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <div className="mb-0.5 font-body text-[13.5px] font-semibold leading-[1.3] text-[color:var(--color-text-primary)]">
+                  {d.title}
+                </div>
+                <p className="font-body text-[12.5px] leading-[1.55] text-[color:var(--color-text-muted)]">
+                  {d.body}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 interface SagePanelProps {
   onAskSage: () => void;
@@ -269,6 +658,40 @@ const SagePanel: FC<SagePanelProps> = ({ onAskSage }) => {
   );
 };
 
+/* ─── Section keyframes ─────────────────────────────────────────────── */
+
+function SectionKeyframes() {
+  return (
+    <style>{`
+      @keyframes hiwFadeUp {
+        from { opacity: 0; transform: translateY(6px) }
+        to   { opacity: 1; transform: none }
+      }
+      @keyframes hiwDelivIn {
+        from { opacity: 0; transform: translateY(10px) }
+        to   { opacity: 1; transform: none }
+      }
+      @keyframes hiwPop {
+        from { opacity: 0; transform: scale(0.92) }
+        to   { opacity: 1; transform: none }
+      }
+      @keyframes hiwMobileTrayIn {
+        from { opacity: 0; transform: translateY(-4px); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: -12px; }
+        50%  { opacity: 0.6; max-height: 600px; }
+        to   { opacity: 1; transform: none; max-height: 600px; }
+      }
+      @keyframes hiwMobileTrayItem {
+        from { opacity: 0; transform: translateY(4px) }
+        to   { opacity: 1; transform: none }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        [class*="[animation:hiw"] { animation: none !important }
+      }
+    `}</style>
+  );
+}
+
 /* ─── Atoms ─────────────────────────────────────────────────────────── */
 
 interface ArrowRightProps {
@@ -290,6 +713,22 @@ const ArrowRight: FC<ArrowRightProps> = ({ className }) => (
   >
     <line x1="5" y1="12" x2="19" y2="12" />
     <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
+
+const Check: FC = () => (
+  <svg
+    width={13}
+    height={13}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
