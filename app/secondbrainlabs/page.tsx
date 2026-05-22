@@ -271,28 +271,28 @@ const PRINCIPLES: ReadonlyArray<Principle> = [
     icon: <TrendingUp size={22} strokeWidth={2} aria-hidden />,
     label: "Business case first.",
     body:
-      "Before a single line of code gets written, the question is always: how does this become a business? TAM, monetization, unit economics — these aren't afterthoughts.",
+      "Every product starts with a business case: users, economics, and a clear path to value.",
   },
   {
     id: "operational",
     icon: <Layers size={22} strokeWidth={2} aria-hidden />,
     label: "Operationally disciplined.",
     body:
-      "Shipping is only half the job. The other half is the infrastructure around it — the processes, the instrumentation, the feedback loops that make a product improvable over time.",
+      "Products improve through measurement, customer feedback, and disciplined iteration.",
   },
   {
     id: "experience",
     icon: <Sparkles size={22} strokeWidth={2} aria-hidden />,
-    label: "Experience forward.",
+    label: "Build for adoption.",
     body:
-      "The primary objective is always the end user. Good enough isn't. I understand the trade-offs between speed, cost, and quality — and I know which ones are worth making.",
+      "Useful isn't enough. Software should feel easy, clear, and worth returning to.",
   },
   {
     id: "zone",
     icon: <ShieldCheck size={22} strokeWidth={2} aria-hidden />,
     label: "I know my zone.",
     body:
-      "I build products. When a problem needs more firepower, I have access to experienced developers who can step in where needed. The work gets done right.",
+      "I know where I create leverage and where deeper expertise belongs.",
   },
 ] as const;
 
@@ -303,7 +303,7 @@ function HowIWork() {
     <Bay id="how-i-work" label="How I work" tone="paper-2">
       <BayHead
         kicker="How I work"
-        title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. Product builder.</span>}
+        title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. <em className="not-italic"><span className="italic text-accent">Product builder.</span></em></span>}
       >
         NLP and language models have changed what's possible in software.
       </BayHead>
@@ -334,7 +334,7 @@ function HowIWork() {
         className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
         style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
       >
-        I'm building products that change the way people think about their software.
+        Better software isn't more features. It's software people want to come back to.
       </p>
 
       <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
