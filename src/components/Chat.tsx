@@ -66,42 +66,6 @@ export function Chat() {
     }
   }, [isExpanded])
 
-  // TEMP DIAGNOSTIC — iOS keyboard / visualViewport probe. Active only with
-  // `?debug=true` (pairs with the Eruda mobile console loaded in app/layout.tsx).
-  // Logs innerHeight vs visualViewport height/offsetTop on every keyboard-driven
-  // viewport change so we can see whether WebKit reports the keyboard, and
-  // whether the body scroll-lock affects it. Remove after diagnosis.
-  useEffect(() => {
-    if (!isExpanded) return
-    if (new URLSearchParams(window.location.search).get('debug') !== 'true') return
-    const vv = window.visualViewport
-    const log = (event: string) => {
-      const innerH = window.innerHeight
-      const vvH = vv ? vv.height : -1
-      const vvTop = vv ? vv.offsetTop : -1
-      const kb = Math.max(0, innerH - vvH - vvTop)
-      console.log(
-        `[kbdiag] ${event} | innerH=${innerH} vvH=${Math.round(vvH)} vvTop=${Math.round(vvTop)} kb=${Math.round(kb)} bodyPos=${document.body.style.position || 'static'} scrollY=${window.scrollY} screenH=${window.screen.height} dpr=${window.devicePixelRatio}`,
-      )
-    }
-    log('open')
-    const onResize = () => log('vv-resize')
-    const onScroll = () => log('vv-scroll')
-    vv?.addEventListener('resize', onResize)
-    vv?.addEventListener('scroll', onScroll)
-    const ta = textareaRef.current
-    const onFocus = () => log('focus')
-    const onBlur = () => log('blur')
-    ta?.addEventListener('focus', onFocus)
-    ta?.addEventListener('blur', onBlur)
-    return () => {
-      vv?.removeEventListener('resize', onResize)
-      vv?.removeEventListener('scroll', onScroll)
-      ta?.removeEventListener('focus', onFocus)
-      ta?.removeEventListener('blur', onBlur)
-    }
-  }, [isExpanded])
-
   useEffect(() => {
     if (!isExpanded) return
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })

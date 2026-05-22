@@ -18,25 +18,6 @@ function detectModeFromLocation(): 'question' | null {
   return value === 'question' ? 'question' : null
 }
 
-// TEMP DIAGNOSTIC — iOS keyboard / visualViewport probe. Active only with
-// `?debug=true` (pairs with the Eruda mobile console loaded in app/layout.tsx).
-// Logs innerHeight vs visualViewport height/offsetTop (and derived keyboard
-// height) so we can see whether WebKit reports the keyboard and whether the
-// body scroll-lock affects it. Module-scope so it isn't a hook dependency.
-// Remove after diagnosis.
-function logKbdiag(event: string) {
-  if (typeof window === 'undefined') return
-  if (new URLSearchParams(window.location.search).get('debug') !== 'true') return
-  const vv = window.visualViewport
-  const innerH = window.innerHeight
-  const vvH = vv ? vv.height : -1
-  const vvTop = vv ? vv.offsetTop : -1
-  const kb = Math.max(0, innerH - vvH - vvTop)
-  console.log(
-    `[kbdiag] ${event} | innerH=${innerH} vvH=${Math.round(vvH)} vvTop=${Math.round(vvTop)} kb=${Math.round(kb)} bodyPos=${document.body.style.position || 'static'} scrollY=${window.scrollY} screenH=${window.screen.height} dpr=${window.devicePixelRatio}`,
-  )
-}
-
 export function Hero() {
   const {
     messages,
@@ -105,14 +86,13 @@ export function Hero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling. The body scroll-lock lives on the textarea's
-  // onFocus/onBlur handlers; this syncs the chat surface to the visual
-  // viewport. When the keyboard opens, visualViewport.height shrinks and
-  // offsetTop grows — we mirror both onto the surface (height + a compositor
-  // translateY, no transition) so the surface exactly covers the visible area
-  // above the keyboard. keyboardOpen flips the surface from display:contents
-  // to a fixed flex box (CSS, mobile only). On desktop vv.height never drops,
-  // so keyboardOpen stays false and nothing changes.
+  // iOS keyboard handling. Syncs the chat surface to the visual viewport: when
+  // the keyboard opens, visualViewport.height shrinks and offsetTop grows — we
+  // mirror both onto the surface (height + a compositor translateY, no
+  // transition) so the surface exactly covers the visible area above the
+  // keyboard. keyboardOpen flips the surface from display:contents to a fixed
+  // flex box (CSS, mobile only). On desktop vv.height never drops, so
+  // keyboardOpen stays false and nothing changes.
   const syncViewport = useCallback(() => {
     if (typeof window === 'undefined') return
     const vv = window.visualViewport
@@ -130,28 +110,17 @@ export function Hero() {
     const vv = window.visualViewport
     if (!vv) return
 
-    const onResize = () => {
-      syncViewport()
-      logKbdiag('vv-resize')
-    }
-    const onScroll = () => {
-      syncViewport()
-      logKbdiag('vv-scroll')
-    }
-
-    logKbdiag('vv-prime')
     syncViewport()
-    vv.addEventListener('resize', onResize)
-    vv.addEventListener('scroll', onScroll)
+    vv.addEventListener('resize', syncViewport)
+    vv.addEventListener('scroll', syncViewport)
     return () => {
-      vv.removeEventListener('resize', onResize)
-      vv.removeEventListener('scroll', onScroll)
+      vv.removeEventListener('resize', syncViewport)
+      vv.removeEventListener('scroll', syncViewport)
     }
   }, [syncViewport])
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    logKbdiag('focus')
     syncViewport() // prime the surface before the first vv event lands
     // No body scroll-lock: on iOS, body { position: fixed } collapses
     // window.innerHeight to the visual-viewport height and injects a
@@ -162,12 +131,6 @@ export function Hero() {
   const handleChipClick = (text: string) => {
     setConversationVisible(true)
     send(text)
-  }
-
-  const handleComposerBlur = () => {
-    logKbdiag('blur')
-    // No scroll restore — the page stays where the user left it, next to the
-    // conversation. (The removed body scroll-lock used to restore scrollY here.)
   }
 
   const send = async (override?: string) => {
@@ -363,7 +326,6 @@ export function Hero() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKey}
               onFocus={handleComposerFocus}
-              onBlur={handleComposerBlur}
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />
