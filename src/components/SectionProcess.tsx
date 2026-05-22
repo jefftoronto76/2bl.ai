@@ -9,8 +9,11 @@
  *
  * Colors use the inkwell palette tokens (`bg`/`surface`/`accent` +
  * `var(--color-*)`) rather than inlined hex, so the section stays on the
- * jefflougheed design system. The one exception is the dark Sage panel
- * (`#0d1f1a`) — it has no palette sibling, so it stays an arbitrary value.
+ * jefflougheed design system. The dark Sage panel uses
+ * `var(--color-text-primary)` as its fill: under the live inkwell palette
+ * that resolves to the dark navy (#182029, the hero canvas color); under the
+ * plain `:root` fallback it is dark near-black. This mirrors how the inkwell
+ * theme builds its other dark fills (`rgb(var(--ink-rgb))`).
  *
  * Fonts resolve through `font-display` / `font-body` / `font-mono`, wired to
  * Playfair Display / DM Sans / DM Mono in `tailwind.config.js`.
@@ -235,7 +238,7 @@ const SagePanel: FC<SagePanelProps> = ({ onAskSage }) => {
   return (
     <section
       aria-label="Talk to Sage"
-      className="relative overflow-hidden rounded-3xl bg-[#0d1f1a] p-8 text-bg sm:p-12"
+      className="relative overflow-hidden rounded-3xl bg-[color:var(--color-text-primary)] p-8 text-bg sm:p-12"
     >
       {/* Soft accent halo, top-right */}
       <span
