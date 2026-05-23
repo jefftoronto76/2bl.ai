@@ -497,6 +497,13 @@ html[data-palette="inkwell"] #testimonials {
   border-bottom: none;
 }
 
+/* The how-it-works section sits on a light surface, so its accent buttons
+   need the deep-green :root accent rather than the inkwell mint. */
+html[data-palette="inkwell"] #how-it-works {
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+}
+
 html[data-palette="inkwell"] .bone-card {
   --ink-rgb: 24 32 41;
   --color-text-primary: rgb(24 32 41);
