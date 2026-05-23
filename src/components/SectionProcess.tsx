@@ -233,7 +233,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
 
         {/* Lane selector ⇄ confirmation strip + revealed steps */}
         {selectedLane === null ? (
-          <div className="mx-auto mb-7 grid max-w-[880px] grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-10">
+          <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-10">
             <LaneCard
               eyebrow={LANE_LABEL.coaching}
               headline="For ambitious professionals"
