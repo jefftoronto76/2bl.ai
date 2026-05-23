@@ -14,8 +14,9 @@ import type { ChatMessage, ModelConfig, ModelProvider, TokenUsage } from './type
 // service, and they live here in the config resolver — call sites read the
 // resolved ModelConfig, never a literal.
 const DEFAULT_CHAT_MODEL = 'claude-sonnet-4-6'
-const DEFAULT_NAME_EXTRACTOR_MODEL = 'claude-haiku-4-5'
+const DEFAULT_FALLBACK_MODEL = 'gpt-4o'
 const DEFAULT_MAX_TOKENS = 1000
+const DEFAULT_RATE_LIMIT_RPH = 100
 
 /**
  * Resolve the model configuration for a tenant. Reads `tenant_model_config`
@@ -24,15 +25,16 @@ const DEFAULT_MAX_TOKENS = 1000
  * to the exact column set, so a schema mismatch degrades to defaults rather
  * than breaking the chat.
  *
- * Assumed columns: `provider`, `chat_model`, `name_extractor_model`,
- * `max_tokens` (keyed by `tenant_id`). Confirm/adjust against the live table.
+ * Columns: `provider`, `model_id`, `model_id_fallback`, `max_tokens`,
+ * `rate_limit_requests_per_hour` (keyed by `tenant_id`).
  */
 export async function resolveModelConfig(tenantId: string | null): Promise<ModelConfig> {
   const fallback: ModelConfig = {
     provider: 'anthropic',
     chatModel: DEFAULT_CHAT_MODEL,
-    nameExtractorModel: DEFAULT_NAME_EXTRACTOR_MODEL,
+    fallbackModel: DEFAULT_FALLBACK_MODEL,
     maxTokens: DEFAULT_MAX_TOKENS,
+    rateLimitRequestsPerHour: DEFAULT_RATE_LIMIT_RPH,
   }
   if (!tenantId) return fallback
 
@@ -55,19 +57,23 @@ export async function resolveModelConfig(tenantId: string | null): Promise<Model
     const row = data as Record<string, unknown>
     const provider: ModelProvider = row.provider === 'openai' ? 'openai' : 'anthropic'
     const chatModel =
-      typeof row.chat_model === 'string' && row.chat_model ? row.chat_model : fallback.chatModel
-    const nameExtractorModel =
-      typeof row.name_extractor_model === 'string' && row.name_extractor_model
-        ? row.name_extractor_model
-        : fallback.nameExtractorModel
+      typeof row.model_id === 'string' && row.model_id ? row.model_id : fallback.chatModel
+    const fallbackModel =
+      typeof row.model_id_fallback === 'string' && row.model_id_fallback
+        ? row.model_id_fallback
+        : fallback.fallbackModel
     const maxTokens =
       typeof row.max_tokens === 'number' && row.max_tokens > 0 ? row.max_tokens : fallback.maxTokens
+    const rateLimitRequestsPerHour =
+      typeof row.rate_limit_requests_per_hour === 'number' && row.rate_limit_requests_per_hour > 0
+        ? row.rate_limit_requests_per_hour
+        : fallback.rateLimitRequestsPerHour
 
     console.log('[chat/stream] tenant_model_config resolved for tenant_id:', tenantId, {
       provider,
       chatModel,
     })
-    return { provider, chatModel, nameExtractorModel, maxTokens }
+    return { provider, chatModel, fallbackModel, maxTokens, rateLimitRequestsPerHour }
   } catch (err) {
     console.error(
       '[chat/stream] resolveModelConfig threw:',

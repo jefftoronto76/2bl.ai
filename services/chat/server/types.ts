@@ -38,13 +38,19 @@ export type ModelProvider = 'anthropic' | 'openai'
  * Resolved per-turn model configuration. Defaults live in code
  * (claude-sonnet-4-6 / claude-haiku-4-5); a per-tenant override source
  * (e.g. a tenant_model_config table) is NOT yet available — see Phase 3
- * blockers. Until then `resolveModelConfig` returns the defaults.
+ * blockers — but tenant_model_config now exists; resolveModelConfig reads it
+ * when a row is present and falls back to these code defaults otherwise.
  */
 export interface ModelConfig {
   provider: ModelProvider
+  /** tenant_model_config.model_id — primary chat model. */
   chatModel: string
-  nameExtractorModel: string
+  /** tenant_model_config.model_id_fallback — circuit-breaker fallback model. */
+  fallbackModel: string
+  /** tenant_model_config.max_tokens — chat-turn output cap. */
   maxTokens: number
+  /** tenant_model_config.rate_limit_requests_per_hour — per-tenant rate cap. */
+  rateLimitRequestsPerHour: number
 }
 
 /** Token deltas reported by a single model turn. */

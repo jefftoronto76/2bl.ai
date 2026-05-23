@@ -1,5 +1,23 @@
 # DB Changelog
 
+## 2026-05-23
+
+### Add tenant_model_config table
+**Type:** Schema change  
+**Executed by:** Jeff in Supabase Studio
+
+**Columns:**
+- `tenant_id` (uuid)
+- `provider` (text, default 'anthropic')
+- `model_id` (text — primary chat model)
+- `model_id_fallback` (text — circuit-breaker fallback model)
+- `max_tokens` (integer, default 1000)
+- `rate_limit_requests_per_hour` (integer, default 100)
+
+**Purpose:** Per-tenant model configuration. Provider, model ID, fallback model, max tokens, rate limiting. Chat service reads from this table when a row exists for the tenant, falls back to hardcoded defaults when no row found.
+
+---
+
 ## 2026-05-20
 
 ### Add `key` column to `master_prompt`
