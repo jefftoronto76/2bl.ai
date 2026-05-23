@@ -233,7 +233,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
 
         {/* Lane selector ⇄ confirmation strip + revealed steps */}
         {selectedLane === null ? (
-          <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-6">
+          <div className="mx-auto mb-7 grid max-w-[880px] grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-10">
             <LaneCard
               eyebrow={LANE_LABEL.coaching}
               headline="For ambitious professionals"
@@ -330,7 +330,7 @@ interface LaneCardProps {
 
 const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel, controls, onSelect }) => {
   return (
-    <article className="group relative flex min-h-[360px] flex-col gap-5 rounded-[20px] border border-[color:var(--color-border)] bg-surface p-9 pb-9 pt-10 shadow-[0_4px_24px_rgba(26,25,23,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-accent/40 hover:shadow-[0_8px_32px_rgba(26,25,23,0.07)]">
+    <article className="group relative flex flex-col gap-5 rounded-[20px] border border-[color:var(--color-border)] bg-surface p-9 pb-9 pt-10 shadow-[0_4px_24px_rgba(26,25,23,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-accent/40 hover:shadow-[0_8px_32px_rgba(26,25,23,0.07)]">
       <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
         {eyebrow}
       </div>
@@ -339,7 +339,7 @@ const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel,
         {headline}
       </h3>
 
-      <p className="m-0 max-w-[44ch] font-body text-[17px] leading-[1.6] text-[color:var(--color-text-muted)]">
+      <p className="m-0 max-w-[44ch] font-body text-[16px] leading-[1.6] text-[color:var(--color-text-muted)]">
         {body}
       </p>
 
