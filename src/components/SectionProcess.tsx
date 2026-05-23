@@ -233,7 +233,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
 
         {/* Lane selector ⇄ confirmation strip + revealed steps */}
         {selectedLane === null ? (
-          <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-10">
+          <div className="mb-7 grid grid-cols-1 gap-4 lg:mb-8 lg:grid-cols-2 lg:gap-16">
             <LaneCard
               eyebrow={LANE_LABEL.coaching}
               headline="For ambitious professionals"
@@ -330,12 +330,12 @@ interface LaneCardProps {
 
 const LaneCard: FC<LaneCardProps> = ({ eyebrow, headline, body, trust, ctaLabel, controls, onSelect }) => {
   return (
-    <article className="group relative flex flex-col gap-5 rounded-[20px] border border-[color:var(--color-border)] bg-surface p-9 pb-9 pt-10 shadow-[0_4px_24px_rgba(26,25,23,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-accent/40 hover:shadow-[0_8px_32px_rgba(26,25,23,0.07)]">
+    <article className="group relative flex flex-col gap-5 rounded-[20px] border border-[color:var(--color-border)] bg-surface px-9 py-16 shadow-[0_4px_24px_rgba(26,25,23,0.04)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-accent/40 hover:shadow-[0_8px_32px_rgba(26,25,23,0.07)]">
       <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
         {eyebrow}
       </div>
 
-      <h3 className="m-0 font-display text-[clamp(24px,2.6vw,32px)] font-normal leading-[1.02] tracking-[-0.02em] text-[color:var(--color-text-primary)]">
+      <h3 className="m-0 font-display text-2xl font-normal leading-[1.02] tracking-[-0.02em] text-[color:var(--color-text-primary)]">
         {headline}
       </h3>
 
@@ -627,7 +627,7 @@ const SagePanel: FC<SagePanelProps> = ({ onAskSage }) => {
   return (
     <section
       aria-label="Talk to Sage"
-      className="relative overflow-hidden rounded-3xl bg-[color:var(--color-text-primary)] p-8 text-bg sm:p-12"
+      className="relative overflow-hidden rounded-3xl bg-[color:var(--color-text-primary)] p-4 text-bg"
     >
       {/* Soft accent halo, top-right */}
       <span
