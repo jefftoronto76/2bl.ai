@@ -168,6 +168,16 @@ reads model config from there with these values as fallback defaults.
 Studio task (Jeff): create tenant_model_config table per 2BL.md spec 
 before Phase 5 code begins.
 
+### PgBouncer / connection pooling
+Not applicable to the current stack. Supabase JS uses the HTTPS 
+PostgREST endpoint, not a direct Postgres TCP connection. The 
+6543 pooled port only applies to direct pg/postgres.js connections 
+which don't exist in this codebase.
+
+If a future phase introduces a direct Postgres connection 
+(e.g. for bulk operations or a dedicated query layer), configure 
+PgBouncer in transaction mode at that point.
+
 ---
 
 ## Key Documents
