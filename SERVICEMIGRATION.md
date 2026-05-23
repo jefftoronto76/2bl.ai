@@ -180,6 +180,31 @@ PgBouncer in transaction mode at that point.
 
 ---
 
+## Platform Principles
+
+### Tenant-configurable AI API keys
+Tenants can bring their own AI API key (Anthropic, OpenAI, or future
+providers). The platform provides prompt engineering and orchestration — the
+model and API costs are tenant-configurable.
+
+When a tenant supplies their own key:
+- Platform uses their key instead of the platform default
+- API costs pass through to the tenant directly
+- Key must never be exposed client-side under any circumstances
+
+Security requirements before this feature ships:
+- API keys stored encrypted at rest (not plain text in DB)
+- Multi-factor authentication required to add/update a key
+- Key access restricted to server-side only, never in client bundle
+- Full audit log on key creation, rotation, deletion
+- Separate secrets management — not in tenant_model_config directly
+
+Current state: seam designed, feature not enabled.
+Studio task (Jeff): add encrypted api_key storage when ready to implement — do
+not add to tenant_model_config as plain text.
+
+---
+
 ## Key Documents
 
 | Document | Purpose |
