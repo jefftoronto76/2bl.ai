@@ -10,6 +10,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { TrendingUp, Layers, Sparkles, ShieldCheck } from "lucide-react";
 
 // ──────────────────────────────────────────────────────────────────────
 // Data
@@ -40,35 +41,6 @@ const SAGE_STARTERS: ReadonlyArray<SageStarter> = [
   { id: "partner",  label: "Can we partner on something new?",   q: "Can we partner on something new?" },
 ] as const;
 
-type AboutPoint = { readonly icon: ReactNode; readonly body: ReactNode };
-
-const OPERATOR_POINTS: ReadonlyArray<AboutPoint> = [
-  { icon: <IconTarget />,    body: <><b className="text-ink font-semibold">15+ years</b> shipping software across consumer, health, and SMB tooling.</> },
-  { icon: <IconChartUp />,   body: <><b className="text-ink font-semibold">Operator first,</b> engineer second — comfortable in the spreadsheet and the repo.</> },
-  { icon: <IconTriangle />,  body: <>Believes the next decade of software will be built by <b className="text-ink font-semibold">small, weird, agentic teams.</b></> },
-  { icon: <IconGlobe />,     body: <>Writes occasionally. Reads <b className="text-ink font-semibold">obsessively.</b> Available for coffee.</> },
-];
-
-const WORKSHOP_POINTS: ReadonlyArray<AboutPoint> = [
-  { icon: <IconGrid />,      body: <><b className="text-ink font-semibold">Four products,</b> one envelope — shared infra, shared evals, shared voice.</> },
-  { icon: <IconCheck />,     body: <><b className="text-ink font-semibold">Outcomes over outputs.</b> A metric on day one, on the wall by Friday.</> },
-  { icon: <IconStar />,      body: <>Bias toward <b className="text-ink font-semibold">building in public</b> and shipping the unfashionable thing.</> },
-  { icon: <IconPerson />,    body: <>Built for <b className="text-ink font-semibold">humans</b> — operators, families, caregivers, the people doing the actual work.</> },
-];
-
-type StackItem = { readonly layer: string; readonly name: ReactNode; readonly note: ReactNode };
-
-const STACK: ReadonlyArray<StackItem> = [
-  { layer: "App · 01",         name: <>Next.js <em className="text-accent not-italic font-medium">15</em></>,    note: "App Router on Vercel." },
-  { layer: "UI · 02",          name: <>React <em className="text-accent not-italic font-medium">19</em></>,      note: "Server components, suspense, the works." },
-  { layer: "Language · 03",    name: <>TypeScript</>,                                                            note: <><em className="text-accent not-italic font-medium">Strict</em> mode, everywhere.</> },
-  { layer: "Admin UI · 04",    name: <>Mantine <em className="text-accent not-italic font-medium">v7</em></>,    note: "For internal tooling and admin." },
-  { layer: "Public site · 05", name: <>Tailwind</>,                                                              note: "Marketing surfaces and product chrome." },
-  { layer: "Data · 06",        name: <>Supabase</>,                                                              note: "Postgres, auth, storage, realtime." },
-  { layer: "Auth · 07",        name: <>Clerk</>,                                                                 note: "Admin route protection only." },
-  { layer: "Models · 08",      name: <>Anthropic <em className="text-accent not-italic font-medium">API</em></>, note: "The brains of the envelope." },
-];
-
 // ──────────────────────────────────────────────────────────────────────
 // Page
 // ──────────────────────────────────────────────────────────────────────
@@ -79,8 +51,8 @@ export default function LandingPage() {
       <Nav />
       <Hero />
       <Work />
-      <About />
-      <Stack />
+      <HowIWork />
+      <HowItWorks />
       <SiteFooter />
     </main>
   );
@@ -264,96 +236,330 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// About — operator + workshop
+// How I Work — operating principles for the studio
+//
+// Replaces the prior About() section. Four-card grid + serif closing
+// line + capability pills. Single column under 960px (lg:grid-cols-2).
+// Uses the terracotta accent throughout for visual continuity with the
+// rest of the page; do not reintroduce the `pos` (green) token here.
+// Source design: How I Work — Production.html.
 // ──────────────────────────────────────────────────────────────────────
 
-function About() {
-  return (
-    <Bay id="about" label="About" tone="paper-2">
-      <BayHead kicker="About" title={<>One operator. <em className="not-italic"><span className="italic text-accent">One workshop.</span></em></>} />
-
-      <div className="grid grid-cols-1 gap-x-12 gap-y-14 md:grid-cols-2 md:gap-12">
-        <AboutColumn
-          portraitLabel="Portrait · placeholder"
-          heading={<>The <em className="not-italic"><span className="italic text-accent">operator</span></em></>}
-          role="Founder · 2BL"
-          points={OPERATOR_POINTS}
-        />
-        <AboutColumn
-          portraitLabel="Workshop · placeholder"
-          heading={<>The <em className="not-italic"><span className="italic text-accent">workshop</span></em></>}
-          role="Studio · Second Brain Labs"
-          points={WORKSHOP_POINTS}
-        />
-      </div>
-    </Bay>
-  );
-}
-
-type AboutColumnProps = {
-  portraitLabel: string;
-  heading: ReactNode;
-  role: string;
-  points: ReadonlyArray<AboutPoint>;
+type Principle = {
+  readonly id: string;
+  readonly icon: ReactNode;
+  readonly label: string;
+  readonly body: string;
 };
 
-function AboutColumn({ portraitLabel, heading, role, points }: AboutColumnProps) {
+const PRINCIPLES: ReadonlyArray<Principle> = [
+  {
+    id: "business-case",
+    icon: <TrendingUp size={22} strokeWidth={2} aria-hidden />,
+    label: "Business case first.",
+    body:
+      "Every product starts with a business case: users, economics, and a clear path to value.",
+  },
+  {
+    id: "operational",
+    icon: <Layers size={22} strokeWidth={2} aria-hidden />,
+    label: "Operationally disciplined.",
+    body:
+      "Products improve through measurement, customer feedback, and disciplined iteration.",
+  },
+  {
+    id: "experience",
+    icon: <Sparkles size={22} strokeWidth={2} aria-hidden />,
+    label: "Build for adoption.",
+    body:
+      "Useful isn't enough. Software should feel easy, clear, and worth returning to.",
+  },
+  {
+    id: "zone",
+    icon: <ShieldCheck size={22} strokeWidth={2} aria-hidden />,
+    label: "I know my zone.",
+    body:
+      "I know where I create leverage and where deeper expertise belongs.",
+  },
+] as const;
+
+const CAPABILITY_PILLS = ["Multi-tenant", "Service Oriented", "HIPAA / SOC 2 Ready"] as const;
+
+function HowIWork() {
   return (
-    <div>
-      {/* TODO: replace placeholder with real <Image /> when art is ready */}
-      <div
-        aria-hidden
-        className="mb-5 grid aspect-[4/5] w-full max-w-[180px] sm:max-w-[240px] place-items-center rounded-xl border border-line font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted bg-[repeating-linear-gradient(135deg,var(--color-paper-3)_0px,var(--color-paper-3)_8px,var(--color-paper-2)_8px,var(--color-paper-2)_16px)]"
+    <Bay id="how-i-work" label="How I work" tone="paper-2">
+      <BayHead
+        kicker="How I work"
+        title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. <em className="not-italic"><span className="italic text-accent">Product builder.</span></em></span>}
       >
-        {portraitLabel}
-      </div>
-      <h3 className="m-0 mb-2 font-serif font-medium text-[24px] sm:text-[28px] tracking-[-0.01em] text-ink">
-        {heading}
-      </h3>
-      <div className="mb-6 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">{role}</div>
-      <ul className="m-0 flex list-none flex-col gap-3.5 p-0">
-        {points.map((p, i) => (
-          <li key={i} className="grid grid-cols-[28px_1fr] items-start gap-3.5 text-[14.5px] sm:text-[15px] leading-[1.5] text-ink-2">
-            <span aria-hidden className="grid h-7 w-7 place-items-center rounded-[7px] border border-line bg-paper text-accent">
+        NLP and language models have changed what's possible in software.
+      </BayHead>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
+        {PRINCIPLES.map((p) => (
+          <article
+            key={p.id}
+            className="group flex flex-col gap-3 sm:gap-4 rounded-2xl border border-line bg-paper p-5 sm:p-7 transition-[border-color,transform,box-shadow] hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_18px_36px_-28px_rgba(31,26,20,0.18)]"
+          >
+            <span
+              aria-hidden
+              className="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-[10px] border border-accent/40 bg-accent-soft text-accent"
+            >
               {p.icon}
             </span>
-            <span>{p.body}</span>
-          </li>
+            <h3 className="m-0 font-serif font-medium text-[20px] sm:text-[24px] leading-[1.2] tracking-[-0.012em] text-ink">
+              {p.label}
+            </h3>
+            <p className="m-0 text-[14.5px] sm:text-[15px] leading-[1.55] text-ink-2 text-pretty">
+              {p.body}
+            </p>
+          </article>
         ))}
-      </ul>
-    </div>
+      </div>
+
+      <p
+        className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
+        style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
+      >
+        Better software isn't more features. It's software people want to come back to.
+      </p>
+
+      <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
+        <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
+          {CAPABILITY_PILLS.map((label) => (
+            <li
+              key={label}
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-3.5 py-2 font-sans text-[13px] font-medium tracking-[-0.005em] text-ink"
+            >
+              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+              {label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Bay>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Stack
+// How it works — three-step process for the C$250 working session.
+// Replaces the prior Stack section. Reuses the Bay / Arrow primitives and
+// the SBL terracotta tokens (accent / accent-deep / accent-soft).
 // ──────────────────────────────────────────────────────────────────────
 
-function Stack() {
+// Bookable session URL — placeholder until the real Calendly link is wired.
+const BOOKING_URL = "https://calendly.com/REPLACE-ME/working-session" as const;
+const SESSION_PRICE = "C$250" as const;
+
+type Step = {
+  readonly id: string;
+  readonly num: string;
+  readonly tag: string;       // small mono caps label (Step / → Yields)
+  readonly isYield?: boolean; // step 02 — different visual treatment
+  readonly title: string;
+  readonly body: string;
+  readonly cta?: { label: string; href: string };
+};
+
+const STEPS: ReadonlyArray<Step> = [
+  {
+    id: "book",
+    num: "01",
+    tag: "Step",
+    title: "Book a session",
+    body:
+      "Talk to Sage if you need to think it through. When you're ready, one session is all it takes to start.",
+    cta: { label: `Book a Session — ${SESSION_PRICE}`, href: BOOKING_URL },
+  },
+  {
+    id: "session",
+    num: "02",
+    tag: "→ Yields",
+    isYield: true,
+    title: "The session",
+    body:
+      "ICF-certified coaching methodology. A conversation that goes beneath the surface — agenda-free, focused on what's actually in the way.",
+  },
+  {
+    id: "shift",
+    num: "03",
+    tag: "Step",
+    title: "The shift",
+    body:
+      "Clarity on what's really going on. A defined next move that's yours to own.",
+  },
+] as const;
+
+type Deliverable = {
+  readonly id: string;
+  readonly icon: "transcript" | "guarantee";
+  readonly title: string;
+  readonly body: string;
+};
+
+const DELIVERABLES: ReadonlyArray<Deliverable> = [
+  {
+    id: "transcript",
+    icon: "transcript",
+    title: "Call transcript",
+    body: "You own it. Use it however helps most.",
+  },
+  {
+    id: "guarantee",
+    icon: "guarantee",
+    title: "100% satisfaction guarantee",
+    body: "If it wasn't worth it, you don't pay.",
+  },
+] as const;
+
+function HowItWorks() {
   return (
-    <Bay id="stack" label="Stack">
-      <div className="mb-7 sm:mb-11 flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <Kicker>The stack</Kicker>
-          <BayTitle>What it's <em className="not-italic"><span className="italic text-accent">made of.</span></em></BayTitle>
-        </div>
-        <p className="m-0 max-w-[42ch] text-[16px] sm:text-[17px] leading-[1.55] text-ink-2 text-pretty">
-          A boring, modern, opinionated stack — chosen so the work compounds across every product in the envelope.
-        </p>
+    <Bay id="how-it-works" label="How it works">
+      {/* Eyebrow row: kicker pill + horizontal rule. */}
+      <div className="mb-6 sm:mb-10 flex items-center gap-4">
+        <span className="inline-block rounded-[3px] bg-accent/15 px-2 py-0.5 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink">
+          How it works
+        </span>
+        <span aria-hidden className="hidden sm:block h-px max-w-[180px] flex-1 bg-ink/10" />
       </div>
 
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
-        {STACK.map((s, i) => (
-          <div key={i} className="flex min-h-0 sm:min-h-[120px] flex-col gap-1 bg-paper p-5 sm:p-[22px_20px]">
-            <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-dim">{s.layer}</div>
-            <div className="font-serif font-medium text-[20px] sm:text-[22px] tracking-[-0.008em] leading-[1.1] text-ink">
-              {s.name}
-            </div>
-            <div className="mt-0.5 text-[13px] leading-[1.4] text-muted">{s.note}</div>
-          </div>
+      {/* Section header */}
+      <header className="mb-10 sm:mb-14 max-w-[720px]">
+        <h2
+          id="how-it-works-h"
+          className="m-0 mb-[18px] font-serif font-normal leading-[1.04] tracking-[-0.02em] text-ink text-balance"
+          style={{ fontSize: "clamp(36px, 4.6vw, 60px)" }}
+        >
+          Want help with your{" "}
+          <em className="italic text-accent font-normal">product?</em>
+        </h2>
+        <p
+          className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
+          style={{ fontSize: "clamp(16px, 1.5vw, 18px)" }}
+        >
+          I&apos;m a revenue focused product builder, and, an executive coach, if you want to
+          explore your product, book time below.
+        </p>
+      </header>
+
+      {/* Three-step grid */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-3.5">
+        {STEPS.map((step) => (
+          <StepCard key={step.id} step={step} />
         ))}
       </div>
+
+      {/* Connector — small upward chevron tying steps → walk-away */}
+      <div aria-hidden className="my-5 sm:my-7 flex justify-center text-ink/25">
+        <svg
+          viewBox="0 0 20 14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-5"
+        >
+          <path d="M2 12 L10 2 L18 12" />
+        </svg>
+      </div>
+
+      {/* Walk-away block */}
+      <section
+        aria-label="What you'll walk away with"
+        className="rounded-[18px] border border-line bg-paper p-5 sm:p-7"
+      >
+        <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-3">
+          <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.22em] text-muted">
+            What you&apos;ll walk away with
+          </span>
+          <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-ink-2 whitespace-nowrap">
+            From step 02
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {DELIVERABLES.map((d) => (
+            <DeliverableCard key={d.id} deliverable={d} />
+          ))}
+        </div>
+      </section>
     </Bay>
+  );
+}
+
+function StepCard({ step }: { step: Step }) {
+  const active = step.isYield === true;
+  return (
+    <article
+      className={[
+        "group relative flex flex-col gap-3.5 rounded-2xl border p-6 sm:p-[28px_26px_26px] shadow-[0_4px_24px_rgba(31,26,20,0.04)] transition-[border-color,transform,box-shadow]",
+        active
+          ? "border-accent bg-[color-mix(in_oklab,var(--color-accent-soft)_60%,var(--color-paper))] shadow-[0_18px_36px_-28px_rgba(200,84,46,0.32)]"
+          : "border-line bg-white hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-[0_18px_36px_-28px_rgba(31,26,20,0.18)]",
+      ].join(" ")}
+      aria-current={active ? "step" : undefined}
+    >
+      <div className="mb-1 flex items-start justify-between">
+        <span
+          className={[
+            "font-serif italic font-normal leading-[0.9] tracking-[-0.02em]",
+            active ? "text-accent-deep" : "text-ink",
+          ].join(" ")}
+          style={{ fontSize: "56px" }}
+        >
+          {step.num}
+        </span>
+        <span
+          className={[
+            "mt-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.22em]",
+            active ? "text-accent-deep" : "text-muted",
+          ].join(" ")}
+        >
+          {step.tag}
+        </span>
+      </div>
+
+      <h3 className="m-0 font-sans text-[17px] font-bold tracking-[-0.008em] text-ink leading-[1.3]">
+        {step.title}
+      </h3>
+
+      <p className="m-0 font-sans text-[14.5px] leading-[1.55] text-ink-2 text-pretty">
+        {step.body}
+      </p>
+
+      {step.cta ? (
+        <Link
+          href={step.cta.href}
+          target={step.cta.href.startsWith("http") ? "_blank" : undefined}
+          rel={step.cta.href.startsWith("http") ? "noopener noreferrer" : undefined}
+          className="mt-auto group/cta inline-flex items-center gap-2.5 self-start whitespace-nowrap rounded-full bg-accent px-[18px] py-3 font-sans text-[13.5px] font-semibold leading-none text-white transition-colors hover:bg-accent-deep"
+        >
+          {step.cta.label}
+          <Arrow className="transition-transform group-hover/cta:translate-x-0.5" />
+        </Link>
+      ) : null}
+    </article>
+  );
+}
+
+function DeliverableCard({ deliverable }: { deliverable: Deliverable }) {
+  return (
+    <div className="flex items-start gap-3.5 rounded-xl border border-line bg-white p-4 sm:p-5 transition-colors hover:border-accent/40">
+      <span
+        aria-hidden
+        className="grid h-8 w-8 sm:h-9 sm:w-9 flex-none place-items-center rounded-[9px] border border-accent/40 bg-accent-soft text-accent"
+      >
+        {deliverable.icon === "transcript" ? <IconTranscript /> : <IconBadgeCheck />}
+      </span>
+      <div>
+        <div className="font-sans text-[15px] font-semibold leading-[1.3] text-ink">
+          {deliverable.title}
+        </div>
+        <div className="mt-0.5 font-sans text-[13px] leading-[1.45] text-muted">
+          {deliverable.body}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -381,8 +587,8 @@ function SiteFooter() {
             { label: "MealFlow", href: "/mealflow" },
           ]} />
           <FooterCol heading="Studio" links={[
-            { label: "About", href: "#about" },
-            { label: "Stack", href: "#stack" },
+            { label: "About", href: "#how-i-work" },
+            { label: "How it works", href: "#how-it-works" },
             { label: "Writing", href: "/writing" },
           ]} />
           <FooterCol heading="Contact" links={[
@@ -508,70 +714,42 @@ function Arrow({ className = "" }: { className?: string }) {
 // Icons (inline, dependency-free)
 // ──────────────────────────────────────────────────────────────────────
 
-function IconTarget() {
+function IconTranscript() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="8" cy="8" r="5" />
-      <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 8 H15" />
+      <path d="M9 12 H15" />
+      <path d="M9 16 H13" />
     </svg>
   );
 }
-function IconChartUp() {
+
+function IconBadgeCheck() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M2 12 L6 6 L9 9 L14 3" />
-      <path d="M10 3 H14 V7" />
-    </svg>
-  );
-}
-function IconTriangle() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 13 L8 3 L13 13 Z" />
-    </svg>
-  );
-}
-function IconGlobe() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M2 8 H14" />
-      <path d="M8 2 C10 5 10 11 8 14" />
-      <path d="M8 2 C6 5 6 11 8 14" />
-    </svg>
-  );
-}
-function IconGrid() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-      <path d="M2.5 6.5 H13.5" />
-      <path d="M6.5 2.5 V13.5" />
-    </svg>
-  );
-}
-function IconCheck() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 8 L7 12 L13 4" />
-    </svg>
-  );
-}
-function IconStar() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M8 2 V14" />
-      <path d="M3 8 H13" />
-      <path d="M5 5 L11 11" />
-      <path d="M11 5 L5 11" />
-    </svg>
-  );
-}
-function IconPerson() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12 C3 8 5 6 8 6 C11 6 13 8 13 12" />
-      <circle cx="8" cy="4" r="1.6" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2 L14.5 4.5 L18 4 L18.5 7.5 L21.5 9 L20 12 L21.5 15 L18.5 16.5 L18 20 L14.5 19.5 L12 22 L9.5 19.5 L6 20 L5.5 16.5 L2.5 15 L4 12 L2.5 9 L5.5 7.5 L6 4 L9.5 4.5 Z" />
+      <path d="M9 12 L11 14 L15 10" />
     </svg>
   );
 }
