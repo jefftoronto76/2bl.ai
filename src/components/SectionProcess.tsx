@@ -212,7 +212,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
     >
       <div className="mx-auto max-w-[1100px]">
         {/* Eyebrow */}
-        <p className="mb-7 flex items-center gap-4 font-mono text-[13px] font-medium uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
+        <p className="mb-7 flex items-center gap-4 font-mono text-[13.2px] uppercase tracking-[0.22em] text-[color:var(--color-text-dim)]">
           <span className="rounded-sm bg-accent/20 px-1">How it works</span>
           <span aria-hidden="true" className="block h-px max-w-[120px] flex-1 bg-[color:var(--color-border)]" />
         </p>
@@ -221,7 +221,7 @@ export const SectionProcess: FC<SectionProcessProps> = ({ id = 'how-it-works', c
         <div className="mb-10 grid grid-cols-1 items-center gap-6 lg:mb-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-14">
           <h2
             id={`${id}-h`}
-            className="m-0 font-display text-[clamp(26px,3.2vw,40px)] font-normal leading-[1.06] tracking-[-0.02em] text-pretty"
+            className="m-0 font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-pretty"
           >
             It starts with
             <br />
