@@ -155,6 +155,21 @@ public/
 
 ---
 
+## Deferred — Phase 5
+
+### Model configuration per tenant
+Currently hardcoded in services/chat:
+- Chat model: claude-sonnet-4-6
+- Name extractor: claude-haiku-4-5
+
+When tenant_model_config table exists (Phase 5), the chat service 
+reads model config from there with these values as fallback defaults.
+
+Studio task (Jeff): create tenant_model_config table per 2BL.md spec 
+before Phase 5 code begins.
+
+---
+
 ## Key Documents
 
 | Document | Purpose |
