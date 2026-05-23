@@ -30,7 +30,7 @@
 import { useEffect, useState, type FC, type ReactNode } from 'react';
 import { ShieldCheck, FileText, Files, type LucideIcon } from 'lucide-react';
 import { useSageStore } from '../lib/store';
-import { FEATURED_TESTIMONIALS } from './SectionTestimonials';
+import { FEATURED_TESTIMONIALS } from '../../app/(jefflougheed)/components/SectionTestimonials';
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
 
