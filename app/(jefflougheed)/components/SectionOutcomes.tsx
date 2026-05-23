@@ -44,14 +44,14 @@ const OUTCOMES: Outcome[] = [
     bodyTrail: '.',
   },
   {
-    iconSrc: '/jefflougheed/chewing-gum.svg',
+    iconSrc: '/sage/jefflougheed/chewing-gum.svg',
     title: 'Sustainable innovation',
     bodyLead: 'Practical innovation grounded in better business outcomes.',
     bodyMark: '',
     bodyTrail: '',
   },
   {
-    iconSrc: '/jefflougheed/bench.svg',
+    iconSrc: '/sage/jefflougheed/bench.svg',
     title: 'Deeper benches',
     bodyLead: 'Building the leaders your business needs before you need them.',
     bodyMark: '',
