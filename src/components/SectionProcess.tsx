@@ -292,7 +292,7 @@ const TestimonialCard: FC<TestimonialCardProps> = ({ testimonial }) => {
         &rdquo;
       </span>
 
-      <blockquote className="m-0 mb-5 pr-9 font-display text-[19px] font-normal italic leading-[1.5] text-[color:var(--color-text-primary)]">
+      <blockquote className="m-0 mb-5 pr-9 font-display text-[14px] font-normal italic leading-[1.5] text-[color:var(--color-text-primary)]">
         &ldquo;{testimonial.quote}&rdquo;
       </blockquote>
 
@@ -304,10 +304,10 @@ const TestimonialCard: FC<TestimonialCardProps> = ({ testimonial }) => {
           {initials}
         </span>
         <div className="min-w-0">
-          <div className="font-body text-sm font-semibold leading-tight text-[color:var(--color-text-primary)]">
+          <div className="font-body text-[12px] font-semibold leading-tight text-[color:var(--color-text-primary)]">
             {testimonial.name}
           </div>
-          <div className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-[color:var(--color-text-dim)]">
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-[color:var(--color-text-dim)]">
             {testimonial.title}
             {testimonial.title && testimonial.company ? ' · ' : ''}
             {testimonial.company}
