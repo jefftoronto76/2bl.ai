@@ -10,7 +10,7 @@ type Testimonial = {
   title: string | null
   text: string
   relationship: Relationship
-  /** Headshot filename in /public/headshots/, without extension. Optional. */
+  /** Headshot filename in /public/sage/jefflougheed/headshots/, without extension. Optional. */
   headshot?: string
   /** Company/org name. Surfaced by featured testimonials (SectionProcess). */
   company?: string
@@ -98,7 +98,7 @@ function Avatar({ name, headshot }: { name: string; headshot?: string }) {
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/headshots/${headshot}.jpeg`}
+          src={`/sage/jefflougheed/headshots/${headshot}.jpeg`}
           alt={name}
           className="w-full h-full object-cover"
           onError={() => setFailed(true)}

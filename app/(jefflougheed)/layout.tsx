@@ -8,13 +8,13 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://jefflougheed.ca'),
   icons: {
     icon: [
-      { url: '/favicons/favicon.ico', sizes: 'any' },
-      { url: '/favicons/favicon.svg', type: 'image/svg+xml' },
-      { url: '/favicons/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
+      { url: '/sage/jefflougheed/favicons/favicon.ico', sizes: 'any' },
+      { url: '/sage/jefflougheed/favicons/favicon.svg', type: 'image/svg+xml' },
+      { url: '/sage/jefflougheed/favicons/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
     ],
-    apple: { url: '/favicons/apple-touch-icon.png' },
+    apple: { url: '/sage/jefflougheed/favicons/apple-touch-icon.png' },
   },
-  manifest: '/favicons/site.webmanifest',
+  manifest: '/sage/jefflougheed/favicons/site.webmanifest',
 }
 
 export default function JeffLougheedLayout({ children }: { children: React.ReactNode }) {

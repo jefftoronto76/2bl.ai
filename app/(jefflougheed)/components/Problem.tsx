@@ -10,7 +10,7 @@ export function Problem() {
     <section id="problem" className="problem-section" style={{
       padding: '64px clamp(24px, 5vw, 48px)',
       borderBottom: '1px solid rgba(26,25,23,0.08)',
-      backgroundImage: 'url(/ProblemBackground.webp)',
+      backgroundImage: 'url(/sage/jefflougheed/ProblemBackground.webp)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',

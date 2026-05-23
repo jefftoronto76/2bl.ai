@@ -39,7 +39,7 @@ const CARDS: Card[] = [
   {
     kind: 'role',
     id: 'trapeze',
-    logo: '/logos/Trapeze.svg',
+    logo: '/sage/jefflougheed/logos/Trapeze.svg',
     year: '1998–2013',
     tagline: 'Struggling Provider → Trusted Partner',
     metric: '$350K → $25M',
@@ -79,7 +79,7 @@ const CARDS: Card[] = [
   {
     kind: 'education',
     id: 'york',
-    logo: '/logos/York_University_Logo.svg',
+    logo: '/sage/jefflougheed/logos/York_University_Logo.svg',
     year: '2011',
     program: "I've always been a strong seller. This taught me to lead sellers.",
     focus:
@@ -88,7 +88,7 @@ const CARDS: Card[] = [
   {
     kind: 'education',
     id: 'royalroads',
-    logo: '/logos/royalroads_Logo.svg',
+    logo: '/sage/jefflougheed/logos/royalroads_Logo.svg',
     year: '2014–2015',
     program:
       "Most performance problems aren't skill problems. Cognitive coaching taught me to see the difference.",
@@ -98,7 +98,7 @@ const CARDS: Card[] = [
   {
     kind: 'role',
     id: 'infor',
-    logo: '/logos/Infor.svg',
+    logo: '/sage/jefflougheed/logos/Infor.svg',
     year: '2015–2017',
     tagline: 'Legacy Vendor → Viable Cloud Partner',
     metric: '$1.7M',
@@ -131,7 +131,7 @@ const CARDS: Card[] = [
   {
     kind: 'education',
     id: 'jhu',
-    logo: '/logos/JohnHopkins_Logo.svg',
+    logo: '/sage/jefflougheed/logos/JohnHopkins_Logo.svg',
     year: '2017',
     program:
       "Understanding ML and AI isn't optional anymore. This is where I built that foundation.",
@@ -141,7 +141,7 @@ const CARDS: Card[] = [
   {
     kind: 'role',
     id: 'keyhole',
-    logo: '/logos/Keyhole.svg',
+    logo: '/sage/jefflougheed/logos/Keyhole.svg',
     year: '2017–2018',
     tagline: 'Self Service → Multi-Motion Revenue',
     metric: '3×',
@@ -177,7 +177,7 @@ const CARDS: Card[] = [
   {
     kind: 'role',
     id: 'mealgarden',
-    logo: '/logos/MealGarden.svg',
+    logo: '/sage/jefflougheed/logos/MealGarden.svg',
     year: '2019–2025',
     tagline: 'Stalled Product → Real Business',
     metric: '9×',
@@ -214,9 +214,9 @@ const CARDS: Card[] = [
     kind: 'education',
     id: 'product-ai',
     logo: [
-      '/logos/DesignLab_Logo.svg',
-      '/logos/IDF_Logo.svg',
-      '/logos/deeplearningai.svg',
+      '/sage/jefflougheed/logos/DesignLab_Logo.svg',
+      '/sage/jefflougheed/logos/IDF_Logo.svg',
+      '/sage/jefflougheed/logos/deeplearningai.svg',
     ],
     year: '2023–2025',
     program: 'Product, UX & Applied AI',

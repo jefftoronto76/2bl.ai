@@ -68,8 +68,7 @@ function Nav() {
       <div className="mx-auto flex h-14 sm:h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8 lg:px-12">
         <Link href="/" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
           <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-md bg-ink">
-            {/* TODO: replace with <Image /> when logo asset is in /public */}
-            <img src="/logo.png" alt="" className="h-full w-full object-cover" />
+            <img src="/2bl/2blai_logo.svg" alt="" className="h-full w-full object-cover" />
           </span>
           <span className="hidden sm:inline">Second Brain Labs</span>
         </Link>

@@ -296,6 +296,45 @@ sniffing the host in every layout.
 
 ---
 
+## jefflougheed.ca Isolation
+
+jefflougheed.ca-only code and assets are isolated from shared/platform code:
+
+- **Components** live in `app/(jefflougheed)/components/` — the self-contained,
+  presentational pieces owned solely by the public site: `Footer`,
+  `SectionOutcomes`, `SectionWhy`, `SectionCareer`, `SectionTestimonials`,
+  `Problem`, `Session`. `page.tsx` imports these via relative `./components/…`.
+- **Public assets** live in `public/sage/jefflougheed/` and are referenced as
+  `/sage/jefflougheed/…` (favicons, headshots, the ten career logos,
+  `ProblemBackground.webp`, `chewing-gum.svg`, `bench.svg`). Next.js only
+  serves static files from the **root** `public/` directory — there is no
+  route-group-scoped `public/`, so isolation is achieved by namespacing under
+  root `public/` rather than moving the folder into `app/(jefflougheed)/`. The
+  webmanifest lives at `/sage/jefflougheed/favicons/site.webmanifest` and its
+  internal icon `src`s point at `/sage/jefflougheed/favicons/…`.
+
+The following files remain in `src/components/` **intentionally** — they are
+coupled to the Sage chat service and cannot move until Phase 3 (chat service
+extraction into `services/chat`):
+
+`Hero.tsx`, `Nav.tsx`, `SectionProcess.tsx`, `Chat.tsx`, `sage/*`
+
+Do not move or delete these without explicit instruction from Jeff.
+
+Notes:
+- `SectionProcess.tsx` (stays in `src/components/`) imports
+  `FEATURED_TESTIMONIALS` from the moved
+  `app/(jefflougheed)/components/SectionTestimonials` — a temporary cross-tree
+  import that resolves when `SectionProcess` itself moves in Phase 3.
+- `public/logos/` deliberately still holds the platform `2blai_logo.svg` and
+  the duplicate/variant logos referenced by the orphan `CareerHighlights.tsx`
+  — only the specific jefflougheed logos were namespaced.
+- The earlier DesignLab logo filename typo is fixed: `SectionCareer`
+  references `/sage/jefflougheed/logos/DesignLab_Logo.svg` and the on-disk
+  file is spelled to match, so the logo resolves.
+
+---
+
 ## Pages
 
 Admin page routes under `app/admin/`. Each page owns its route header
