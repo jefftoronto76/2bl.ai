@@ -12,15 +12,25 @@
   - Components moved to app/(jefflougheed)/components/ (Footer,
     SectionOutcomes, SectionWhy, SectionCareer, SectionTestimonials,
     Problem, Session)
-  - Public assets namespaced under public/jefflougheed/ and referenced as
-    /jefflougheed/… (Next.js serves static only from root public/, so a
-    route-group public/ is not possible — namespacing achieves isolation
-    while keeping URLs served)
+  - Public assets moved to public/sage/jefflougheed/ and referenced as
+    /sage/jefflougheed/… (Sage product namespace — jefflougheed.ca is a
+    tenant of Sage; Next.js serves static only from root public/, so the
+    platform → product → tenant hierarchy is expressed as nested folders)
   - CLAUDE.md updated with the "jefflougheed.ca Isolation" section
 
 ## In Progress
 - (none) — awaiting Vercel preview verification of Stage 2, then Jeff's
   approval to begin Phase 3
+
+## Public asset structure
+
+Assets are namespaced by platform → product → tenant, mirroring the
+tenant hierarchy:
+
+- `public/2bl/` — 2BL platform assets
+- `public/sage/` — Sage product assets
+- `public/sage/jefflougheed/` — jefflougheed.ca tenant assets
+- `public/sage/[tenant]/` — pattern for future Sage tenants
 
 ## Blocked — Cannot move until Phase 3 (chat service extraction)
 The following files are coupled to the Sage chat engine and must
