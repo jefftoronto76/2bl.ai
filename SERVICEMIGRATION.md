@@ -3,15 +3,24 @@
 > Living document. Updated after every stage.
 > CC reads this at the start of every session.
 
-## Current Stage: Stage 2 — Isolate jefflougheed.ca
+## Current Stage: Stage 2 complete — next up Phase 3 (chat service extraction)
 
 ## Completed
 - Phase 1: Audit and baseline (MIGRATION.md Part A)
 - IDOR fix: app/api/sessions/[id]/route.ts scoped by tenant_id
+- Stage 2: Isolate jefflougheed.ca
+  - Components moved to app/(jefflougheed)/components/ (Footer,
+    SectionOutcomes, SectionWhy, SectionCareer, SectionTestimonials,
+    Problem, Session)
+  - Public assets namespaced under public/jefflougheed/ and referenced as
+    /jefflougheed/… (Next.js serves static only from root public/, so a
+    route-group public/ is not possible — namespacing achieves isolation
+    while keeping URLs served)
+  - CLAUDE.md updated with the "jefflougheed.ca Isolation" section
 
 ## In Progress
-- Stage 2: Moving jefflougheed.ca components and assets into
-  app/(jefflougheed)/
+- (none) — awaiting Vercel preview verification of Stage 2, then Jeff's
+  approval to begin Phase 3
 
 ## Blocked — Cannot move until Phase 3 (chat service extraction)
 The following files are coupled to the Sage chat engine and must
