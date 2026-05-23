@@ -636,9 +636,9 @@ const SagePanel: FC<SagePanelProps> = ({ onAskSage }) => {
       />
 
       <div className="relative flex max-w-[640px] flex-col items-start gap-5">
-        <h3 className="m-0 font-display text-[clamp(26px,3vw,40px)] font-normal italic leading-[1.1] tracking-[-0.015em] text-pretty">
+        <h4 className="m-0 font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-pretty">
           Not sure which fits?
-        </h3>
+        </h4>
 
         <p className="m-0 max-w-[52ch] font-body text-[15px] leading-[1.6] text-bg/70 sm:text-base">
           Sage can help you figure out the right lane &mdash; or whether this is the right fit at
