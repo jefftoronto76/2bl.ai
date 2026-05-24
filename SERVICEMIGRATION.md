@@ -5,10 +5,13 @@
 
 ---
 
-## Current State — End of Day May 23, 2026
+## Current State — May 24, 2026
 
-Branch: `claude/beautiful-einstein-U9X7p` (14+ commits ahead of main)
-Status: Stages 1-3 complete. Pending merge to main.
+Branch: `phase-3-chat-service-extraction` — fast-forward merged to main (main @ 6ee05eb).
+Status: Stages 1-3 complete. Phase 3 **server** extraction complete and merged
+to main. Two items deferred to a separate session:
+- Client UI move (src/components/sage/*, src/lib/store.ts → services/chat/ui/v1/)
+- sage-prompt.ts cleanup (physical move of DEFAULT_SYSTEM_PROMPT out of src/lib)
 
 ---
 
@@ -34,6 +37,18 @@ Status: Stages 1-3 complete. Pending merge to main.
 - ✅ 2BL favicons wired in app/secondbrainlabs/layout.tsx
 - ✅ public/sage/ and public/sage/favicons/ scaffolded
 
+### Stage 4 — Phase 3 Chat Service Extraction (server)
+- ✅ Server engine extracted to services/chat/server/ (stream, prompt,
+  booking, session, index)
+- ✅ Model-provider seam + resolveModelConfig — reads tenant_model_config,
+  falls back to claude-sonnet-4-6 / claude-haiku-4-5 when no row
+- ✅ OpenAI provider seam present but NOT wired (no dep/key) — clean
+  injection point, no circuit breaker
+- ✅ /api/sage reduced to a thin HTTP adapter over streamChat (476 → 19 lines)
+- ✅ HTTP contract frozen; jefflougheed.ca production verified (chat, booking
+  card, ?mode=question, name capture; no console errors, no 500s)
+- ✅ tsc clean, next build passing; fast-forward merged to main (6ee05eb)
+
 ---
 
 ## Pending — Before Merge
@@ -48,10 +63,11 @@ Status: Stages 1-3 complete. Pending merge to main.
 
 ---
 
-## Blocked — Cannot move until Phase 3 (chat service extraction)
+## Deferred to a separate session — Client UI move
 
-The following files are coupled to the Sage chat engine and must stay
-in src/components/ until the chat service is extracted into services/chat:
+Phase 3 **server** extraction is done and merged. The remaining client-side
+move (into services/chat/ui/v1/) is intentionally deferred to its own session.
+The following files still live in src/components/ and will move then:
 
 | File | Reason blocked |
 |------|----------------|
@@ -61,8 +77,8 @@ in src/components/ until the chat service is extracted into services/chat:
 | src/components/Chat.tsx | IS the platform chat service |
 | src/components/sage/* | Platform-level chat primitives (BookingCard, SageReply, parseBookingCards, markdownComponents, useSageParameters) |
 
-These files are intentionally left in src/components/ and must not be
-moved or deleted without explicit instruction from Jeff.
+These files are intentionally left in src/components/ for now and must not be
+moved or deleted until the dedicated client-UI-move session, per Jeff.
 
 ---
 
@@ -83,40 +99,43 @@ Ownership unknown — do not touch until investigated:
 
 ## What Remains Before Heirloom Migration
 
-### Priority 1 — Merge current branch to main
-- Verify jefflougheed.ca on Vercel preview (confirmed working)
-- Verify 2BL storefront on Vercel preview
-- Create PR, merge to main
+### Priority 1 — Merge to main ✅ DONE
+- jefflougheed.ca verified on production (chat, booking card, ?mode=question,
+  name capture — no console errors, no 500s)
+- phase-3-chat-service-extraction fast-forward merged to main (6ee05eb)
 
 ### Priority 2 — Phase 3: Extract chat service (CRITICAL PATH)
-This is the most important remaining work. The chat engine must be
-extracted into services/chat before Heirloom can consume it.
 
-The chat service is the orchestration layer — it handles:
-- Streaming AI responses
-- CRUD operations via conversation
-- Analysis and intent detection
-- Booking and calendar orchestration
-- Session lifecycle management
-- Routing to other services (prompt, crm, auth, payments)
+**Server extraction — ✅ COMPLETE (merged to main).** The orchestration layer
+now lives in services/chat/server/:
+- stream.ts — Anthropic streaming engine, model-provider seam, resolveModelConfig
+- prompt.ts — system-prompt assembly (master_prompt + DEFAULT_SYSTEM_PROMPT,
+  question-mode context)
+- booking.ts — server-side [BOOKING: …] injection from sage_parameters
+- session.ts — onFinish lifecycle: token tracking, calendar-offer + name capture
+- index.ts — public interface (streamChat) — what Heirloom imports
 
-Files that move into services/chat:
-- app/api/sage/route.ts (core streaming + orchestration logic)
-- src/lib/stream.ts
-- src/lib/sage.ts
-- src/lib/sage-prompt.ts
-- src/components/sage/* (BookingCard, SageReply, parseBookingCards, 
+app/api/sage/route.ts stayed in place as a thin HTTP adapter (key guard,
+tenant resolution, body parse) that delegates to streamChat. HTTP contracts
+FROZEN — /api/sage and /api/sage/parameters paths and shapes unchanged.
+
+**Client UI move — DEFERRED (separate session).** Still to move into
+services/chat/ui/v1/ (browser-only kit):
+- src/components/sage/* (BookingCard, SageReply, parseBookingCards,
   markdownComponents, useSageParameters)
-- src/lib/store.ts (useChatStore — platform level)
+- src/components/Chat.tsx
+- src/lib/store.ts (useSageStore)
+- streamSageResponse (src/lib/sage.ts) → ui/v1/stream.ts
+- Update all importers: Hero.tsx, Nav.tsx, SectionProcess.tsx, admin components
 
-Files that stay as jefflougheed.ca consumers of the chat service:
-- src/components/Hero.tsx
-- src/components/Nav.tsx
-- src/components/SectionProcess.tsx
-- src/components/Chat.tsx (thin adapter)
+NOTE: src/lib/stream.ts does NOT move — it is also used by the admin Composer.
+services/chat/ui/v1/stream.ts will be a separate client module that imports
+readDataStream from src/lib/stream.ts.
 
-HTTP contracts are FROZEN — /api/sage and /api/sage/parameters paths
-and shapes do not change. jefflougheed.ca must not break.
+**sage-prompt.ts cleanup — DEFERRED (separate session).** DEFAULT_SYSTEM_PROMPT
+is currently re-exported from services/chat/server/prompt.ts but still
+physically defined in src/lib/sage-prompt.ts (the legacy admin prompt page
+imports it). Consolidate + retire the re-export in the cleanup session.
 
 ### Priority 3 — Phase 4: Harden tenant security
 RLS, JWT, audit logging — see MIGRATION.md Phase 4.
@@ -157,16 +176,15 @@ public/
 
 ## Deferred — Phase 5
 
-### Model configuration per tenant
-Currently hardcoded in services/chat:
+### Model configuration per tenant — ✅ IMPLEMENTED
+tenant_model_config now exists and is wired. services/chat/server/stream.ts
+resolveModelConfig reads model_id / model_id_fallback / provider / max_tokens /
+rate_limit_requests_per_hour when a tenant row exists, and falls back to the
+code defaults when none does:
 - Chat model: claude-sonnet-4-6
-- Name extractor: claude-haiku-4-5
+- Name extractor: claude-haiku-4-5 (internal constant, not tenant-configurable)
 
-When tenant_model_config table exists (Phase 5), the chat service 
-reads model config from there with these values as fallback defaults.
-
-Studio task (Jeff): create tenant_model_config table per 2BL.md spec 
-before Phase 5 code begins.
+Table is currently empty for all tenants → defaults in effect everywhere.
 
 ### PgBouncer / connection pooling
 Not applicable to the current stack. Supabase JS uses the HTTPS 
