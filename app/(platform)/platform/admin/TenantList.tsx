@@ -8,13 +8,13 @@ import {
   Group,
   Badge,
   Button,
-  Modal,
   Center,
   ActionIcon,
   Card,
   Text,
 } from '@mantine/core';
 import { IconChevronRight, IconPlus } from '@tabler/icons-react';
+import { NewTenantModal } from './NewTenantModal';
 
 export interface TenantRow {
   id: string;
@@ -258,25 +258,11 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
         </>
       )}
 
-      <Modal
+      <NewTenantModal
         opened={newOpen}
         onClose={() => setNewOpen(false)}
-        title="New tenant"
-        centered
-        size="sm"
-      >
-        <Stack gap="md">
-          <Text c="dimmed">
-            Tenant provisioning isn’t wired up yet. This is where you’ll create a tenant —
-            name, type, parent, and domain.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="subtle" color="gray" onClick={() => setNewOpen(false)}>
-              Close
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        tenants={tenants}
+      />
     </>
   );
 }
