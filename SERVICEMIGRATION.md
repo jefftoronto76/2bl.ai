@@ -7,10 +7,20 @@
 
 ## Current State — May 24, 2026
 
-Status: Stages 1-3 complete and merged to main (#22, #23). Phase 3 **chat
-service — server half** extracted and live (`/api/sage` routes through it).
-The chat-service UI half and the other three Phase 3 services (auth, prompt,
-crm) are not started.
+The platform foundation is in place and merged to `main`:
+
+- **Chat service — server half** (`services/chat/server/`) extracted and live;
+  `/api/sage` routes through it as a thin adapter. (Merged to main, #22/#23.)
+- **Platform admin** — `/platform/admin` with the cross-tenant tenant list and
+  full tenant create / edit / delete. (Merged to main, #24.)
+- **Platform sign-in** — branded `/secondbrainlabs/sign-in` flow with the
+  `platform_admin` role gate. (Merged to main, #24.)
+
+Focus now shifts to **Heirloom**: marketing page, chat, and the memory-creation
+flow. The remaining service extraction (auth / prompt / crm), the chat-service
+UI move to `services/chat/ui/v1/`, and tenant-hierarchy cycle prevention are
+**known deferred items** — see "Next — Heirloom" and "Known deferred items"
+below.
 
 ---
 
@@ -60,6 +70,24 @@ What's in each file:
 `app/api/sage/route.ts` now imports `streamChat` from `@/services/chat/server`
 and owns only HTTP concerns (ANTHROPIC_API_KEY guard, host→tenant resolution,
 JSON body parsing).
+
+### Platform admin + sign-in ✅ COMPLETE (merged to main, #24)
+The `/platform/admin` operator surface and the branded platform sign-in are
+live on `main`.
+
+- **Sign-in** — `app/secondbrainlabs/sign-in/[[...sign-in]]/page.tsx` plus the
+  `(platform)` layout gate: unauthenticated → `/secondbrainlabs/sign-in`,
+  non-`platform_admin` → `/admin`. Role read from Clerk `publicMetadata.role`.
+- **Tenant list** — `TenantList.tsx`: cross-tenant parent/child tree (service-
+  role read across all tenants), desktop table + mobile cards, expand/collapse,
+  rows clickable (mouse + keyboard) to open the editor.
+- **Create** — `NewTenantModal.tsx` + `POST /api/platform/tenants`: name, type,
+  parent, slug (auto-generated, editable), domain; slug + domain uniqueness.
+- **Edit / delete** — `EditTenantModal.tsx` + `PATCH` / `DELETE
+  /api/platform/tenants/[id]`: delete is confirmed and refuses to remove a
+  tenant with sub-tenants (409) or dependent records (`23503` → 409).
+- **Auth** — every `/api/platform/*` route re-checks `platform_admin`
+  independently of the UI, so the service-role writes can't run for a non-admin.
 
 ---
 
@@ -183,45 +211,49 @@ Ownership unknown — do not touch until investigated:
 
 ---
 
-## What Remains Before Heirloom Migration
+## Next — Heirloom
 
-### ✅ Done — Merge Stages 1-3 to main
-Merged via #22 (Stages 2+3) and #23 (admin host-tenant fix). jefflougheed.ca
-and the 2BL storefront verified on preview.
+With the platform foundation merged, the active work is bringing **Heirloom**
+onto the platform:
 
-### ✅ Done (partial) — Phase 3: Chat service SERVER half
-`services/chat/server/` extracted; `/api/sage` routes through it as a thin
-adapter. See "Phase 3 (partial) — Chat service: SERVER half" above for the
-per-file breakdown.
+1. **Heirloom marketing page** — the product storefront / landing surface.
+2. **Heirloom chat** — Heirloom's conversational experience on the chat service
+   (consuming `services/chat/server`; HTTP contracts stay frozen).
+3. **Memory-creation flow** — the core Heirloom flow for capturing and building
+   memories / stories.
 
-### Priority 1 — Finish Phase 3 (CRITICAL PATH)
-The chat engine must be fully in `services/chat` before Heirloom can consume
-it. Remaining work, in dependency order (`auth → prompt → crm`, then close out
-chat — see the dependency-order problem above):
+These can proceed against the current chat service without finishing the full
+service extraction — the deferred items below are not blockers for Heirloom's
+first cut. HTTP contracts remain FROZEN: `/api/sage` and `/api/sage/parameters`
+paths and shapes do not change; jefflougheed.ca must not break.
 
-1. **Extract `auth`** — client factories + `get-auth-context` /
-   `get-tenant-from-request` / `sync-user`; repoint `services/chat/server`'s
-   `getAdminClient()` calls at it.
-2. **Extract `prompt`** — compile pipeline + `sage-prompt.ts` (physically move
-   `DEFAULT_SYSTEM_PROMPT` here, drop the re-export shim); repoint chat's
-   `master_prompt` reads.
-3. **Extract `crm`** — session persistence + `deriveSessionStatus`; repoint
-   chat's `chat_sessions` writes.
-4. **Extract chat UI half** — `services/chat/ui/v1/` (parseBookingCards,
-   BookingCard, SageReply, markdownComponents, useSageParameters) + resolve the
-   shared `src/lib/stream.ts` (`readDataStream`) admin coupling, + `sage.ts`
-   client + `store.ts`.
-5. **Infrastructure** — add the `@/services/*` tsconfig alias and the
-   import-boundary lint rule (see "Phase 3 infrastructure gaps").
+---
 
-HTTP contracts remain FROZEN — /api/sage and /api/sage/parameters paths and
-shapes do not change. jefflougheed.ca must not break.
+## Known deferred items
 
-### Priority 2 — Phase 4: Harden tenant security
-RLS, JWT, audit logging — see MIGRATION.md Phase 4.
+Tracked, intentionally not done yet, none blocking Heirloom's first iteration:
 
-### Priority 3 — Heirloom migration
-Cannot start until Phases 3 and 4 are complete.
+1. **Service extraction — `auth`, `prompt`, `crm`.** The chat server half was
+   extracted first (out of MIGRATION.md's `auth → prompt → crm → chat` order),
+   so it reaches around the missing services and reads their concerns directly.
+   See "Dependency-order problem" and "Not started — other Phase 3 services"
+   above. Also pending here: the `@/services/*` tsconfig alias and the
+   import-boundary lint rule ("Phase 3 infrastructure gaps").
+2. **Tenant-hierarchy infinite-loop / cycle prevention.** `PATCH
+   /api/platform/tenants/[id]` blocks a tenant being its own parent, but does
+   NOT prevent deeper cycles (A→B→A). The list's tree walk drops cycles from the
+   root set rather than infinite-looping, so today this is malformed state, not
+   a crash — but a full ancestry/descendant check should land before tenant
+   hierarchies get deep.
+3. **Chat-service UI move to `services/chat/ui/v1/`.** The client primitives
+   (parseBookingCards, BookingCard, SageReply, markdownComponents,
+   useSageParameters) still live in `src/components/sage/`; the client transport
+   (`sage.ts`, `stream.ts`, `store.ts`) is still in `src/lib/`. See "Chat
+   service — UI half NOT yet extracted" above (resolve the shared `stream.ts`
+   admin coupling first).
+
+**Phase 4 — security hardening** (RLS primary, Clerk→Supabase JWT, audit log;
+MIGRATION.md Phase 4) remains the major security milestone and is unchanged.
 
 ---
 
