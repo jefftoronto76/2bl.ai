@@ -1,5 +1,71 @@
 # DB Changelog
 
+## 2026-05-24
+
+### Create `tenant_branding` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Columns:** ⚠️ _Confirm exact column list from Studio._ Expected shape:
+`tenant_id` (uuid, FK → tenants.id) plus per-tenant branding fields
+(e.g. logo, palette/colors, fonts).
+
+**Purpose:** Per-tenant branding/theming so each product storefront and tenant
+surface can be styled from data rather than hardcoded tokens. Supports the
+capability model in 2BL.md (Database/Chat surfaces rendered per tenant brand).
+
+---
+
+### Insert Sage tenant
+**Type:** Data insert
+**Executed by:** Jeff in Supabase Studio
+
+**Record inserted:** `tenants` table
+- `id:` ⚠️ _fill from Studio_
+- `name: Sage`
+- `slug:` ⚠️ _fill from Studio_
+- `type: product`
+- `parent_id:` Second Brain Labs platform tenant (`6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb`) — ⚠️ _confirm_
+- `domain:` ⚠️ _fill from Studio (if any)_
+
+**Purpose:** Establish Sage as a product tenant under the 2BL platform.
+
+---
+
+### Insert Heirloom tenant
+**Type:** Data insert
+**Executed by:** Jeff in Supabase Studio
+
+**Record inserted:** `tenants` table
+- `id:` ⚠️ _fill from Studio_
+- `name: Heirloom`
+- `slug:` ⚠️ _fill from Studio_
+- `type: product`
+- `parent_id:` Second Brain Labs platform tenant (`6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb`) — ⚠️ _confirm_
+- `domain:` ⚠️ _fill from Studio (if any)_
+
+**Purpose:** Establish Heirloom as a product tenant under the 2BL platform,
+ahead of the Heirloom migration (marketing page, chat, memory-creation flow).
+
+---
+
+### Insert `tenant_users` rows for Jeff (Heirloom + 2BL)
+**Type:** Data insert
+**Executed by:** Jeff in Supabase Studio
+
+**Records inserted:** `tenant_users` table — two rows giving Jeff membership on:
+- The **Heirloom** tenant (id above)
+- The **2BL** platform tenant — Second Brain Labs (`6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb`)
+
+Per row: `tenant_id`, `user_id:` Jeff (⚠️ _fill `users.id` from Studio_),
+`role:` ⚠️ _fill from Studio_.
+
+**Purpose:** Grant Jeff access to the Heirloom and 2BL tenants. A user with
+multiple `tenant_users` rows is resolved to the active tenant by request host
+(see `getAuthContext` / `resolve-tenant-from-host`).
+
+---
+
 ## 2026-05-23
 
 ### Add tenant_model_config table

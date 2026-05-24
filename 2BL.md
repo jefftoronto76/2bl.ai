@@ -31,23 +31,55 @@ row, a product config, and a storefront. No code changes required.
 
 ```
 2BL (platform)
-└── Product
+└── Product (Sage, Heirloom, HUGS)
     └── Tenant
         └── Sub-tenant
-            └── X
-                └── Y
-                    └── Z (unlimited depth)
+            └── … (unlimited depth)
 ```
 
-The hierarchy is not fixed. Any tenant can be a parent, a child, or
-both. Depth is unlimited and varies by product and use case. User
-management scales up or down based on the number of sub-tenants —
-adding a new relationship type is a data change, not a code change.
+The confirmed canonical shape is **2BL → Product → Tenant → Sub-tenant**, and
+sub-tenants nest to **unlimited depth**. The hierarchy is not fixed beyond that:
+any tenant can be a parent, a child, or both. User management scales up or down
+based on the number of sub-tenants — adding a new relationship type is a data
+change, not a code change.
 
 Access rights cascade down the tree and can be customized at any node.
 
 jefflougheed.ca is a customer tenant of Sage. It is not part of the
 platform.
+
+---
+
+## Capability Model
+
+A tenant is a **composition of capabilities**, not a fixed product template.
+Each capability is enabled or disabled per tenant independently — turning one on
+is a data/config change, not a code change.
+
+| Capability | What it gives the tenant |
+|------------|--------------------------|
+| Prompt Studio | Author and compile the tenant's AI system prompt from blocks (see Three-Tier Prompt Studio below). |
+| Auth | Tenant-scoped users, roles, and sign-in (Clerk + `tenant_users`). |
+| Database | Tenant-scoped data storage under RLS — sessions, content, branding, parameters, etc. |
+| Chat | The conversational chat surface, powered by the chat service. |
+
+Capabilities cascade with the tenant tree: a parent provisions which
+capabilities its sub-tenants receive, and access inherits down the tree.
+
+### Three-Tier Prompt Studio
+
+When the Prompt Studio capability is enabled, a tenant's system prompt compiles
+from three inherited tiers, merged top-down:
+
+1. **Platform (2BL)** — base defaults shared by every product and tenant.
+2. **Product (Sage / Heirloom / HUGS)** — product-specific defaults layered on
+   the platform base.
+3. **Tenant** — per-tenant overrides and additions.
+
+Lower tiers inherit the tier above and may override it; the compile merges
+**platform → product → tenant** so the most specific tier wins. Today this maps
+onto `is_default` platform/product blocks plus tenant-scoped blocks in the
+`blocks` table; the compile pipeline moves into `services/prompt` once extracted.
 
 ---
 
