@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import {
   Table,
   Box,
@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import { IconChevronRight, IconPlus } from '@tabler/icons-react';
 import { NewTenantModal } from './NewTenantModal';
+import { EditTenantModal } from './EditTenantModal';
 
 export interface TenantRow {
   id: string;
@@ -92,6 +93,7 @@ function TypeCell({ type }: { type: string | null }) {
 export function TenantList({ tenants }: { tenants: TenantRow[] }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [newOpen, setNewOpen] = useState(false);
+  const [editing, setEditing] = useState<TenantRow | null>(null);
   const visible = useVisibleNodes(tenants, expandedIds);
 
   function toggleExpand(id: string) {
@@ -101,6 +103,25 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
       else next.add(id);
       return next;
     });
+  }
+
+  // Expand/collapse lives on the chevron — keep its clicks (mouse + keyboard)
+  // from bubbling up to the row's open-editor handler.
+  function handleExpandClick(e: MouseEvent, id: string) {
+    e.stopPropagation();
+    toggleExpand(id);
+  }
+
+  // Open the editor on click, and on Enter/Space for keyboard users (the row
+  // carries role="button" + tabIndex={0}).
+  function rowKeyDown(e: KeyboardEvent, tenant: TenantRow) {
+    // Ignore keydowns bubbling from the chevron button — only the row itself
+    // (when it holds focus) opens the editor.
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setEditing(tenant);
+    }
   }
 
   return (
@@ -132,7 +153,15 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
                 {visible.map(({ tenant, depth, childCount }) => {
                   const expanded = expandedIds.has(tenant.id);
                   return (
-                    <Table.Tr key={tenant.id}>
+                    <Table.Tr
+                      key={tenant.id}
+                      onClick={() => setEditing(tenant)}
+                      onKeyDown={(e) => rowKeyDown(e, tenant)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Edit ${tenant.name}`}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <Table.Td>
                         <Group gap="xs" wrap="nowrap" style={{ paddingLeft: depth * 20 }}>
                           <Box w={28} style={{ display: 'flex', justifyContent: 'center' }}>
@@ -141,7 +170,7 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
                                 variant="subtle"
                                 color="gray"
                                 size="sm"
-                                onClick={() => toggleExpand(tenant.id)}
+                                onClick={(e) => handleExpandClick(e, tenant.id)}
                                 aria-label={
                                   expanded ? `Collapse ${tenant.name}` : `Expand ${tenant.name}`
                                 }
@@ -205,7 +234,12 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
                   withBorder
                   padding="sm"
                   radius="md"
-                  style={{ marginLeft: depth * 16 }}
+                  onClick={() => setEditing(tenant)}
+                  onKeyDown={(e) => rowKeyDown(e, tenant)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Edit ${tenant.name}`}
+                  style={{ marginLeft: depth * 16, cursor: 'pointer' }}
                 >
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
                     <Stack gap={4} style={{ minWidth: 0 }}>
@@ -233,7 +267,7 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
                       <ActionIcon
                         variant="subtle"
                         color="gray"
-                        onClick={() => toggleExpand(tenant.id)}
+                        onClick={(e) => handleExpandClick(e, tenant.id)}
                         aria-label={
                           expanded
                             ? `Collapse ${tenant.name}`
@@ -263,6 +297,15 @@ export function TenantList({ tenants }: { tenants: TenantRow[] }) {
         onClose={() => setNewOpen(false)}
         tenants={tenants}
       />
+
+      {editing && (
+        <EditTenantModal
+          key={editing.id}
+          tenant={editing}
+          tenants={tenants}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </>
   );
 }
