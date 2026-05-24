@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 const isAdminRoute = createRouteMatcher(['/admin(.*)'])
 
 const SBL_HOSTS = new Set(['2bl.ai', 'www.2bl.ai'])
+const HEIRLOOM_HOSTS = new Set(['heirloom.2bl.ai'])
 
 export default clerkMiddleware(async (auth, req) => {
   // ─── Domain-based routing (runs above Clerk auth) ───
@@ -28,6 +29,28 @@ export default clerkMiddleware(async (auth, req) => {
     if (isSblHost && !isSblPath) {
       const url = req.nextUrl.clone()
       url.pathname = pathname === '/' ? '/secondbrainlabs' : `/secondbrainlabs${pathname}`
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // ─── Heirloom storefront routing ───
+  // heirloom.2bl.ai serves the Heirloom product storefront. Rewrite to the
+  // /heirloom segment and tag with x-heirloom so the root layout drops the
+  // inkwell palette. Disjoint from the SBL host/path above, so the SBL rewrite
+  // never catches Heirloom. Direct hits to /heirloom (e.g. preview URLs) get
+  // the same tag without a rewrite.
+  const isHeirloomHost = HEIRLOOM_HOSTS.has(host)
+  const isHeirloomPath = pathname === '/heirloom' || pathname.startsWith('/heirloom/')
+
+  if (isHeirloomHost || isHeirloomPath) {
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-heirloom', '1')
+
+    if (isHeirloomHost && !isHeirloomPath) {
+      const url = req.nextUrl.clone()
+      url.pathname = pathname === '/' ? '/heirloom' : `/heirloom${pathname}`
       return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
     }
 
