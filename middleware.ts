@@ -20,7 +20,10 @@ export default clerkMiddleware(async (auth, req) => {
   // /secondbrainlabs) and uses the Mantine admin (inkwell) palette, so it must
   // skip the SBL block even on the 2bl.ai host — otherwise it would be rewritten
   // to /secondbrainlabs/platform (404) and tagged x-sbl (wrong palette).
-  const isPlatformPath = pathname === '/platform' || pathname.startsWith('/platform/')
+  const isPlatformPath =
+    pathname === '/platform' ||
+    pathname.startsWith('/platform/') ||
+    pathname.startsWith('/api/platform/')
 
   if ((isSblHost || isSblPath) && !isPlatformPath) {
     const requestHeaders = new Headers(req.headers)
