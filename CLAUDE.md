@@ -452,12 +452,26 @@ tenant/prompt is a follow-up.
 
 ## Utilities
 
-Shared helpers in `src/lib/`:
+### Auth service (`services/auth/`)
+
+Auth-context resolution, tenant resolution, user sync, and the Supabase client
+factories live in the shared `services/auth/` layer (imported as
+`@/services/auth/*`). Both `app/` and `src/` may depend on this layer; it is the
+intended home for cross-cutting auth/DB plumbing.
 
 | Helper | File | Purpose |
 |--------|------|---------|
-| `getAuthContext` | `get-auth-context.ts` | Resolves the current Clerk user to their Supabase `owner_id` and `tenant_id` via the `users.clerk_id` → `tenant_users.user_id` lookup. Throws `Unauthorized` / `User not found` / `Tenant not found` on failure. Used by every authenticated admin API route for tenant scoping. |
-| `getTenantFromRequest` | `get-tenant-from-request.ts` | Resolves `tenant_id` from the `Host` header of an anonymous public request. Strips subdomains to the root domain (e.g. `app.jefflougheed.ca` → `jefflougheed.ca`), filters dev hosts (localhost, `*.local`, `127.0.0.1`), queries `tenants.domain` for a match. Returns `tenant_id` string or `null`. Used by `/api/sage/route.ts` for anonymous visitor chat — falls back to `DEFAULT_SYSTEM_PROMPT` on null. |
+| `getAuthContext` | `services/auth/get-auth-context.ts` | Resolves the current Clerk user to their Supabase `owner_id` and `tenant_id` via the `users.clerk_id` → `tenant_users.user_id` lookup. Multi-tenant users resolve the active tenant by request Host (falls back to `DEFAULT_ADMIN_TENANT_ID`, then the first membership). Throws `Unauthorized` / `User not found` / `Tenant not found` on failure. Used by every authenticated admin API route for tenant scoping. |
+| `getTenantFromRequest` | `services/auth/get-tenant-from-request.ts` | Resolves `tenant_id` from the `Host` header of an anonymous public request. Prefers the exact host (so product subdomains like `heirloom.2bl.ai` resolve to their own tenant), then the registrable root (e.g. `app.jefflougheed.ca` → `jefflougheed.ca`), filters dev hosts (localhost, `*.local`, `127.0.0.1`), queries `tenants.domain` for a match. Returns `tenant_id` string or `null`. Used by `/api/sage/route.ts` for anonymous visitor chat — falls back to `DEFAULT_SYSTEM_PROMPT` on null. |
+| `resolveTenantIdFromHost` / `normalizeHost` | `services/auth/resolve-tenant-from-host.ts` | Pure full-host exact-match helper (does NOT collapse subdomains) used by `getAuthContext` for multi-tenant host resolution. Unit-tested in `services/auth/resolve-tenant-from-host.test.ts`. |
+| `syncUser` | `services/auth/sync-user.ts` | Upserts the current Clerk user into the Supabase `users` table on `clerk_id` conflict; returns the Supabase UUID or null. Called from `app/admin/layout.tsx`. |
+| `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
+| `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
+
+Other shared helpers remain in `src/lib/`:
+
+| Helper | File | Purpose |
+|--------|------|---------|
 | `useSageStore` | `store.ts` | Zustand store for the public visitor chat. State: `messages`, `isExpanded`, `mode: 'question' \| null`, `hasGreeted`, `visitorName`, `isStreaming`, `sessionId`. Actions: `expand(mode?: 'question')` (sets both `isExpanded: true` and `mode: mode ?? null` atomically), `collapse()`, `addMessage`, `updateLastMessage`, `setVisitorName`, `setGreeted`, `setStreaming`, `setSessionId`, `reset()` (clears mode along with everything else). Consumed by `Chat`, `Hero`, `Nav`, and `Work`. Because `expand` takes an optional parameter, do not pass it directly as an event handler — wrap as `() => expand()` so React does not forward the `MouseEvent` into the `mode` slot (TS error). |
 | `deriveSessionStatus` | `deriveSessionStatus.ts` | Pure function — no DB calls. Signature `({ updatedAt: string \| Date, thresholds: { chat_in_progress_idle_seconds, chat_active_idle_seconds }, now: Date }) => 'in_progress' \| 'active' \| 'abandoned'`. Computes `idle = (now - updatedAt) / 1000` in seconds; returns `'in_progress'` when `idle < chat_in_progress_idle_seconds`, `'active'` when below the active threshold, otherwise `'abandoned'`. The PATCH route writes `status = 'in_progress'` on every visitor message; this helper computes the forward transitions to `active` and `abandoned` at read time so the displayed status always reflects actual elapsed time without a background sweep. Consumed by `app/admin/page.tsx` (Inbound Chats list — fetched once per request, applied per row) and `app/admin/sessions/[id]/page.tsx` (session detail). The stored `chat_sessions.status` column is the last known event-driven state; the helper output is the displayed truth. |
 
