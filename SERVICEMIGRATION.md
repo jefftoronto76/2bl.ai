@@ -21,10 +21,12 @@ page** (host routing + design tokens + landing sections) and the **chat UI with
 live streaming** through `/api/sage` are both done. The remaining Heirloom work
 is the **memory-creation flow**. The `auth` service extraction is **done**
 (`services/auth/` — auth-context, tenant resolution, user sync, and the Supabase
-client factories). The remaining service extraction (`prompt` / `crm`), the
-chat-service UI move to `services/chat/ui/v1/`, and tenant-hierarchy cycle
-prevention are **known deferred items** — see "Next — Heirloom" and "Known
-deferred items" below.
+client factories). The `prompt` service extraction is **done** (`services/prompt/`
+— runtime compiler, master-prompt compile, manual save, block CRUD, and LLM
+safety review; the `app/api/admin/{prompt,blocks}/*` routes are thin consumers).
+The remaining service extraction (`crm`), the chat-service UI move to
+`services/chat/ui/v1/`, and tenant-hierarchy cycle prevention are **known
+deferred items** — see "Next — Heirloom" and "Known deferred items" below.
 
 ---
 
@@ -179,8 +181,11 @@ their concerns directly:
   service is extracted), imported as `@/services/auth/supabase-admin`. The
   client factory now physically lives in `services/auth/`; a richer resolution
   cache on top of it is still future work.
-- It reads `master_prompt` / `sage_parameters` / `tenant_model_config` directly
-  rather than through a `services/prompt` interface.
+- It reads the base `master_prompt` through `services/prompt/` now: the runtime
+  compiler (`getSystemPrompt`) lives there, and `services/chat/server/prompt.ts`
+  is a thin re-export of `services/prompt/compiler.ts`. The booking section
+  (`sage_parameters`) and `tenant_model_config` reads are still direct in
+  `services/chat/server/{booking,stream}.ts`.
 - It writes `chat_sessions` (token usage, calendar-offered, visitor_name)
   directly rather than through a `services/crm` interface.
 
@@ -195,7 +200,7 @@ contracts are frozen), but the boundaries are not yet clean.
 | Service | Files that should move (per MIGRATION.md Phase 3) | Status |
 |---------|--------------------------------------------------|--------|
 | `auth` | `get-auth-context.ts`, `get-tenant-from-request.ts`, `resolve-tenant-from-host.ts`, `sync-user.ts`, the Supabase client factories (`supabase.ts`, `supabase-admin.ts`, `supabase-server.ts`) | ✅ Moved to `services/auth/` (pure file move; the resolution cache is still future work) |
-| `prompt` | `app/api/admin/prompt/compile/**`, `compile/check`, `src/lib/sage-prompt.ts`, `blockOrder.ts`, `blockTypes.ts`, `tokenize.ts` | Not started |
+| `prompt` | runtime compiler, `compile`, `compile/check`, manual `save` + legacy `check`, block CRUD | ✅ Moved to `services/prompt/` (`compiler.ts`, `compile.ts`, `blocks.ts`, `save.ts`, `safety.ts`, `index.ts`); routes are thin. `src/lib/sage-prompt.ts` (`DEFAULT_SYSTEM_PROMPT`) + `blockOrder.ts` / `tokenize.ts` helpers still referenced from `src/lib/` |
 | `crm` | `app/api/sessions/**` internals, `src/lib/deriveSessionStatus.ts` | Not started |
 | `payments` | (scaffolded empty) | Not started |
 

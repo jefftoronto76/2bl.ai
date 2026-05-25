@@ -504,7 +504,29 @@ intended home for cross-cutting auth/DB plumbing.
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
 
-Other shared helpers remain in `src/lib/`:
+### Prompt service (`services/prompt/`)
+
+All prompt and block logic lives in the shared `services/prompt/` layer
+(imported as `@/services/prompt/*`, or via the `services/prompt/index.ts`
+barrel). Server-only. The `app/api/admin/{prompt,blocks}/*` route handlers are
+thin consumers — auth, request validation, and HTTP response mapping only; the
+data-access and business logic live here. Block CRUD / compile / save functions
+return a discriminated `{ ok: true; data } | { ok: false; status; error }`
+result so routes preserve their exact status codes.
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `compiler.ts` | `getSystemPrompt`, `QUESTION_MODE_CONTEXT`, `DEFAULT_SYSTEM_PROMPT` (re-export) | Runtime base-prompt assembly: highest-version `master_prompt` row, falls back to `DEFAULT_SYSTEM_PROMPT`. Consumed by the chat orchestrator via the thin `services/chat/server/prompt.ts` re-export. |
+| `compile.ts` | `compilePrompt(tenantId)` | Compiles active blocks (guardrail → identity → process → knowledge → escalation; `order`-aware) into `master_prompt`, archiving the prior version to `master_prompt_history`. Backs `POST /api/admin/prompt/compile`. |
+| `blocks.ts` | `listActiveBlocks`, `updateBlock`, `createBlock`, `duplicateBlock` (+ `AuthScope`, `BlocksResult`, `BlockUpdate`, `CreateBlockInput`) | Block data-access against `blocks` (and the `content` / `chat_sessions` rows the create/duplicate flows touch). Backs the `app/api/admin/blocks/*` routes (except `blocks/chat`, a streaming composer with no block-table access). |
+| `save.ts` | `saveMasterPrompt(tenantId, prompt, checkResult)` | Manual versioned master-prompt save (legacy path). Backs `POST /api/admin/prompt/save`. |
+| `safety.ts` | `reviewBlockBody`, `reviewMasterPrompt` (+ `CheckResult`, `CheckIssue`) | LLM safety review — single block (fail-open) backs `POST /api/admin/prompt/compile/check`; whole prompt backs the legacy `POST /api/admin/prompt/check`. |
+| `index.ts` | barrel | Re-exports the public surface above. |
+
+Note: `compile.ts` still imports `isOrdered` (`@/lib/blockOrder`) and `tokensFor`
+(`@/lib/tokenize`); those helpers remain in `src/lib/` for now.
+
+### Other shared helpers (`src/lib/`)
 
 | Helper | File | Purpose |
 |--------|------|---------|
@@ -517,7 +539,9 @@ Other shared helpers remain in `src/lib/`:
 
 Admin routes all call `getAuthContext()` first and scope Supabase
 queries by `tenant_id`. Public routes resolve tenant via the Host
-header.
+header. The prompt + blocks routes below are **thin consumers** of the
+`services/prompt/` service (see Utilities) — they own auth, validation, and
+response mapping; the data-access and business logic live in the service.
 
 ### Prompt compilation
 
