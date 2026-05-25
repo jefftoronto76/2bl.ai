@@ -526,12 +526,26 @@ result so routes preserve their exact status codes.
 Note: `compile.ts` still imports `isOrdered` (`@/lib/blockOrder`) and `tokensFor`
 (`@/lib/tokenize`); those helpers remain in `src/lib/` for now.
 
+### CRM service (`services/crm/`)
+
+Session state machine, session lifecycle, and inbound-chat triage live in the
+shared `services/crm/` layer (imported as `@/services/crm/*`, or via the
+`services/crm/index.ts` barrel). Server-only except `status.ts`, which is a
+pure helper safe to import (type-only) from client components.
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `status.ts` | `deriveSessionStatus` (+ `SessionStatus`, `SessionStatusThresholds`, `DeriveSessionStatusInput`) | Pure function — no DB calls. `({ updatedAt, thresholds: { chat_in_progress_idle_seconds, chat_active_idle_seconds }, now }) => 'in_progress' \| 'active' \| 'abandoned'`. Returns `'in_progress'` when `idle < chat_in_progress_idle_seconds`, `'active'` when below the active threshold, else `'abandoned'`. The PATCH route writes `status = 'in_progress'` on every visitor message; this computes the forward transitions at read time so the displayed status reflects elapsed time without a background sweep. Consumed by `getInboundChats` and `app/admin/sessions/[id]/page.tsx`. |
+| `session.ts` | `handleSessionFinish` | Chat `onFinish` detection flows (server-only): token-usage accounting, calendar-offer detection, Haiku first-name extraction + persist. No-ops when `sessionId` is null. Consumed by the chat orchestrator (`services/chat/server/index.ts`); imports the `ChatMessage`/`TokenUsage` contract types from `services/chat/server/types`. |
+| `sessions.ts` | `createSession`, `updateSession` (+ `SessionResult`, `SessionUpdateInput`) | Anonymous visitor session writes. Server-role client, scoped by both `id` AND host-derived `tenant_id` (cross-tenant IDOR guard; cross-tenant id → 404). Backs `POST /api/sessions` and `PATCH /api/sessions/[id]`, which are thin (tenant resolution + parsing + response mapping). |
+| `inbound.ts` | `getInboundChats` (+ `ChatSession`) | Inbound Chats triage: fetch the tenant's prospect sessions (newest first), resolve idle thresholds, derive each row's read-time status. Backs the `app/admin/page.tsx` Inbound Chats list (thin consumer). |
+| `index.ts` | barrel | Re-exports the public surface above. |
+
 ### Other shared helpers (`src/lib/`)
 
 | Helper | File | Purpose |
 |--------|------|---------|
 | `useSageStore` | `store.ts` | Zustand store for the public visitor chat. State: `messages`, `isExpanded`, `mode: 'question' \| null`, `hasGreeted`, `visitorName`, `isStreaming`, `sessionId`. Actions: `expand(mode?: 'question')` (sets both `isExpanded: true` and `mode: mode ?? null` atomically), `collapse()`, `addMessage`, `updateLastMessage`, `setVisitorName`, `setGreeted`, `setStreaming`, `setSessionId`, `reset()` (clears mode along with everything else). Consumed by `Chat`, `Hero`, `Nav`, and `Work`. Because `expand` takes an optional parameter, do not pass it directly as an event handler — wrap as `() => expand()` so React does not forward the `MouseEvent` into the `mode` slot (TS error). |
-| `deriveSessionStatus` | `deriveSessionStatus.ts` | Pure function — no DB calls. Signature `({ updatedAt: string \| Date, thresholds: { chat_in_progress_idle_seconds, chat_active_idle_seconds }, now: Date }) => 'in_progress' \| 'active' \| 'abandoned'`. Computes `idle = (now - updatedAt) / 1000` in seconds; returns `'in_progress'` when `idle < chat_in_progress_idle_seconds`, `'active'` when below the active threshold, otherwise `'abandoned'`. The PATCH route writes `status = 'in_progress'` on every visitor message; this helper computes the forward transitions to `active` and `abandoned` at read time so the displayed status always reflects actual elapsed time without a background sweep. Consumed by `app/admin/page.tsx` (Inbound Chats list — fetched once per request, applied per row) and `app/admin/sessions/[id]/page.tsx` (session detail). The stored `chat_sessions.status` column is the last known event-driven state; the helper output is the displayed truth. |
 
 ---
 
