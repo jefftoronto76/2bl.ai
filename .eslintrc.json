@@ -1,0 +1,37 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals"],
+  "plugins": ["boundaries"],
+  "settings": {
+    "import/resolver": {
+      "typescript": { "alwaysTryTypes": true, "project": "./tsconfig.json" }
+    },
+    "boundaries/elements": [
+      { "type": "services", "pattern": "services/**/*", "mode": "full" },
+      { "type": "app", "pattern": "app/**/*", "mode": "full" },
+      { "type": "src", "pattern": "src/**/*", "mode": "full" }
+    ]
+  },
+  "rules": {
+    "boundaries/element-types": [
+      "warn",
+      {
+        "default": "allow",
+        "rules": [
+          {
+            "from": ["app"],
+            "disallow": ["src"],
+            "message": "app/ must not import src/ internals directly. Shared code belongs in services/ (the shared layer). [strangle migration: warning until shared code finishes moving out of src/]"
+          },
+          {
+            "from": ["src"],
+            "disallow": ["app"],
+            "message": "src/ must not import app/ internals directly. Shared code belongs in services/ (the shared layer)."
+          }
+        ]
+      }
+    ],
+    "react/no-unescaped-entities": "warn",
+    "@next/next/no-html-link-for-pages": "warn"
+  }
+}
