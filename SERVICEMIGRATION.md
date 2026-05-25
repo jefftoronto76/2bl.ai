@@ -5,7 +5,7 @@
 
 ---
 
-## Current State — May 24, 2026
+## Current State — May 25, 2026
 
 The platform foundation is in place and merged to `main`:
 
@@ -16,11 +16,13 @@ The platform foundation is in place and merged to `main`:
 - **Platform sign-in** — branded `/secondbrainlabs/sign-in` flow with the
   `platform_admin` role gate. (Merged to main, #24.)
 
-Focus now shifts to **Heirloom**: marketing page, chat, and the memory-creation
-flow. The remaining service extraction (auth / prompt / crm), the chat-service
-UI move to `services/chat/ui/v1/`, and tenant-hierarchy cycle prevention are
-**known deferred items** — see "Next — Heirloom" and "Known deferred items"
-below.
+**Heirloom is in migration** (branch `heirloom-migration`): the **marketing
+page** (host routing + design tokens + landing sections) and the **chat UI with
+live streaming** through `/api/sage` are both done. The remaining Heirloom work
+is the **memory-creation flow**. The remaining service extraction (auth /
+prompt / crm), the chat-service UI move to `services/chat/ui/v1/`, and
+tenant-hierarchy cycle prevention are **known deferred items** — see "Next —
+Heirloom" and "Known deferred items" below.
 
 ---
 
@@ -88,6 +90,24 @@ live on `main`.
   tenant with sub-tenants (409) or dependent records (`23503` → 409).
 - **Auth** — every `/api/platform/*` route re-checks `platform_admin`
   independently of the UI, so the service-role writes can't run for a non-admin.
+
+### Heirloom storefront — landing + chat ✅ (on `heirloom-migration`)
+Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
+
+- **Host routing + tokens** — `heirloom.2bl.ai` → `/heirloom` rewrite and an
+  `x-heirloom` brand signal in `middleware.ts`; `[data-brand="heirloom"]` design
+  tokens in `globals.css` / `tailwind.config.js`; `app/heirloom/layout.tsx`
+  (Cormorant Garamond + DM Sans). Commits `5b1d2a4`, `8575cc1`, `9a1a981`.
+- **Landing page** — all marketing sections under
+  `app/heirloom/components/landing/`. Commit `f4e51dc`.
+- **Chat UI + streaming** — full chat surface ported from the legacy Vite repo
+  into `app/heirloom/components/{chat,ui}/`: collapsible sidebar, header,
+  message list, input. `page.tsx` is the product app root (`ChatProvider` +
+  slide-in panel + backdrop, Escape / backdrop-click to close). Real streaming
+  via a Heirloom-local `lib/stream.ts` reader POSTing to `/api/sage` (no
+  dependency on `src/lib/sage.ts` / `stream.ts`); `session_id` null for now.
+- **Frozen contract honored** — `/api/sage` paths/shapes unchanged;
+  jefflougheed.ca untouched. `tsc` clean, `next build` passing.
 
 ---
 
@@ -213,19 +233,24 @@ Ownership unknown — do not touch until investigated:
 
 ## Next — Heirloom
 
-With the platform foundation merged, the active work is bringing **Heirloom**
-onto the platform:
+Bringing **Heirloom** onto the platform, in three steps:
 
-1. **Heirloom marketing page** — the product storefront / landing surface.
-2. **Heirloom chat** — Heirloom's conversational experience on the chat service
-   (consuming `services/chat/server`; HTTP contracts stay frozen).
-3. **Memory-creation flow** — the core Heirloom flow for capturing and building
-   memories / stories.
+1. ✅ **Heirloom marketing page** — the product storefront / landing surface.
+   (Done on `heirloom-migration` — see "Heirloom storefront" under Completed.)
+2. ✅ **Heirloom chat** — Heirloom's conversational experience on the chat
+   service (consumes `/api/sage` → `services/chat/server`; HTTP contracts stay
+   frozen). (Done on `heirloom-migration`.)
+3. ⏭️ **Memory-creation flow** — the core Heirloom flow for capturing and
+   building memories / stories. **This is the next step.**
 
-These can proceed against the current chat service without finishing the full
-service extraction — the deferred items below are not blockers for Heirloom's
-first cut. HTTP contracts remain FROZEN: `/api/sage` and `/api/sage/parameters`
-paths and shapes do not change; jefflougheed.ca must not break.
+A near-term follow-up to step 2: `/api/sage` resolves the tenant from the host,
+so until a Heirloom tenant + `master_prompt` is configured the Heirloom chat
+falls back to Sage's `DEFAULT_SYSTEM_PROMPT` (it streams, but answers as Sage).
+
+These proceed against the current chat service without finishing the full
+service extraction — the deferred items below are not blockers. HTTP contracts
+remain FROZEN: `/api/sage` and `/api/sage/parameters` paths and shapes do not
+change; jefflougheed.ca must not break.
 
 ---
 
@@ -279,8 +304,9 @@ public/
 ---
 
 ## SBL Storefront Known Issues (not blocking)
-- /sage, /heirloom, /hugs, /mealflow, /sign-in, /writing all 404
+- /sage, /hugs, /mealflow, /writing all 404
   → Expected. Products not built yet. Resolved in Phase 5.
+  (`/heirloom` now serves the Heirloom storefront — see Completed.)
 - Chat widget on SBL not connected to live API
   → Known issue, not blocking migration work.
 
