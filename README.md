@@ -49,10 +49,11 @@ format the response. This keeps Next.js replaceable and the services portable.
 - **`services/`** — platform business logic. `services/chat/server/` (the chat
   orchestration engine) is extracted and live; `auth`, `prompt`, `crm`,
   `payments` are still being carved out (see `SERVICEMIGRATION.md`).
-- **`app/`** — route groups split by brand/product, resolved at the edge by
-  `middleware.ts` (host → route group). Today: `(jefflougheed)` (Sage tenant
-  site), `secondbrainlabs` (2bl.ai storefront), `(platform)` (platform admin),
-  `admin` (Sage tenant admin).
+- **`app/`** — routes split by brand/product, resolved at the edge by
+  `middleware.ts` (host → route group / segment). Today: `(jefflougheed)` (Sage
+  tenant site), `secondbrainlabs` (2bl.ai storefront), `heirloom`
+  (heirloom.2bl.ai storefront), `(platform)` (platform admin), `admin` (Sage
+  tenant admin).
 - **Supabase** — multi-tenant Postgres. Every row is tenant-scoped; Row Level
   Security is the primary enforcement boundary.
 
@@ -79,6 +80,7 @@ See `2BL.md` for the full architecture strategy and target directory structure.
 | URL / route | What it is |
 |-------------|-----------|
 | `2bl.ai` → `/secondbrainlabs` | Second Brain Labs platform storefront |
+| `heirloom.2bl.ai` → `/heirloom` | Heirloom storefront — landing + slide-in AI chat |
 | `jefflougheed.ca` → `/` | jefflougheed.ca — reference Sage tenant site |
 | `/platform/admin` | Platform admin — cross-tenant tenant management (gated `platform_admin`) |
 | `/secondbrainlabs/sign-in` | Branded platform sign-in |
@@ -86,8 +88,9 @@ See `2BL.md` for the full architecture strategy and target directory structure.
 | `/api/sage` | Public visitor chat endpoint (frozen wire format) |
 | `/api/platform/tenants`, `/api/platform/tenants/[id]` | Tenant create / update / delete (platform_admin only) |
 
-Domain → route-group resolution lives in `middleware.ts`; the `x-sbl` header is
-the single signal the root layout uses to pick the brand palette.
+Domain → route resolution lives in `middleware.ts`; the `x-sbl` and
+`x-heirloom` headers are the signals the root layout uses to pick the brand
+palette.
 
 ---
 
@@ -115,6 +118,21 @@ never run for a non-admin).
   question-mode context appended; falls back to `DEFAULT_SYSTEM_PROMPT`.
 - Streaming with typing indicator, markdown rendering, retry on error.
 - Mobile: `visualViewport`-driven overlay so the keyboard doesn't displace it.
+
+---
+
+## Heirloom — storefront + AI chat
+
+`app/heirloom/` (Tailwind, `[data-brand="heirloom"]` palette). `page.tsx` is the
+product app root: a landing page with a slide-in chat panel layered over it
+(Escape / backdrop-click to close).
+
+- Self-contained chat store + stream reader under `app/heirloom/` — streams from
+  `/api/sage` via a Heirloom-local reader, decoupled from the Sage client
+  (`src/lib/sage.ts` / `stream.ts` are not imported).
+- Collapsible sidebar, header, message list, input ported from the legacy repo.
+- Tenant note: until a Heirloom tenant + prompt is configured, `/api/sage` falls
+  back to Sage's `DEFAULT_SYSTEM_PROMPT`.
 
 ---
 
