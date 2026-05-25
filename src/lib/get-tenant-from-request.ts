@@ -17,7 +17,7 @@ import { getAdminClient } from './supabase-admin'
  * *.com) the last-two-parts rule is sufficient. Revisit with the PSL if a
  * tenant ever registers a multi-part ccTLD.
  */
-function extractRootDomain(host: string | null): string | null {
+function normalizeHost(host: string | null): string | null {
   if (!host) return null
 
   // Strip port if present
@@ -35,7 +35,13 @@ function extractRootDomain(host: string | null): string | null {
     return null
   }
 
-  const parts = withoutPort.split('.')
+  return withoutPort
+}
+
+function extractRootDomain(host: string | null): string | null {
+  const normalized = normalizeHost(host)
+  if (!normalized) return null
+  const parts = normalized.split('.')
   if (parts.length < 2) return null
   return parts.slice(-2).join('.')
 }
@@ -50,11 +56,18 @@ function extractRootDomain(host: string | null): string | null {
  */
 export async function getTenantFromRequest(req: Request): Promise<string | null> {
   const host = req.headers.get('host')
+  const fullHost = normalizeHost(host)
   const rootDomain = extractRootDomain(host)
-  console.log('[getTenantFromRequest] host:', host, 'rootDomain:', rootDomain)
+  console.log('[getTenantFromRequest] host:', host, 'fullHost:', fullHost, 'rootDomain:', rootDomain)
 
-  if (!rootDomain) {
-    console.log('[getTenantFromRequest] no resolvable root domain — returning null')
+  // Candidate domains, most specific first: the exact host (so product
+  // subdomains like heirloom.2bl.ai resolve to their own tenant) then the
+  // registrable root (so app.jefflougheed.ca still falls back to jefflougheed.ca).
+  const candidates = Array.from(
+    new Set([fullHost, rootDomain].filter((d): d is string => Boolean(d))),
+  )
+  if (candidates.length === 0) {
+    console.log('[getTenantFromRequest] no resolvable host — returning null')
     return null
   }
 
@@ -62,20 +75,30 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
 
   const { data, error } = await supabase
     .from('tenants')
-    .select('id')
-    .eq('domain', rootDomain)
-    .maybeSingle()
+    .select('id, domain')
+    .in('domain', candidates)
 
   if (error) {
     console.error('[getTenantFromRequest] tenants lookup failed:', error.message)
     return null
   }
 
-  if (!data) {
-    console.log('[getTenantFromRequest] no tenant matched domain:', rootDomain)
+  if (!data || data.length === 0) {
+    console.log('[getTenantFromRequest] no tenant matched candidates:', candidates)
     return null
   }
 
-  console.log('[getTenantFromRequest] resolved tenant_id:', data.id)
-  return data.id as string
+  // Prefer the exact-host match over the root-domain fallback.
+  const matched =
+    (fullHost && data.find((t) => t.domain === fullHost)) ||
+    (rootDomain && data.find((t) => t.domain === rootDomain)) ||
+    null
+
+  if (!matched) {
+    console.log('[getTenantFromRequest] no tenant matched candidates:', candidates)
+    return null
+  }
+
+  console.log('[getTenantFromRequest] resolved tenant_id:', matched.id, 'via domain:', matched.domain)
+  return matched.id as string
 }
