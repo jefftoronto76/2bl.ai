@@ -232,6 +232,39 @@ DM Mono (`--font-display` / `--font-body` / `--font-mono`), loaded via the
 Google Fonts `<link>` in `app/(jefflougheed)/layout.tsx` and defined in `:root`.
 Neither font set bleeds into the other.
 
+### Heirloom storefront palette
+
+The Heirloom storefront (`heirloom.2bl.ai`, served from `/heirloom`) ships its
+own design tokens, **fully isolated** from the jefflougheed/inkwell and SBL
+palettes. They live in `app/globals.css` under the `[data-brand="heirloom"]`
+selector (set on the `/heirloom` layout wrapper). The same mechanism SBL uses:
+`--color-surface` and `--color-accent` are re-scoped inside this subtree so the
+existing `surface` / `accent` Tailwind tokens render Heirloom values here only,
+and Heirloom-only tokens (`--hl-bg`, `--hl-text-primary`, `--hl-text-muted`,
+`--hl-accent-hover`, `--hl-border`) are surfaced as Tailwind utilities in
+`tailwind.config.js` (`background`, `text-primary`, `text-muted`, `accent-hover`,
+`border`). Because the values are scoped to `[data-brand="heirloom"]`, these
+tokens are inert everywhere else and do not conflict with the other palettes —
+the root layout drops `data-palette="inkwell"` whenever the request is Heirloom
+(see App Structure & Routing). Scoped background-image helpers (`.bg-hero-glow`,
+`.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`, `.bg-pattern-dots`)
+are also defined under the selector for the landing sections.
+
+| Heirloom token | Value |
+|----------------|-------|
+| Background (`--hl-bg`) | `#1C0F06` |
+| Surface (`--color-surface`) | `#2A1A0E` |
+| Text primary / muted | `#F5EFE6` / `rgba(245,239,230,0.55)` |
+| Accent (`--color-accent`) | `rgb(201 169 110)` (gold) |
+| Accent hover | `#B8935A` |
+| Border | `rgba(245,239,230,0.12)` |
+
+**Fonts are scoped per brand.** Cormorant Garamond (serif/display) and DM Sans
+(body) are loaded via `next/font/google` in `app/heirloom/layout.tsx` and
+exposed as `--font-heirloom-serif` / `--font-heirloom-sans`, which globals.css
+remaps onto `--font-display` / `--font-serif` / `--font-body` **on the Heirloom
+layout wrapper only**.
+
 ---
 
 ## Shared Primitives
@@ -255,8 +288,8 @@ Reusable admin-side components in `/components/admin/primitives/`:
 
 ## App Structure & Routing
 
-The Next.js `app/` directory serves two domains from one codebase, split by
-route group and resolved at the edge by `middleware.ts`.
+The Next.js `app/` directory serves multiple brands from one codebase, split by
+route group / segment and resolved at the edge by `middleware.ts`.
 
 - **`app/(jefflougheed)/`** — route group holding the jefflougheed.ca public
   site (`page.tsx` + `layout.tsx`). The group's `layout.tsx` owns the
@@ -268,10 +301,20 @@ route group and resolved at the edge by `middleware.ts`.
   (`page.tsx` + `layout.tsx`). `layout.tsx` wraps the page in
   `<div data-brand="sbl">` (scoping the SBL design tokens) and loads Newsreader
   + Manrope via `next/font/google`.
+- **`app/heirloom/`** — the Heirloom storefront for `heirloom.2bl.ai`
+  (`page.tsx` + `layout.tsx`). Unlike `(jefflougheed)`, this is a plain path
+  segment, not a route group — it serves from `/heirloom` (the `heirloom.2bl.ai`
+  host is rewritten there by middleware). `layout.tsx` wraps the page in
+  `<div data-brand="heirloom">` (scoping the Heirloom design tokens) and loads
+  Cormorant Garamond (serif/display) + DM Sans (body) via `next/font/google`.
+  `page.tsx` is the **product app root**: it mounts `ChatProvider` and renders
+  the landing page with a slide-in chat panel layered over it (see "Heirloom
+  storefront" under Public Site below).
 - **`app/layout.tsx`** — the shared root layout (`ClerkProvider` + `<html>`).
-  It reads the `x-sbl` request header (set by middleware) and applies
-  `data-palette="inkwell"` to `<html>` only when the request is **not** SBL, so
-  the inkwell palette never bleeds into `/secondbrainlabs`.
+  It reads the `x-sbl` and `x-heirloom` request headers (set by middleware) and
+  applies `data-palette="inkwell"` to `<html>` only when the request is **neither**
+  SBL **nor** Heirloom, so the inkwell palette never bleeds into `/secondbrainlabs`
+  or `/heirloom`.
 
 ### Middleware (`middleware.ts`)
 
@@ -285,14 +328,21 @@ routing in addition to Clerk auth**:
   `/secondbrainlabs` (root `/` → `/secondbrainlabs`, otherwise the path is
   prefixed). The rewrite is internal — the `2bl.ai` URL is preserved in the
   address bar.
-- **jefflougheed.ca passes through** to `/` unchanged — no `x-sbl` tag, no
-  rewrite.
+- **Heirloom routing:** the same pattern for the Heirloom host
+  (`HEIRLOOM_HOSTS = {heirloom.2bl.ai}`) or any request already under
+  `/heirloom`. Such requests are tagged with an `x-heirloom: 1` header, and
+  Heirloom-host requests not already on the `/heirloom` path are **rewritten**
+  to `/heirloom` (root `/` → `/heirloom`, otherwise prefixed). The SBL rewrite
+  is guarded so it never catches `/heirloom` (or `/api/platform/*`); the rewrite
+  is internal so the `heirloom.2bl.ai` URL is preserved.
+- **jefflougheed.ca passes through** to `/` unchanged — no `x-sbl` /
+  `x-heirloom` tag, no rewrite.
 - **Clerk auth (unchanged):** after the domain check, `/admin(.*)` routes are
   still protected via `auth.protect()`.
 
-The `x-sbl` header is the single signal the root layout uses to choose the
-palette, keeping brand resolution in one place (middleware) rather than
-sniffing the host in every layout.
+The `x-sbl` and `x-heirloom` headers are the signals the root layout uses to
+choose the palette, keeping brand resolution in one place (middleware) rather
+than sniffing the host in every layout.
 
 ---
 
@@ -372,6 +422,31 @@ conversation. Remaining intentional references:
 - `src/components/Session.tsx` — `handleDiscoveryClick` popup invocation and the "Start with a free 15-minute call →" link
 
 Do not remove these without explicit instruction.
+
+### Heirloom storefront (chat)
+
+The Heirloom product surface lives entirely under `app/heirloom/` (Tailwind +
+the `[data-brand="heirloom"]` palette — no Mantine, isolated from the Sage
+visitor chat in `src/components/`). It is **not** wired to `src/lib/sage.ts`,
+`src/lib/stream.ts`, or `useSageStore` — Heirloom carries its own store and
+stream reader so the two chat clients stay decoupled.
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `HeirloomPage` (app root) | `app/heirloom/page.tsx` | `'use client'` root. Wraps everything in `ChatProvider` and renders `<LandingPage>` with a slide-in chat panel layered over it. The panel is always mounted and slides off-canvas (`translate-x-full pointer-events-none`) when closed; a `bg-black/50 backdrop-blur-sm` backdrop renders only while open. **Escape** key and **backdrop click** both dispatch `CLOSE_CHAT`. Panel carries `role="dialog"` / `aria-modal` / `aria-hidden`. |
+| `chatStore` (`ChatProvider`, `useChatStore`, `Message`) | `app/heirloom/components/store/chatStore.tsx` | `useReducer` context. State: `messages`, `hasStarted`, `isSidebarExpanded`, `isLoading`, `isChatOpen`. Actions: `SEND_MESSAGE`, `ADD_ASSISTANT_MESSAGE`, `UPDATE_LAST_ASSISTANT`, `SET_LOADING`, `TOGGLE_SIDEBAR` / `SET_SIDEBAR`, `OPEN_CHAT` / `CLOSE_CHAT`. Exposes `sendMessage(content)` which POSTs `{ messages, session_id: null }` to `/api/sage`, streams deltas via `readSageStream`, and dispatches `ADD_ASSISTANT_MESSAGE` (first token) then `UPDATE_LAST_ASSISTANT` (subsequent). Errors surface as an on-brand assistant message; `session_id` is null for now. |
+| `readSageStream` | `app/heirloom/lib/stream.ts` | Heirloom-local reader for the Vercel AI SDK data stream (`0:"delta"` lines) returned by `/api/sage`. Accumulates text and calls `onChunk(accumulated)` per delta. Deliberately self-contained — does not import `src/lib/stream.ts` (which carries Sage store/admin coupling); the wire format is the only shared contract. |
+| `ChatHero` | `app/heirloom/components/chat/ChatHero.tsx` | Panel body: `Sidebar` + a column with `ChatHeader`, the message area (`MessageList` once `hasStarted`, else the empty-state greeting **"What's a story worth keeping?"**), and `ChatInput`. |
+| `ChatHeader` | `app/heirloom/components/chat/ChatHeader.tsx` | "Your Story" dropdown + Account / Close `IconButton`s (Close dispatches `CLOSE_CHAT`). |
+| `ChatInput` | `app/heirloom/components/chat/ChatInput.tsx` | Auto-growing textarea, Enter-to-send (Shift+Enter newline), `ArrowUp` send button (disabled when empty or loading). Calls `sendMessage`. No AI disclaimer. |
+| `MessageList` | `app/heirloom/components/chat/MessageList.tsx` | Renders messages (assistant = `Bot`-icon avatar + left bubble, user = right bubble, no avatar) and a bouncing-dots typing indicator while `isLoading`; auto-scrolls to bottom. |
+| `Sidebar` | `app/heirloom/components/chat/Sidebar.tsx` | Collapsible nav (`w-12` ↔ `w-64`, toggled via `TOGGLE_SIDEBAR`). Nav items (New Chat / Search / Conversations / Dashboard) + a "Recent" section backed by an **empty** list (no fake history, no user-profile footer). |
+| `Avatar` / `IconButton` / `Button` | `app/heirloom/components/ui/` | Tailwind UI primitives ported from the legacy repo, styled with the Heirloom tokens. |
+
+Tenant note: `/api/sage` resolves the tenant from the host. Until a Heirloom
+tenant + `master_prompt` is configured, Heirloom chat falls back to Sage's
+`DEFAULT_SYSTEM_PROMPT` (it streams, but answers as Sage). Wiring a Heirloom
+tenant/prompt is a follow-up.
 
 ---
 
