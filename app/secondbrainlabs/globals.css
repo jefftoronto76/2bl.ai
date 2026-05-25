@@ -1,0 +1,52 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Second Brain Labs storefront tokens.
+
+   Imported by app/secondbrainlabs/layout.tsx, so these styles only load on the
+   /secondbrainlabs (2bl.ai) routes. Because the file is route-scoped via its
+   import location, the tokens are promoted to :root rather than scoped to
+   [data-brand="sbl"] — they cannot collide with the inkwell or Heirloom
+   palettes, which ship in their own route-scoped globals.css files.
+
+   Hex forms feed page.tsx arbitrary values (color-mix, repeating-linear-gradient).
+   Triplet forms feed the alpha-aware Tailwind tokens (bg-paper/90, border-accent/50);
+   `accent` reuses the repo's existing `rgb(var(--color-accent) / <alpha-value>)`
+   token, scoped here to terracotta.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Warm paper stack */
+  --color-paper:   #FAF6EE;
+  --color-paper-2: #F2ECDF;
+  --color-paper-3: #ECE3D2;
+
+  /* Lines */
+  --color-line:    #E2D6BC;
+  --color-line-2:  #D2C3A2;
+
+  /* Ink */
+  --color-ink:     #1F1A14;
+  --color-ink-2:   #3B3328;
+  --color-muted:   #6B6256;
+  --color-dim:     #9A917F;
+
+  /* Accent — terracotta (rgb triplet for the alpha-aware accent token) */
+  --color-accent:      200 84 46;
+  --color-accent-deep: #A93F1D;
+  --color-accent-soft: #F4D9CC;
+
+  /* Status */
+  --color-pos: #4F7A4A;
+
+  /* Triplet mirror of --color-paper for the alpha-aware `paper` Tailwind token */
+  --color-paper-rgb: 250 246 238;
+}
+
+/* Local keyframes used by the Sage widget + AI envelope tag (referenced via
+   animate-[sb-pulse_...] / animate-[sb-dot_...] arbitrary utilities). */
+@keyframes sb-pulse {
+  0%, 100% { opacity: 0.25; transform: scaleX(0.6); }
+  50%      { opacity: 1;    transform: scaleX(1);   }
+}
+@keyframes sb-dot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(200, 84, 46, 0.18); }
+  50%      { box-shadow: 0 0 0 6px rgba(200, 84, 46, 0.05); }
+}

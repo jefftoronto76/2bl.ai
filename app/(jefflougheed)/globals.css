@@ -1,0 +1,135 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Inkwell design tokens — the jefflougheed.ca + admin/platform palette.
+
+   This file is imported by:
+     - app/(jefflougheed)/layout.tsx   (the public jefflougheed.ca site)
+     - app/admin/layout.tsx            (the Mantine admin UI)
+     - app/(platform)/layout.tsx       (the 2BL platform admin)
+
+   Admin/platform live OUTSIDE the (jefflougheed) route group, so they import
+   this file explicitly to keep the shared inkwell tokens. The SBL and Heirloom
+   storefronts deliberately do NOT import it — they ship their own isolated
+   token sets in app/secondbrainlabs/globals.css and app/heirloom/globals.css.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ─── Design tokens ───────────────────────── */
+:root {
+  --color-bg: 249 248 245;
+  --color-surface: 255 255 255;
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+  --color-text-primary: #1a1917;
+  --color-text-muted: rgba(26,25,23,0.70);
+  --color-text-dim: rgba(26,25,23,0.42);
+  --color-border: rgba(26,25,23,0.08);
+  --color-border-hover: rgba(26,25,23,0.25);
+
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', 'Courier New', monospace;
+}
+
+/* ─── Inkwell palette ──────────────────────────── */
+html[data-palette="inkwell"] {
+  --color-bg: 24 32 41;
+  --color-surface: 42 56 69;
+  --color-accent: 168 200 168;
+  --color-accent-hover: 192 217 192;
+  --ink-rgb: 234 231 220;
+  --color-text-primary: rgb(234 231 220);
+  --color-text-muted:   rgb(234 231 220 / 0.70);
+  --color-text-dim:     rgb(234 231 220 / 0.42);
+  --color-border:       rgb(234 231 220 / 0.08);
+  --color-border-hover: rgb(234 231 220 / 0.25);
+}
+
+html[data-palette="inkwell"] #outcomes,
+html[data-palette="inkwell"] #how-it-works,
+html[data-palette="inkwell"] #testimonials {
+  --color-bg: 245 244 240;
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  background: rgb(var(--color-bg));
+  color: rgb(var(--ink-rgb));
+  border-bottom: none;
+}
+
+/* The how-it-works section sits on a light surface, so its accent buttons
+   need the deep-green :root accent rather than the inkwell mint. */
+html[data-palette="inkwell"] #how-it-works {
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+}
+
+html[data-palette="inkwell"] .bone-card {
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  color: rgb(var(--ink-rgb));
+}
+
+html[data-palette="inkwell"] body {
+  background:
+    radial-gradient(800px 360px at 0% 0%,
+      rgb(var(--color-accent) / 0.10), transparent 70%),
+    radial-gradient(900px 420px at 100% 0%,
+      rgb(80 140 110 / 0.12), transparent 70%),
+    rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] #chat {
+  position: relative;
+  background:
+    radial-gradient(800px 360px at 0% 0%,
+      rgb(var(--color-accent) / 0.10), transparent 70%),
+    radial-gradient(900px 420px at 100% 0%,
+      rgb(80 140 110 / 0.12), transparent 70%),
+    rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] section {
+  border-bottom-color: rgb(var(--ink-rgb) / 0.08);
+}
+
+html[data-palette="inkwell"] #problems .career-card,
+html[data-palette="inkwell"] #process .career-card {
+  box-shadow: 0 4px 24px rgba(24, 32, 41, 0.06);
+}
+
+html[data-palette="inkwell"] .career-card {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+html[data-palette="inkwell"] #process .way .book {
+  background: rgb(var(--ink-rgb));
+  color: rgb(var(--color-bg));
+}
+html[data-palette="inkwell"] #process .way .book:hover {
+  background: rgb(var(--ink-rgb) / 0.9);
+}
+
+html[data-palette="inkwell"] .msg.user .bubble {
+  background: rgb(var(--ink-rgb));
+  color: rgb(var(--color-bg));
+}
+
+html[data-palette="inkwell"] .hilite {
+  background-image: none;
+  background-color: rgb(var(--color-accent) / 0.22);
+  border-radius: 2px;
+}
+
+html[data-palette="inkwell"] .btn-green,
+html[data-palette="inkwell"] .composer .send,
+html[data-palette="inkwell"] .nav-dock .send-mini,
+html[data-palette="inkwell"] .avatar.sage {
+  color: rgb(var(--color-bg));
+}
