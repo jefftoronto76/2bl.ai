@@ -11,16 +11,21 @@ import { adminTheme } from '@/components/admin/theme/mantine-theme';
 import { AdminShell } from '@/components/admin/layout/AdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
 import { syncUser } from '@/services/auth/sync-user';
+import { getTenantName } from '@/services/auth/get-tenant-name';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabaseUserId = await syncUser()
+  // Host-derived tenant name for the banner. Falls back to 'Natural Resource'
+  // (the primary tenant brand) only if resolution fails, preserving the prior
+  // behavior on the error path.
+  const tenantName = (await getTenantName()) ?? 'Natural Resource'
 
   return (
     <AdminUserProvider supabaseUserId={supabaseUserId}>
       <MantineProvider theme={adminTheme}>
         <ColorSchemeScript defaultColorScheme="light" />
         <Notifications position="top-right" />
-        <AdminShell>
+        <AdminShell tenantName={tenantName}>
           {children}
         </AdminShell>
       </MantineProvider>
