@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
 
 const VALID_STATUSES = ['active', 'disabled', 'deleted'] as const
 type BlockStatus = typeof VALID_STATUSES[number]
@@ -26,13 +26,7 @@ export async function PATCH(
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const updates: {
-    status?: BlockStatus
-    body?: string
-    active?: boolean
-    order?: number
-    updated_by?: string
-  } = {}
+  const updates: BlockUpdate = {}
 
   if (typeof body.status === 'string') {
     if (!VALID_STATUSES.includes(body.status as BlockStatus)) {
@@ -60,23 +54,10 @@ export async function PATCH(
     return Response.json({ error: 'No updates provided' }, { status: 400 })
   }
 
-  // Stamp updated_by on every real write. updated_at is auto-set by
-  // the blocks_updated_at_trigger Postgres trigger — no client write.
-  updates.updated_by = authCtx.owner_id
-
-  const supabase = getAdminClient()
-  const { data, error } = await supabase
-    .from('blocks')
-    .update(updates)
-    .eq('id', id)
-    .eq('tenant_id', authCtx.tenant_id)
-    .select('id, title, type, body, status, is_default, created_at')
-    .single()
-
-  if (error) {
-    console.error('[blocks/patch] update failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  const result = await updateBlock(authCtx, id, updates)
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json(data)
+  return Response.json(result.data)
 }
