@@ -8,8 +8,8 @@ import {
   TYPE_COMPILE_ORDER,
   TYPE_LABELS,
   type BlockType,
-} from '@/lib/blockTypes'
-import { tokensFor } from '@/lib/tokenize'
+} from '@/services/prompt/block-types'
+import { tokensFor } from '@/services/prompt/tokenize'
 
 const TOKEN_LIMIT = 8000
 const YELLOW_THRESHOLD = 5000

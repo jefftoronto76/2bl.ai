@@ -13,7 +13,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 // prompt page); the prompt service re-exports it as its canonical fallback.
 // Physical consolidation happens in a later cleanup commit, once nothing
 // imports it directly from src/lib.
-import { DEFAULT_SYSTEM_PROMPT } from '@/lib/sage-prompt'
+import { DEFAULT_SYSTEM_PROMPT } from '@/services/prompt/sage-prompt'
 export { DEFAULT_SYSTEM_PROMPT }
 
 // Appended to the master system prompt when the visitor arrives in question

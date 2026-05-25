@@ -18,9 +18,9 @@ import {
   TYPE_COLORS,
   formatTypeBadgeLabel,
   type BlockType,
-} from '@/lib/blockTypes'
-import { orderPrefix, isOrdered } from '@/lib/blockOrder'
-import { tokensFor } from '@/lib/tokenize'
+} from '@/services/prompt/block-types'
+import { orderPrefix, isOrdered } from '@/services/prompt/block-order'
+import { tokensFor } from '@/services/prompt/tokenize'
 import { formatRelativeTime } from '@/lib/time'
 
 const PREVIEW_LINE_LIMIT = 8

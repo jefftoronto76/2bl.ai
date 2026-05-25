@@ -12,7 +12,7 @@ import {
   TYPE_COMPILE_ORDER,
   TYPE_LABELS,
   type BlockType,
-} from '@/lib/blockTypes'
+} from '@/services/prompt/block-types'
 
 export type { BlockEditFormBlock }
 

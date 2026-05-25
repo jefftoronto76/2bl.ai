@@ -20,3 +20,15 @@ export type { AuthScope, BlocksResult, BlockUpdate, CreateBlockInput } from './b
 // LLM safety review
 export { reviewBlockBody, reviewMasterPrompt } from './safety'
 export type { CheckResult, CheckIssue } from './safety'
+
+// Block taxonomy + ordering / token helpers (moved from src/lib)
+export {
+  BLOCK_TYPES,
+  TYPE_COLORS,
+  TYPE_LABELS,
+  TYPE_COMPILE_ORDER,
+  formatTypeBadgeLabel,
+} from './block-types'
+export type { BlockType } from './block-types'
+export { isOrdered, orderPrefix } from './block-order'
+export { tokensFor, CHARS_PER_TOKEN } from './tokenize'
