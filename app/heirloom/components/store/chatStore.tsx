@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import { readSageStream } from '../../lib/stream';
 
 export interface Message {
   id: string;
@@ -71,13 +72,75 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 interface ChatContextType {
   state: ChatState;
   dispatch: React.Dispatch<ChatAction>;
+  sendMessage: (content: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
-  return <ChatContext.Provider value={{ state, dispatch }}>{children}</ChatContext.Provider>;
+
+  const sendMessage = async (content: string) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: trimmed,
+      timestamp: new Date(),
+    };
+
+    // Build the outgoing transcript synchronously from current state — the
+    // reducer dispatch below is async, so we cannot read it back in time.
+    const outgoing = [...state.messages, userMessage].map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    dispatch({ type: 'SEND_MESSAGE', payload: userMessage });
+    dispatch({ type: 'SET_LOADING', payload: true });
+
+    let assistantAdded = false;
+    const pushAssistant = (text: string) => {
+      if (!assistantAdded) {
+        assistantAdded = true;
+        dispatch({
+          type: 'ADD_ASSISTANT_MESSAGE',
+          payload: { id: crypto.randomUUID(), role: 'assistant', content: text, timestamp: new Date() },
+        });
+      } else {
+        dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: text });
+      }
+    };
+
+    try {
+      const response = await fetch('/api/sage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: outgoing, session_id: null }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Sage request failed: ${response.status}`);
+      }
+
+      await readSageStream(response, pushAssistant);
+
+      if (!assistantAdded) {
+        pushAssistant('I didn’t quite catch that — could you try again?');
+      }
+    } catch (err) {
+      console.error('[heirloom/chat] sendMessage failed:', err);
+      pushAssistant('Something went wrong reaching your story guide. Please try again in a moment.');
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  };
+
+  return (
+    <ChatContext.Provider value={{ state, dispatch, sendMessage }}>{children}</ChatContext.Provider>
+  );
 }
 
 export function useChatStore() {
