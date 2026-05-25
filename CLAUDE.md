@@ -179,13 +179,32 @@ session start.
 - **Public site:** Tailwind — components in `/src/components/`
 - **Shared design tokens:** `/components/admin/theme/mantine-theme.ts`
 - **SBL storefront:** Tailwind — the Second Brain Labs storefront (`2bl.ai`,
-  served from `/secondbrainlabs`) has its own isolated token + font set scoped
-  to `[data-brand="sbl"]`. See "Second Brain Labs storefront palette" below.
+  served from `/secondbrainlabs`) has its own isolated token + font set in
+  `app/secondbrainlabs/globals.css`. See "Second Brain Labs storefront palette" below.
 - **Rule:** No new admin screen is built before the relevant Mantine component
   foundation exists. Design system before screens — always.
 
+### globals.css structure (split by product)
+
+Brand design tokens are **split into per-product, route-scoped CSS files** so
+each brand's tokens only load on its own routes. A CSS file imported in a
+layout only loads for routes whose component tree includes that layout, which
+is what gives the isolation:
+
+| File | Holds | Imported by |
+|------|-------|-------------|
+| `app/globals.css` | Tailwind directives, shared base reset, scrollbars, and cross-brand component styles (the Sage chat overlay, chat-first hero stage, `nav-chat-*`, Calendly overrides, `.highlight-marker`/`.mark-highlight`). **No brand token blocks.** Token-consuming rules here resolve against whichever brand file loads on the route. | `app/layout.tsx` (root — loads on every route) |
+| `app/(jefflougheed)/globals.css` | The inkwell `:root` tokens **and** the full `html[data-palette="inkwell"]` block (the jefflougheed.ca + admin/platform palette). | `app/(jefflougheed)/layout.tsx`, **and** `app/admin/layout.tsx` + `app/(platform)/layout.tsx` — admin/platform live outside the `(jefflougheed)` route group but share the inkwell palette, so they import this file explicitly. |
+| `app/secondbrainlabs/globals.css` | SBL tokens promoted to `:root` + the `sb-pulse` / `sb-dot` keyframes. | `app/secondbrainlabs/layout.tsx` |
+| `app/heirloom/globals.css` | Heirloom colour/`hl` tokens + `background`/`color` promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` / `.bg-pattern-dots` utilities (kept `[data-brand="heirloom"]`-scoped). | `app/heirloom/layout.tsx` |
+
+Note: the jefflougheed public-site component CSS (Sage overlay, hero stage,
+`nav-chat-*`) intentionally stays in `app/globals.css` for now — it is coupled
+to the `Chat`/`Nav`/`Hero` components that don't move until Phase 3.
+
 The token table below is the **jefflougheed.ca + admin palette** (the default
-`:root` / `html[data-palette="inkwell"]` tokens in `app/globals.css`):
+`:root` / `html[data-palette="inkwell"]` tokens in
+`app/(jefflougheed)/globals.css`):
 
 | Token | Value |
 |-------|-------|
@@ -203,16 +222,17 @@ The token table below is the **jefflougheed.ca + admin palette** (the default
 
 The SBL storefront (`2bl.ai`, served from `/secondbrainlabs`) ships its own
 design tokens, **fully isolated** from the jefflougheed/inkwell palette. They
-live in `app/globals.css` under the `[data-brand="sbl"]` selector (set on the
-`/secondbrainlabs` layout wrapper) and are surfaced as Tailwind utilities in
-`tailwind.config.js` (`paper`, `paper-2`, `paper-3`, `line`, `line-2`, `ink`,
-`ink-2`, `muted`, `dim`, `accent` — terracotta, reusing the alpha-aware
-`rgb(var(--color-accent) / <alpha-value>)` token — `accent-deep`,
-`accent-soft`, `pos`). Because the values are scoped to `[data-brand="sbl"]`,
-the Tailwind tokens are inert everywhere else and **the two token sets do not
-conflict**: jefflougheed's global `:root` palette is untouched on SBL pages, and
-the root layout drops `data-palette="inkwell"` whenever the request is SBL (see
-App Structure & Routing) so the inkwell rules never bleed in.
+live at `:root` in `app/secondbrainlabs/globals.css` (imported only by the
+`/secondbrainlabs` layout, so they load only on SBL routes) and are surfaced as
+Tailwind utilities in `tailwind.config.js` (`paper`, `paper-2`, `paper-3`,
+`line`, `line-2`, `ink`, `ink-2`, `muted`, `dim`, `accent` — terracotta,
+reusing the alpha-aware `rgb(var(--color-accent) / <alpha-value>)` token —
+`accent-deep`, `accent-soft`, `pos`). Because the SBL token file only loads on
+SBL routes, the Tailwind tokens are inert everywhere else and **the two token
+sets do not conflict**: the inkwell `:root` palette ships in a separate file
+that does not load on SBL pages, and the root layout drops `data-palette="inkwell"`
+whenever the request is SBL (see App Structure & Routing) so the inkwell rules
+never bleed in.
 
 | SBL token | Value |
 |-----------|-------|
@@ -236,19 +256,22 @@ Neither font set bleeds into the other.
 
 The Heirloom storefront (`heirloom.2bl.ai`, served from `/heirloom`) ships its
 own design tokens, **fully isolated** from the jefflougheed/inkwell and SBL
-palettes. They live in `app/globals.css` under the `[data-brand="heirloom"]`
-selector (set on the `/heirloom` layout wrapper). The same mechanism SBL uses:
-`--color-surface` and `--color-accent` are re-scoped inside this subtree so the
-existing `surface` / `accent` Tailwind tokens render Heirloom values here only,
-and Heirloom-only tokens (`--hl-bg`, `--hl-text-primary`, `--hl-text-muted`,
-`--hl-accent-hover`, `--hl-border`) are surfaced as Tailwind utilities in
-`tailwind.config.js` (`background`, `text-primary`, `text-muted`, `accent-hover`,
-`border`). Because the values are scoped to `[data-brand="heirloom"]`, these
-tokens are inert everywhere else and do not conflict with the other palettes —
-the root layout drops `data-palette="inkwell"` whenever the request is Heirloom
-(see App Structure & Routing). Scoped background-image helpers (`.bg-hero-glow`,
-`.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`, `.bg-pattern-dots`)
-are also defined under the selector for the landing sections.
+palettes. They live in `app/heirloom/globals.css` (imported only by the
+`/heirloom` layout, so they load only on Heirloom routes). The colour tokens are
+promoted to `:root`: `--color-surface` and `--color-accent` are re-scoped there
+so the existing `surface` / `accent` Tailwind tokens render Heirloom values on
+these routes, and Heirloom-only tokens (`--hl-bg`, `--hl-text-primary`,
+`--hl-text-muted`, `--hl-accent-hover`, `--hl-border`) are surfaced as Tailwind
+utilities in `tailwind.config.js` (`background`, `text-primary`, `text-muted`,
+`accent-hover`, `border`). Because the Heirloom token file only loads on
+Heirloom routes, these tokens are inert everywhere else and do not conflict with
+the other palettes — the root layout drops `data-palette="inkwell"` whenever the
+request is Heirloom (see App Structure & Routing). The background-image helpers
+(`.bg-hero-glow`, `.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`,
+`.bg-pattern-dots`) and the `--font-*` remaps **remain scoped to
+`[data-brand="heirloom"]`** in that file — the wrapper `<div>` is where
+next/font defines `--font-heirloom-serif` / `--font-heirloom-sans`, so the
+remaps must resolve there rather than at `:root`.
 
 | Heirloom token | Value |
 |----------------|-------|
@@ -261,9 +284,9 @@ are also defined under the selector for the landing sections.
 
 **Fonts are scoped per brand.** Cormorant Garamond (serif/display) and DM Sans
 (body) are loaded via `next/font/google` in `app/heirloom/layout.tsx` and
-exposed as `--font-heirloom-serif` / `--font-heirloom-sans`, which globals.css
-remaps onto `--font-display` / `--font-serif` / `--font-body` **on the Heirloom
-layout wrapper only**.
+exposed as `--font-heirloom-serif` / `--font-heirloom-sans`, which
+`app/heirloom/globals.css` remaps onto `--font-display` / `--font-serif` /
+`--font-body` **on the Heirloom layout wrapper only**.
 
 ---
 
@@ -292,29 +315,42 @@ The Next.js `app/` directory serves multiple brands from one codebase, split by
 route group / segment and resolved at the edge by `middleware.ts`.
 
 - **`app/(jefflougheed)/`** — route group holding the jefflougheed.ca public
-  site (`page.tsx` + `layout.tsx`). The group's `layout.tsx` owns the
-  jefflougheed `<head>`: metadata, favicons/webmanifest, the Google Fonts
-  `<link>` (Playfair Display / DM Sans / DM Mono), and the Calendly widget
-  CSS/JS. Being a route group, `(jefflougheed)` is **not** part of the URL —
-  these pages still serve from `/`.
+  site (`page.tsx` + `layout.tsx`). The group's `layout.tsx` imports the inkwell
+  token file (`app/(jefflougheed)/globals.css`) and owns the jefflougheed
+  `<head>`: metadata, favicons/webmanifest (`metadata.icons` →
+  `/sage/jefflougheed/favicons/…`), the Google Fonts `<link>` (Playfair Display
+  / DM Sans / DM Mono), and the Calendly widget CSS/JS. Being a route group,
+  `(jefflougheed)` is **not** part of the URL — these pages still serve from `/`.
 - **`app/secondbrainlabs/`** — the Second Brain Labs storefront for `2bl.ai`
-  (`page.tsx` + `layout.tsx`). `layout.tsx` wraps the page in
-  `<div data-brand="sbl">` (scoping the SBL design tokens) and loads Newsreader
-  + Manrope via `next/font/google`.
+  (`page.tsx` + `layout.tsx`). `layout.tsx` imports the SBL token file
+  (`app/secondbrainlabs/globals.css`), wraps the page in
+  `<div data-brand="sbl">` (which carries the next/font `--font-serif` /
+  `--font-sans` variables), sets `metadata.icons` → `/2bl/favicons/…`, and loads
+  Newsreader + Manrope via `next/font/google`.
 - **`app/heirloom/`** — the Heirloom storefront for `heirloom.2bl.ai`
   (`page.tsx` + `layout.tsx`). Unlike `(jefflougheed)`, this is a plain path
   segment, not a route group — it serves from `/heirloom` (the `heirloom.2bl.ai`
-  host is rewritten there by middleware). `layout.tsx` wraps the page in
-  `<div data-brand="heirloom">` (scoping the Heirloom design tokens) and loads
-  Cormorant Garamond (serif/display) + DM Sans (body) via `next/font/google`.
+  host is rewritten there by middleware). `layout.tsx` imports the Heirloom token
+  file (`app/heirloom/globals.css`) and wraps the page in
+  `<div data-brand="heirloom">` (which carries the next/font
+  `--font-heirloom-serif` / `--font-heirloom-sans` variables that the Heirloom
+  `--font-*` remaps depend on), loading Cormorant Garamond (serif/display) + DM
+  Sans (body) via `next/font/google`. `layout.tsx` has **no `metadata.icons`**
+  (so Heirloom routes fall back to the App Router `app/favicon.ico` convention).
   `page.tsx` is the **product app root**: it mounts `ChatProvider` and renders
   the landing page with a slide-in chat panel layered over it (see "Heirloom
   storefront" under Public Site below).
 - **`app/layout.tsx`** — the shared root layout (`ClerkProvider` + `<html>`).
-  It reads the `x-sbl` and `x-heirloom` request headers (set by middleware) and
-  applies `data-palette="inkwell"` to `<html>` only when the request is **neither**
-  SBL **nor** Heirloom, so the inkwell palette never bleeds into `/secondbrainlabs`
-  or `/heirloom`.
+  It imports the global base layer (`app/globals.css` — reset + shared component
+  styles, no brand tokens) and reads the `x-sbl` and `x-heirloom` request headers
+  (set by middleware), applying `data-palette="inkwell"` to `<html>` only when the
+  request is **neither** SBL **nor** Heirloom, so the inkwell palette never bleeds
+  into `/secondbrainlabs` or `/heirloom`. `app/favicon.ico` (the App Router
+  favicon convention, served as the default icon) is the **2BL** icon.
+- **`app/admin/` + `app/(platform)/`** — the Mantine admin and 2BL platform
+  admin. They render under `app/layout.tsx` (not under `(jefflougheed)`), so each
+  layout imports `app/(jefflougheed)/globals.css` explicitly to keep the shared
+  inkwell tokens its pages consume.
 
 ### Middleware (`middleware.ts`)
 
