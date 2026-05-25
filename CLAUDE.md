@@ -755,3 +755,23 @@ A task is complete when all of the following are true:
 - [ ] No TypeScript errors (strict mode)
 - [ ] Documentation updated — README and/or PRD reflect the change
 - [ ] Branch pushed and ready for review
+
+---
+
+## Known Gaps
+
+Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
+`SERVICEMIGRATION.md` for the full picture.
+
+- **History page missing `tenant_id` filter.**
+  `app/admin/prompt-studio/history/page.tsx` queries `chat_sessions` filtered
+  only by `session_type = 'composer'` (no `getAuthContext`, no `tenant_id`
+  scope) via the service-role client, so it surfaces every tenant's composer
+  history. The other admin list pages are correctly tenant-scoped. Fix pending.
+- **`services/payments/` not created.** Stripe Connect work is deferred; not
+  even a scaffold exists yet.
+- **Chat-UI strangle deferred intentionally.** The client chat layer
+  (`src/components/sage/*`, `src/components/Chat.tsx`, `Hero.tsx`,
+  `src/lib/store.ts`, `src/lib/sage.ts`) has not moved to `services/chat/ui/v1/`.
+  This is the source of the remaining `app → src` import-boundary warnings, which
+  is why the `boundaries/element-types` rule stays at `warn`.
