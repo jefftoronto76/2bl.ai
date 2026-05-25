@@ -1,0 +1,58 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Heirloom storefront tokens.
+
+   Imported by app/heirloom/layout.tsx, so these styles only load on the
+   /heirloom (heirloom.2bl.ai) routes. Because the file is route-scoped via its
+   import location, the colour tokens are promoted to :root rather than scoped
+   to [data-brand="heirloom"] — they cannot collide with the inkwell or SBL
+   palettes, which ship in their own route-scoped globals.css files.
+
+   Triplet forms feed the alpha-aware Tailwind tokens (bg-accent/20,
+   border-accent/35, bg-text-primary/10); fixed forms feed the tokens used
+   without an alpha modifier (text-muted, accent-hover, border). --color-surface
+   / --color-accent are intentionally re-scoped here so the existing
+   `surface` / `accent` Tailwind tokens render Heirloom values on these routes.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Re-scoped existing tokens (rgb triplets) */
+  --color-surface: 42 26 14;     /* #2A1A0E */
+  --color-accent:  201 169 110;  /* #C9A96E */
+
+  /* Heirloom-only tokens */
+  --hl-bg:           28 15 6;     /* #1C0F06 */
+  --hl-text-primary: 245 239 230; /* #F5EFE6 */
+  --hl-text-muted:   rgba(245, 239, 230, 0.55);
+  --hl-accent-hover: #B8935A;
+  --hl-border:       rgba(245, 239, 230, 0.12);
+
+  background-color: rgb(var(--hl-bg));
+  color: rgb(var(--hl-text-primary));
+}
+
+/* Font remaps stay scoped to the [data-brand="heirloom"] wrapper <div>:
+   next/font defines --font-heirloom-serif / --font-heirloom-sans on that
+   wrapper (via the className in app/heirloom/layout.tsx), so the var()
+   references only resolve there. Promoting these remaps to :root would leave
+   --font-heirloom-* undefined and break the Heirloom typography. */
+[data-brand="heirloom"] {
+  --font-display: var(--font-heirloom-serif);
+  --font-serif:   var(--font-heirloom-serif);
+  --font-body:    var(--font-heirloom-sans);
+}
+
+/* Heirloom gradient + pattern utilities. */
+[data-brand="heirloom"] .bg-hero-glow {
+  background: radial-gradient(ellipse at 50% 40%, #5C3317 0%, #3D2010 35%, #2C1A0E 65%, #1C0F06 100%);
+}
+[data-brand="heirloom"] .bg-contributor-glow {
+  background: radial-gradient(ellipse at 50% 30%, #5C3317 0%, #3D2010 40%, #2C1A0E 100%);
+}
+[data-brand="heirloom"] .bg-pricing-glow {
+  background: radial-gradient(ellipse at 50% 20%, #4A2610 0%, #2C1A0E 55%, #1E110A 100%);
+}
+[data-brand="heirloom"] .bg-cta-glow {
+  background: radial-gradient(ellipse at 50% 0%, #7A4520 0%, #4A2610 40%, #2C1A0E 100%);
+}
+[data-brand="heirloom"] .bg-pattern-dots {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C9A96E' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}

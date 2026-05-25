@@ -5,6 +5,9 @@ import { redirect } from 'next/navigation';
 
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
+// Inkwell tokens are shared with jefflougheed.ca but platform lives outside the
+// (jefflougheed) route group, so import them explicitly here.
+import '../(jefflougheed)/globals.css';
 
 import { adminTheme } from '@/components/admin/theme/mantine-theme';
 import { PlatformShell } from '@/components/admin/layout/PlatformShell';
