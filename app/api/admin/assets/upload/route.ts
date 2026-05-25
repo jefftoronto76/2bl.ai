@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import mammoth from 'mammoth'
-import { getAdminClient } from '@/lib/supabase-admin'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 
 // App Router route segment config — allow up to 60 s for PDF text extraction.
 // Body size is governed by the deployment platform (Vercel: 4.5 MB serverless),

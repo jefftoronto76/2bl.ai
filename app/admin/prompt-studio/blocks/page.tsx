@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
-import { getAdminClient } from '@/lib/supabase-admin'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 import { Box, Center, Flex, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { NewBlockButton } from '@/components/admin/content/NewBlockButton'

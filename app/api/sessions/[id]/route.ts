@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { getTenantFromRequest } from '@/lib/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 // Anonymous visitor write path — the one justified server-role use. The tenant
 // is always derived from the Host header server-side and never trusted from the

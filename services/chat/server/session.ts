@@ -11,7 +11,7 @@
 
 import { generateText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { ChatMessage, TokenUsage } from './types'
 
 // Internal model for first-name extraction. Always Anthropic Haiku — not a

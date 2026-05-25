@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server'
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // PATCH/DELETE for a single tenant. Same gate as POST /api/platform/tenants —
 // platform_admin only, re-checked here so these privileged service-role writes

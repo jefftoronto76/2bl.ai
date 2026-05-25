@@ -1,4 +1,4 @@
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { Text } from '@/components/admin/primitives/Text'
 import { HistoryTable, type SessionRow } from './HistoryTable'
 

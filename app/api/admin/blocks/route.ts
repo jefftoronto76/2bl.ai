@@ -1,5 +1,5 @@
-import { getAdminClient } from '@/lib/supabase-admin'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string }

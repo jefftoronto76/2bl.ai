@@ -19,10 +19,12 @@ The platform foundation is in place and merged to `main`:
 **Heirloom is in migration** (branch `heirloom-migration`): the **marketing
 page** (host routing + design tokens + landing sections) and the **chat UI with
 live streaming** through `/api/sage` are both done. The remaining Heirloom work
-is the **memory-creation flow**. The remaining service extraction (auth /
-prompt / crm), the chat-service UI move to `services/chat/ui/v1/`, and
-tenant-hierarchy cycle prevention are **known deferred items** — see "Next —
-Heirloom" and "Known deferred items" below.
+is the **memory-creation flow**. The `auth` service extraction is **done**
+(`services/auth/` — auth-context, tenant resolution, user sync, and the Supabase
+client factories). The remaining service extraction (`prompt` / `crm`), the
+chat-service UI move to `services/chat/ui/v1/`, and tenant-hierarchy cycle
+prevention are **known deferred items** — see "Next — Heirloom" and "Known
+deferred items" below.
 
 ---
 
@@ -173,8 +175,10 @@ and `crm` are still scattered across `src/lib/` and `app/api/`. The extracted
 `services/chat/server/` therefore reaches around the missing services and reads
 their concerns directly:
 
-- It calls `getAdminClient()` (`src/lib/supabase-admin.ts`) directly instead of
-  going through a future `services/auth` client factory.
+- It calls `getAdminClient()` — now `services/auth/supabase-admin.ts` (the auth
+  service is extracted), imported as `@/services/auth/supabase-admin`. The
+  client factory now physically lives in `services/auth/`; a richer resolution
+  cache on top of it is still future work.
 - It reads `master_prompt` / `sage_parameters` / `tenant_model_config` directly
   rather than through a `services/prompt` interface.
 - It writes `chat_sessions` (token usage, calendar-offered, visitor_name)
@@ -190,7 +194,7 @@ contracts are frozen), but the boundaries are not yet clean.
 
 | Service | Files that should move (per MIGRATION.md Phase 3) | Status |
 |---------|--------------------------------------------------|--------|
-| `auth` | `src/lib/get-auth-context.ts`, `get-tenant-from-request.ts`, `sync-user.ts`, the Supabase client factories, the new resolution cache | Not started |
+| `auth` | `get-auth-context.ts`, `get-tenant-from-request.ts`, `resolve-tenant-from-host.ts`, `sync-user.ts`, the Supabase client factories (`supabase.ts`, `supabase-admin.ts`, `supabase-server.ts`) | ✅ Moved to `services/auth/` (pure file move; the resolution cache is still future work) |
 | `prompt` | `app/api/admin/prompt/compile/**`, `compile/check`, `src/lib/sage-prompt.ts`, `blockOrder.ts`, `blockTypes.ts`, `tokenize.ts` | Not started |
 | `crm` | `app/api/sessions/**` internals, `src/lib/deriveSessionStatus.ts` | Not started |
 | `payments` | (scaffolded empty) | Not started |
@@ -199,14 +203,19 @@ contracts are frozen), but the boundaries are not yet clean.
 
 ## Phase 3 infrastructure gaps
 
-- **Missing `@/services/*` tsconfig alias.** `tsconfig.json` only defines
-  `@/*` → `./*` + `./src/*`. Imports like `@/services/chat/server` resolve
-  only because `services/` happens to sit at repo root under the `./*` glob.
-  Phase 3 calls for an explicit `@/services/*` path alias — not added.
-- **Missing import-boundary lint rule.** Phase 3 requires an
-  `eslint-plugin-boundaries` / `import/no-restricted-paths` rule to forbid
-  cross-service internal imports and circular deps, failing the build on a
-  cycle. Not added — nothing currently enforces service boundaries.
+- ✅ **`@/services/*` tsconfig alias added.** `tsconfig.json` now defines an
+  explicit `@/services/*` → `./services/*` entry ahead of the general `@/*` →
+  `./*` + `./src/*` glob.
+- ✅ **Import-boundary lint rule added (partial).** `eslint-plugin-boundaries`
+  is installed and `.eslintrc.json` (extending `next/core-web-vitals`) defines
+  `app` / `src` / `services` elements with a `boundaries/element-types` rule
+  forbidding direct `app/` ↔ `src/` imports (services/ is the shared layer). It
+  is set to **`warn`, not `error`**, because the strangle migration is mid-flight
+  — most shared code still lives in `src/lib/`, so erroring would break the
+  currently-passing build. Flip to `error` once shared code finishes moving into
+  `services/`. (`react/no-unescaped-entities` and `@next/next/no-html-link-for-pages`
+  are downgraded to `warn` too: the codebase was never linted and violates them
+  pre-existingly; fixing that is out of scope here.)
 - **`DEFAULT_SYSTEM_PROMPT` not physically moved.** It is re-exported through
   `services/chat/server/prompt.ts` but still physically defined in
   `src/lib/sage-prompt.ts`, and `app/admin/prompt/page.tsx` still imports it

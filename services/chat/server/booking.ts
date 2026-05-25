@@ -6,7 +6,7 @@
 // Server-only (service-role client). The bracket syntax is the contract with
 // the client-side parser (services/chat/ui/v1/parseBookingCards.ts).
 
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 interface SageParameterRow {
   key: string
