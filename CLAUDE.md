@@ -371,10 +371,28 @@ routing in addition to Clerk auth**:
   to `/heirloom` (root `/` → `/heirloom`, otherwise prefixed). The SBL rewrite
   is guarded so it never catches `/heirloom` (or `/api/platform/*`); the rewrite
   is internal so the `heirloom.2bl.ai` URL is preserved.
+- **`/admin` is excluded from every host rewrite.** An `isAdminPath` guard
+  (`/admin` or `/admin/*`, mirroring the `isApiPath` guard) is ANDed into both
+  the SBL and Heirloom block conditions, so `2bl.ai/admin` and
+  `heirloom.2bl.ai/admin` are **not** rewritten under a product segment — they
+  pass through to the shared root `/admin` route, which resolves the tenant from
+  the host (see "Multi-tenant admin" below). (`/api/*` already passes through on
+  the Heirloom host via `isApiPath`, so admin API calls resolve there too.)
 - **jefflougheed.ca passes through** to `/` unchanged — no `x-sbl` /
   `x-heirloom` tag, no rewrite.
 - **Clerk auth (unchanged):** after the domain check, `/admin(.*)` routes are
   still protected via `auth.protect()`.
+
+**Multi-tenant admin:** the same `/admin` code serves every tenant; the tenant
+is resolved per-request from the Host. `getAuthContext()` picks the active
+tenant by host for multi-tenant users, and the **AdminShell banner name is
+host-derived, not hardcoded** — `app/admin/layout.tsx` calls
+`getTenantName()` (`services/auth/get-tenant-name.ts`, which resolves via
+`getAuthContext` then reads `tenants.name`) and passes it as the `tenantName`
+prop to `AdminShell` (falling back to `'Natural Resource'` only if resolution
+returns null). The `ADMIN` eyebrow is a fixed role descriptor, not a tenant
+name. So `jefflougheed.ca/admin` shows "Natural Resource" and
+`heirloom.2bl.ai/admin` shows the Heirloom tenant's `tenants.name`.
 
 The `x-sbl` and `x-heirloom` headers are the signals the root layout uses to
 choose the palette, keeping brand resolution in one place (middleware) rather

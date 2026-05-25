@@ -8,9 +8,10 @@ import { AdminSidebarNav } from '@/components/admin/navigation/AdminSidebarNav';
 
 export interface AdminShellProps {
   children: ReactNode;
+  tenantName: string;
 }
 
-function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+function NavContent({ onNavigate, tenantName }: { onNavigate?: () => void; tenantName: string }) {
   return (
     <Stack
       gap={0}
@@ -31,7 +32,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
             letterSpacing: '-0.01em',
           }}
         >
-          Natural Resource
+          {tenantName}
         </Text>
         <Text
           size="xs"
@@ -62,7 +63,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AdminShell({ children }: AdminShellProps) {
+export function AdminShell({ children, tenantName }: AdminShellProps) {
   const [opened, { toggle, close }] = useDisclosure();
 
   return (
@@ -114,7 +115,7 @@ export function AdminShell({ children }: AdminShellProps) {
                 letterSpacing: '-0.01em',
               }}
             >
-              Natural Resource
+              {tenantName}
             </Text>
             <Text
               size="xs"
@@ -158,7 +159,7 @@ export function AdminShell({ children }: AdminShellProps) {
           content: { backgroundColor: 'var(--mantine-color-dark-9)' },
         }}
       >
-        <NavContent onNavigate={close} />
+        <NavContent onNavigate={close} tenantName={tenantName} />
       </Drawer>
 
       <AppShell.Main

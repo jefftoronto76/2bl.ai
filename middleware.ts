@@ -25,7 +25,12 @@ export default clerkMiddleware(async (auth, req) => {
     pathname.startsWith('/platform/') ||
     pathname.startsWith('/api/platform/')
 
-  if ((isSblHost || isSblPath) && !isPlatformPath) {
+  // /admin is the shared, host-driven admin surface. It must never be rewritten
+  // under a product segment — every product host (SBL, Heirloom) passes /admin
+  // through to the root /admin route, which resolves the tenant from the host.
+  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/')
+
+  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
 
@@ -53,7 +58,7 @@ export default clerkMiddleware(async (auth, req) => {
   // Let API paths pass through so they hit the real route on the original host.
   const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
 
-  if ((isHeirloomHost || isHeirloomPath) && !isApiPath) {
+  if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-heirloom', '1')
 
