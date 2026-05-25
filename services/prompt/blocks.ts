@@ -28,9 +28,11 @@ export interface BlockUpdate {
 }
 
 export interface CreateBlockInput {
-  type: string
-  topic_id: string
-  title: string
+  // Body is the only required field. Title / Type / Topic are optional —
+  // omitted ones are stored null on the block (filled in later via edit).
+  type?: string | null
+  topic_id?: string | null
+  title?: string | null
   body: string
   source_id?: string | null
   is_default?: boolean

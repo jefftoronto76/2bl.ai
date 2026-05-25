@@ -11,9 +11,9 @@ export async function POST(req: Request) {
   }
 
   let body: {
-    type: string
-    topic_id: string
-    title: string
+    type?: string | null
+    topic_id?: string | null
+    title?: string | null
     body: string
     source_id?: string | null
     is_default?: boolean
@@ -26,10 +26,13 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { type, topic_id, title, body: blockBody } = body
+  const { body: blockBody } = body
 
-  if (!type || !topic_id || !title || !blockBody) {
-    return Response.json({ error: 'Missing required fields' }, { status: 400 })
+  // Body is the only required field. Title / Type / Topic are optional —
+  // omitted ones are stored null on the block (the user can fill them in
+  // later via edit).
+  if (!blockBody) {
+    return Response.json({ error: 'Body is required' }, { status: 400 })
   }
 
   const result = await createBlock(authCtx, body)

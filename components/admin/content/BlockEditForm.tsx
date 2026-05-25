@@ -24,9 +24,9 @@ export interface Topic {
 
 export interface NewBlockDraft {
   body: string
-  title: string
-  type: BlockType
-  topic_id: string
+  title: string | null
+  type: BlockType | null
+  topic_id: string | null
 }
 
 export interface EditBlockDraft {
@@ -125,17 +125,17 @@ export function BlockEditForm(props: BlockEditFormProps) {
         onSave: async ({ body }: { body: string }) => {
           await (props as NewModeProps).onSave({
             body,
-            title,
-            type: type as BlockType,
-            topic_id: topicId,
+            title: title.trim() || null,
+            type: type || null,
+            topic_id: topicId || null,
           })
         },
         onSaveAnyway: async ({ body }: { body: string }) => {
           await (props as NewModeProps).onSaveAnyway({
             body,
-            title,
-            type: type as BlockType,
-            topic_id: topicId,
+            title: title.trim() || null,
+            type: type || null,
+            topic_id: topicId || null,
           })
         },
       }
@@ -172,10 +172,9 @@ export function BlockEditForm(props: BlockEditFormProps) {
 
   function validateNewMode(): boolean {
     if (!isNew) return true
+    // Body is the only required field. Title / Type / Topic are optional —
+    // omitted ones are sent as null and stored null on the block.
     const errors: FieldErrors = {}
-    if (!title.trim()) errors.title = 'Title is required'
-    if (!type) errors.type = 'Type is required'
-    if (!topicId) errors.topic_id = 'Topic is required'
     if (!draft.trim()) errors.body = 'Body is required'
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
@@ -225,28 +224,26 @@ export function BlockEditForm(props: BlockEditFormProps) {
       {isNew && (
         <>
           <TextInput
-            label="Title"
+            label="Title (optional)"
             placeholder="A short, descriptive title"
-            required
             value={title}
             onChange={e => handleTitleChange(e.currentTarget.value)}
             error={fieldErrors.title}
             disabled={busy}
           />
           <Select
-            label="Type"
+            label="Type (optional)"
             placeholder="Select a type"
-            required
             data={TYPE_SELECT_DATA}
             value={type || null}
             onChange={handleTypeChange}
             error={fieldErrors.type}
             disabled={busy}
+            clearable
           />
           <Select
-            label="Topic"
+            label="Topic (optional)"
             placeholder="Select a topic"
-            required
             data={(props as NewModeProps).topics.map(t => ({
               value: t.id,
               label: t.name,
@@ -256,6 +253,7 @@ export function BlockEditForm(props: BlockEditFormProps) {
             error={fieldErrors.topic_id}
             disabled={busy}
             searchable
+            clearable
           />
         </>
       )}
