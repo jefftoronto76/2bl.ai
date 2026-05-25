@@ -51,8 +51,8 @@ export function NewBlockButton({ topics }: NewBlockButtonProps) {
   // failure (drawer stays open, user can retry).
   async function handleCreate(draft: NewBlockDraft): Promise<void> {
     console.log('[NewBlockButton] create dispatch', {
-      type: draft.type,
-      titleLength: draft.title.length,
+      type: draft.type ?? null,
+      titleLength: draft.title?.length ?? 0,
       bodyLength: draft.body.length,
     })
     const res = await fetch('/api/admin/blocks/save', {

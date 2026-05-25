@@ -104,7 +104,7 @@ export default async function BlocksPage() {
             Blocks
           </Title>
           <Text variant="muted">
-            Reusable prompt chunks — compiled into Sage&apos;s system prompt.
+            Reusable prompt blocks — compiled into your system prompt.
           </Text>
         </Stack>
 
