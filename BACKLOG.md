@@ -261,3 +261,37 @@ the expanded row consolidation lands.
       should be activated for that conversation path. Pairs with
       the URL-parameter feature above — admin defines the catalog,
       URL params select which subset to show.
+
+## Prompt Contradiction Detection
+
+**What it is:** During the safety check that runs on save, the compiler
+analyzes the full compiled prompt for semantic contradictions across blocks —
+not just within a single block. Two blocks can each be internally valid and
+still produce conflicting instructions that cause non-deterministic model
+behavior.
+
+**Examples of what it needs to catch:**
+- An identity block says "never use bullet points, always respond in flowing
+  prose" and a process block says "present options as a numbered list"
+- A guardrail block says "never discuss pricing beyond the working session fee"
+  and a knowledge block includes a detailed rate card
+- A tone instruction says "be warm and conversational" and an escalation block
+  says "respond formally and direct the visitor to email"
+
+**The requirement:** When the owner saves or publishes, the safety check passes
+the full compiled prompt to Claude with a specific instruction: identify any
+pairs of instructions that would produce contradictory behavior in the model.
+Return each conflict as a structured flag — which blocks are in conflict, what
+the contradiction is, and a suggested resolution.
+
+**Distinct from existing safety check categories** (tone, legal risk, brand
+alignment). Contradiction detection operates on the compiled output, not
+individual blocks in isolation.
+
+**Why it's priority:** A single contradictory instruction pair can make Sage's
+behavior unpredictable in ways that are invisible until a visitor hits the exact
+conversation pattern that triggers it. It's a silent quality problem.
+
+**Where it lives:** Safety check enhancement, inside the existing save flow. No
+schema changes required — output feeds into the existing `safety_check_result`
+jsonb field.
