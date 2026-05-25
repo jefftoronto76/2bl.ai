@@ -19,7 +19,7 @@ tenants. Products, tenants, and resellers are data, not code.
 | Product | Purpose | Status |
 |---------|---------|--------|
 | Sage | AI inbound assistant for SMBs | Live |
-| Heirloom | AI biography and story engine | In migration |
+| Heirloom | AI biography and story engine | In migration — storefront + AI chat live; memory-creation flow next |
 | HUGS | Family and aging parent support | Planned |
 
 Products are not hardcoded. Adding a new product means adding a tenant
