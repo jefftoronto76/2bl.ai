@@ -7,29 +7,46 @@
 
 ## Current State — May 25, 2026
 
-The platform foundation is in place and merged to `main`:
+The platform foundation is in place and merged to `main`. **Phase A — the
+service-extraction strangle — is COMPLETE** (PRs #30–36, May 25, 2026):
 
-- **Chat service — server half** (`services/chat/server/`) extracted and live;
-  `/api/sage` routes through it as a thin adapter. (Merged to main, #22/#23.)
-- **Platform admin** — `/platform/admin` with the cross-tenant tenant list and
-  full tenant create / edit / delete. (Merged to main, #24.)
-- **Platform sign-in** — branded `/secondbrainlabs/sign-in` flow with the
-  `platform_admin` role gate. (Merged to main, #24.)
+- **globals.css split by product** + root favicon fixed. (#30)
+- **services/auth/** extracted — auth-context, tenant resolution, user sync, the
+  Supabase client factories, and the admin-user context. (#31, #34)
+- **services/prompt/** extracted — runtime compiler, master-prompt compile,
+  manual save, LLM safety review, block CRUD, and the block/token helpers; the
+  `app/api/admin/{prompt,blocks}/*` routes are thin consumers. (#32, #34)
+- **services/crm/** extracted — session state machine, chat `onFinish`
+  lifecycle, anonymous session writes, inbound-chat triage; the
+  `app/api/sessions/*` routes and the admin Inbound Chats list are thin. (#33)
+- **Strangle finished** — `src/lib` helpers, `PromptEditor`, and the admin-user
+  context moved out of `src/`; only the deferred chat-UI layer remains. (#34)
+- **`@/services/*` tsconfig alias** + **import-boundary lint rule**
+  (`eslint-plugin-boundaries`, `warn`) in place.
+- **Multi-tenant admin live** on all three domains — `/admin` passes through the
+  host rewrites and the banner name is host-derived. (#35)
+- **Block creation tenant-scoped, body-only required** (Title/Type/Topic
+  optional, stored null when omitted). (#36)
 
-**Heirloom is in migration** (branch `heirloom-migration`): the **marketing
-page** (host routing + design tokens + landing sections) and the **chat UI with
-live streaming** through `/api/sage` are both done. The remaining Heirloom work
-is the **memory-creation flow**. The `auth` service extraction is **done**
-(`services/auth/` — auth-context, tenant resolution, user sync, and the Supabase
-client factories). The `prompt` service extraction is **done** (`services/prompt/`
-— runtime compiler, master-prompt compile, manual save, block CRUD, and LLM
-safety review; the `app/api/admin/{prompt,blocks}/*` routes are thin consumers).
-The `crm` service extraction is **done** (`services/crm/` — session state
-machine, the chat `onFinish` session lifecycle, anonymous session writes, and
-inbound-chat triage; the `app/api/sessions/*` routes and the admin Inbound Chats
-list are thin consumers). With `auth` / `prompt` / `crm` all extracted, the
-core Phase-3 service split is complete. The chat-service UI move to
-`services/chat/ui/v1/` and tenant-hierarchy cycle prevention are **known
+Earlier foundation (pre-Phase-A): chat server half (#22/#23), platform admin +
+branded sign-in (#24).
+
+**Heirloom is in migration.** Landing page ✅, chat wired to
+`services/chat/server` ✅, multi-tenant admin ✅. Remaining: **block
+development** (in progress), **master_prompt compile/publish** (pending — until
+then Heirloom chat falls back to Sage's `DEFAULT_SYSTEM_PROMPT`), the **memory
+creation flow**, and **Clerk account creation in chat**.
+
+**Known gaps:**
+- `services/payments/` — not created (scaffold only, deferred).
+- History page (`app/admin/prompt-studio/history/page.tsx`) — missing the
+  `tenant_id` filter (cross-tenant composer sessions visible to any admin); fix
+  pending.
+- Chat-UI strangle (`services/chat/ui/v1/`) — deferred intentionally
+  (`src/components/sage/*`, `Chat.tsx`, `Hero.tsx`, `src/lib/{store,sage}.ts`);
+  the 6 remaining `app→src` boundary warnings all trace to this.
+
+The chat-service UI move and tenant-hierarchy cycle prevention remain **known
 deferred items** — see "Next — Heirloom" and "Known deferred items" below.
 
 ---
