@@ -47,7 +47,13 @@ export default clerkMiddleware(async (auth, req) => {
   const isHeirloomHost = HEIRLOOM_HOSTS.has(host)
   const isHeirloomPath = pathname === '/heirloom' || pathname.startsWith('/heirloom/')
 
-  if (isHeirloomHost || isHeirloomPath) {
+  // API routes (e.g. /api/sage) must never be rewritten under /heirloom — they
+  // live at the app root and resolve the tenant from the host header. Without
+  // this guard, heirloom.2bl.ai/api/sage rewrites to /heirloom/api/sage (404).
+  // Let API paths pass through so they hit the real route on the original host.
+  const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
+
+  if ((isHeirloomHost || isHeirloomPath) && !isApiPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-heirloom', '1')
 
