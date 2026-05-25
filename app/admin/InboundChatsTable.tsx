@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Table, Badge, Box, Center, Group, Paper, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import type { SessionStatus } from '@/lib/deriveSessionStatus'
+import type { SessionStatus } from '@/services/crm/status'
+import type { ChatSession } from '@/services/crm/inbound'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
@@ -37,18 +38,6 @@ const STATUS_COLORS: Record<SessionStatus, string> = {
   in_progress: 'green',
   active: 'yellow',
   abandoned: 'gray',
-}
-
-export interface ChatSession {
-  id: string
-  visitor_name: string | null
-  messages: unknown[] | null
-  status: string | null
-  updated_at: string | null
-  created_at: string
-  derived_status: SessionStatus
-  input_tokens: number | null
-  output_tokens: number | null
 }
 
 export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {

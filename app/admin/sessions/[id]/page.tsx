@@ -3,7 +3,7 @@ import { getAuthContext } from '@/services/auth/get-auth-context'
 import {
   deriveSessionStatus,
   type SessionStatusThresholds,
-} from '@/lib/deriveSessionStatus'
+} from '@/services/crm/status'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 

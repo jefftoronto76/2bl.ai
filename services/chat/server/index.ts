@@ -11,7 +11,7 @@
 import { runChatStream, resolveModelConfig } from './stream'
 import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
 import { getBookingCardSection } from './booking'
-import { handleSessionFinish } from './session'
+import { handleSessionFinish } from '@/services/crm/session'
 import type { ChatMessage, ChatStreamRequest } from './types'
 
 export type {

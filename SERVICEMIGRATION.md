@@ -24,8 +24,12 @@ is the **memory-creation flow**. The `auth` service extraction is **done**
 client factories). The `prompt` service extraction is **done** (`services/prompt/`
 — runtime compiler, master-prompt compile, manual save, block CRUD, and LLM
 safety review; the `app/api/admin/{prompt,blocks}/*` routes are thin consumers).
-The remaining service extraction (`crm`), the chat-service UI move to
-`services/chat/ui/v1/`, and tenant-hierarchy cycle prevention are **known
+The `crm` service extraction is **done** (`services/crm/` — session state
+machine, the chat `onFinish` session lifecycle, anonymous session writes, and
+inbound-chat triage; the `app/api/sessions/*` routes and the admin Inbound Chats
+list are thin consumers). With `auth` / `prompt` / `crm` all extracted, the
+core Phase-3 service split is complete. The chat-service UI move to
+`services/chat/ui/v1/` and tenant-hierarchy cycle prevention are **known
 deferred items** — see "Next — Heirloom" and "Known deferred items" below.
 
 ---
@@ -186,12 +190,16 @@ their concerns directly:
   is a thin re-export of `services/prompt/compiler.ts`. The booking section
   (`sage_parameters`) and `tenant_model_config` reads are still direct in
   `services/chat/server/{booking,stream}.ts`.
-- It writes `chat_sessions` (token usage, calendar-offered, visitor_name)
-  directly rather than through a `services/crm` interface.
+- Session-finish writes to `chat_sessions` (token usage, calendar-offered,
+  visitor_name) now go through `services/crm/session.ts` (`handleSessionFinish`),
+  which the orchestrator imports from `@/services/crm/session`. The remaining
+  direct reads/writes from the chat service are the booking section and
+  `tenant_model_config` noted above.
 
-When auth/prompt/crm are extracted, the chat service's direct DB access will
-need to be repointed at them. Not a bug today (behavior is correct and
-contracts are frozen), but the boundaries are not yet clean.
+`auth`, `prompt`, and `crm` are now extracted; the chat service's base prompt
+and session-finish flows route through them. The remaining direct DB access
+(booking `sage_parameters`, `tenant_model_config`) is documented above. Not a
+bug today (behavior is correct and contracts are frozen).
 
 ---
 
@@ -201,7 +209,7 @@ contracts are frozen), but the boundaries are not yet clean.
 |---------|--------------------------------------------------|--------|
 | `auth` | `get-auth-context.ts`, `get-tenant-from-request.ts`, `resolve-tenant-from-host.ts`, `sync-user.ts`, the Supabase client factories (`supabase.ts`, `supabase-admin.ts`, `supabase-server.ts`) | ✅ Moved to `services/auth/` (pure file move; the resolution cache is still future work) |
 | `prompt` | runtime compiler, `compile`, `compile/check`, manual `save` + legacy `check`, block CRUD | ✅ Moved to `services/prompt/` (`compiler.ts`, `compile.ts`, `blocks.ts`, `save.ts`, `safety.ts`, `index.ts`); routes are thin. `src/lib/sage-prompt.ts` (`DEFAULT_SYSTEM_PROMPT`) + `blockOrder.ts` / `tokenize.ts` helpers still referenced from `src/lib/` |
-| `crm` | `app/api/sessions/**` internals, `src/lib/deriveSessionStatus.ts` | Not started |
+| `crm` | `deriveSessionStatus`, the chat `onFinish` session lifecycle, `app/api/sessions/**` internals, admin inbound-list triage | ✅ Moved to `services/crm/` (`status.ts`, `session.ts`, `sessions.ts`, `inbound.ts`, `index.ts`); the session routes and admin Inbound Chats list are thin |
 | `payments` | (scaffolded empty) | Not started |
 
 ---
