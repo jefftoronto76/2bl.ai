@@ -4,7 +4,7 @@ import {
   deriveSessionStatus,
   type SessionStatus,
   type SessionStatusThresholds,
-} from '@/lib/deriveSessionStatus'
+} from '@/services/crm/status'
 import { InboundChatsTable, type ChatSession } from './InboundChatsTable'
 
 export const dynamic = 'force-dynamic'

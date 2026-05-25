@@ -1,9 +1,10 @@
-// services/chat/server/session.ts
+// services/crm/session.ts
 //
-// Session lifecycle + token tracking for the chat service. Server-only
-// (service-role client). Owns the onFinish detection flows: token-usage
-// accounting, calendar-offer detection, and first-name extraction via a Haiku
-// call. Logic moved verbatim from app/api/sage/route.ts — behavior unchanged.
+// Session lifecycle + token tracking. Server-only (service-role client). Owns
+// the onFinish detection flows: token-usage accounting, calendar-offer
+// detection, and first-name extraction via a Haiku call. Consumed by the chat
+// orchestrator (services/chat/server/index.ts → handleSessionFinish). Logic
+// moved verbatim from app/api/sage/route.ts — behavior unchanged.
 //
 // NOTE: the eventual Amendment-3 batched single-write and Amendment-5 pooled
 // connection are deliberately NOT applied here; this is a behavior-preserving
@@ -12,7 +13,7 @@
 import { generateText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import type { ChatMessage, TokenUsage } from './types'
+import type { ChatMessage, TokenUsage } from '@/services/chat/server/types'
 
 // Internal model for first-name extraction. Always Anthropic Haiku — not a
 // tenant-configurable choice, so it is not part of ModelConfig. This const is

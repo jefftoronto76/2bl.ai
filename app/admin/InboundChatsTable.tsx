@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Table, Badge, Box, Center, Group, Paper, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import type { SessionStatus } from '@/lib/deriveSessionStatus'
+import type { SessionStatus } from '@/services/crm/status'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
