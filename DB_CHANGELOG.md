@@ -1,5 +1,37 @@
 # DB Changelog
 
+## 2026-05-25 — Artifacts schema
+
+### New table: artifacts
+- id (uuid, PK)
+- tenant_id (uuid, FK → tenants)
+- user_id (uuid, FK → users)
+- session_id (uuid, FK → chat_sessions)
+- type (text) — e.g. 'memory' for Heirloom; general-purpose across tenants
+- title (text)
+- body (text)
+- metadata (jsonb)
+- status (text) — 'draft' | 'published'
+- created_at (timestamptz)
+- updated_at (timestamptz)
+
+### New table: artifact_media
+- id (uuid, PK)
+- artifact_id (uuid, FK → artifacts)
+- type (text)
+- url (text)
+- filename (text)
+- mime_type (text)
+- size (integer)
+- created_at (timestamptz)
+
+Notes:
+- Tables created in Supabase Studio by Jeff — not via migration file
+- artifact_media references artifacts via artifact_id
+- Not yet wired to chat — pending PR
+
+---
+
 ## 2026-05-24
 
 ### Create `tenant_branding` table
