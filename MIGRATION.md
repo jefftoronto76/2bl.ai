@@ -91,6 +91,11 @@ These are the items most likely to cause problems if left mid-state. Each is a
 
 ## A.3 What has not started
 
+> **Snapshot from migration kickoff — partially superseded.** Several items
+> below have since started (e.g. `services/chat/server`, the `(platform)`
+> admin, `tenant_model_config`, and the Heirloom storefront). See
+> `SERVICEMIGRATION.md` for the authoritative current state.
+
 - `services/` — does not exist. Chat/prompt/CRM/auth logic lives inline in
   `app/api/**` and `src/lib/**`.
 - `tenants/` product config (`sage/`, `heirloom/`, `hugs/`) — does not exist.
@@ -105,7 +110,8 @@ These are the items most likely to cause problems if left mid-state. Each is a
 - **OpenAI fallback** — CLAUDE.md claims it; **not wired** (no `openai` /
   `@ai-sdk/openai` dependency or import).
 - **Audit logging** — none.
-- Heirloom and HUGS — nothing exists.
+- HUGS — nothing exists. (Heirloom has since started — storefront + chat live
+  under `app/heirloom/` on `heirloom-migration`; see `SERVICEMIGRATION.md`.)
 
 ## A.4 Dead code & duplicates (delete in Phase 2)
 
