@@ -17,7 +17,7 @@ import { useUser } from '@clerk/nextjs'
 import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
 import { Text } from '@/components/admin/primitives/Text'
-import { useAdminUserId } from '@/context/admin-user'
+import { useAdminUserId } from '@/services/auth/admin-user-context'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 
 // ─── Types & constants ───────────────────────────────────────────────────────
