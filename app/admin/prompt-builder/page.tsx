@@ -18,7 +18,7 @@ import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
 import { Text } from '@/components/admin/primitives/Text'
 import { useAdminUserId } from '@/context/admin-user'
-import { readDataStream } from '@/lib/stream'
+import { readDataStream } from '@/services/chat/server/stream-utils'
 
 // ─── Types & constants ───────────────────────────────────────────────────────
 

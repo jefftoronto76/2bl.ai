@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { BLOCK_TYPES, type BlockType } from '@/lib/blockTypes'
+import { BLOCK_TYPES, type BlockType } from '@/services/prompt/block-types'
 
 export type TypeFilter = 'all' | BlockType
 export type StatusFilter = 'all' | 'active' | 'disabled'

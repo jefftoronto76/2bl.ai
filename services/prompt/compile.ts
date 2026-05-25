@@ -7,8 +7,8 @@
 // app/api/admin/prompt/compile route body; the route is now a thin handler.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { isOrdered } from '@/lib/blockOrder'
-import { tokensFor } from '@/lib/tokenize'
+import { isOrdered } from '@/services/prompt/block-order'
+import { tokensFor } from '@/services/prompt/tokenize'
 
 // Fixed compile sequence — mirrors the TYPE_LABELS ordinal order on the
 // Blocks page. Within each type bucket: blocks with `order > 0` come

@@ -2,7 +2,7 @@
 
 import { Progress, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import { tokensFor } from '@/lib/tokenize'
+import { tokensFor } from '@/services/prompt/tokenize'
 
 const TOKEN_LIMIT = 8000
 const YELLOW_THRESHOLD = 5000

@@ -23,9 +23,9 @@ import { BlockEditSheet } from '@/components/admin/content/BlockEditSheet'
 import { BlockEditForm } from '@/components/admin/content/BlockEditForm'
 import { BlocksToolbar } from '@/components/admin/content/BlocksToolbar'
 import { useBlocksFilters } from '@/components/admin/content/useBlocksFilters'
-import type { BlockType } from '@/lib/blockTypes'
-import { isOrdered } from '@/lib/blockOrder'
-import { tokensFor } from '@/lib/tokenize'
+import type { BlockType } from '@/services/prompt/block-types'
+import { isOrdered } from '@/services/prompt/block-order'
+import { tokensFor } from '@/services/prompt/tokenize'
 
 type BlockStatus = 'active' | 'disabled' | 'deleted'
 

@@ -1,5 +1,5 @@
 import { SageMessage } from './store'
-import { readDataStream } from './stream'
+import { readDataStream } from '@/services/chat/server/stream-utils'
 
 export async function streamSageResponse(
   messages: SageMessage[],

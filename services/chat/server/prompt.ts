@@ -5,4 +5,4 @@
 // chat-service importers (services/chat/server/index.ts) resolving unchanged.
 
 export { getSystemPrompt, QUESTION_MODE_CONTEXT } from '@/services/prompt/compiler'
-export { DEFAULT_SYSTEM_PROMPT } from '@/lib/sage-prompt'
+export { DEFAULT_SYSTEM_PROMPT } from '@/services/prompt/sage-prompt'

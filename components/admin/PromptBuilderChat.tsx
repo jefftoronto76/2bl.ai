@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { readDataStream } from '@/lib/stream'
+import { readDataStream } from '@/services/chat/server/stream-utils'
 
 interface Message {
   role: 'user' | 'assistant'

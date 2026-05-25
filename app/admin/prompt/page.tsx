@@ -1,5 +1,5 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { DEFAULT_SYSTEM_PROMPT } from '@/lib/sage-prompt'
+import { DEFAULT_SYSTEM_PROMPT } from '@/services/prompt/sage-prompt'
 import { PromptEditor } from '@/components/PromptEditor'
 
 export const dynamic = 'force-dynamic'

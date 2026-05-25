@@ -19,7 +19,7 @@ import {
   TYPE_COMPILE_ORDER,
   TYPE_LABELS,
   type BlockType,
-} from '@/lib/blockTypes'
+} from '@/services/prompt/block-types'
 import type {
   StatusFilter,
   TypeFilter,
@@ -40,7 +40,7 @@ export interface BlocksToolbarProps {
 
 // Type chips render in compile order so the toolbar matches the
 // ordinal suffix on the row badges (GUARDRAIL 1st, IDENTITY 2nd, …).
-// Single source of truth: TYPE_COMPILE_ORDER in @/lib/blockTypes.
+// Single source of truth: TYPE_COMPILE_ORDER in @/services/prompt/block-types.
 const ORDERED_TYPES: BlockType[] = [...BLOCK_TYPES].sort(
   (a, b) => TYPE_COMPILE_ORDER[a] - TYPE_COMPILE_ORDER[b],
 )

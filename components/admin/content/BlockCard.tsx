@@ -17,9 +17,9 @@ import { Text } from '@/components/admin/primitives/Text'
 import {
   TYPE_COLORS,
   formatTypeBadgeLabel,
-} from '@/lib/blockTypes'
-import { orderPrefix } from '@/lib/blockOrder'
-import { tokensFor } from '@/lib/tokenize'
+} from '@/services/prompt/block-types'
+import { orderPrefix } from '@/services/prompt/block-order'
+import { tokensFor } from '@/services/prompt/tokenize'
 import { formatRelativeTime } from '@/lib/time'
 import type { BlockRowBlock } from './BlockRow'
 
