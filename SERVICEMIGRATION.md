@@ -73,7 +73,7 @@ What's in each file:
 | `services/chat/server/types.ts` | Framework-agnostic contract types: `ChatMessage`, `ChatRole`, `ChatMode`, `ChatTenantContext`, `ChatStreamRequest`, `ModelProvider`, `ModelConfig`, `TokenUsage`, `SessionFinishUpdate`, `OpenAs`, `BookingCardData`, `ParsedBookingResult`. No Next.js imports. |
 | `services/chat/server/index.ts` | Public orchestrator `streamChat()` — normalizes messages (empty → greeting `'Hi'`; leading-assistant gets `'Hi'` prepended), composes the system prompt (base + booking + question-mode) in parallel with model-config resolution, runs one streamed turn, returns the data-stream Response (502 on upstream error). Re-exports the public contract types. |
 | `services/chat/server/stream.ts` | `resolveModelConfig()` (reads `tenant_model_config`, falls back to code defaults), `getModelInstance()` (provider seam — Anthropic wired, OpenAI throws as not-yet-wired), `runChatStream()` (the `streamText` call + `onFinish` usage normalization). The ONLY hardcoded model IDs live here: `claude-sonnet-4-6` / `gpt-4o` defaults. Server-only. |
-| `services/chat/server/prompt.ts` | `getSystemPrompt()` (highest-version `master_prompt` row, falls back to `DEFAULT_SYSTEM_PROMPT`) + `QUESTION_MODE_CONTEXT` const. Re-exports `DEFAULT_SYSTEM_PROMPT` (still physically defined in `src/lib/sage-prompt.ts`). Server-only. |
+| `services/chat/server/prompt.ts` | Thin re-export of `services/prompt/compiler.ts` (`getSystemPrompt`, `QUESTION_MODE_CONTEXT`) + `DEFAULT_SYSTEM_PROMPT` (now `services/prompt/sage-prompt.ts`). The runtime compiler moved to the prompt service in V3; `sage-prompt.ts` moved there in V5. Server-only. |
 | `services/chat/server/booking.ts` | `getBookingCardSection()` (fetches `sage_parameters`, renders the `[BOOKING: …]` section) + pure `buildBookingSection()`. Returns `''` on error/no-rows so the section is simply omitted. Server-only. |
 | `services/chat/server/session.ts` | onFinish detection flows, moved verbatim: `persistTokenUsage` (main turn + Haiku), `scanForCalendarOffer` + `persistCalendarOffered`, `extractNameWithHaiku` (`claude-haiku-4-5`) + `isPlausibleName` + `persistVisitorName`. No-ops when `sessionId` is null. Server-only. |
 
@@ -155,9 +155,14 @@ Client transport that SERVICEMIGRATION previously listed as moving into
 
 | File | Notes |
 |------|-------|
-| src/lib/sage.ts | `streamSageResponse` — the `/api/sage` fetch client. |
-| src/lib/stream.ts | `readDataStream`. ⚠️ **Shared with admin** (`components/admin/PromptBuilderChat.tsx`, `app/admin/prompt-builder/page.tsx`), not chat-only — moving it under `services/chat` would make admin import from the chat service. Resolve before moving. |
+| src/lib/sage.ts | `streamSageResponse` — the `/api/sage` fetch client. (Imports `readDataStream` from `services/chat/server/stream-utils.ts`.) |
 | src/lib/store.ts | Exports both `useSageStore` (public chat) and `useChatStore`. Consumed by Chat, Hero, Nav, SectionProcess, Work. |
+
+Note: `readDataStream` (the data-stream reader, shared with the admin composer)
+was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`
+(V5) — named to avoid colliding with the chat `stream.ts`. `src/lib/sage.ts`,
+`components/admin/PromptBuilderChat.tsx`, and `app/admin/prompt-builder/page.tsx`
+import it from there now.
 
 The jefflougheed.ca consumers below stay in `src/components/` and become thin
 consumers of the chat service once its UI half exists — do not move or delete
@@ -208,7 +213,7 @@ bug today (behavior is correct and contracts are frozen).
 | Service | Files that should move (per MIGRATION.md Phase 3) | Status |
 |---------|--------------------------------------------------|--------|
 | `auth` | `get-auth-context.ts`, `get-tenant-from-request.ts`, `resolve-tenant-from-host.ts`, `sync-user.ts`, the Supabase client factories (`supabase.ts`, `supabase-admin.ts`, `supabase-server.ts`) | ✅ Moved to `services/auth/` (pure file move; the resolution cache is still future work) |
-| `prompt` | runtime compiler, `compile`, `compile/check`, manual `save` + legacy `check`, block CRUD | ✅ Moved to `services/prompt/` (`compiler.ts`, `compile.ts`, `blocks.ts`, `save.ts`, `safety.ts`, `index.ts`); routes are thin. `src/lib/sage-prompt.ts` (`DEFAULT_SYSTEM_PROMPT`) + `blockOrder.ts` / `tokenize.ts` helpers still referenced from `src/lib/` |
+| `prompt` | runtime compiler, `compile`, `compile/check`, manual `save` + legacy `check`, block CRUD, block/token helpers | ✅ Moved to `services/prompt/` (`compiler.ts`, `compile.ts`, `blocks.ts`, `save.ts`, `safety.ts`, `block-types.ts`, `block-order.ts`, `tokenize.ts`, `sage-prompt.ts`, `index.ts`); routes are thin. The block/token helpers + `DEFAULT_SYSTEM_PROMPT` moved out of `src/lib/` in V5 — nothing prompt-related remains there |
 | `crm` | `deriveSessionStatus`, the chat `onFinish` session lifecycle, `app/api/sessions/**` internals, admin inbound-list triage | ✅ Moved to `services/crm/` (`status.ts`, `session.ts`, `sessions.ts`, `inbound.ts`, `index.ts`); the session routes and admin Inbound Chats list are thin |
 | `payments` | (scaffolded empty) | Not started |
 
@@ -224,17 +229,36 @@ bug today (behavior is correct and contracts are frozen).
   `app` / `src` / `services` elements with a `boundaries/element-types` rule
   forbidding direct `app/` ↔ `src/` imports (services/ is the shared layer). It
   is set to **`warn`, not `error`**, because the strangle migration is mid-flight
-  — most shared code still lives in `src/lib/`, so erroring would break the
-  currently-passing build. Flip to `error` once shared code finishes moving into
-  `services/`. (`react/no-unescaped-entities` and `@next/next/no-html-link-for-pages`
+  — the **6 remaining** `app→src` warnings are all the deferred chat-UI layer
+  (see "Strangle status" below), so erroring would break the currently-passing
+  build. Flip to `error` once those finish moving into `services/`.
+  (`react/no-unescaped-entities` and `@next/next/no-html-link-for-pages`
   are downgraded to `warn` too: the codebase was never linted and violates them
   pre-existingly; fixing that is out of scope here.)
-- **`DEFAULT_SYSTEM_PROMPT` not physically moved.** It is re-exported through
-  `services/chat/server/prompt.ts` but still physically defined in
-  `src/lib/sage-prompt.ts`, and `app/admin/prompt/page.tsx` still imports it
-  from the old path. Physical consolidation is deferred to a cleanup commit
-  (see the note in `prompt.ts`), once nothing imports it from `src/lib`
-  directly.
+- ✅ **`DEFAULT_SYSTEM_PROMPT` physically moved.** `sage-prompt.ts` now lives at
+  `services/prompt/sage-prompt.ts` (V5); `services/prompt/compiler.ts` imports +
+  re-exports it, `services/chat/server/prompt.ts` re-re-exports it, and
+  `app/admin/prompt/page.tsx` imports it from the new path. Nothing imports it
+  from `src/lib/` any more.
+
+### Strangle status (V5)
+
+The `app→src` boundary warnings are being driven to zero by relocating the last
+shared `src/` code. **V5 cleared 8 of 14** (`14 → 6`):
+- `src/lib/{blockTypes,blockOrder,tokenize,sage-prompt}` → `services/prompt/`;
+  `src/lib/stream.ts` (`readDataStream`) → `services/chat/server/stream-utils.ts`.
+- `src/context/admin-user.tsx` → `services/auth/admin-user-context.tsx`.
+- `src/components/PromptEditor.tsx` → `components/admin/PromptEditor.tsx`.
+
+The **6 remaining** warnings are all the **chat-UI half** (NOT yet extracted —
+see "Chat service — UI half NOT yet extracted"): `app/(jefflougheed)/page.tsx`
+importing `Chat` / `Hero` / `Nav` / `SectionProcess` from `src/components/`, and
+`Problem` / `Session` importing `useReveal` from `src/hooks/`. Those components
+can't move yet because they import `src/lib/store.ts` (`useSageStore`),
+`src/lib/sage.ts` (`streamSageResponse`), and `src/components/sage/*` — moving
+the components without those would just relocate the warnings (and `useReveal`
+is still shared by the `src/components/` orphans `WhyMe` / `QuoteCarouselSection`).
+Clearing the last 6 = the chat-UI extraction, tracked as a separate effort.
 
 ---
 
@@ -247,7 +271,6 @@ Ownership unknown — do not touch until investigated:
 - src/components/Process.tsx
 - src/components/WhyMe.tsx
 - src/components/Work.tsx
-- src/components/PromptEditor.tsx
 - src/components/QuoteCarouselSection.tsx
 - src/components/CareerHighlights.tsx (references public/logos/2blai_logo.svg)
 
@@ -295,9 +318,12 @@ Tracked, intentionally not done yet, none blocking Heirloom's first iteration:
 3. **Chat-service UI move to `services/chat/ui/v1/`.** The client primitives
    (parseBookingCards, BookingCard, SageReply, markdownComponents,
    useSageParameters) still live in `src/components/sage/`; the client transport
-   (`sage.ts`, `stream.ts`, `store.ts`) is still in `src/lib/`. See "Chat
-   service — UI half NOT yet extracted" above (resolve the shared `stream.ts`
-   admin coupling first).
+   (`sage.ts`, `store.ts`) is still in `src/lib/` (`readDataStream` already moved
+   to `services/chat/server/stream-utils.ts` in V5, resolving the shared-admin
+   coupling). This is also the blocker for the last **6 boundary warnings** — the
+   jefflougheed page's `Chat`/`Hero`/`Nav`/`SectionProcess` imports and
+   `useReveal` can't move until this layer does. See "Chat service — UI half NOT
+   yet extracted" and "Strangle status (V5)" above.
 
 **Phase 4 — security hardening** (RLS primary, Clerk→Supabase JWT, audit log;
 MIGRATION.md Phase 4) remains the major security milestone and is unchanged.

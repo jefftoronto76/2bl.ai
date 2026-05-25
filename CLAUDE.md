@@ -454,7 +454,7 @@ instead. The discovery call is **not** removed from Sage's master
 system prompt; Sage may still offer it at her discretion during a
 conversation. Remaining intentional references:
 
-- `src/lib/sage-prompt.ts` — `DEFAULT_SYSTEM_PROMPT` pricing + behavior + booking-link sections
+- `services/prompt/sage-prompt.ts` — `DEFAULT_SYSTEM_PROMPT` pricing + behavior + booking-link sections
 - `src/components/Session.tsx` — `handleDiscoveryClick` popup invocation and the "Start with a free 15-minute call →" link
 
 Do not remove these without explicit instruction.
@@ -464,14 +464,15 @@ Do not remove these without explicit instruction.
 The Heirloom product surface lives entirely under `app/heirloom/` (Tailwind +
 the `[data-brand="heirloom"]` palette — no Mantine, isolated from the Sage
 visitor chat in `src/components/`). It is **not** wired to `src/lib/sage.ts`,
-`src/lib/stream.ts`, or `useSageStore` — Heirloom carries its own store and
-stream reader so the two chat clients stay decoupled.
+`services/chat/server/stream-utils.ts` (`readDataStream`), or `useSageStore` —
+Heirloom carries its own store and stream reader so the two chat clients stay
+decoupled.
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | `HeirloomPage` (app root) | `app/heirloom/page.tsx` | `'use client'` root. Wraps everything in `ChatProvider` and renders `<LandingPage>` with a slide-in chat panel layered over it. The panel is always mounted and slides off-canvas (`translate-x-full pointer-events-none`) when closed; a `bg-black/50 backdrop-blur-sm` backdrop renders only while open. **Escape** key and **backdrop click** both dispatch `CLOSE_CHAT`. Panel carries `role="dialog"` / `aria-modal` / `aria-hidden`. |
 | `chatStore` (`ChatProvider`, `useChatStore`, `Message`) | `app/heirloom/components/store/chatStore.tsx` | `useReducer` context. State: `messages`, `hasStarted`, `isSidebarExpanded`, `isLoading`, `isChatOpen`. Actions: `SEND_MESSAGE`, `ADD_ASSISTANT_MESSAGE`, `UPDATE_LAST_ASSISTANT`, `SET_LOADING`, `TOGGLE_SIDEBAR` / `SET_SIDEBAR`, `OPEN_CHAT` / `CLOSE_CHAT`. Exposes `sendMessage(content)` which POSTs `{ messages, session_id: null }` to `/api/sage`, streams deltas via `readSageStream`, and dispatches `ADD_ASSISTANT_MESSAGE` (first token) then `UPDATE_LAST_ASSISTANT` (subsequent). Errors surface as an on-brand assistant message; `session_id` is null for now. |
-| `readSageStream` | `app/heirloom/lib/stream.ts` | Heirloom-local reader for the Vercel AI SDK data stream (`0:"delta"` lines) returned by `/api/sage`. Accumulates text and calls `onChunk(accumulated)` per delta. Deliberately self-contained — does not import `src/lib/stream.ts` (which carries Sage store/admin coupling); the wire format is the only shared contract. |
+| `readSageStream` | `app/heirloom/lib/stream.ts` | Heirloom-local reader for the Vercel AI SDK data stream (`0:"delta"` lines) returned by `/api/sage`. Accumulates text and calls `onChunk(accumulated)` per delta. Deliberately self-contained — does not import the admin `readDataStream` (`services/chat/server/stream-utils.ts`, which carries Sage store/admin coupling); the wire format is the only shared contract. |
 | `ChatHero` | `app/heirloom/components/chat/ChatHero.tsx` | Panel body: `Sidebar` + a column with `ChatHeader`, the message area (`MessageList` once `hasStarted`, else the empty-state greeting **"What's a story worth keeping?"**), and `ChatInput`. |
 | `ChatHeader` | `app/heirloom/components/chat/ChatHeader.tsx` | "Your Story" dropdown + Account / Close `IconButton`s (Close dispatches `CLOSE_CHAT`). |
 | `ChatInput` | `app/heirloom/components/chat/ChatInput.tsx` | Auto-growing textarea, Enter-to-send (Shift+Enter newline), `ArrowUp` send button (disabled when empty or loading). Calls `sendMessage`. No AI disclaimer. |
@@ -503,6 +504,7 @@ intended home for cross-cutting auth/DB plumbing.
 | `syncUser` | `services/auth/sync-user.ts` | Upserts the current Clerk user into the Supabase `users` table on `clerk_id` conflict; returns the Supabase UUID or null. Called from `app/admin/layout.tsx`. |
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
+| `AdminUserProvider` / `useAdminUserId` | `services/auth/admin-user-context.tsx` | `'use client'` React context exposing the synced Supabase user id to the admin tree. Mounted in `app/admin/layout.tsx`. (Moved from `src/context/admin-user.tsx`.) |
 
 ### Prompt service (`services/prompt/`)
 
@@ -521,10 +523,16 @@ result so routes preserve their exact status codes.
 | `blocks.ts` | `listActiveBlocks`, `updateBlock`, `createBlock`, `duplicateBlock` (+ `AuthScope`, `BlocksResult`, `BlockUpdate`, `CreateBlockInput`) | Block data-access against `blocks` (and the `content` / `chat_sessions` rows the create/duplicate flows touch). Backs the `app/api/admin/blocks/*` routes (except `blocks/chat`, a streaming composer with no block-table access). |
 | `save.ts` | `saveMasterPrompt(tenantId, prompt, checkResult)` | Manual versioned master-prompt save (legacy path). Backs `POST /api/admin/prompt/save`. |
 | `safety.ts` | `reviewBlockBody`, `reviewMasterPrompt` (+ `CheckResult`, `CheckIssue`) | LLM safety review — single block (fail-open) backs `POST /api/admin/prompt/compile/check`; whole prompt backs the legacy `POST /api/admin/prompt/check`. |
+| `block-types.ts` | `BLOCK_TYPES`, `BlockType`, `TYPE_COLORS`, `TYPE_LABELS`, `TYPE_COMPILE_ORDER`, `formatTypeBadgeLabel` | Block taxonomy + badge/colour/compile-order maps. Consumed by the admin Blocks UI (`components/admin/content/*`, `BlocksTable`). (Moved from `src/lib/blockTypes.ts`.) |
+| `block-order.ts` | `isOrdered`, `orderPrefix` | `order`-column helpers for the compile sort + Blocks UI. (Moved from `src/lib/blockOrder.ts`.) |
+| `tokenize.ts` | `tokensFor`, `CHARS_PER_TOKEN` | `ceil(chars/4)` token approximation used by compile + the fullness meters. (Moved from `src/lib/tokenize.ts`.) |
+| `sage-prompt.ts` | `DEFAULT_SYSTEM_PROMPT` | The fallback Sage system prompt. Imported + re-exported by `compiler.ts`. (Moved from `src/lib/sage-prompt.ts`.) |
 | `index.ts` | barrel | Re-exports the public surface above. |
 
-Note: `compile.ts` still imports `isOrdered` (`@/lib/blockOrder`) and `tokensFor`
-(`@/lib/tokenize`); those helpers remain in `src/lib/` for now.
+Note: the `readDataStream` data-stream reader (admin composer transport) moved to
+`services/chat/server/stream-utils.ts` (named to avoid colliding with the chat
+`stream.ts`); it is consumed by `app/admin/prompt-builder/page.tsx`,
+`components/admin/PromptBuilderChat.tsx`, and `src/lib/sage.ts`.
 
 ### CRM service (`services/crm/`)
 
