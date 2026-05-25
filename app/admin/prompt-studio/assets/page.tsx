@@ -1,5 +1,5 @@
-import { getAdminClient } from '@/lib/supabase-admin'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 import { Text } from '@/components/admin/primitives/Text'
 import { AssetsTable, type AssetRow } from './AssetsTable'
 

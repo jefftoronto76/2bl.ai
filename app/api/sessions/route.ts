@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { getTenantFromRequest } from '@/lib/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL

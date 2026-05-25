@@ -1,7 +1,7 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { Stack, Title } from '@mantine/core';
-import { getAdminClient } from '@/lib/supabase-admin';
+import { getAdminClient } from '@/services/auth/supabase-admin';
 import { Text } from '@/components/admin/primitives/Text';
 import { TenantList, type TenantRow } from './TenantList';
 

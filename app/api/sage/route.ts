@@ -1,4 +1,4 @@
-import { getTenantFromRequest } from '@/lib/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 import { streamChat } from '@/services/chat/server'
 import type { ChatMessage, ChatMode } from '@/services/chat/server'
 

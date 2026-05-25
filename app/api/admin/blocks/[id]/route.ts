@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { getAdminClient } from '@/lib/supabase-admin'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 
 const VALID_STATUSES = ['active', 'disabled', 'deleted'] as const
 type BlockStatus = typeof VALID_STATUSES[number]

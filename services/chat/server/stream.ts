@@ -7,7 +7,7 @@
 
 import { streamText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { ChatMessage, ModelConfig, ModelProvider, TokenUsage } from './types'
 
 // Fallback model defaults. These are the ONLY hardcoded model IDs in the

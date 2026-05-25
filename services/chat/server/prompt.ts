@@ -6,7 +6,7 @@
 // orchestrator (index.ts); this module owns the base prompt + question-mode
 // context.
 
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // DEFAULT_SYSTEM_PROMPT stays defined in src/lib/sage-prompt.ts for now
 // (referenced there per CLAUDE.md's discovery-call note and the legacy admin

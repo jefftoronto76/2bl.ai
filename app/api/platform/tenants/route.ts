@@ -1,5 +1,5 @@
 import { currentUser } from '@clerk/nextjs/server'
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // Tenant creation is a privileged, cross-tenant write. Gate it on the same
 // signal the (platform) layout/page use — Clerk publicMetadata.role —

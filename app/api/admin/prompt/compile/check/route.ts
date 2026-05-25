@@ -1,7 +1,7 @@
 import { generateText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/lib/get-auth-context'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 
 const META_PROMPT = `You are reviewing a single block of a system prompt for an AI assistant called Sage on a professional business context.
 

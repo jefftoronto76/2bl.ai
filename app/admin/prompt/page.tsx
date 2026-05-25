@@ -1,4 +1,4 @@
-import { getAdminClient } from '@/lib/supabase-admin'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { DEFAULT_SYSTEM_PROMPT } from '@/lib/sage-prompt'
 import { PromptEditor } from '@/components/PromptEditor'
 
