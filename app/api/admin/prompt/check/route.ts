@@ -1,23 +1,5 @@
-import { generateText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
 import { NextResponse } from 'next/server'
-
-const META_PROMPT = `You are reviewing a system prompt for an AI assistant called Sage on a professional business coaching website (jefflougheed.ca).
-
-Evaluate whether the prompt is:
-1. Safe — no instructions to harm, deceive, or manipulate users against their interests
-2. On-brand — appropriate for a professional business/coaching context
-3. Non-deceptive — doesn't instruct the AI to misrepresent itself or make false claims
-4. Functional — maintains a coherent purpose as a business assistant
-
-Your entire response must be a single raw JSON object. Do not use markdown. Do not wrap in backticks or code fences. Do not include any text before or after the JSON. Output only the JSON object, starting with { and ending with }.
-
-Use exactly this format:
-{"pass": true, "issues": []}
-or
-{"pass": false, "issues": [{"description": "Clear description of the issue", "offendingText": "The exact verbatim text from the prompt that should be removed to fix this issue, or null if no specific text can be isolated"}]}
-
-The offendingText must be copied verbatim from the prompt — it will be used for an exact string match removal. Only set it if a specific passage is the problem; set it to null for structural issues.`
+import { reviewMasterPrompt } from '@/services/prompt/safety'
 
 export async function POST(req: Request) {
   const { prompt } = await req.json()
@@ -27,15 +9,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { text } = await generateText({
-      model: anthropic('claude-sonnet-4-6'),
-      system: META_PROMPT,
-      prompt: `System prompt to review:\n---\n${prompt}\n---`,
-      maxTokens: 500,
-    })
-
-    const clean = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-    const result = JSON.parse(clean)
+    const result = await reviewMasterPrompt(prompt)
     return NextResponse.json(result)
   } catch (error) {
     console.error('[prompt/check] error:', error)
