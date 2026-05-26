@@ -1,7 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { readSageStream } from '../../lib/stream';
+import React, { createContext, useContext, useMemo, useReducer, useRef, ReactNode } from 'react';
+import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn';
+import type { ChatEngineAccessors } from '@/services/chat/ui/v1';
+import type { ChatMessage } from '@/services/chat/server/types';
 
 export interface Message {
   id: string;
@@ -78,110 +80,87 @@ interface ChatContextType {
   state: ChatState;
   dispatch: React.Dispatch<ChatAction>;
   sendMessage: (content: string) => Promise<void>;
+  isError: boolean;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
+function toMessage(role: 'user' | 'assistant', content: string): Message {
+  return { id: crypto.randomUUID(), role, content, timestamp: new Date() };
+}
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
 
-  const sendMessage = async (content: string) => {
-    const trimmed = content.trim();
-    if (!trimmed) return;
+  // Authoritative, synchronously-updated mirrors of the conversation state the
+  // engine reads/writes. The reducer drives rendering, but its dispatch is
+  // async — so the engine reads these refs (updated inline in the accessors)
+  // to avoid persisting a stale transcript when useChatTurn reads getMessages()
+  // synchronously after the stream settles. Messages and sessionId are mutated
+  // ONLY through these accessors (no component dispatches SEND_MESSAGE /
+  // ADD_ASSISTANT_MESSAGE / UPDATE_LAST_ASSISTANT / SET_SESSION_ID), so the
+  // refs and reducer never diverge.
+  const messagesRef = useRef<Message[]>([]);
+  const sessionIdRef = useRef<string | null>(null);
+  // The engine eagerly seeds an empty assistant message before streaming; we
+  // defer materializing it until the first token so the typing indicator shows
+  // (and no empty bubble flashes) — matching the prior Heirloom behavior.
+  const assistantPendingRef = useRef(false);
 
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: trimmed,
-      timestamp: new Date(),
-    };
-
-    // Build the outgoing transcript synchronously from current state — the
-    // reducer dispatch below is async, so we cannot read it back in time.
-    const priorMessages = state.messages;
-    const outgoing = [...priorMessages, userMessage].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    dispatch({ type: 'SEND_MESSAGE', payload: userMessage });
-    dispatch({ type: 'SET_LOADING', payload: true });
-
-    // Create a session on first send so the conversation is persisted to
-    // Supabase. The dispatch above is async, so track the id locally for this
-    // turn (mirrors src/components/Chat.tsx).
-    let activeSessionId = state.sessionId;
-    if (!activeSessionId) {
-      try {
-        const res = await fetch('/api/sessions', { method: 'POST' });
-        const data: { id?: string } = await res.json();
-        console.log('[heirloom/chat] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data));
-        if (data.id) {
-          activeSessionId = data.id;
-          dispatch({ type: 'SET_SESSION_ID', payload: data.id });
+  const accessors = useMemo<ChatEngineAccessors>(
+    () => ({
+      getMessages: () => messagesRef.current,
+      addMessage: (msg: ChatMessage) => {
+        if (msg.role === 'user') {
+          const m = toMessage('user', msg.content);
+          messagesRef.current = [...messagesRef.current, m];
+          dispatch({ type: 'SEND_MESSAGE', payload: m });
+          return;
         }
-      } catch (err) {
-        console.error('[heirloom/chat] POST /api/sessions failed:', err);
-      }
-    }
+        // assistant
+        if (msg.content === '') {
+          assistantPendingRef.current = true;
+          return;
+        }
+        const m = toMessage('assistant', msg.content);
+        messagesRef.current = [...messagesRef.current, m];
+        assistantPendingRef.current = false;
+        dispatch({ type: 'ADD_ASSISTANT_MESSAGE', payload: m });
+      },
+      updateLastMessage: (content: string) => {
+        if (assistantPendingRef.current) {
+          assistantPendingRef.current = false;
+          const m = toMessage('assistant', content);
+          messagesRef.current = [...messagesRef.current, m];
+          dispatch({ type: 'ADD_ASSISTANT_MESSAGE', payload: m });
+          return;
+        }
+        const msgs = [...messagesRef.current];
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'assistant') {
+            msgs[i] = { ...msgs[i], content };
+            break;
+          }
+        }
+        messagesRef.current = msgs;
+        dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: content });
+      },
+      setStreaming: (val: boolean) => dispatch({ type: 'SET_LOADING', payload: val }),
+      setSessionId: (id: string) => {
+        sessionIdRef.current = id;
+        dispatch({ type: 'SET_SESSION_ID', payload: id });
+      },
+      getSessionId: () => sessionIdRef.current,
+    }),
+    [],
+  )
 
-    let assistantAdded = false;
-    let assistantText = '';
-    const pushAssistant = (text: string) => {
-      assistantText = text;
-      if (!assistantAdded) {
-        assistantAdded = true;
-        dispatch({
-          type: 'ADD_ASSISTANT_MESSAGE',
-          payload: { id: crypto.randomUUID(), role: 'assistant', content: text, timestamp: new Date() },
-        });
-      } else {
-        dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: text });
-      }
-    };
-
-    try {
-      const response = await fetch('/api/sage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: outgoing, session_id: activeSessionId }),
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`Sage request failed: ${response.status}`);
-      }
-
-      await readSageStream(response, pushAssistant);
-
-      if (!assistantAdded) {
-        pushAssistant('I didn’t quite catch that — could you try again?');
-      }
-
-      // Persist the final transcript once the stream settles.
-      if (activeSessionId) {
-        const finalMessages: Message[] = [
-          ...priorMessages,
-          userMessage,
-          { id: crypto.randomUUID(), role: 'assistant', content: assistantText, timestamp: new Date() },
-        ];
-        fetch(`/api/sessions/${activeSessionId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: finalMessages, visitorName: null }),
-        })
-          .then((r) => r.json().then((d) => console.log('[heirloom/chat] PATCH /api/sessions status:', r.status, '| response:', JSON.stringify(d))))
-          .catch((err) => console.error('[heirloom/chat] PATCH /api/sessions failed:', err));
-      }
-    } catch (err) {
-      console.error('[heirloom/chat] sendMessage failed:', err);
-      pushAssistant('Something went wrong reaching your story guide. Please try again in a moment.');
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  };
+  const turn = useChatTurn({ accessors })
 
   return (
-    <ChatContext.Provider value={{ state, dispatch, sendMessage }}>{children}</ChatContext.Provider>
+    <ChatContext.Provider value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError }}>
+      {children}
+    </ChatContext.Provider>
   );
 }
 
