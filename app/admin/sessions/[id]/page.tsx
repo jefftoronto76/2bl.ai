@@ -1,9 +1,14 @@
+import { Anchor, Card, Stack, Text } from '@mantine/core'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import {
   deriveSessionStatus,
   type SessionStatusThresholds,
 } from '@/services/crm/status'
+import {
+  parseBookingCards,
+  type BookingCardData,
+} from '@/components/sage/parseBookingCards'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -171,42 +176,97 @@ export default async function SessionPage({
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              }}
-            >
-              <div style={{ maxWidth: '75%' }}>
-                <div style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '10px',
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  color: 'var(--color-text-dim)',
-                  marginBottom: '4px',
-                  textAlign: msg.role === 'user' ? 'right' : 'left',
-                }}>
-                  {msg.role === 'user' ? 'Visitor' : 'Sage'}
-                </div>
-                <div style={{
-                  padding: '14px 16px',
-                  background: msg.role === 'user' ? '#2d6a4f' : 'white',
-                  color: msg.role === 'user' ? 'white' : 'var(--color-text-primary)',
-                  border: msg.role === 'user' ? 'none' : '1px solid var(--color-border)',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  lineHeight: 1.7,
-                  fontFamily: 'var(--font-body)',
-                  whiteSpace: 'pre-wrap',
-                }}>
-                  {msg.content}
+          {messages.map((msg) => {
+            // Assistant messages may carry [BOOKING: ...] markers (see Booking
+            // Card Syntax). Parse them so the transcript shows a readable card
+            // instead of the raw bracket text the public chat renders from.
+            const parsed = msg.role === 'assistant' ? parseBookingCards(msg.content) : null
+            const proseText = parsed ? parsed.prose : msg.content
+            const cards: BookingCardData[] = parsed?.cards ?? []
+
+            return (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                <div style={{ maxWidth: '75%' }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10px',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: 'var(--color-text-dim)',
+                    marginBottom: '4px',
+                    textAlign: msg.role === 'user' ? 'right' : 'left',
+                  }}>
+                    {msg.role === 'user' ? 'Visitor' : 'Sage'}
+                  </div>
+
+                  {proseText && (
+                    <div style={{
+                      padding: '14px 16px',
+                      background: msg.role === 'user' ? '#2d6a4f' : 'white',
+                      color: msg.role === 'user' ? 'white' : 'var(--color-text-primary)',
+                      border: msg.role === 'user' ? 'none' : '1px solid var(--color-border)',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      lineHeight: 1.7,
+                      fontFamily: 'var(--font-body)',
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                      {proseText}
+                    </div>
+                  )}
+
+                  {cards.length > 0 && (
+                    <Stack gap="xs" mt={proseText ? 'xs' : 0}>
+                      {cards.map((card, i) => (
+                        <Card key={`${msg.id}-booking-${i}`} withBorder padding="md" radius="md">
+                          <Text
+                            size="xs"
+                            c="green.7"
+                            fw={600}
+                            tt="uppercase"
+                            style={{
+                              letterSpacing: '0.12em',
+                              fontFamily: 'var(--mantine-font-family-monospace)',
+                            }}
+                          >
+                            Booking Card
+                          </Text>
+                          {card.label && (
+                            <Text fw={600} mt={4}>
+                              {card.label}
+                            </Text>
+                          )}
+                          {card.description && (
+                            <Text size="sm" c="dimmed" mt={2}>
+                              {card.description}
+                            </Text>
+                          )}
+                          {card.url && (
+                            <Anchor
+                              href={card.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              size="sm"
+                              mt={6}
+                              style={{ display: 'inline-block', wordBreak: 'break-all' }}
+                            >
+                              {card.url}
+                            </Anchor>
+                          )}
+                        </Card>
+                      ))}
+                    </Stack>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
