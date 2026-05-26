@@ -42,7 +42,6 @@ Still deferred or pending:
 - services/chat/ui/v1/ — DEFERRED INTENTIONALLY
   (src/components/sage/*, Chat.tsx, Hero.tsx, store.ts, sage.ts)
 - services/payments/ — NOT STARTED
-- History page tenant filter — identified, fix pending
 - Heirloom master_prompt — blocks started, not compiled/published
 - Three-tier prompt inheritance — design pending
 
@@ -177,7 +176,7 @@ Vercel preview checks. Nothing merges until this passes.
 Phase A is complete, so Heirloom is now underway.
 
 - Landing page ✅
-- Chat wired ✅
+- Chat wired ✅ — full session lifecycle (POST /api/sessions → session_id to /api/sage → PATCH on completion), PR #39
 - Multi-tenant admin ✅
 - Blocks: in progress
 - master_prompt: pending compile/publish
