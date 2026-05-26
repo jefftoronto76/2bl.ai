@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
 import { Message } from '../store/chatStore';
-import { createMarkerRegistry, BOOKING_MARKER } from '@/services/chat/ui/v1/registry';
+import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 
 interface MessageListProps {
   messages: Message[];
@@ -13,11 +13,10 @@ interface MessageListProps {
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
 
-// Strip [BOOKING: ...] markers from assistant prose so they never render as
-// raw bracket text. Heirloom has no booking-card UI yet, so the card itself is
-// dropped and only the surrounding prose is shown.
-const markerRegistry = createMarkerRegistry();
-markerRegistry.register(BOOKING_MARKER);
+// Strip every marker ([BOOKING: ...], [NAME: ...], …) from assistant prose so
+// they never render as raw bracket text. Heirloom has no booking-card UI yet,
+// so booking cards are dropped and only the surrounding prose is shown.
+const markerRegistry = createDefaultRegistry();
 
 function MessageBubble({ message, content }: { message: Message; content: string }) {
   const isUser = message.role === 'user';

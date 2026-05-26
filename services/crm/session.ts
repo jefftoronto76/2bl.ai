@@ -54,6 +54,21 @@ function scanForCalendarOffer(text: string): boolean {
   return /\[BOOKING:[^\]]*\]/.test(text) || /calendly\.com/i.test(text)
 }
 
+// Extracts a plausible first name from a [NAME: x] marker in the assistant
+// text, or null when the marker is absent/empty/implausible. Titlecases before
+// the shape check (same as the Haiku path). Mirrors NAME_MARKER in
+// services/chat/ui/v1/registry.ts; kept as a local regex (like
+// scanForCalendarOffer) so the CRM service does not depend on the UI-v1 layer.
+// Exported for unit testing.
+export function detectVisitorNameMarker(text: string): string | null {
+  const match = text.match(/\[NAME:\s*([^\]]*)\]/)
+  if (!match) return null
+  const raw = match[1].trim()
+  if (raw.length === 0) return null
+  const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
+  return isPlausibleName(candidate) ? candidate : null
+}
+
 async function extractNameWithHaiku(
   recentMessages: ChatMessage[],
 ): Promise<{ name: string | null; usage: TokenUsage | null }> {
@@ -292,6 +307,19 @@ export async function handleSessionFinish(params: {
     }
   } catch (err) {
     console.error('[chat/session] onFinish: pre-check threw:', err instanceof Error ? err.message : err)
+    return
+  }
+
+  // [NAME:] marker — primary path. When Sage emits [NAME: x] and x is
+  // plausible, persist it and skip the Haiku call. This runs alongside the
+  // Haiku extractor below: the marker takes precedence and Haiku is the
+  // fallback when the marker is absent or implausible. The Haiku path is
+  // removed in PR 3 once marker emission is proven in production. Both write
+  // the same column, guarded by the pre-check above — last write wins.
+  const markerName = detectVisitorNameMarker(text)
+  if (markerName) {
+    console.log('[chat/session] onFinish: name marker detected:', markerName)
+    await persistVisitorName(sessionId, markerName)
     return
   }
 

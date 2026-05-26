@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { createMarkerRegistry, BOOKING_MARKER } from './registry'
+import {
+  createMarkerRegistry,
+  createDefaultRegistry,
+  BOOKING_MARKER,
+  NAME_MARKER,
+} from './registry'
 
 function bookingRegistry() {
   const r = createMarkerRegistry()
@@ -86,5 +91,45 @@ describe('MarkerRegistry — registration', () => {
     const r = bookingRegistry()
     r.getDefinitions().pop()
     expect(r.getDefinitions()).toHaveLength(1)
+  })
+})
+
+describe('NAME_MARKER definition', () => {
+  it('is a single-field server-dispatch marker', () => {
+    expect(NAME_MARKER.type).toBe('NAME')
+    expect(NAME_MARKER.fieldCount).toBe(1)
+    expect(NAME_MARKER.dispatch).toBe('server')
+  })
+})
+
+describe('createDefaultRegistry — NAME stripping + BOOKING coexistence', () => {
+  it('registers both BOOKING and NAME', () => {
+    const defs = createDefaultRegistry().getDefinitions()
+    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'NAME'])
+  })
+
+  it('strips a [NAME: x] marker from prose and extracts the field', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('Nice to meet you, Sam. [NAME: Sam]')
+    expect(prose).toBe('Nice to meet you, Sam.')
+    const name = markers.find(m => m.type === 'NAME')
+    expect(name).toBeDefined()
+    expect(name?.fields).toEqual(['Sam'])
+  })
+
+  it('strips a trailing incomplete [NAME: fragment mid-stream', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('Got it.\n[NAME: Sam')
+    expect(markers.filter(m => m.type === 'NAME')).toHaveLength(0)
+    expect(prose).toBe('Got it.')
+  })
+
+  it('strips NAME and BOOKING from the same message', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse(
+      'Hi Sam. [NAME: Sam]\n[BOOKING: Intro | chat | Book | https://x.com]',
+    )
+    expect(prose).toBe('Hi Sam.')
+    expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'NAME'])
   })
 })

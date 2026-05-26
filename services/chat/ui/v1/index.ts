@@ -19,4 +19,4 @@ export type {
   UseChatTurnReturn,
 } from './types'
 
-export { createMarkerRegistry, BOOKING_MARKER } from './registry'
+export { createMarkerRegistry, createDefaultRegistry, BOOKING_MARKER, NAME_MARKER } from './registry'

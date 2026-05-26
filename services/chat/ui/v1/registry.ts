@@ -26,6 +26,19 @@ export const BOOKING_MARKER: MarkerDefinition = {
   dispatch: 'client',
 }
 
+/**
+ * The NAME marker — `[NAME: firstname]`. Dispatch is 'server' (the server
+ * persists it to chat_sessions.visitor_name in onFinish), but it is still
+ * registered on the client render path so it is stripped from displayed prose
+ * rather than shown as raw text.
+ */
+export const NAME_MARKER: MarkerDefinition = {
+  type: 'NAME',
+  pattern: /\[NAME:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'server',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -77,4 +90,18 @@ export function createMarkerRegistry(): MarkerRegistry {
       return [...definitions]
     },
   }
+}
+
+/**
+ * A registry preloaded with every marker that must be stripped from displayed
+ * prose. ALL markers are stripped client-side regardless of dispatch — a
+ * 'server' marker like NAME is persisted server-side but must never render as
+ * raw bracket text. Client render paths (parseBookingCards, the Heirloom
+ * MessageList) use this so the stripped-marker set lives in one place.
+ */
+export function createDefaultRegistry(): MarkerRegistry {
+  const registry = createMarkerRegistry()
+  registry.register(BOOKING_MARKER)
+  registry.register(NAME_MARKER)
+  return registry
 }
