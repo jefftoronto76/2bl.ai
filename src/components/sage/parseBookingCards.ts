@@ -1,4 +1,4 @@
-import { createMarkerRegistry, BOOKING_MARKER } from '@/services/chat/ui/v1/registry'
+import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 
 export type OpenAs = 'new_tab' | 'popup'
 
@@ -19,12 +19,12 @@ export interface SageParameterPublic {
   embed_code: string | null
 }
 
-// Single registry instance with the BOOKING marker registered. The registry
-// (services/chat/ui/v1) is the canonical parser; this wrapper preserves the
-// existing { prose, cards } API so Chat, Hero, SageReply, and the admin
-// transcript renderer are unchanged.
-const registry = createMarkerRegistry()
-registry.register(BOOKING_MARKER)
+// Registry with every display-stripped marker registered (BOOKING, NAME, …).
+// The registry (services/chat/ui/v1) is the canonical parser; this wrapper
+// preserves the existing { prose, cards } API so Chat, Hero, SageReply, and the
+// admin transcript renderer are unchanged. Non-BOOKING markers (e.g. NAME) are
+// stripped from prose but never surfaced as cards.
+const registry = createDefaultRegistry()
 
 export function parseBookingCards(content: string): { prose: string; cards: BookingCardData[] } {
   const { prose, markers } = registry.parse(content)
