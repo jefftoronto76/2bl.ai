@@ -17,7 +17,7 @@ function EmptyState() {
 }
 
 export function ChatHero() {
-  const { state } = useChatStore();
+  const { state, isError } = useChatStore();
 
   return (
     <section className="h-full flex bg-background overflow-hidden">
@@ -28,7 +28,7 @@ export function ChatHero() {
 
         <div className="flex flex-col flex-1 min-h-0">
           {state.hasStarted ? (
-            <MessageList messages={state.messages} isLoading={state.isLoading} />
+            <MessageList messages={state.messages} isLoading={state.isLoading} isError={isError} />
           ) : (
             <EmptyState />
           )}
