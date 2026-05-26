@@ -75,6 +75,17 @@ export default clerkMiddleware(async (auth, req) => {
   if (isAdminRoute(req)) {
     await auth.protect()
   }
+
+  // ─── Admin palette tag ───
+  // The shared /admin surface is a light UI (white Mantine surfaces). Tag it
+  // with x-admin so the root layout drops the inkwell dark palette — otherwise
+  // the inkwell text tokens render near-white text on the white admin surfaces.
+  // Same request-header pattern as x-sbl / x-heirloom above.
+  if (isAdminPath) {
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-admin', '1')
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
 })
 
 export const config = {
