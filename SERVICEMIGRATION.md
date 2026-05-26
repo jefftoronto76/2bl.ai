@@ -32,16 +32,19 @@ Earlier foundation (pre-Phase-A): chat server half (#22/#23), platform admin +
 branded sign-in (#24).
 
 **Heirloom is in migration.** Landing page ✅, chat wired to
-`services/chat/server` ✅, multi-tenant admin ✅. Remaining: **block
-development** (in progress), **master_prompt compile/publish** (pending — until
-then Heirloom chat falls back to Sage's `DEFAULT_SYSTEM_PROMPT`), the **memory
-creation flow**, and **Clerk account creation in chat**.
+`services/chat/server` ✅ with the **full session lifecycle** (PR #39 — the
+Heirloom chat store POSTs `/api/sessions` on first send, passes `session_id` to
+`/api/sage`, and PATCHes `/api/sessions/[id]` after the stream settles), and
+multi-tenant admin ✅. Remaining: **block development** (in progress),
+**master_prompt compile/publish** (pending — until then Heirloom chat falls back
+to Sage's `DEFAULT_SYSTEM_PROMPT`), the **memory creation flow**, and **Clerk
+account creation in chat**.
 
 **Known gaps:**
 - `services/payments/` — not created (scaffold only, deferred).
-- History page (`app/admin/prompt-studio/history/page.tsx`) — missing the
-  `tenant_id` filter (cross-tenant composer sessions visible to any admin); fix
-  pending.
+- ~~History page missing the `tenant_id` filter~~ — **fixed (PR #38):**
+  `app/admin/prompt-studio/history/page.tsx` now resolves the tenant via
+  `getAuthContext()` and scopes the `chat_sessions` query by `tenant_id`.
 - Chat-UI strangle (`services/chat/ui/v1/`) — deferred intentionally
   (`src/components/sage/*`, `Chat.tsx`, `Hero.tsx`, `src/lib/{store,sage}.ts`);
   the 6 remaining `app→src` boundary warnings all trace to this.
