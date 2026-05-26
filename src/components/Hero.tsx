@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react'
 import { useSageStore } from '../lib/store'
-import { streamSageResponse } from '../lib/sage'
+import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn'
+import type { ChatEngineAccessors } from '@/services/chat/ui/v1'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
 import { useSageParameters } from './sage/useSageParameters'
@@ -22,18 +23,11 @@ export function Hero() {
   const {
     messages,
     isStreaming,
-    sessionId,
-    mode,
-    addMessage,
-    updateLastMessage,
-    setStreaming,
-    setSessionId,
     setMode,
     setComposerRef,
   } = useSageStore()
 
   const [input, setInput] = useState('')
-  const [isError, setIsError] = useState(false)
   // Hero-local: when true the conversation canvas renders; toggled off by
   // the close-x and back on by textarea focus or a chip click. Independent
   // of isEngaged so the compact hero stays compact after dismissing.
@@ -49,10 +43,24 @@ export function Hero() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
   const chatSurfaceRef = useRef<HTMLDivElement>(null)
-  const retryMsgsRef = useRef<typeof messages>([])
-  const retrySessionIdRef = useRef<string | null>(null)
 
   const sageParameters = useSageParameters()
+
+  // Accessors read/write live store state via getState() (not the render-time
+  // snapshot) so the turn engine always sees the latest messages/session.
+  const accessors = useMemo<ChatEngineAccessors>(
+    () => ({
+      getMessages: () => useSageStore.getState().messages,
+      addMessage: msg => useSageStore.getState().addMessage(msg),
+      updateLastMessage: content => useSageStore.getState().updateLastMessage(content),
+      setStreaming: val => useSageStore.getState().setStreaming(val),
+      setSessionId: id => useSageStore.getState().setSessionId(id),
+      getSessionId: () => useSageStore.getState().sessionId,
+      getMode: () => useSageStore.getState().mode,
+    }),
+    [],
+  )
+  const turn = useChatTurn({ accessors })
 
   useEffect(() => {
     setComposerRef(textareaRef)
@@ -130,98 +138,20 @@ export function Hero() {
 
   const handleChipClick = (text: string) => {
     setConversationVisible(true)
-    send(text)
+    turn.send(text)
   }
 
-  const send = async (override?: string) => {
-    const text = (override ?? input).trim()
+  const submit = () => {
+    const text = input.trim()
     if (!text || isStreaming) return
-
-    setIsError(false)
-    const userMsg = { role: 'user' as const, content: text }
-    const msgsToSend = [...messages, { ...userMsg, id: `${Date.now()}`, timestamp: Date.now() }]
-    addMessage(userMsg)
-    if (override === undefined) setInput('')
-    setStreaming(true)
-    addMessage({ role: 'assistant', content: '' })
-
-    let activeSessionId = sessionId
-    if (!activeSessionId) {
-      try {
-        const res = await fetch('/api/sessions', { method: 'POST' })
-        const data = await res.json()
-        console.log('[Hero] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
-        if (data.id) {
-          activeSessionId = data.id
-          setSessionId(data.id)
-        }
-      } catch (err) {
-        console.error('[Hero] POST /api/sessions failed:', err)
-      }
-    }
-
-    retryMsgsRef.current = msgsToSend
-    retrySessionIdRef.current = activeSessionId
-
-    try {
-      await streamSageResponse(msgsToSend, (chunk: string) => {
-        updateLastMessage(chunk)
-      }, { mode, sessionId: activeSessionId })
-    } catch (error) {
-      updateLastMessage('')
-      setIsError(true)
-      setStreaming(false)
-      return
-    }
-    setStreaming(false)
-
-    if (activeSessionId) {
-      const { messages: finalMessages, visitorName } = useSageStore.getState()
-      fetch(`/api/sessions/${activeSessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: finalMessages, visitorName }),
-      })
-        .then((r) => r.json().then((d) => console.log('[Hero] PATCH /api/sessions status:', r.status, '| response:', JSON.stringify(d))))
-        .catch((err) => console.error('[Hero] PATCH /api/sessions failed:', err))
-    }
-  }
-
-  const retryLastSend = async () => {
-    if (isStreaming) return
-    setIsError(false)
-    setStreaming(true)
-    updateLastMessage('')
-
-    try {
-      await streamSageResponse(retryMsgsRef.current, (chunk: string) => {
-        updateLastMessage(chunk)
-      }, { mode, sessionId: retrySessionIdRef.current })
-    } catch (error) {
-      updateLastMessage('')
-      setIsError(true)
-      setStreaming(false)
-      return
-    }
-    setStreaming(false)
-
-    const activeSessionId = retrySessionIdRef.current
-    if (activeSessionId) {
-      const { messages: finalMessages, visitorName } = useSageStore.getState()
-      fetch(`/api/sessions/${activeSessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: finalMessages, visitorName }),
-      })
-        .then((r) => r.json().then((d) => console.log('[Hero] PATCH /api/sessions status:', r.status, '| response:', JSON.stringify(d))))
-        .catch((err) => console.error('[Hero] PATCH /api/sessions failed:', err))
-    }
+    setInput('')
+    turn.send(text)
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      send()
+      submit()
     }
   }
 
@@ -285,12 +215,12 @@ export function Hero() {
             )
           })}
 
-          {isError && !isStreaming && (
+          {turn.isError && !isStreaming && (
             <div className="flex justify-start">
               <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
                 Something went wrong. Please try again.
                 <button
-                  onClick={retryLastSend}
+                  onClick={() => turn.retry()}
                   className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
                 >
                   Retry
@@ -331,7 +261,7 @@ export function Hero() {
             />
             <button
               className="send"
-              onClick={() => send()}
+              onClick={submit}
               disabled={!input.trim() || isStreaming}
               aria-label="Send"
             >

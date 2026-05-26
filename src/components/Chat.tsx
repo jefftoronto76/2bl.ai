@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState } from 'react'
+import { useRef, useEffect, useMemo, KeyboardEvent, useState } from 'react'
 import { useSageStore } from '../lib/store'
-import { streamSageResponse } from '../lib/sage'
+import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn'
+import type { ChatEngineAccessors } from '@/services/chat/ui/v1'
 import { useReveal } from '@/hooks/useReveal'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
@@ -22,24 +23,32 @@ export function Chat() {
     messages,
     isExpanded,
     isStreaming,
-    sessionId,
     mode,
     expand,
     collapse,
-    addMessage,
-    updateLastMessage,
-    setStreaming,
-    setSessionId,
   } = useSageStore()
 
   const [input, setInput] = useState('')
-  const [isError, setIsError] = useState(false)
   const sageParameters = useSageParameters()
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const retryMsgsRef = useRef<typeof messages>([])
-  const retrySessionIdRef = useRef<string | null>(null)
+
+  // Accessors read/write live store state via getState() (not the render-time
+  // snapshot) so the turn engine always sees the latest messages/session.
+  const accessors = useMemo<ChatEngineAccessors>(
+    () => ({
+      getMessages: () => useSageStore.getState().messages,
+      addMessage: msg => useSageStore.getState().addMessage(msg),
+      updateLastMessage: content => useSageStore.getState().updateLastMessage(content),
+      setStreaming: val => useSageStore.getState().setStreaming(val),
+      setSessionId: id => useSageStore.getState().setSessionId(id),
+      getSessionId: () => useSageStore.getState().sessionId,
+      getMode: () => useSageStore.getState().mode,
+    }),
+    [],
+  )
+  const turn = useChatTurn({ accessors })
 
   useEffect(() => {
     if (!isExpanded) return
@@ -81,95 +90,17 @@ export function Chat() {
     return () => window.removeEventListener('keydown', handleEscape as any)
   }, [isExpanded, collapse])
 
-  const send = async () => {
+  const submit = () => {
     const text = input.trim()
     if (!text || isStreaming) return
-
-    setIsError(false)
-    const userMsg = { role: 'user' as const, content: text }
-    const msgsToSend = [...messages, { ...userMsg, id: `${Date.now()}`, timestamp: Date.now() }]
-    addMessage(userMsg)
     setInput('')
-    setStreaming(true)
-    addMessage({ role: 'assistant', content: '' })
-
-    let activeSessionId = sessionId
-    if (!activeSessionId) {
-      try {
-        const res = await fetch('/api/sessions', { method: 'POST' })
-        const data = await res.json()
-        console.log('[Chat] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
-        if (data.id) {
-          activeSessionId = data.id
-          setSessionId(data.id)
-        }
-      } catch (err) {
-        console.error('[Chat] POST /api/sessions failed:', err)
-      }
-    }
-
-    retryMsgsRef.current = msgsToSend
-    retrySessionIdRef.current = activeSessionId
-
-    try {
-      await streamSageResponse(msgsToSend, (chunk: string) => {
-        updateLastMessage(chunk)
-      }, { mode, sessionId: activeSessionId })
-    } catch (error) {
-      updateLastMessage('')
-      setIsError(true)
-      setStreaming(false)
-      return
-    }
-    setStreaming(false)
-
-    if (activeSessionId) {
-      const { messages: finalMessages, visitorName } = useSageStore.getState()
-      fetch(`/api/sessions/${activeSessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: finalMessages, visitorName }),
-      })
-        .then((r) => r.json().then((d) => console.log('[Chat] PATCH /api/sessions status:', r.status, '| response:', JSON.stringify(d))))
-        .catch((err) => console.error('[Chat] PATCH /api/sessions failed:', err))
-    }
-  }
-
-  const retryLastSend = async () => {
-    if (isStreaming) return
-    setIsError(false)
-    setStreaming(true)
-    updateLastMessage('')
-
-    try {
-      await streamSageResponse(retryMsgsRef.current, (chunk: string) => {
-        updateLastMessage(chunk)
-      }, { mode, sessionId: retrySessionIdRef.current })
-    } catch (error) {
-      updateLastMessage('')
-      setIsError(true)
-      setStreaming(false)
-      return
-    }
-    setStreaming(false)
-
-    const activeSessionId = retrySessionIdRef.current
-    if (activeSessionId) {
-      const { messages: finalMessages, visitorName } = useSageStore.getState()
-      fetch(`/api/sessions/${activeSessionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: finalMessages, visitorName }),
-      })
-        .then((r) => r.json().then((d) => console.log('[Chat] PATCH /api/sessions status:', r.status, '| response:', JSON.stringify(d))))
-        .catch((err) => console.error('[Chat] PATCH /api/sessions failed:', err))
-    }
+    turn.send(text)
   }
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      send()
+      submit()
     }
   }
 
@@ -328,12 +259,12 @@ export function Chat() {
                     />
                   )
                 })}
-                {isError && !isStreaming && (
+                {turn.isError && !isStreaming && (
                   <div className="flex justify-start">
                     <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
                       Something went wrong. Please try again.
                       <button
-                        onClick={retryLastSend}
+                        onClick={() => turn.retry()}
                         className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
                       >
                         Retry
@@ -370,7 +301,7 @@ export function Chat() {
                   className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
                 />
                 <button
-                  onClick={send}
+                  onClick={submit}
                   disabled={isStreaming || !input.trim()}
                   aria-label="Send message"
                   className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"

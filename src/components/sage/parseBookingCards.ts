@@ -1,3 +1,5 @@
+import { createMarkerRegistry, BOOKING_MARKER } from '@/services/chat/ui/v1/registry'
+
 export type OpenAs = 'new_tab' | 'popup'
 
 export interface BookingCardData {
@@ -17,23 +19,22 @@ export interface SageParameterPublic {
   embed_code: string | null
 }
 
-const BOOKING_REGEX = /\[BOOKING:\s*([^|\]]*)\|\s*([^|\]]*)\|\s*([^|\]]*)\|\s*([^\]]*)\]/g
+// Single registry instance with the BOOKING marker registered. The registry
+// (services/chat/ui/v1) is the canonical parser; this wrapper preserves the
+// existing { prose, cards } API so Chat, Hero, SageReply, and the admin
+// transcript renderer are unchanged.
+const registry = createMarkerRegistry()
+registry.register(BOOKING_MARKER)
 
 export function parseBookingCards(content: string): { prose: string; cards: BookingCardData[] } {
-  const cards: BookingCardData[] = []
-  let prose = content.replace(
-    BOOKING_REGEX,
-    (_match, label: string, description: string, ctaLabel: string, url: string) => {
-      cards.push({
-        label: label.trim(),
-        description: description.trim(),
-        ctaLabel: ctaLabel.trim(),
-        url: url.trim(),
-      })
-      return ''
-    },
-  )
-  prose = prose.replace(/\[BOOKING:[^\]]*$/, '')
-  prose = prose.replace(/\n{3,}/g, '\n\n').trim()
+  const { prose, markers } = registry.parse(content)
+  const cards: BookingCardData[] = markers
+    .filter(m => m.type === 'BOOKING')
+    .map(m => ({
+      label: m.fields[0] ?? '',
+      description: m.fields[1] ?? '',
+      ctaLabel: m.fields[2] ?? '',
+      url: m.fields[3] ?? '',
+    }))
   return { prose, cards }
 }
