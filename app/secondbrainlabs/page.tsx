@@ -431,7 +431,7 @@ function HowItWorks() {
       {/* Eyebrow row: kicker pill + horizontal rule. */}
       <div className="mb-6 sm:mb-10 flex items-center gap-4">
         <span className="inline-block rounded-[3px] bg-accent/15 px-2 py-0.5 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink">
-          How it works
+          Helping build great products
         </span>
         <span aria-hidden className="hidden sm:block h-px max-w-[180px] flex-1 bg-ink/10" />
       </div>
@@ -450,8 +450,10 @@ function HowItWorks() {
           className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
           style={{ fontSize: "clamp(16px, 1.5vw, 18px)" }}
         >
-          I&apos;m a revenue focused product builder, and, an executive coach, if you want to
-          explore your product, book time below.
+          My background in coaching, revenue leadership, and general management helps uncover product
+          risks and opportunities others often miss — especially around economics, retention, and growth.
+          <br />
+          If you want to explore your product, book time below.
         </p>
       </header>
 
