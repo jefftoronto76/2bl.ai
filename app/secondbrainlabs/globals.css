@@ -38,6 +38,11 @@
 
   /* Triplet mirror of --color-paper for the alpha-aware `paper` Tailwind token */
   --color-paper-rgb: 250 246 238;
+
+  /* Tailwind's `font-mono` utility maps to var(--font-mono) with no fallback;
+     defined here because the inkwell token file that otherwise supplies it
+     does not load on SBL routes. */
+  --font-mono: 'DM Mono', 'Courier New', monospace;
 }
 
 /* Local keyframes used by the Sage widget + AI envelope tag (referenced via
