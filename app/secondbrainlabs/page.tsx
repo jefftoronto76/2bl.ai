@@ -296,7 +296,7 @@ const PRINCIPLES: ReadonlyArray<Principle> = [
   },
 ] as const;
 
-const CAPABILITY_PILLS = ["Multi-tenant", "Service Oriented", "HIPAA / SOC 2 Ready"] as const;
+const CAPABILITY_PILLS = ["Customer-Driven", "Outcome-Focused", "Progress over Perfection"] as const;
 
 function HowIWork() {
   return (
@@ -305,7 +305,7 @@ function HowIWork() {
         kicker="How I work"
         title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. <em className="not-italic"><span className="italic text-accent">Product builder.</span></em></span>}
       >
-        NLP and language models have changed what's possible in software.
+        Products succeed when business reality, usability, and execution stay aligned.
       </BayHead>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
@@ -334,7 +334,7 @@ function HowIWork() {
         className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
         style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
       >
-        Better software isn't more features. It's software people want to come back to.
+        Building useful software means listening closely, iterating quickly, and focusing on outcomes.
       </p>
 
       <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
