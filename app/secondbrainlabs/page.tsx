@@ -66,12 +66,22 @@ function Nav() {
   return (
     <nav className="sticky top-0 z-40 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
       <div className="mx-auto flex h-14 sm:h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8 lg:px-12">
-        <Link href="/" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
+        <div className="group relative flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
           <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-md bg-ink">
             <img src="/2bl/2blai_logo.svg" alt="" className="h-full w-full object-cover" />
           </span>
           <span className="hidden sm:inline">Second Brain Labs</span>
-        </Link>
+
+          {/* Desktop-only hover reveal — full logo illustration popover */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden origin-top-left scale-95 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100 motion-reduce:transition-none md:block"
+          >
+            <div className="rounded-xl border border-line bg-ink p-3 shadow-[0_20px_40px_-20px_rgba(31,26,20,0.45)]">
+              <img src="/2bl/2blai_logo.svg" alt="" className="block h-[180px] w-[180px] object-contain" />
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <BtnGhost href="/sign-in">Sign in</BtnGhost>
           <BtnPrimary href="#chat">
