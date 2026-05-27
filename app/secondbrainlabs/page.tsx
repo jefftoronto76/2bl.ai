@@ -95,13 +95,13 @@ function Hero() {
           className="m-0 mb-7 max-w-[14ch] font-serif font-normal leading-[1.02] tracking-[-0.022em] text-balance text-ink"
           style={{ fontSize: "clamp(38px, 7.2vw, 104px)" }}
         >
-          Building products for <em className="font-normal italic text-accent">humanity.</em>
+          Software people <em className="font-normal italic text-accent">actually want to use.</em>
         </h1>
         <p
           className="m-0 mb-7 sm:mb-11 max-w-[32ch] font-serif italic font-normal leading-[1.35] text-ink-2 text-pretty"
           style={{ fontSize: "clamp(20px, 2.6vw, 30px)" }}
         >
-          A workshop for trying the impossible.
+          AI changes how software gets built and how people experience it. Second Brain Labs is putting that shift to work.
         </p>
 
         <SageWidget />
@@ -164,12 +164,19 @@ function SageWidget() {
 // The Work — projects in AI envelope
 // ──────────────────────────────────────────────────────────────────────
 
+const PLATFORM_PILLS = [
+  "Multi-tenant by design",
+  "HIPAA & SOC2 ready",
+  "Natural language workflows",
+  "API-native architecture",
+] as const;
+
 function Work() {
   return (
     <Bay id="work" label="The work">
-      <BayHead kicker="The work" title={<>Four products. <em className="not-italic"><span className="italic text-accent">One quiet engine.</span></em></>}>
-        Everything we build sits inside the same AI envelope — shared models, shared memory, shared playbooks. Each product
-        is a different shape carved out of the same material.
+      <BayHead kicker="The work" title={<>A shared foundation for <em className="not-italic"><span className="italic text-accent">everything we build.</span></em></>}>
+        Our products run on centralized AI infrastructure, reusable workflows, and shared system architecture. That means
+        faster iteration, stronger products, and continuous improvement across the platform.
       </BayHead>
 
       <div className="relative rounded-[22px] border border-line bg-paper p-3.5 sm:p-6 md:p-9 shadow-[0_1px_0_rgba(31,26,20,0.04),0_30px_80px_-40px_rgba(200,84,46,0.18)]">
@@ -180,14 +187,21 @@ function Work() {
         <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
           <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[10.5px] uppercase tracking-[0.16em] text-accent">
             <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
-            AI envelope · live
+            In Production
           </span>
           <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
-            Anthropic models, our playbooks, <em className="text-accent">your context.</em>
+            A look at the systems <em className="text-accent">currently running</em> on the platform.
           </span>
-          <span className="ml-auto hidden md:inline font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted whitespace-nowrap">
-            04 / 04 running
-          </span>
+          <ul className="m-0 flex w-full list-none flex-wrap items-center gap-2 p-0">
+            {PLATFORM_PILLS.map((label) => (
+              <li
+                key={label}
+                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted"
+              >
+                {label}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
