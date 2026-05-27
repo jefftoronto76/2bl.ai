@@ -1,21 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useSageStore } from '../lib/store'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { ShareModal } from '@/app/(jefflougheed)/components/ShareModal'
 
 const LINKS = [
-  { label: 'Book', href: '#work' },
-  { label: 'Labs', href: '#' },
-  { label: 'Share', href: '#' },
-]
+  { label: 'Book', href: '#how-it-works', kind: 'scroll' },
+  { label: 'Labs', href: 'https://www.2bl.ai', kind: 'external' },
+  { label: 'Share', href: '#', kind: 'share' },
+] as const
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
-  const [chatBorderDrawn, setChatBorderDrawn] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
-  const expand = useSageStore((s) => s.expand)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
@@ -23,23 +20,80 @@ export function Nav() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  useEffect(() => {
-    const el = document.querySelector('[data-nav-trigger="how-i-operate"]')
-    if (!el) return
+  const scrollToBooking = () => {
+    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })
+  }
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setChatBorderDrawn(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.15 }
-    )
+  const renderItems = (mobile: boolean) => {
+    const base: CSSProperties = {
+      fontFamily: 'var(--font-mono)',
+      fontSize: mobile ? '14.4px' : '13.2px',
+      letterSpacing: '0.18em',
+      textTransform: 'uppercase',
+      textDecoration: 'none',
+      cursor: 'pointer',
+      background: 'none',
+      border: 'none',
+      color: mobile ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+      ...(mobile ? { padding: '16px 0', textAlign: 'left', width: '100%' } : { padding: 0 }),
+    }
+    const rowBorder: CSSProperties = mobile
+      ? { borderBottom: '1px solid var(--color-border)' }
+      : {}
+    const closeIfMobile = () => {
+      if (mobile) setOpen(false)
+    }
 
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+    return LINKS.map((link) => {
+      if (link.kind === 'share') {
+        return (
+          <button
+            key={link.label}
+            type="button"
+            onClick={() => {
+              closeIfMobile()
+              setShareOpen(true)
+            }}
+            style={{ ...base, ...rowBorder }}
+            aria-label="Share this page"
+          >
+            {link.label}
+          </button>
+        )
+      }
+
+      if (link.kind === 'external') {
+        return (
+          <a
+            key={link.label}
+            href={link.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={closeIfMobile}
+            style={{ ...base, ...rowBorder }}
+          >
+            {link.label}
+          </a>
+        )
+      }
+
+      // kind === 'scroll' (Book)
+      return (
+        <a
+          key={link.label}
+          href={link.href}
+          onClick={(e) => {
+            e.preventDefault()
+            closeIfMobile()
+            scrollToBooking()
+          }}
+          style={{ ...base, ...rowBorder }}
+        >
+          {link.label}
+        </a>
+      )
+    })
+  }
 
   return (
     <>
@@ -61,43 +115,7 @@ export function Nav() {
 
         {/* Desktop links */}
         <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }} className="nr-desktop-links">
-          {LINKS.map(({ label, href }) => {
-            if (label === 'Share') {
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setShareOpen(true)}
-                  style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '13.2px',
-                    letterSpacing: '0.18em', textTransform: 'uppercase',
-                    color: 'var(--color-text-muted)',
-                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              )
-            }
-            const isChatLink = label === 'Chat'
-            return (
-              <a
-                key={label}
-                href={href}
-                onClick={isChatLink ? (e) => { e.preventDefault(); expand() } : undefined}
-                className={isChatLink ? `nav-chat-btn ${chatBorderDrawn ? 'nav-chat-btn--drawn' : ''}` : undefined}
-                style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '13.2px',
-                  letterSpacing: '0.18em', textTransform: 'uppercase',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  ...(isChatLink ? {} : { color: 'var(--color-text-muted)' }),
-                }}
-              >
-                {label}
-              </a>
-            )
-          })}
+          {renderItems(false)}
         </div>
 
         {/* Mobile hamburger */}
@@ -121,59 +139,7 @@ export function Nav() {
           padding: '16px 24px 24px',
           gap: '0',
         }}>
-          {LINKS.map(({ label, href }) => {
-            if (label === 'Share') {
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => { setOpen(false); setShareOpen(true) }}
-                  style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '14.4px',
-                    letterSpacing: '0.18em', textTransform: 'uppercase',
-                    color: 'var(--color-text-primary)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '16px 0',
-                    borderBottom: '1px solid var(--color-border)',
-                    textAlign: 'left', width: '100%',
-                  }}
-                >
-                  {label}
-                </button>
-              )
-            }
-            const isChatLink = label === 'Chat'
-            return (
-              <a
-                key={label}
-                href={href}
-                onClick={isChatLink
-                  ? (e) => { e.preventDefault(); setOpen(false); expand() }
-                  : () => setOpen(false)
-                }
-                className={isChatLink ? 'nav-chat-pill' : undefined}
-                style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '14.4px',
-                  letterSpacing: '0.18em', textTransform: 'uppercase',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  ...(isChatLink
-                    ? {
-                      padding: '14px 24px',
-                      marginTop: '12px',
-                      alignSelf: 'flex-start',
-                    }
-                    : {
-                      color: 'var(--color-text-primary)',
-                      padding: '16px 0',
-                      borderBottom: '1px solid var(--color-border)',
-                    }),
-                }}
-              >
-                {label}
-              </a>
-            )
-          })}
+          {renderItems(true)}
         </div>
       )}
 
