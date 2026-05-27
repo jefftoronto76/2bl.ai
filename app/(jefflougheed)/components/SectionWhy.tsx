@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import {
   Globe,
   Handshake,
@@ -60,9 +63,26 @@ const REASONS: Reason[] = [
   },
 ]
 
-const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
+const PRACTICE_AREAS = ['Authentic', 'Collaborative', 'Inspiring']
+
+const ANCHORS = [
+  {
+    heading: 'Diagnose',
+    body: 'I look deeper. The real issue, not the presenting one.',
+  },
+  {
+    heading: 'Develop',
+    body: 'The people around me get better. Every time, without exception.',
+  },
+  {
+    heading: 'Direct',
+    body: "I tell the truth. Especially when it's the conversation nobody wants.",
+  },
+]
 
 export function SectionWhy() {
+  const [revealed, setRevealed] = useState(false)
+
   return (
     <section id="why" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
@@ -78,7 +98,31 @@ export function SectionWhy() {
           How I work
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-10">
+          {ANCHORS.map(({ heading, body }) => (
+            <div key={heading} className="flex flex-col gap-3">
+              <h3 className="font-display text-[clamp(26px,3vw,36px)] font-normal leading-[1.1] tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+                {heading}
+              </h3>
+              <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[34ch]">
+                {body}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setRevealed((v) => !v)}
+          aria-expanded={revealed}
+          aria-controls="why-detail"
+          className="mt-12 inline-flex items-center font-mono text-[13px] tracking-[0.16em] uppercase text-accent hover:text-[color:var(--color-accent-hover)] bg-transparent border-0 p-0 cursor-pointer"
+        >
+          In practice
+        </button>
+
+        {revealed && (
+          <div id="why-detail" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14 mt-12">
           {REASONS.map(({ Icon, title, bodyLead, bodyMark, bodyTrail }) => (
             <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
               <Icon
@@ -99,7 +143,8 @@ export function SectionWhy() {
               </p>
             </article>
           ))}
-        </div>
+          </div>
+        )}
 
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
           <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
