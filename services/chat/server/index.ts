@@ -75,7 +75,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       system: systemPrompt,
       messages: conversationMessages,
       onFinish: async ({ text, usage }) => {
-        await handleSessionFinish({ sessionId, text, usage, conversationMessages })
+        await handleSessionFinish({ sessionId, text, usage })
       },
     })
   } catch (error) {
