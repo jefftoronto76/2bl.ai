@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import {
   TrendingUp,
   Handshake,
@@ -61,7 +64,24 @@ const OUTCOMES: Outcome[] = [
 
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
+const ANCHORS = [
+  {
+    heading: 'Confidence',
+    body: "You know what's happening. No surprises, no gaps.",
+  },
+  {
+    heading: 'Clarity',
+    body: "You're never chasing me. I push the information before you need it.",
+  },
+  {
+    heading: 'Calm',
+    body: "It's handled. You can put your attention somewhere else.",
+  },
+]
+
 export function SectionOutcomes() {
+  const [revealed, setRevealed] = useState(false)
+
   return (
     <section id="outcomes" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
@@ -77,7 +97,31 @@ export function SectionOutcomes() {
           Outcomes I focus on
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-10">
+          {ANCHORS.map(({ heading, body }) => (
+            <div key={heading} className="flex flex-col gap-3">
+              <h3 className="font-display text-[clamp(26px,3vw,36px)] font-normal leading-[1.1] tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
+                {heading}
+              </h3>
+              <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[34ch]">
+                {body}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setRevealed((v) => !v)}
+          aria-expanded={revealed}
+          aria-controls="outcomes-detail"
+          className="mt-12 inline-flex items-center font-mono text-[13px] tracking-[0.16em] uppercase text-[rgb(45_106_79)] hover:text-[rgb(30_77_57)] bg-transparent border-0 p-0 cursor-pointer"
+        >
+          In practice
+        </button>
+
+        {revealed && (
+          <div id="outcomes-detail" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14 mt-12">
           {OUTCOMES.map(({ Icon, iconSrc, title, bodyLead, bodyMark, bodyTrail }) => (
             <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
               {Icon ? (
@@ -108,7 +152,8 @@ export function SectionOutcomes() {
               </p>
             </article>
           ))}
-        </div>
+          </div>
+        )}
 
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
           <p className="font-display italic font-normal text-[20px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
