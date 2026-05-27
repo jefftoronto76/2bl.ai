@@ -102,13 +102,13 @@ function Hero() {
     <header id="top" className="py-10 sm:py-16 md:py-24 lg:py-32">
       <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-12">
         <h1
-          className="m-0 mb-7 max-w-[14ch] font-serif font-normal leading-[1.02] tracking-[-0.022em] text-balance text-ink"
+          className="m-0 mb-7 font-serif font-normal leading-[1.02] tracking-[-0.022em] text-balance text-ink"
           style={{ fontSize: "clamp(36px, 4vw, 56px)" }}
         >
           Software people <em className="font-normal italic text-accent">actually want to use.</em>
         </h1>
         <p
-          className="m-0 mb-7 sm:mb-11 max-w-[32ch] font-serif italic font-normal leading-[1.35] text-ink-2 text-pretty"
+          className="m-0 mb-7 sm:mb-11 font-serif italic font-normal leading-[1.35] text-ink-2 text-pretty"
           style={{ fontSize: "20px" }}
         >
           AI changes how software gets built and how people experience it. Second Brain Labs is putting that shift to work.
@@ -447,7 +447,7 @@ function HowItWorks() {
       </div>
 
       {/* Section header */}
-      <header className="mb-10 sm:mb-14 max-w-[720px]">
+      <header className="mb-10 sm:mb-14">
         <h2
           id="how-it-works-h"
           className="m-0 mb-[18px] font-serif font-normal leading-[1.04] tracking-[-0.02em] text-ink text-balance"
@@ -457,7 +457,7 @@ function HowItWorks() {
           <em className="italic text-accent font-normal">product?</em>
         </h2>
         <p
-          className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
+          className="m-0 font-sans leading-[1.55] text-ink-2 text-pretty"
           style={{ fontSize: "clamp(16px, 1.8vw, 18px)" }}
         >
           My background in coaching, revenue leadership, and general management helps uncover product
@@ -671,11 +671,11 @@ function Bay({ id, label, tone = "paper", children }: BayProps) {
 
 function BayHead({ kicker, title, children }: { kicker: string; title: ReactNode; children?: ReactNode }) {
   return (
-    <header className="mb-7 sm:mb-11 md:mb-14 max-w-[720px]">
+    <header className="mb-7 sm:mb-11 md:mb-14">
       <Kicker>{kicker}</Kicker>
       <BayTitle>{title}</BayTitle>
       {children ? (
-        <p className="m-0 max-w-[56ch] text-[16px] sm:text-[17px] leading-[1.55] text-ink-2 text-pretty">{children}</p>
+        <p className="m-0 text-[16px] sm:text-[17px] leading-[1.55] text-ink-2 text-pretty">{children}</p>
       ) : null}
     </header>
   );
