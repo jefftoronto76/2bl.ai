@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useSageStore } from '../lib/store'
 
-const LINKS = [
-  { label: 'Book', href: '#work' },
-  { label: 'Labs', href: '#' },
+type NavLink = { label: string; href: string; external?: boolean; scroll?: boolean }
+
+const LINKS: NavLink[] = [
+  { label: 'Book', href: '#how-it-works', scroll: true },
+  { label: 'Labs', href: 'https://www.2bl.ai', external: true },
   { label: 'Share', href: '#' },
 ]
 
@@ -14,6 +16,10 @@ export function Nav() {
   const [open, setOpen] = useState(false)
   const [chatBorderDrawn, setChatBorderDrawn] = useState(false)
   const expand = useSageStore((s) => s.expand)
+
+  const scrollToBooking = () => {
+    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
@@ -59,13 +65,21 @@ export function Nav() {
 
         {/* Desktop links */}
         <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }} className="nr-desktop-links">
-          {LINKS.map(({ label, href }) => {
+          {LINKS.map(({ label, href, external, scroll }) => {
             const isChatLink = label === 'Chat'
             return (
               <a
                 key={label}
                 href={href}
-                onClick={isChatLink ? (e) => { e.preventDefault(); expand() } : undefined}
+                target={external ? '_blank' : undefined}
+                rel={external ? 'noopener noreferrer' : undefined}
+                onClick={
+                  scroll
+                    ? (e) => { e.preventDefault(); scrollToBooking() }
+                    : isChatLink
+                      ? (e) => { e.preventDefault(); expand() }
+                      : undefined
+                }
                 className={isChatLink ? `nav-chat-btn ${chatBorderDrawn ? 'nav-chat-btn--drawn' : ''}` : undefined}
                 style={{
                   fontFamily: 'var(--font-mono)', fontSize: '13.2px',
@@ -102,15 +116,20 @@ export function Nav() {
           padding: '16px 24px 24px',
           gap: '0',
         }}>
-          {LINKS.map(({ label, href }) => {
+          {LINKS.map(({ label, href, external, scroll }) => {
             const isChatLink = label === 'Chat'
             return (
               <a
                 key={label}
                 href={href}
-                onClick={isChatLink
-                  ? (e) => { e.preventDefault(); setOpen(false); expand() }
-                  : () => setOpen(false)
+                target={external ? '_blank' : undefined}
+                rel={external ? 'noopener noreferrer' : undefined}
+                onClick={
+                  scroll
+                    ? (e) => { e.preventDefault(); setOpen(false); scrollToBooking() }
+                    : isChatLink
+                      ? (e) => { e.preventDefault(); setOpen(false); expand() }
+                      : () => setOpen(false)
                 }
                 className={isChatLink ? 'nav-chat-pill' : undefined}
                 style={{
