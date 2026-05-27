@@ -5,7 +5,7 @@
 
 ---
 
-## Current State — May 25, 2026
+## Current State — May 26, 2026
 
 The platform foundation is in place and merged to `main`. **Phase A — the
 service-extraction strangle — is COMPLETE** (PRs #30–36, May 25, 2026):
@@ -56,6 +56,26 @@ deferred items** — see "Next — Heirloom" and "Known deferred items" below.
 
 ## Completed
 
+### Chat UI v1 — shared engine (May 26, 2026, PRs #42-46)
+
+The client chat engine was extracted into `services/chat/ui/v1/` and both
+tenants migrated onto it:
+- **#42** — type contracts: marker registry + `useChatTurn` hook interfaces (`types.ts`).
+- **#43** — concrete marker registry (`createMarkerRegistry` / `createDefaultRegistry`
+  / `BOOKING_MARKER`) + store-agnostic `useChatTurn` hook; jefflougheed (`Chat.tsx`,
+  `Hero.tsx`) migrated; `src/lib/sage.ts` deleted; `parseBookingCards` delegates to
+  the registry.
+- **#44** — Heirloom chat migrated onto the same `useChatTurn` engine via
+  `ChatEngineAccessors` over its `useReducer` store; `app/heirloom/lib/stream.ts`
+  deleted; `MessageList` strips markers.
+- **#45** — `[NAME:]` marker (server-persist) added, dual-run alongside Haiku.
+- **#46** — Haiku name extractor removed; name capture is marker-only.
+
+`useChatTurn` is store-agnostic (injected `ChatEngineAccessors`), so jefflougheed
+(Zustand) and Heirloom (`useReducer`) share one turn engine and one marker
+registry. The visual components stay in `src/` as consumers (see "Chat service —
+UI half (partially extracted)").
+
 ### Stage 1 — Planning
 - MIGRATION.md written and approved (full 6-phase plan)
 - 2BL.md platform bible created
@@ -95,7 +115,7 @@ What's in each file:
 | `services/chat/server/stream.ts` | `resolveModelConfig()` (reads `tenant_model_config`, falls back to code defaults), `getModelInstance()` (provider seam — Anthropic wired, OpenAI throws as not-yet-wired), `runChatStream()` (the `streamText` call + `onFinish` usage normalization). The ONLY hardcoded model IDs live here: `claude-sonnet-4-6` / `gpt-4o` defaults. Server-only. |
 | `services/chat/server/prompt.ts` | Thin re-export of `services/prompt/compiler.ts` (`getSystemPrompt`, `QUESTION_MODE_CONTEXT`) + `DEFAULT_SYSTEM_PROMPT` (now `services/prompt/sage-prompt.ts`). The runtime compiler moved to the prompt service in V3; `sage-prompt.ts` moved there in V5. Server-only. |
 | `services/chat/server/booking.ts` | `getBookingCardSection()` (fetches `sage_parameters`, renders the `[BOOKING: …]` section) + pure `buildBookingSection()`. Returns `''` on error/no-rows so the section is simply omitted. Server-only. |
-| `services/chat/server/session.ts` | onFinish detection flows, moved verbatim: `persistTokenUsage` (main turn + Haiku), `scanForCalendarOffer` + `persistCalendarOffered`, `extractNameWithHaiku` (`claude-haiku-4-5`) + `isPlausibleName` + `persistVisitorName`. No-ops when `sessionId` is null. Server-only. |
+| `services/chat/server/session.ts` | onFinish detection flows. **Now lives at `services/crm/session.ts`** (moved during the crm extraction). `persistTokenUsage`, `scanForCalendarOffer` + `persistCalendarOffered`, and `[NAME:]`-marker name capture: `detectVisitorNameMarker` + `isPlausibleName` + `persistVisitorName`. **Name capture is marker-only — `extractNameWithHaiku` (`claude-haiku-4-5`) was removed in PR #46.** No-ops when `sessionId` is null. Server-only. |
 
 `app/api/sage/route.ts` now imports `streamChat` from `@/services/chat/server`
 and owns only HTTP concerns (ANTHROPIC_API_KEY guard, host→tenant resolution,
@@ -151,38 +171,42 @@ Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
 
 ---
 
-## Chat service — UI half NOT yet extracted
+## Chat service — UI half (partially extracted, PRs #42-46)
 
-The server half is done (above). The **client/UI half has not started** —
-`services/chat/ui/` does not exist yet, even though `server/types.ts` and
-`server/booking.ts` already reference an intended
-`services/chat/ui/v1/parseBookingCards.ts`. Those are forward references with
-no target on disk.
+The server half was done earlier (above). The **engine half of the UI is now
+extracted** into `services/chat/ui/v1/`: the marker registry (`registry.ts` —
+`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`),
+the store-agnostic `useChatTurn` hook, and the type contracts (`types.ts`). Both
+tenants consume the hook — jefflougheed via Zustand (`useSageStore`), Heirloom
+via `useReducer` — each wrapping its store in `ChatEngineAccessors`.
+`src/lib/sage.ts` (`streamSageResponse`) was **deleted**; the hook owns transport
+via the shared `readDataStream` (`services/chat/server/stream-utils.ts`). See
+"Chat UI v1 — shared engine" under Completed.
 
-Still living in `src/components/sage/` (the UI primitives that should move into
-`services/chat/ui/`):
+The remaining **visual** components still live in `src/` as consumers of the
+engine (they have NOT moved into `services/chat/ui/`):
 
 | File | Notes |
 |------|-------|
-| src/components/sage/parseBookingCards.ts | Client parser — the counterpart to `server/booking.ts`. Comments already point at the intended `services/chat/ui/v1/` home. |
+| src/components/sage/parseBookingCards.ts | Client parser — now **delegates to `createDefaultRegistry()`** in `services/chat/ui/v1/registry.ts`; remains in `src/` as a thin wrapper preserving the `{ prose, cards }` API. Also strips `[NAME:]` markers. |
 | src/components/sage/BookingCard.tsx | Booking card + inline-embed injection. |
 | src/components/sage/SageReply.tsx | Assistant-message renderer; resolves cards to params by URL match. |
 | src/components/sage/markdownComponents.tsx | Palette-aware markdown renderers. |
 | src/components/sage/useSageParameters.ts | Fetches `/api/sage/parameters`. |
 
-Client transport that SERVICEMIGRATION previously listed as moving into
-`services/chat` (still in `src/lib/`):
+Client transport that still lives in `src/lib/` (`src/lib/sage.ts` was deleted
+in PR #43 — its `streamSageResponse` fetch+stream logic now lives in the
+`useChatTurn` hook):
 
 | File | Notes |
 |------|-------|
-| src/lib/sage.ts | `streamSageResponse` — the `/api/sage` fetch client. (Imports `readDataStream` from `services/chat/server/stream-utils.ts`.) |
-| src/lib/store.ts | Exports both `useSageStore` (public chat) and `useChatStore`. Consumed by Chat, Hero, Nav, SectionProcess, Work. |
+| src/lib/store.ts | Exports both `useSageStore` (public chat) and `useChatStore`. Consumed by Chat, Hero, Nav, SectionProcess, Work — wrapped in `ChatEngineAccessors` for `useChatTurn`. |
 
 Note: `readDataStream` (the data-stream reader, shared with the admin composer)
 was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`
-(V5) — named to avoid colliding with the chat `stream.ts`. `src/lib/sage.ts`,
-`components/admin/PromptBuilderChat.tsx`, and `app/admin/prompt-builder/page.tsx`
-import it from there now.
+(V5) — named to avoid colliding with the chat `stream.ts`.
+`services/chat/ui/v1/useChatTurn.ts`, `components/admin/PromptBuilderChat.tsx`,
+and `app/admin/prompt-builder/page.tsx` import it from there now.
 
 The jefflougheed.ca consumers below stay in `src/components/` and become thin
 consumers of the chat service once its UI half exists — do not move or delete
@@ -270,15 +294,17 @@ shared `src/` code. **V5 cleared 8 of 14** (`14 → 6`):
 - `src/context/admin-user.tsx` → `services/auth/admin-user-context.tsx`.
 - `src/components/PromptEditor.tsx` → `components/admin/PromptEditor.tsx`.
 
-The **6 remaining** warnings are all the **chat-UI half** (NOT yet extracted —
-see "Chat service — UI half NOT yet extracted"): `app/(jefflougheed)/page.tsx`
+The **remaining** warnings are all the **chat-UI visual half** (see "Chat
+service — UI half (partially extracted)"): `app/(jefflougheed)/page.tsx`
 importing `Chat` / `Hero` / `Nav` / `SectionProcess` from `src/components/`, and
 `Problem` / `Session` importing `useReveal` from `src/hooks/`. Those components
-can't move yet because they import `src/lib/store.ts` (`useSageStore`),
-`src/lib/sage.ts` (`streamSageResponse`), and `src/components/sage/*` — moving
-the components without those would just relocate the warnings (and `useReveal`
-is still shared by the `src/components/` orphans `WhyMe` / `QuoteCarouselSection`).
-Clearing the last 6 = the chat-UI extraction, tracked as a separate effort.
+can't move yet because they still import `src/lib/store.ts` (`useSageStore`) and
+`src/components/sage/*`, and consume `useChatTurn` from `services/chat/ui/v1/`
+(`src/lib/sage.ts` is gone, deleted in PR #43) — moving the components without
+`store.ts` / `sage/*` would just relocate the warnings (and `useReveal` is still
+shared by the `src/components/` orphans `WhyMe` / `QuoteCarouselSection`).
+Clearing the last warnings = moving the chat-UI visual components, tracked as a
+separate effort.
 
 ---
 
@@ -389,11 +415,12 @@ public/
 falling back to code defaults when no row is present. The remaining Phase 5 work
 is the admin UI to manage those rows and per-tenant key handling (below).
 
-Code-default fallbacks (the only hardcoded model IDs, all in `stream.ts` /
-`session.ts`):
+Code-default fallbacks (the only hardcoded model IDs, in `stream.ts`):
 - Chat model: claude-sonnet-4-6
 - Fallback model: gpt-4o (provider seam present; OpenAI not yet wired — throws)
-- Name extractor: claude-haiku-4-5 (fixed in `session.ts`, not tenant-configurable)
+
+(The `claude-haiku-4-5` name extractor was removed in PR #46 — name capture is
+now the `[NAME:]` marker, no separate model call.)
 
 Note: `server/types.ts` still carries a stale comment implying
 `tenant_model_config` is "NOT yet available" — clean that up when the chat
