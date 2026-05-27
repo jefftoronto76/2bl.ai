@@ -2,32 +2,16 @@
 //
 // Session lifecycle + token tracking. Server-only (service-role client). Owns
 // the onFinish detection flows: token-usage accounting, calendar-offer
-// detection, and first-name extraction via a Haiku call. Consumed by the chat
-// orchestrator (services/chat/server/index.ts → handleSessionFinish). Logic
-// moved verbatim from app/api/sage/route.ts — behavior unchanged.
+// detection, and first-name capture via the [NAME:] marker Sage emits.
+// Consumed by the chat orchestrator (services/chat/server/index.ts →
+// handleSessionFinish).
 //
 // NOTE: the eventual Amendment-3 batched single-write and Amendment-5 pooled
-// connection are deliberately NOT applied here; this is a behavior-preserving
-// move. Those optimizations land as separate commits.
+// connection are deliberately NOT applied here. Those optimizations land as
+// separate commits.
 
-import { generateText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import type { ChatMessage, TokenUsage } from '@/services/chat/server/types'
-
-// Internal model for first-name extraction. Always Anthropic Haiku — not a
-// tenant-configurable choice, so it is not part of ModelConfig. This const is
-// the single source for the extractor model ID.
-const NAME_EXTRACTOR_MODEL = 'claude-haiku-4-5'
-
-// Server-side first-name extraction. A single Haiku call against the last
-// few turns of the conversation is cheaper to maintain than a regex tree and
-// covers the four scenarios (visitor names self up-front, visitor responds
-// to a name-ask, visitor ignores, visitor names self mid-conversation).
-// Cost is bounded by the chat_sessions.visitor_name pre-check in onFinish:
-// once captured, no further Haiku calls fire for that session.
-const HAIKU_NAME_EXTRACTOR_SYSTEM =
-  "You are extracting one piece of structured data. Given the conversation below, return ONLY the visitor's first name if they have clearly stated it. If the name is unstated or unclear, return the word EMPTY and nothing else. No punctuation, no explanation."
+import type { TokenUsage } from '@/services/chat/server/types'
 
 function isPlausibleName(candidate: string): boolean {
   if (candidate.length < 2 || candidate.length > 30) return false
@@ -56,10 +40,9 @@ function scanForCalendarOffer(text: string): boolean {
 
 // Extracts a plausible first name from a [NAME: x] marker in the assistant
 // text, or null when the marker is absent/empty/implausible. Titlecases before
-// the shape check (same as the Haiku path). Mirrors NAME_MARKER in
-// services/chat/ui/v1/registry.ts; kept as a local regex (like
-// scanForCalendarOffer) so the CRM service does not depend on the UI-v1 layer.
-// Exported for unit testing.
+// the shape check. Mirrors NAME_MARKER in services/chat/ui/v1/registry.ts; kept
+// as a local regex (like scanForCalendarOffer) so the CRM service does not
+// depend on the UI-v1 layer. Exported for unit testing.
 export function detectVisitorNameMarker(text: string): string | null {
   const match = text.match(/\[NAME:\s*([^\]]*)\]/)
   if (!match) return null
@@ -67,47 +50,6 @@ export function detectVisitorNameMarker(text: string): string | null {
   if (raw.length === 0) return null
   const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
   return isPlausibleName(candidate) ? candidate : null
-}
-
-async function extractNameWithHaiku(
-  recentMessages: ChatMessage[],
-): Promise<{ name: string | null; usage: TokenUsage | null }> {
-  try {
-    const conversationStr = recentMessages
-      .map(m => `${m.role === 'user' ? 'Visitor' : 'Sage'}: ${m.content}`)
-      .join('\n\n')
-
-    const result = await generateText({
-      model: anthropic(NAME_EXTRACTOR_MODEL),
-      system: HAIKU_NAME_EXTRACTOR_SYSTEM,
-      messages: [{ role: 'user', content: conversationStr }],
-      maxTokens: 20,
-    })
-
-    const usage = {
-      promptTokens: result.usage.promptTokens,
-      completionTokens: result.usage.completionTokens,
-    }
-
-    const raw = result.text.trim()
-    console.log('[chat/session] haiku extractor returned:', JSON.stringify(raw), '| usage:', usage)
-
-    if (raw === 'EMPTY' || raw.length === 0) return { name: null, usage }
-
-    // Titlecase before the shape check. Haiku tends to preserve the
-    // visitor's casing ("ronald" stays "ronald"), but isPlausibleName
-    // requires a single capital lead.
-    const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
-
-    if (!isPlausibleName(candidate)) {
-      console.log('[chat/session] haiku candidate rejected by shape check:', candidate)
-      return { name: null, usage }
-    }
-    return { name: candidate, usage }
-  } catch (err) {
-    console.error('[chat/session] haiku extractor failed:', err instanceof Error ? err.message : err)
-    return { name: null, usage: null }
-  }
 }
 
 async function persistVisitorName(sessionId: string, name: string): Promise<void> {
@@ -233,17 +175,16 @@ async function persistTokenUsage(
 
 /**
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
- * null (e.g. the greeting turn before a session exists). Sequence matches the
- * prior inline route logic exactly: main-turn token usage → calendar-offer
- * detection → visitor_name pre-check → Haiku name extraction + persist.
+ * null (e.g. the greeting turn before a session exists). Sequence: main-turn
+ * token usage → calendar-offer detection → visitor_name pre-check → [NAME:]
+ * marker capture + persist.
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
   text: string
   usage: TokenUsage | null
-  conversationMessages: ChatMessage[]
 }): Promise<void> {
-  const { sessionId, text, usage, conversationMessages } = params
+  const { sessionId, text, usage } = params
 
   if (!sessionId) {
     console.log('[chat/session] onFinish: no session_id, skipping detection flows')
@@ -283,9 +224,8 @@ export async function handleSessionFinish(params: {
     )
   }
 
-  // Pre-check: skip the Haiku call entirely if visitor_name is already
-  // populated. This is what bounds extraction cost to ~one call per session
-  // in the steady state.
+  // Pre-check: skip name detection entirely if visitor_name is already
+  // populated, so a later turn never re-scans or overwrites a captured name.
   try {
     const { data, error } = await getAdminClient()
       .from('chat_sessions')
@@ -310,12 +250,9 @@ export async function handleSessionFinish(params: {
     return
   }
 
-  // [NAME:] marker — primary path. When Sage emits [NAME: x] and x is
-  // plausible, persist it and skip the Haiku call. This runs alongside the
-  // Haiku extractor below: the marker takes precedence and Haiku is the
-  // fallback when the marker is absent or implausible. The Haiku path is
-  // removed in PR 3 once marker emission is proven in production. Both write
-  // the same column, guarded by the pre-check above — last write wins.
+  // [NAME:] marker — the sole name-capture path. When Sage emits [NAME: x] and
+  // x is plausible, persist it. No marker → do nothing (the prior Haiku
+  // fallback was removed in PR 3 once marker emission was proven in production).
   const markerName = detectVisitorNameMarker(text)
   if (markerName) {
     console.log('[chat/session] onFinish: name marker detected:', markerName)
@@ -323,21 +260,5 @@ export async function handleSessionFinish(params: {
     return
   }
 
-  // Last 4 turns: up to 3 trailing entries from the conversation we sent in,
-  // plus the assistant message that just finished streaming.
-  const recent: ChatMessage[] = [
-    ...conversationMessages.slice(-3),
-    { role: 'assistant' as const, content: text },
-  ].slice(-4)
-
-  const { name, usage: haikuUsage } = await extractNameWithHaiku(recent)
-  if (haikuUsage) {
-    await persistTokenUsage(sessionId, haikuUsage.promptTokens, haikuUsage.completionTokens)
-  }
-  if (!name) {
-    console.log('[chat/session] onFinish: haiku extracted no name')
-    return
-  }
-  console.log('[chat/session] onFinish: haiku extracted candidate:', name)
-  await persistVisitorName(sessionId, name)
+  console.log('[chat/session] onFinish: no name marker in assistant text')
 }
