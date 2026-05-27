@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSageStore } from '../lib/store'
+import { ShareModal } from '@/app/(jefflougheed)/components/ShareModal'
 
 const LINKS = [
   { label: 'Book', href: '#work' },
@@ -13,6 +14,7 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const [chatBorderDrawn, setChatBorderDrawn] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const expand = useSageStore((s) => s.expand)
 
   useEffect(() => {
@@ -60,6 +62,23 @@ export function Nav() {
         {/* Desktop links */}
         <div style={{ display: 'flex', gap: '32px', alignItems: 'center' }} className="nr-desktop-links">
           {LINKS.map(({ label, href }) => {
+            if (label === 'Share') {
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setShareOpen(true)}
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '13.2px',
+                    letterSpacing: '0.18em', textTransform: 'uppercase',
+                    color: 'var(--color-text-muted)',
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            }
             const isChatLink = label === 'Chat'
             return (
               <a
@@ -103,6 +122,26 @@ export function Nav() {
           gap: '0',
         }}>
           {LINKS.map(({ label, href }) => {
+            if (label === 'Share') {
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => { setOpen(false); setShareOpen(true) }}
+                  style={{
+                    fontFamily: 'var(--font-mono)', fontSize: '14.4px',
+                    letterSpacing: '0.18em', textTransform: 'uppercase',
+                    color: 'var(--color-text-primary)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '16px 0',
+                    borderBottom: '1px solid var(--color-border)',
+                    textAlign: 'left', width: '100%',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            }
             const isChatLink = label === 'Chat'
             return (
               <a
@@ -137,6 +176,8 @@ export function Nav() {
           })}
         </div>
       )}
+
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} />
 
       <style>{`
         .nr-brand { font-size: 17px; }
