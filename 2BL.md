@@ -204,9 +204,11 @@ Headlines:
 - Non-AI API routes < 500ms
 - Tenant resolution: cached, no per-request DB round-trip
 - No N+1 query patterns
-- All DB queries via PgBouncer pooled connection (port 6543)
+- DB access via the Supabase JS/SSR clients over the PostgREST HTTPS endpoint
+  (`NEXT_PUBLIC_SUPABASE_URL`) — no direct Postgres connection, no `DATABASE_URL`,
+  no PgBouncer / port 6543 in the codebase (revisit only if a direct pg layer is introduced)
 - Per-tenant rate limiting on AI calls
-- Batched writes in chat service onFinish
+- Batched writes in chat service onFinish — TARGET, not yet implemented (Amendment-3 deferred)
 
 ---
 

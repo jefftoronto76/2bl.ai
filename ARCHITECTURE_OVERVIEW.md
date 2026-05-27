@@ -1,5 +1,5 @@
 # 2BL Platform Architecture — Honest Overview
-*May 24, 2026*
+*May 26, 2026*
 
 ---
 
@@ -39,11 +39,27 @@ Phase A — COMPLETE as of May 25, 2026 (PRs #30-36)
 - Import boundary lint enforced (warn) ✅
 
 Still deferred or pending:
-- services/chat/ui/v1/ — DEFERRED INTENTIONALLY
-  (src/components/sage/*, Chat.tsx, Hero.tsx, store.ts, sage.ts)
+- services/chat/ui/v1/ — PARTIALLY EXTRACTED (PRs #42-46): the marker registry,
+  the store-agnostic useChatTurn hook, and the type contracts landed, and both
+  tenants migrated onto the hook. The visual components (src/components/sage/*,
+  Chat.tsx, Hero.tsx, store.ts) still live in src/ as consumers — sage.ts deleted.
 - services/payments/ — NOT STARTED
 - Heirloom master_prompt — blocks started, not compiled/published
 - Three-tier prompt inheritance — design pending
+
+### Chat UI v1 — shared engine extracted (May 26, 2026)
+
+PRs #42-46 extracted the client chat engine into `services/chat/ui/v1/`:
+- **#42** type contracts (marker registry + hook interfaces)
+- **#43** concrete marker registry + store-agnostic `useChatTurn` hook; jefflougheed
+  (Chat.tsx, Hero.tsx) migrated; `src/lib/sage.ts` deleted
+- **#44** Heirloom chat migrated onto the same `useChatTurn` engine; its local
+  `lib/stream.ts` deleted
+- **#45** `[NAME:]` marker added (server-persist), dual-run alongside the Haiku extractor
+- **#46** Haiku name extractor removed — name capture is now marker-only
+
+Both tenants now share one turn engine and one marker registry. The visual
+components remain in `src/` (see deferred item below).
 
 ---
 
@@ -84,7 +100,8 @@ services/
       session.ts
       types.ts
     ui/
-      v1/             ← deferred — client UI kit
+      v1/             ← marker registry + useChatTurn hook (PRs #42-46);
+                        visual components still in src/
       
   payments/
     index.ts          ← scaffold only
@@ -114,7 +131,8 @@ app/
 ### Performance
 
 - Tenant resolution cached — no per-request DB round-trip
-- Batched onFinish writes in chat service
+- Batched onFinish writes in chat service — TARGET, not yet implemented
+  (Amendment-3 deferred; onFinish still does sequential writes)
 - No N+1 query patterns
 - All services have clean interfaces — no internal cross-imports
 
@@ -176,7 +194,7 @@ Vercel preview checks. Nothing merges until this passes.
 Phase A is complete, so Heirloom is now underway.
 
 - Landing page ✅
-- Chat wired ✅ — full session lifecycle (POST /api/sessions → session_id to /api/sage → PATCH on completion), PR #39
+- Chat wired ✅ — full session lifecycle (POST /api/sessions → session_id to /api/sage → PATCH on completion), PR #39; migrated onto the shared `useChatTurn` engine, PR #44
 - Multi-tenant admin ✅
 - Blocks: in progress
 - master_prompt: pending compile/publish
@@ -247,7 +265,8 @@ Definition of Done for each product, not a cleanup task.
 
 - Infinite loop prevention in tenant hierarchy (circular parent_id)
 - OpenAI fallback circuit breaker (seam exists, not wired)
-- Client UI move to services/chat/ui/v1/
+- Visual chat components (Chat.tsx, Hero.tsx, src/components/sage/*, store.ts)
+  still in src/ — the engine/registry/hook already extracted to services/chat/ui/v1/ (PRs #42-46)
 - HUGS (requires BAA before any PHI work)
 - Per-tenant AI API keys
 - Payments (Stripe Connect)
