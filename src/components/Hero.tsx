@@ -173,12 +173,14 @@ export function Hero() {
           </svg>
         </button>
 
+        <p className="eyebrow">Coach · Operator · Builder</p>
+
         <h1>
           Hi, I&apos;m <em>Jeff</em>.
         </h1>
 
         <p className="lede">
-          I&apos;m an operator, a coach, and a builder. I help technology companies think clearly, develop their people, and grow in <em>ways that last</em>.
+          I help technology companies and the people who drive them think clearly, develop their capabilities, and grow in ways that last.
         </p>
 
         <p className="sage-line">
