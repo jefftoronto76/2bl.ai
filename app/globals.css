@@ -252,7 +252,7 @@ body {
   transition:font-size .55s cubic-bezier(.2,.7,.2,1), margin-bottom .45s ease;
   text-wrap:pretty;
 }
-.hero h1 em{font-style:italic;color:rgb(var(--color-accent));font-weight:400}
+.hero h1 em{font-style:normal;color:rgb(var(--color-accent));font-weight:400}
 .hero .lede{
   font-family:var(--font-display);
   font-size:20px;line-height:1.5;color:var(--color-text-muted);
