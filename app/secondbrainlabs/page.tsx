@@ -66,12 +66,22 @@ function Nav() {
   return (
     <nav className="sticky top-0 z-40 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
       <div className="mx-auto flex h-14 sm:h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8 lg:px-12">
-        <Link href="/" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
+        <div className="group relative flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
           <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-md bg-ink">
             <img src="/2bl/2blai_logo.svg" alt="" className="h-full w-full object-cover" />
           </span>
           <span className="hidden sm:inline">Second Brain Labs</span>
-        </Link>
+
+          {/* Desktop-only hover reveal — full logo illustration popover */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden origin-top-left scale-95 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100 motion-reduce:transition-none md:block"
+          >
+            <div className="rounded-xl border border-line bg-ink p-3 shadow-[0_20px_40px_-20px_rgba(31,26,20,0.45)]">
+              <img src="/2bl/2blai_logo.svg" alt="" className="block h-[180px] w-[180px] object-contain" />
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           <BtnGhost href="/sign-in">Sign in</BtnGhost>
           <BtnPrimary href="#chat">
@@ -95,13 +105,13 @@ function Hero() {
           className="m-0 mb-7 max-w-[14ch] font-serif font-normal leading-[1.02] tracking-[-0.022em] text-balance text-ink"
           style={{ fontSize: "clamp(38px, 7.2vw, 104px)" }}
         >
-          Building products for <em className="font-normal italic text-accent">humanity.</em>
+          Software people <em className="font-normal italic text-accent">actually want to use.</em>
         </h1>
         <p
           className="m-0 mb-7 sm:mb-11 max-w-[32ch] font-serif italic font-normal leading-[1.35] text-ink-2 text-pretty"
           style={{ fontSize: "clamp(20px, 2.6vw, 30px)" }}
         >
-          A workshop for trying the impossible.
+          AI changes how software gets built and how people experience it. Second Brain Labs is putting that shift to work.
         </p>
 
         <SageWidget />
@@ -164,12 +174,19 @@ function SageWidget() {
 // The Work — projects in AI envelope
 // ──────────────────────────────────────────────────────────────────────
 
+const PLATFORM_PILLS = [
+  "Multi-tenant by design",
+  "HIPAA & SOC2 ready",
+  "Natural language workflows",
+  "API-native architecture",
+] as const;
+
 function Work() {
   return (
     <Bay id="work" label="The work">
-      <BayHead kicker="The work" title={<>Four products. <em className="not-italic"><span className="italic text-accent">One quiet engine.</span></em></>}>
-        Everything we build sits inside the same AI envelope — shared models, shared memory, shared playbooks. Each product
-        is a different shape carved out of the same material.
+      <BayHead kicker="The work" title={<>A shared foundation for <em className="not-italic"><span className="italic text-accent">everything we build.</span></em></>}>
+        Our products run on centralized AI infrastructure, reusable workflows, and shared system architecture. That means
+        faster iteration, stronger products, and continuous improvement across the platform.
       </BayHead>
 
       <div className="relative rounded-[22px] border border-line bg-paper p-3.5 sm:p-6 md:p-9 shadow-[0_1px_0_rgba(31,26,20,0.04),0_30px_80px_-40px_rgba(200,84,46,0.18)]">
@@ -180,14 +197,21 @@ function Work() {
         <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
           <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[10.5px] uppercase tracking-[0.16em] text-accent">
             <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
-            AI envelope · live
+            In Production
           </span>
           <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
-            Anthropic models, our playbooks, <em className="text-accent">your context.</em>
+            A look at the systems <em className="text-accent">currently running</em> on the platform.
           </span>
-          <span className="ml-auto hidden md:inline font-mono text-[10.5px] uppercase tracking-[0.16em] text-muted whitespace-nowrap">
-            04 / 04 running
-          </span>
+          <ul className="m-0 flex w-full list-none flex-wrap items-center gap-2 p-0">
+            {PLATFORM_PILLS.map((label) => (
+              <li
+                key={label}
+                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted"
+              >
+                {label}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
@@ -282,7 +306,7 @@ const PRINCIPLES: ReadonlyArray<Principle> = [
   },
 ] as const;
 
-const CAPABILITY_PILLS = ["Multi-tenant", "Service Oriented", "HIPAA / SOC 2 Ready"] as const;
+const CAPABILITY_PILLS = ["Customer-Driven", "Outcome-Focused", "Progress over Perfection"] as const;
 
 function HowIWork() {
   return (
@@ -291,7 +315,7 @@ function HowIWork() {
         kicker="How I work"
         title={<span className="whitespace-normal sm:whitespace-nowrap">General manager. <em className="not-italic"><span className="italic text-accent">Product builder.</span></em></span>}
       >
-        NLP and language models have changed what's possible in software.
+        Products succeed when business reality, usability, and execution stay aligned.
       </BayHead>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4">
@@ -320,7 +344,7 @@ function HowIWork() {
         className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
         style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
       >
-        Better software isn't more features. It's software people want to come back to.
+        Building useful software means listening closely, iterating quickly, and focusing on outcomes.
       </p>
 
       <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
@@ -417,7 +441,7 @@ function HowItWorks() {
       {/* Eyebrow row: kicker pill + horizontal rule. */}
       <div className="mb-6 sm:mb-10 flex items-center gap-4">
         <span className="inline-block rounded-[3px] bg-accent/15 px-2 py-0.5 font-mono text-[11.5px] font-medium uppercase tracking-[0.22em] text-ink">
-          How it works
+          Helping build great products
         </span>
         <span aria-hidden className="hidden sm:block h-px max-w-[180px] flex-1 bg-ink/10" />
       </div>
@@ -436,8 +460,10 @@ function HowItWorks() {
           className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
           style={{ fontSize: "clamp(16px, 1.5vw, 18px)" }}
         >
-          I&apos;m a revenue focused product builder, and, an executive coach, if you want to
-          explore your product, book time below.
+          My background in coaching, revenue leadership, and general management helps uncover product
+          risks and opportunities others often miss — especially around economics, retention, and growth.
+          <br />
+          If you want to explore your product, book time below.
         </p>
       </header>
 
