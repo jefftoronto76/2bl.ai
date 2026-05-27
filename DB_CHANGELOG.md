@@ -1,5 +1,17 @@
 # DB Changelog
 
+## 2026-05-26
+
+### No schema change — chat-ui-v1 sprint (`[NAME:]` marker)
+**Type:** Note (no schema change)
+
+The chat-ui-v1 work (shared `useChatTurn` engine + marker registry) and the new
+`[NAME:]` marker introduced **no schema change** — visitor-name capture reuses
+the existing `chat_sessions.visitor_name` column. Logged here so no one hunts
+for a NAME-related migration. (PRs #42-46.)
+
+---
+
 ## 2026-05-25
 
 ### Add `email` column to `chat_sessions`
