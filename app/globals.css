@@ -245,6 +245,14 @@ body {
 }
 .hero .close-x:hover{color:var(--color-text-primary);border-color:var(--color-border-hover);background:rgb(var(--color-surface))}
 .stage.engaged .hero .close-x{opacity:1;pointer-events:auto;transform:scale(1)}
+.hero .eyebrow{
+  font-family:var(--font-mono);
+  font-size:13px;line-height:1.4;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--color-text-dim);
+  margin-bottom:20px;
+  transition:font-size .45s ease, max-height .45s ease, opacity .35s ease, margin-bottom .45s ease;
+  overflow:hidden;
+}
 .hero h1{
   font-family:var(--font-display);font-weight:400;
   font-size:clamp(36px, 4vw, 56px);line-height:1.06;letter-spacing:-.015em;
@@ -252,7 +260,7 @@ body {
   transition:font-size .55s cubic-bezier(.2,.7,.2,1), margin-bottom .45s ease;
   text-wrap:pretty;
 }
-.hero h1 em{font-style:italic;color:rgb(var(--color-accent));font-weight:400}
+.hero h1 em{font-style:normal;color:rgb(var(--color-accent));font-weight:400}
 .hero .lede{
   font-family:var(--font-display);
   font-size:20px;line-height:1.5;color:var(--color-text-muted);
@@ -283,6 +291,7 @@ body {
   box-shadow:0 8px 16px -12px rgb(var(--ink-rgb, 26 25 23) / 0.18), 0 1px 0 0 var(--color-border);
 }
 .stage.engaged .hero h1{font-size:20px;margin-bottom:0;line-height:1.2;padding-right:48px}
+.stage.engaged .hero .eyebrow{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 .stage.engaged .hero .lede{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 .stage.engaged .hero .sage-line{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 
