@@ -317,3 +317,18 @@ duplicates the one in services/auth/supabase-admin.ts. Not a
 vulnerability but a maintenance risk — two places to update if
 the service role key or URL ever changes. Consolidate to
 services/auth/supabase-admin.ts.
+
+## Font Scale Standardization
+
+Standardize font sizes across all tenants using a shared
+scale. Currently jefflougheed.ca and 2bl.ai are hand-tuned
+to matching values but there is no single source of truth.
+Future tenants will drift without a proper system.
+
+Options to evaluate:
+- Tailwind config extension (named steps, per-tenant override)
+- CSS custom properties in app/globals.css (shared, less flexible)
+- Per-tenant token file with a shared naming convention
+
+Goal: one definition, per-tenant override capability,
+applies automatically to new tenants.
