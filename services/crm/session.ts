@@ -29,6 +29,14 @@ function isPlausibleName(candidate: string): boolean {
   return true
 }
 
+function isPlausibleEmail(candidate: string): boolean {
+  if (candidate.length < 6 || candidate.length > 254) return false
+  // Single @, non-empty local part, and a dotted domain. Deliberately lenient —
+  // the goal is to reject obvious non-emails (sentinels, prose), not to fully
+  // validate RFC 5322.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)
+}
+
 // Detects whether Sage offered a calendar/booking link in the streamed
 // assistant message. Two shapes are covered: the structured booking card
 // (always emitted on its own line at the end of a message) and a raw
@@ -50,6 +58,19 @@ export function detectVisitorNameMarker(text: string): string | null {
   if (raw.length === 0) return null
   const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
   return isPlausibleName(candidate) ? candidate : null
+}
+
+// Extracts a plausible email from an [EMAIL: x] marker in the assistant text,
+// or null when the marker is absent/empty/implausible. Lowercases before the
+// shape check. Mirrors EMAIL_MARKER in services/chat/ui/v1/registry.ts; kept as
+// a local regex (like detectVisitorNameMarker) so the CRM service does not
+// depend on the UI-v1 layer. Exported for unit testing.
+export function detectVisitorEmailMarker(text: string): string | null {
+  const match = text.match(/\[EMAIL:\s*([^\]]*)\]/)
+  if (!match) return null
+  const candidate = match[1].trim().toLowerCase()
+  if (candidate.length === 0) return null
+  return isPlausibleEmail(candidate) ? candidate : null
 }
 
 async function persistVisitorName(sessionId: string, name: string): Promise<void> {
@@ -93,6 +114,50 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
     console.log('[chat/session] visitor_name written:', { session_id: sessionId, name })
   } catch (err) {
     console.error('[chat/session] persistVisitorName threw:', err instanceof Error ? err.message : err)
+  }
+}
+
+async function persistVisitorEmail(sessionId: string, email: string): Promise<void> {
+  try {
+    const supabase = getAdminClient()
+    const { data, error: selectError } = await supabase
+      .from('chat_sessions')
+      .select('email')
+      .eq('id', sessionId)
+      .maybeSingle()
+
+    if (selectError) {
+      console.error('[chat/session] email select failed:', selectError.message)
+      return
+    }
+
+    if (!data) {
+      console.warn('[chat/session] email persist skipped — session not found:', sessionId)
+      return
+    }
+
+    if (data.email && data.email.length > 0) {
+      console.log('[chat/session] email already set, skipping write:', {
+        session_id: sessionId,
+        existing: data.email,
+        extracted: email,
+      })
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from('chat_sessions')
+      .update({ email })
+      .eq('id', sessionId)
+
+    if (updateError) {
+      console.error('[chat/session] email update failed:', updateError.message)
+      return
+    }
+
+    console.log('[chat/session] email written:', { session_id: sessionId, email })
+  } catch (err) {
+    console.error('[chat/session] persistVisitorEmail threw:', err instanceof Error ? err.message : err)
   }
 }
 
@@ -176,8 +241,8 @@ async function persistTokenUsage(
 /**
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
- * token usage → calendar-offer detection → visitor_name pre-check → [NAME:]
- * marker capture + persist.
+ * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
+ * visitor_name pre-check → [NAME:] marker capture + persist.
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
@@ -222,6 +287,17 @@ export async function handleSessionFinish(params: {
       '[chat/session] onFinish: calendar_offered detection threw:',
       err instanceof Error ? err.message : err,
     )
+  }
+
+  // [EMAIL:] marker — captured independently of the name flow below (which
+  // early-returns). persistVisitorEmail self-guards against overwriting an
+  // already-captured email, so no function-level pre-check is needed here.
+  const markerEmail = detectVisitorEmailMarker(text)
+  if (markerEmail) {
+    console.log('[chat/session] onFinish: email marker detected:', markerEmail)
+    await persistVisitorEmail(sessionId, markerEmail)
+  } else {
+    console.log('[chat/session] onFinish: no email marker in assistant text')
   }
 
   // Pre-check: skip name detection entirely if visitor_name is already

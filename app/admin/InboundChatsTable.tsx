@@ -80,6 +80,11 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
                     <Text variant="label" style={{ fontStyle: session.visitor_name ? 'normal' : 'italic' }}>
                       {session.visitor_name ?? 'Anonymous'}
                     </Text>
+                    {session.email && (
+                      <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                        {session.email}
+                      </Text>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
@@ -131,9 +136,16 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
             >
               <Paper p="md" withBorder radius="sm">
                 <Group justify="space-between" mb={4}>
-                  <Text variant="label" style={{ fontStyle: session.visitor_name ? 'normal' : 'italic' }}>
-                    {session.visitor_name ?? 'Anonymous'}
-                  </Text>
+                  <Box>
+                    <Text variant="label" style={{ fontStyle: session.visitor_name ? 'normal' : 'italic' }}>
+                      {session.visitor_name ?? 'Anonymous'}
+                    </Text>
+                    {session.email && (
+                      <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                        {session.email}
+                      </Text>
+                    )}
+                  </Box>
                   <Badge
                     variant="light"
                     color={STATUS_COLORS[status]}

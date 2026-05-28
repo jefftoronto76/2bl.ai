@@ -39,6 +39,19 @@ export const NAME_MARKER: MarkerDefinition = {
   dispatch: 'server',
 }
 
+/**
+ * The EMAIL marker — `[EMAIL: address]`. Like NAME, dispatch is 'server' (the
+ * server persists it to chat_sessions.email in onFinish) but it is registered
+ * on the client render path so it is stripped from displayed prose rather than
+ * shown as raw text.
+ */
+export const EMAIL_MARKER: MarkerDefinition = {
+  type: 'EMAIL',
+  pattern: /\[EMAIL:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'server',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -103,5 +116,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   const registry = createMarkerRegistry()
   registry.register(BOOKING_MARKER)
   registry.register(NAME_MARKER)
+  registry.register(EMAIL_MARKER)
   return registry
 }
