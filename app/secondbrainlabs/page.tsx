@@ -193,31 +193,24 @@ function Work() {
         <span aria-hidden className="absolute -top-px -left-px h-3.5 w-3.5 rounded-tl-[22px] border-t border-l border-accent/50" />
         <span aria-hidden className="absolute -bottom-px -right-px h-3.5 w-3.5 rounded-br-[22px] border-b border-r border-accent/50" />
 
-        <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
-          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
-            <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
-            In Production
-          </span>
-          <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
-            A look at the systems <em className="text-accent">currently running</em> on the platform.
-          </span>
-          <ul className="m-0 flex w-full list-none flex-wrap items-center gap-2 p-0">
-            {PLATFORM_PILLS.map((label) => (
-              <li
-                key={label}
-                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
-              >
-                {label}
-              </li>
-            ))}
-          </ul>
-        </div>
-
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
           {PROJECTS.map((p) => (
             <ProjectCard key={p.id} project={p} />
           ))}
         </div>
+      </div>
+
+      <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
+        <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
+          {PLATFORM_PILLS.map((label) => (
+            <li
+              key={label}
+              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+            >
+              {label}
+            </li>
+          ))}
+        </ul>
       </div>
     </Bay>
   );
@@ -347,9 +340,8 @@ function HowIWork() {
           {CAPABILITY_PILLS.map((label) => (
             <li
               key={label}
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-3.5 py-2 font-sans text-[13px] font-medium tracking-[-0.005em] text-ink"
+              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
             >
-              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
               {label}
             </li>
           ))}
@@ -597,24 +589,23 @@ function SiteFooter() {
               Second Brain <em className="font-normal italic text-accent-soft">Labs</em>
             </p>
             <p className="m-0 max-w-[36ch] text-sm leading-[1.5] text-paper/70">
-              A small workshop building AI products for humans — operators, families, caregivers, the people doing the actual work.
+              Helping to build better software for everyone
             </p>
           </div>
           <FooterCol heading="Products" links={[
-            { label: "Sage", href: "/sage" },
-            { label: "Heirloom", href: "/heirloom" },
-            { label: "HUGS", href: "/hugs" },
-            { label: "MealFlow", href: "/mealflow" },
+            { label: "Sage", comingSoon: true },
+            { label: "Heirloom", href: "https://heirloom.2bl.ai" },
+            { label: "HUGS", comingSoon: true },
+            { label: "Ledger", comingSoon: true },
           ]} />
           <FooterCol heading="Studio" links={[
-            { label: "About", href: "#how-i-work" },
-            { label: "How it works", href: "#how-it-works" },
-            { label: "Writing", href: "/writing" },
+            { label: "The Architecture", href: "#work" },
+            { label: "How I Work", href: "#how-i-work" },
+            { label: "Writing", comingSoon: true },
           ]} />
           <FooterCol heading="Contact" links={[
             { label: "hello@secondbrain.labs", href: "mailto:hello@secondbrain.labs" },
-            { label: "San Francisco · Remote", href: "#" },
-            { label: "LinkedIn ↗", href: "#" },
+            { label: "Toronto · Remote" },
           ]} />
         </div>
         <div className="flex flex-col items-start justify-between gap-2.5 border-t border-paper/20 pt-7 text-[12.5px] text-paper/55 sm:flex-row sm:items-center">
@@ -626,16 +617,29 @@ function SiteFooter() {
   );
 }
 
-function FooterCol({ heading, links }: { heading: string; links: ReadonlyArray<{ label: string; href: string }> }) {
+function FooterCol({
+  heading,
+  links,
+}: {
+  heading: string;
+  links: ReadonlyArray<{ label: string; href?: string; comingSoon?: boolean }>;
+}) {
   return (
     <div>
       <h5 className="m-0 mb-4 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-paper/55">{heading}</h5>
       <div className="flex flex-col gap-2.5 text-sm">
-        {links.map((l) => (
-          <Link key={l.label} href={l.href} className="text-paper/80 transition-colors hover:text-paper">
-            {l.label}
-          </Link>
-        ))}
+        {links.map((l) =>
+          l.href ? (
+            <Link key={l.label} href={l.href} className="text-paper/80 transition-colors hover:text-paper">
+              {l.label}
+            </Link>
+          ) : (
+            <span key={l.label} className="text-paper/80">
+              {l.label}
+              {l.comingSoon ? <em className="ml-1 text-paper/45">(coming soon)</em> : null}
+            </span>
+          )
+        )}
       </div>
     </div>
   );
