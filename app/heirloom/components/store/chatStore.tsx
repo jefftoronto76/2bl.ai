@@ -29,6 +29,15 @@ export interface Message {
   timestamp: Date;
 }
 
+/**
+ * Outcome of a [CONTACT:] capture card. Non-null means the card has been
+ * handled (submitted or declined) for the current thread, so it never reappears.
+ */
+export interface ContactState {
+  captured: boolean;
+  phone?: string;
+}
+
 export interface ChatState {
   messages: Message[];
   hasStarted: boolean;
@@ -36,6 +45,7 @@ export interface ChatState {
   isLoading: boolean;
   isChatOpen: boolean;
   sessionId: string | null;
+  contact: ContactState | null;
 }
 
 export type ChatAction =
@@ -48,7 +58,8 @@ export type ChatAction =
   | { type: 'OPEN_CHAT' }
   | { type: 'CLOSE_CHAT' }
   | { type: 'SET_SESSION_ID'; payload: string }
-  | { type: 'HYDRATE'; payload: { messages: Message[]; sessionId: string | null } };
+  | { type: 'HYDRATE'; payload: { messages: Message[]; sessionId: string | null } }
+  | { type: 'CAPTURE_CONTACT'; payload: ContactState };
 
 const initialState: ChatState = {
   messages: [],
@@ -57,6 +68,7 @@ const initialState: ChatState = {
   isLoading: false,
   isChatOpen: false,
   sessionId: null,
+  contact: null,
 };
 
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -98,7 +110,11 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: action.payload.messages,
         sessionId: action.payload.sessionId,
         hasStarted: action.payload.messages.length > 0,
+        // A freshly loaded thread re-evaluates its own contact markers.
+        contact: null,
       };
+    case 'CAPTURE_CONTACT':
+      return { ...state, contact: action.payload };
     default:
       return state;
   }
@@ -119,6 +135,8 @@ interface ChatContextType {
   isError: boolean;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
+  /** Handle the contact card: a phone submits + persists, null declines. */
+  captureContact: (phone: string | null) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -344,6 +362,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  // Handle the inline contact card. A phone marks the contact captured and
+  // persists it to the session (PATCH writes it to the email column for now —
+  // no phone column yet); null is a decline. Either way `contact` becomes
+  // non-null, so the one-shot card never reappears for this thread.
+  const captureContact = useCallback((phone: string | null) => {
+    if (!phone) {
+      dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: false } });
+      return;
+    }
+    const trimmed = phone.trim();
+    dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: true, phone: trimmed } });
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    fetch(`/api/sessions/${sid}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: trimmed }),
+    }).catch(err => console.error('[heirloom/chat] contact PATCH failed:', err));
+  }, []);
+
   // Load a previously-fetched session into the conversation (Recent sidebar
   // click). Syncs the engine refs so the next turn continues that session.
   const loadSession = useCallback(
@@ -359,7 +397,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession }}
+      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, captureContact }}
     >
       {children}
     </ChatContext.Provider>

@@ -21,10 +21,10 @@ export async function PATCH(
     )
   }
 
-  const { messages, visitorName } = await req.json()
-  console.log('[sessions/[id]/route] message count:', messages?.length, '| visitorName:', visitorName)
+  const { messages, visitorName, phone } = await req.json()
+  console.log('[sessions/[id]/route] message count:', messages?.length, '| visitorName:', visitorName, '| has_phone:', !!phone)
 
-  const result = await updateSession(tenantId, id, { messages, visitorName })
+  const result = await updateSession(tenantId, id, { messages, visitorName, phone })
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }

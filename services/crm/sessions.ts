@@ -68,6 +68,12 @@ export async function createSession(
 export interface SessionUpdateInput {
   messages: unknown
   visitorName: unknown
+  /**
+   * Visitor phone from the Heirloom contact card. Temporarily written to the
+   * `email` column (no dedicated phone column yet — future migration). Optional:
+   * the jefflougheed PATCH path never sends it.
+   */
+  phone?: unknown
 }
 
 /**
@@ -123,7 +129,7 @@ export async function updateSession(
   id: string,
   input: SessionUpdateInput,
 ): Promise<SessionResult<null>> {
-  const { messages, visitorName } = input
+  const { messages, visitorName, phone } = input
   const supabase = getAdminClient('[sessions/[id]/route]')
 
   // Only write visitor_name when the client sends a non-empty string. The
@@ -132,14 +138,24 @@ export async function updateSession(
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
-  const baseUpdate = {
-    messages,
+  // Contact card phone → email column (temporary reuse, no phone column yet).
+  const trimmedPhone = typeof phone === 'string' ? phone.trim() : ''
+
+  // Build the update with only the fields actually supplied, so a contact-only
+  // PATCH (phone, no messages) never clobbers the persisted transcript.
+  const update: {
+    updated_at: string
+    status: 'in_progress'
+    messages?: unknown
+    visitor_name?: string
+    email?: string
+  } = {
     updated_at: new Date().toISOString(),
-    status: 'in_progress' as const,
+    status: 'in_progress',
   }
-  const update = trimmedName.length > 0
-    ? { ...baseUpdate, visitor_name: trimmedName }
-    : baseUpdate
+  if (messages !== undefined) update.messages = messages
+  if (trimmedName.length > 0) update.visitor_name = trimmedName
+  if (trimmedPhone.length > 0) update.email = trimmedPhone
 
   const { data, error } = await supabase
     .from('chat_sessions')

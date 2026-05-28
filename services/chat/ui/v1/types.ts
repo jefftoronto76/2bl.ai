@@ -14,7 +14,7 @@ import type { ChatMessage, ChatMode } from '@/services/chat/server/types'
 // ── Marker contract ───────────────────────────────────────────────────────
 
 /** Known structured markers the AI may emit in an assistant message. */
-export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT'
+export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'CONTACT'
 
 /** A single marker extracted from an assistant message. */
 export interface ParsedMarker {
