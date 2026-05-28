@@ -36,6 +36,13 @@ export interface Message {
 export interface ContactState {
   captured: boolean;
   phone?: string;
+  email?: string;
+}
+
+/** What the contact card submits — phone, email, or both (visitor's choice). */
+export interface ContactDraft {
+  phone?: string;
+  email?: string;
 }
 
 export interface ChatState {
@@ -135,8 +142,8 @@ interface ChatContextType {
   isError: boolean;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
-  /** Handle the contact card: a phone submits + persists, null declines. */
-  captureContact: (phone: string | null) => void;
+  /** Handle the contact card: a draft submits + persists, null declines. */
+  captureContact: (contact: ContactDraft | null) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -366,19 +373,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // persists it to the session (PATCH writes it to the email column for now —
   // no phone column yet); null is a decline. Either way `contact` becomes
   // non-null, so the one-shot card never reappears for this thread.
-  const captureContact = useCallback((phone: string | null) => {
-    if (!phone) {
+  const captureContact = useCallback((contact: ContactDraft | null) => {
+    const phone = contact?.phone?.trim() ?? '';
+    const email = contact?.email?.trim() ?? '';
+    // Null arg, or an empty draft, is a decline (the card gates submit on at
+    // least one field, so the empty case is just defensive).
+    if (!contact || (!phone && !email)) {
       dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: false } });
       return;
     }
-    const trimmed = phone.trim();
-    dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: true, phone: trimmed } });
+    dispatch({
+      type: 'CAPTURE_CONTACT',
+      payload: { captured: true, phone: phone || undefined, email: email || undefined },
+    });
     const sid = sessionIdRef.current;
     if (!sid) return;
     fetch(`/api/sessions/${sid}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: trimmed }),
+      body: JSON.stringify({ phone: phone || undefined, email: email || undefined }),
     }).catch(err => console.error('[heirloom/chat] contact PATCH failed:', err));
   }, []);
 
