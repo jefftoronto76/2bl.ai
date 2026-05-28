@@ -26,10 +26,10 @@ type Project = {
 };
 
 const PROJECTS: ReadonlyArray<Project> = [
-  { id: "sage",     name: "Sage",     initial: "S", tagline: "Engine for SMBs.",          href: "/sage",     domain: "sage.secondbrain.labs" },
-  { id: "heirloom", name: "Heirloom", initial: "H", tagline: "Memory recording.",         href: "/heirloom", domain: "heirloom.secondbrain.labs" },
-  { id: "hugs",     name: "HUGS",     initial: "H", tagline: "Family building & support.", href: "/hugs",     domain: "hugs.secondbrain.labs" },
-  { id: "mealflow", name: "MealFlow", initial: "M", tagline: "Nutrition platform.",       href: "/mealflow", domain: "mealflow.secondbrain.labs" },
+  { id: "sage",     name: "Sage",     initial: "S", tagline: "A chat-based operating system for service businesses.",  href: "/sage",     domain: "sage.secondbrain.labs" },
+  { id: "heirloom", name: "Heirloom", initial: "H", tagline: "A platform for creating and sharing memories.",          href: "/heirloom", domain: "heirloom.secondbrain.labs" },
+  { id: "hugs",     name: "HUGS",     initial: "H", tagline: "A social platform focused on connection before correction.", href: "/hugs",     domain: "hugs.secondbrain.labs" },
+  { id: "ledger",   name: "Ledger",   initial: "L", tagline: "A trading journal focused on discipline and learning.",  href: "/ledger",   domain: "ledger.secondbrain.labs" },
 ] as const;
 
 type SageStarter = { readonly id: string; readonly label: string; readonly q: string };
@@ -184,9 +184,8 @@ const PLATFORM_PILLS = [
 function Work() {
   return (
     <Bay id="work" label="The work">
-      <BayHead kicker="The work" title={<>A shared foundation for <em className="not-italic"><span className="italic text-accent">everything we build.</span></em></>}>
-        Our products run on centralized AI infrastructure, reusable workflows, and shared system architecture. That means
-        faster iteration, stronger products, and continuous improvement across the platform.
+      <BayHead kicker="The Architecture" title={<>A chat-forward, <em className="not-italic"><span className="italic text-accent">API-native platform.</span></em></>}>
+        Composable systems keep the focus on workflows and customer experience.
       </BayHead>
 
       <div className="relative rounded-[22px] border border-line bg-paper p-3.5 sm:p-6 md:p-9 shadow-[0_1px_0_rgba(31,26,20,0.04),0_30px_80px_-40px_rgba(200,84,46,0.18)]">
@@ -237,10 +236,6 @@ function ProjectCard({ project }: { project: Project }) {
         </span>
         <span className="font-serif font-medium tracking-[-0.012em] text-[22px] sm:text-2xl leading-none text-ink">
           {project.name}
-        </span>
-        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
-          <span aria-hidden className="inline-block h-[5px] w-[5px] rounded-full bg-accent" />
-          AI · core
         </span>
       </div>
 
