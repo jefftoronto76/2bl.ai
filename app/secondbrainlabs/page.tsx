@@ -174,19 +174,19 @@ function Work() {
             <ProjectCard key={p.id} project={p} />
           ))}
         </div>
-      </div>
 
-      <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
-        <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
-          {PLATFORM_PILLS.map((label) => (
-            <li
-              key={label}
-              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
-            >
-              {label}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
+          <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
+            {PLATFORM_PILLS.map((label) => (
+              <li
+                key={label}
+                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+              >
+                {label}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </Bay>
   );
@@ -303,13 +303,6 @@ function HowIWork() {
         ))}
       </div>
 
-      <p
-        className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
-        style={{ fontSize: "clamp(18px, 1.8vw, 22px)" }}
-      >
-        Building useful software means listening closely, iterating quickly, and focusing on outcomes.
-      </p>
-
       <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
         <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
           {CAPABILITY_PILLS.map((label) => (
@@ -322,6 +315,13 @@ function HowIWork() {
           ))}
         </ul>
       </div>
+
+      <p
+        className="m-0 mt-7 sm:mt-10 font-serif leading-[1.4] text-balance text-ink"
+        style={{ fontSize: "clamp(18px, 1.8vw, 22px)" }}
+      >
+        Building useful software means listening closely, iterating quickly, and focusing on outcomes.
+      </p>
     </Bay>
   );
 }
