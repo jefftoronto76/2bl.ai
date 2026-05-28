@@ -194,31 +194,24 @@ function Work() {
         <span aria-hidden className="absolute -top-px -left-px h-3.5 w-3.5 rounded-tl-[22px] border-t border-l border-accent/50" />
         <span aria-hidden className="absolute -bottom-px -right-px h-3.5 w-3.5 rounded-br-[22px] border-b border-r border-accent/50" />
 
-        <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
-          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
-            <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
-            In Production
-          </span>
-          <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
-            A look at the systems <em className="text-accent">currently running</em> on the platform.
-          </span>
-          <ul className="m-0 flex w-full list-none flex-wrap items-center gap-2 p-0">
-            {PLATFORM_PILLS.map((label) => (
-              <li
-                key={label}
-                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
-              >
-                {label}
-              </li>
-            ))}
-          </ul>
-        </div>
-
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
           {PROJECTS.map((p) => (
             <ProjectCard key={p.id} project={p} />
           ))}
         </div>
+      </div>
+
+      <div className="mt-5 sm:mt-8 flex justify-start sm:justify-end">
+        <ul className="m-0 flex list-none flex-wrap justify-start sm:justify-end gap-2 p-0">
+          {PLATFORM_PILLS.map((label) => (
+            <li
+              key={label}
+              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+            >
+              {label}
+            </li>
+          ))}
+        </ul>
       </div>
     </Bay>
   );
@@ -352,9 +345,8 @@ function HowIWork() {
           {CAPABILITY_PILLS.map((label) => (
             <li
               key={label}
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-accent/40 bg-accent-soft px-3.5 py-2 font-sans text-[13px] font-medium tracking-[-0.005em] text-ink"
+              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
             >
-              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
               {label}
             </li>
           ))}
