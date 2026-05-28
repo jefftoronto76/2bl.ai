@@ -4,6 +4,7 @@ import {
   createDefaultRegistry,
   BOOKING_MARKER,
   NAME_MARKER,
+  EMAIL_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -102,10 +103,18 @@ describe('NAME_MARKER definition', () => {
   })
 })
 
-describe('createDefaultRegistry — NAME stripping + BOOKING coexistence', () => {
-  it('registers both BOOKING and NAME', () => {
+describe('EMAIL_MARKER definition', () => {
+  it('is a single-field server-dispatch marker', () => {
+    expect(EMAIL_MARKER.type).toBe('EMAIL')
+    expect(EMAIL_MARKER.fieldCount).toBe(1)
+    expect(EMAIL_MARKER.dispatch).toBe('server')
+  })
+})
+
+describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence', () => {
+  it('registers BOOKING, NAME, and EMAIL', () => {
     const defs = createDefaultRegistry().getDefinitions()
-    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'NAME'])
+    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
   })
 
   it('strips a [NAME: x] marker from prose and extracts the field', () => {
@@ -131,5 +140,30 @@ describe('createDefaultRegistry — NAME stripping + BOOKING coexistence', () =>
     )
     expect(prose).toBe('Hi Sam.')
     expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'NAME'])
+  })
+
+  it('strips an [EMAIL: x] marker from prose and extracts the field', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse("Thanks! I'll reach out. [EMAIL: sam@example.com]")
+    expect(prose).toBe("Thanks! I'll reach out.")
+    const email = markers.find(m => m.type === 'EMAIL')
+    expect(email).toBeDefined()
+    expect(email?.fields).toEqual(['sam@example.com'])
+  })
+
+  it('strips a trailing incomplete [EMAIL: fragment mid-stream', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('Got it.\n[EMAIL: sam@')
+    expect(markers.filter(m => m.type === 'EMAIL')).toHaveLength(0)
+    expect(prose).toBe('Got it.')
+  })
+
+  it('strips NAME, EMAIL, and BOOKING from the same message', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse(
+      'Hi Sam. [NAME: Sam] [EMAIL: sam@example.com]\n[BOOKING: Intro | chat | Book | https://x.com]',
+    )
+    expect(prose).toBe('Hi Sam.')
+    expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
   })
 })
