@@ -12,14 +12,14 @@ import { IconButton } from '../ui/IconButton';
 import { useChatStore } from '../store/chatStore';
 
 const navItems = [
-  { icon: SquarePen, label: 'New Chat' },
-  { icon: Search, label: 'Search' },
-  { icon: MessageSquare, label: 'Conversations' },
-  { icon: LayoutGrid, label: 'Dashboard' },
+  { icon: SquarePen, label: 'New Chat', action: 'newChat' as const },
+  { icon: Search, label: 'Search', action: null },
+  { icon: MessageSquare, label: 'Conversations', action: null },
+  { icon: LayoutGrid, label: 'Dashboard', action: null },
 ];
 
 export function Sidebar() {
-  const { state, dispatch, recentSessions, loadSession } = useChatStore();
+  const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
   const expanded = state.isSidebarExpanded;
 
   return (
@@ -40,11 +40,12 @@ export function Sidebar() {
         </div>
 
         <nav className="flex flex-col gap-0.5 px-1.5">
-          {navItems.map(({ icon: Icon, label }) => (
+          {navItems.map(({ icon: Icon, label, action }) => (
             <button
               key={label}
               type="button"
               aria-label={label}
+              onClick={action === 'newChat' ? newChat : undefined}
               className={`flex items-center gap-3 rounded-lg px-2 py-2 text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 expanded ? 'w-full' : 'w-9 justify-center'
               }`}
