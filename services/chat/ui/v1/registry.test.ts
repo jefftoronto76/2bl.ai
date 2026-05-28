@@ -112,9 +112,9 @@ describe('EMAIL_MARKER definition', () => {
 })
 
 describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, and EMAIL', () => {
+  it('registers BOOKING, NAME, EMAIL, and CONTACT', () => {
     const defs = createDefaultRegistry().getDefinitions()
-    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
+    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'CONTACT', 'EMAIL', 'NAME'])
   })
 
   it('strips a [NAME: x] marker from prose and extracts the field', () => {
@@ -165,5 +165,21 @@ describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence',
     )
     expect(prose).toBe('Hi Sam.')
     expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
+  })
+
+  it('strips a [CONTACT:] trigger marker from prose and extracts it', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('Could I grab a number to text you? [CONTACT:]')
+    expect(prose).toBe('Could I grab a number to text you?')
+    const contact = markers.find(m => m.type === 'CONTACT')
+    expect(contact).toBeDefined()
+    expect(contact?.fields).toEqual([''])
+  })
+
+  it('strips a trailing incomplete [CONTACT: fragment mid-stream', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('One sec.\n[CONTACT:')
+    expect(markers.filter(m => m.type === 'CONTACT')).toHaveLength(0)
+    expect(prose).toBe('One sec.')
   })
 })

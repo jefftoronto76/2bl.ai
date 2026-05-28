@@ -52,6 +52,20 @@ export const EMAIL_MARKER: MarkerDefinition = {
   dispatch: 'server',
 }
 
+/**
+ * The CONTACT marker — `[CONTACT: phone]`. Dispatch is 'client': it triggers an
+ * inline contact-capture card in the Heirloom chat (the visitor types their
+ * phone there). The field is the phone Sage may have on hand, but the card is
+ * the real capture surface, so the field is usually empty — it serves mainly as
+ * the render trigger and is always stripped from displayed prose.
+ */
+export const CONTACT_MARKER: MarkerDefinition = {
+  type: 'CONTACT',
+  pattern: /\[CONTACT:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'client',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -117,5 +131,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(BOOKING_MARKER)
   registry.register(NAME_MARKER)
   registry.register(EMAIL_MARKER)
+  registry.register(CONTACT_MARKER)
   return registry
 }
