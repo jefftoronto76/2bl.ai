@@ -18,10 +18,8 @@ const navItems = [
   { icon: LayoutGrid, label: 'Dashboard' },
 ];
 
-const recentChats: { id: string; title: string }[] = [];
-
 export function Sidebar() {
-  const { state, dispatch } = useChatStore();
+  const { state, dispatch, recentSessions, loadSession } = useChatStore();
   const expanded = state.isSidebarExpanded;
 
   return (
@@ -57,7 +55,7 @@ export function Sidebar() {
           ))}
         </nav>
 
-        {expanded && (
+        {expanded && recentSessions.length > 0 && (
           <div className="mt-4 px-3">
             <div className="flex items-center gap-2 mb-2">
               <Clock size={12} className="text-text-muted" />
@@ -66,13 +64,19 @@ export function Sidebar() {
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
-              {recentChats.map((chat) => (
+              {recentSessions.map((session) => (
                 <button
-                  key={chat.id}
+                  key={session.id}
                   type="button"
-                  className="text-left px-2 py-1.5 rounded-lg font-body text-base text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all duration-200 truncate"
+                  onClick={() => loadSession(session.id)}
+                  aria-current={state.sessionId === session.id ? 'true' : undefined}
+                  className={`text-left px-2 py-1.5 rounded-lg font-body text-base transition-all duration-200 truncate focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                    state.sessionId === session.id
+                      ? 'bg-text-primary/10 text-text-primary'
+                      : 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                  }`}
                 >
-                  {chat.title}
+                  {session.title}
                 </button>
               ))}
             </div>
