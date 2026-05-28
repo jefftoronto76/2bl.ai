@@ -216,7 +216,7 @@ without explicit instruction from Jeff:
 |------|------|
 | src/components/Chat.tsx | Visitor chat overlay — consumes the chat service. |
 | src/components/Hero.tsx | Imports sage/* + store + sage.ts; drives streaming/booking. |
-| src/components/Nav.tsx | Imports `useSageStore`. |
+| src/components/Nav.tsx | Decoupled from the chat service — Book/Labs/Share links + `ShareModal`; no longer imports `useSageStore`. |
 | src/components/SectionProcess.tsx | Imports `useSageStore` (expand question mode). |
 
 ---
