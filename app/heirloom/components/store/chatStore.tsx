@@ -143,11 +143,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // (and no empty bubble flashes) — matching the prior Heirloom behavior.
   const assistantPendingRef = useRef(false);
 
+  // Navigate-away guard state, kept as refs (not reducer state) so the
+  // beforeunload handler reads current values synchronously without re-binding
+  // on every render, and so dirty tracking causes no re-renders. `isLoadingRef`
+  // mirrors isLoading (a turn is in flight); `dirtyRef` marks content that has
+  // not yet been confirmed-flushed to localStorage.
+  const isLoadingRef = useRef(false);
+  const dirtyRef = useRef(false);
+
   // Write the current authoritative transcript to localStorage. Reads the refs
   // (not reducer state) so it always sees the latest turn, even mid-stream when
   // called from the pagehide/visibilitychange flush. No-ops on an empty thread.
+  // Clears the dirty flag only when the flush is confirmed to have landed.
   const persistCurrent = useCallback(() => {
-    bufferThread(messagesRef.current.map(serialize), sessionIdRef.current);
+    const flushed = bufferThread(messagesRef.current.map(serialize), sessionIdRef.current);
+    if (flushed) dirtyRef.current = false;
   }, []);
 
   const accessors = useMemo<ChatEngineAccessors>(
@@ -193,6 +203,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: content });
       },
       setStreaming: (val: boolean) => {
+        isLoadingRef.current = val;
+        // A turn starting marks the conversation dirty until the next confirmed
+        // flush — streaming tokens accumulate in messagesRef but are not buffered
+        // per token, so the content is unsaved while the reply streams.
+        if (val) dirtyRef.current = true;
         dispatch({ type: 'SET_LOADING', payload: val });
         // Streaming flipping to false marks a completed turn — buffer the final
         // assistant content. We deliberately do NOT buffer per token (every
@@ -240,6 +255,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [persistCurrent]);
+
+  // Warn before leaving while a turn is in flight or unsaved content exists.
+  // Browsers ignore custom text and show their own generic dialog; setting
+  // returnValue (and calling preventDefault) is what triggers it. Reads refs so
+  // the single mount-time listener always sees current state — no re-binding,
+  // no leak.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasUnsaved = dirtyRef.current && messagesRef.current.length > 0;
+      if (isLoadingRef.current || hasUnsaved) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
 
   return (
     <ChatContext.Provider value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError }}>
