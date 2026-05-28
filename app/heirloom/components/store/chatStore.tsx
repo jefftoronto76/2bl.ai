@@ -66,7 +66,8 @@ export type ChatAction =
   | { type: 'CLOSE_CHAT' }
   | { type: 'SET_SESSION_ID'; payload: string }
   | { type: 'HYDRATE'; payload: { messages: Message[]; sessionId: string | null } }
-  | { type: 'CAPTURE_CONTACT'; payload: ContactState };
+  | { type: 'CAPTURE_CONTACT'; payload: ContactState }
+  | { type: 'RESET' };
 
 const initialState: ChatState = {
   messages: [],
@@ -122,6 +123,20 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
     case 'CAPTURE_CONTACT':
       return { ...state, contact: action.payload };
+    case 'RESET':
+      // Start a fresh conversation: drop the active transcript, session, and
+      // contact flag, and return to the empty-greeting state. Deliberately
+      // preserves UI chrome (isSidebarExpanded, isChatOpen) — the panel stays
+      // open on the greeting — and leaves recentSessions (separate provider
+      // state) untouched so history remains in the Recent sidebar.
+      return {
+        ...state,
+        messages: [],
+        hasStarted: false,
+        isLoading: false,
+        sessionId: null,
+        contact: null,
+      };
     default:
       return state;
   }
@@ -142,6 +157,8 @@ interface ChatContextType {
   isError: boolean;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
+  /** Clear the active conversation and start fresh (New Chat). History stays. */
+  newChat: () => void;
   /** Mark the contact card handled (one-shot flag); null declines. No DB write. */
   captureContact: (contact: ContactDraft | null) => void;
   /** Persist the contact to the session (PATCH → email column for now). */
@@ -418,6 +435,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Start a fresh conversation (Sidebar "New Chat"). Clears the authoritative
+  // engine refs so the next turn lazily creates a brand-new session, drops only
+  // the active draft slot from localStorage (history under real session keys is
+  // preserved), and resets the reducer to the empty-greeting state. recentSessions
+  // is left intact so the Recent sidebar keeps showing prior threads.
+  const newChat = useCallback(() => {
+    messagesRef.current = [];
+    sessionIdRef.current = null;
+    assistantPendingRef.current = false;
+    isLoadingRef.current = false;
+    clearDraft();
+    dispatch({ type: 'RESET' });
+  }, []);
+
   // Load a previously-fetched session into the conversation (Recent sidebar
   // click). Syncs the engine refs so the next turn continues that session.
   const loadSession = useCallback(
@@ -433,7 +464,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, captureContact, persistContact, claimSession }}
+      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, newChat, captureContact, persistContact, claimSession }}
     >
       {children}
     </ChatContext.Provider>
