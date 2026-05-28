@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
 import { Message } from '../store/chatStore';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+import { ContactCard } from './ContactCard';
 
 interface MessageListProps {
   messages: Message[];
@@ -81,16 +82,37 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading, isError]);
 
+  // Parse assistant messages once: prose for the bubble, markers for the card.
+  const parsed = messages.map((m) =>
+    m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
+  );
+
+  // Render the contact card after the most recent assistant message carrying a
+  // [CONTACT:] marker (the card itself self-hides once the contact is handled).
+  let lastContactIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (parsed[i]?.markers.some((mk) => mk.type === 'CONTACT')) {
+      lastContactIdx = i;
+      break;
+    }
+  }
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
-        {messages.map((msg) => {
-          const content =
-            msg.role === 'user' ? msg.content : markerRegistry.parse(msg.content).prose;
+        {messages.map((msg, i) => {
+          const content = msg.role === 'user' ? msg.content : parsed[i]?.prose ?? '';
           // Skip an assistant message with no prose (only a marker, or cleared
-          // on error) so no empty bubble renders.
-          if (msg.role === 'assistant' && !content) return null;
-          return <MessageBubble key={msg.id} message={msg} content={content} />;
+          // on error) — but still render the card if this is its anchor message.
+          const hasBubble = !(msg.role === 'assistant' && !content);
+          const showCard = i === lastContactIdx;
+          if (!hasBubble && !showCard) return null;
+          return (
+            <Fragment key={msg.id}>
+              {hasBubble && <MessageBubble message={msg} content={content} />}
+              {showCard && <ContactCard />}
+            </Fragment>
+          );
         })}
         {isLoading && <TypingIndicator />}
         {isError && <ErrorBubble />}
