@@ -579,7 +579,7 @@ function SiteFooter() {
             { label: "Writing", comingSoon: true },
           ]} />
           <FooterCol heading="Contact" links={[
-            { label: "hello@secondbrain.labs", href: "mailto:hello@secondbrain.labs" },
+            { label: "hello@2bl.ai", href: "mailto:hello@2bl.ai" },
             { label: "Toronto · Remote" },
           ]} />
         </div>
