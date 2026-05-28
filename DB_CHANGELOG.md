@@ -1,5 +1,22 @@
 # DB Changelog
 
+## 2026-05-28
+
+### Add `user_id` column to `chat_sessions`
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Column:** `user_id` (uuid, nullable, FK → `users(id)`)
+**Index:** `idx_chat_sessions_user_id_updated` on `(user_id, updated_at DESC)`
+
+**Purpose:** Link a chat session to a signed-in end-customer so their threads
+are recoverable across devices from the DB (Heirloom durability sprint, PR 3).
+Written by `POST /api/sessions` via `syncUser` when a Clerk user is signed in;
+read by `GET /api/sessions` (scoped by `user_id` + `tenant_id`, newest first).
+Nullable — existing rows and the anonymous visitor write path are unaffected.
+
+---
+
 ## 2026-05-26
 
 ### No schema change — chat-ui-v1 sprint (`[NAME:]` marker)

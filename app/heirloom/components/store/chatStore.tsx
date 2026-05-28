@@ -8,8 +8,10 @@ import React, {
   useMemo,
   useReducer,
   useRef,
+  useState,
   ReactNode,
 } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn';
 import type { ChatEngineAccessors } from '@/services/chat/ui/v1';
 import type { ChatMessage } from '@/services/chat/server/types';
@@ -102,11 +104,50 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
+/** A previous session loaded from the DB, for the Recent sidebar + recovery. */
+export interface RecentSession {
+  id: string;
+  title: string;
+  updatedAt: string;
+  messages: Message[];
+}
+
 interface ChatContextType {
   state: ChatState;
   dispatch: React.Dispatch<ChatAction>;
   sendMessage: (content: string) => Promise<void>;
   isError: boolean;
+  recentSessions: RecentSession[];
+  loadSession: (id: string) => void;
+}
+
+// Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
+// we narrow it to the persisted message shape and revive timestamps below.
+interface ApiSession {
+  id: string;
+  messages: unknown;
+  updated_at: string;
+  visitor_name: string | null;
+}
+
+function deriveSessionTitle(visitorName: string | null, messages: Message[]): string {
+  const name = visitorName?.trim();
+  if (name) return name;
+  const firstUser = messages.find(m => m.role === 'user');
+  const text = firstUser?.content.trim().replace(/\s+/g, ' ') ?? '';
+  if (text.length === 0) return 'New conversation';
+  return text.length > 60 ? `${text.slice(0, 59)}…` : text;
+}
+
+function toRecentSession(row: ApiSession): RecentSession {
+  const raw = Array.isArray(row.messages) ? (row.messages as PersistedMessage[]) : [];
+  const messages = raw.map(revive);
+  return {
+    id: row.id,
+    updatedAt: row.updated_at,
+    messages,
+    title: deriveSessionTitle(row.visitor_name, messages),
+  };
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -127,6 +168,8 @@ function revive(m: PersistedMessage): Message {
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
+  const { isLoaded, isSignedIn } = useUser();
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
   // Authoritative, synchronously-updated mirrors of the conversation state the
   // engine reads/writes. The reducer drives rendering, but its dispatch is
@@ -247,6 +290,42 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
   }, [persistCurrent]);
 
+  // Signed-in cross-device recovery + Recent list. Fetch the user's DB sessions,
+  // populate the Recent sidebar, and — most-recent-wins — hydrate from the newest
+  // DB session only when it is strictly newer than the local buffer (so this
+  // never clobbers a fresher local thread). Anonymous users skip this entirely
+  // and keep localStorage-only behavior.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/sessions');
+        if (!res.ok || cancelled) return;
+        const data: { sessions?: ApiSession[] } = await res.json();
+        const rows = Array.isArray(data.sessions) ? data.sessions : [];
+        if (cancelled) return;
+        const sessions = rows.map(toRecentSession);
+        setRecentSessions(sessions);
+
+        const newest = sessions[0]; // GET /api/sessions orders updated_at desc
+        if (!newest || newest.messages.length === 0) return;
+        const local = findMostRecentThread();
+        const localMs = local ? new Date(local.updatedAt).getTime() : 0;
+        if (new Date(newest.updatedAt).getTime() <= localMs) return;
+
+        messagesRef.current = newest.messages;
+        sessionIdRef.current = newest.id;
+        dispatch({ type: 'HYDRATE', payload: { messages: newest.messages, sessionId: newest.id } });
+      } catch (err) {
+        console.error('[heirloom/chat] DB session recovery failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
+
   // Warn before leaving while a turn is in flight or any conversation exists.
   // The condition is deliberately broad: anonymous visitors have no cross-device
   // DB recovery yet, so an existing thread is treated as unsaved on leave (tighten
@@ -265,8 +344,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  // Load a previously-fetched session into the conversation (Recent sidebar
+  // click). Syncs the engine refs so the next turn continues that session.
+  const loadSession = useCallback(
+    (id: string) => {
+      const session = recentSessions.find(s => s.id === id);
+      if (!session) return;
+      messagesRef.current = session.messages;
+      sessionIdRef.current = session.id;
+      dispatch({ type: 'HYDRATE', payload: { messages: session.messages, sessionId: session.id } });
+    },
+    [recentSessions],
+  );
+
   return (
-    <ChatContext.Provider value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError }}>
+    <ChatContext.Provider
+      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession }}
+    >
       {children}
     </ChatContext.Provider>
   );

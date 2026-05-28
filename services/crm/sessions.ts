@@ -24,18 +24,35 @@ export type SessionResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error: string }
 
-/** POST /api/sessions — create a new prospect session for the tenant. */
-export async function createSession(tenantId: string): Promise<SessionResult<{ id: string }>> {
+/**
+ * POST /api/sessions — create a new prospect session for the tenant. When a
+ * signed-in user's id is supplied it is linked via `user_id`, making the
+ * session recoverable across devices; anonymous creates leave `user_id` null
+ * (unchanged behavior).
+ */
+export async function createSession(
+  tenantId: string,
+  userId?: string | null,
+): Promise<SessionResult<{ id: string }>> {
   const supabase = getAdminClient('[sessions/route]')
+
+  const row: {
+    tenant_id: string
+    messages: never[]
+    status: string
+    session_type: string
+    user_id?: string
+  } = {
+    tenant_id: tenantId,
+    messages: [],
+    status: 'active',
+    session_type: 'prospect',
+  }
+  if (userId) row.user_id = userId
 
   const { data, error } = await supabase
     .from('chat_sessions')
-    .insert({
-      tenant_id: tenantId,
-      messages: [],
-      status: 'active',
-      session_type: 'prospect',
-    })
+    .insert(row)
     .select('id')
     .single()
 
@@ -44,13 +61,54 @@ export async function createSession(tenantId: string): Promise<SessionResult<{ i
     return { ok: false, status: 500, error: error.message }
   }
 
-  console.log('[sessions/route] created session:', data.id, '| tenant_id:', tenantId)
+  console.log('[sessions/route] created session:', data.id, '| tenant_id:', tenantId, '| user_id:', userId ?? null)
   return { ok: true, data: { id: data.id } }
 }
 
 export interface SessionUpdateInput {
   messages: unknown
   visitorName: unknown
+}
+
+/**
+ * A chat session row for the signed-in recovery + Recent list. `messages` is
+ * opaque jsonb at this layer (the Heirloom client narrows it to its own message
+ * shape and revives timestamps) — the CRM service stays agnostic of the UI's
+ * message type, so it must not depend on app/heirloom.
+ */
+export interface ChatSessionSummary {
+  id: string
+  messages: unknown
+  updated_at: string
+  visitor_name: string | null
+}
+
+/**
+ * GET /api/sessions — list a signed-in user's sessions for this tenant, newest
+ * first. Scoped by BOTH user_id AND the host-derived tenant_id, so a user can
+ * only ever see their own sessions on the current tenant. Backs cross-device
+ * recovery and the Recent sidebar.
+ */
+export async function listSessions(
+  tenantId: string,
+  userId: string,
+): Promise<SessionResult<ChatSessionSummary[]>> {
+  const supabase = getAdminClient('[sessions/route GET]')
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('id, messages, updated_at, visitor_name')
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+
+  if (error) {
+    console.error('[sessions/route GET] list error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  console.log('[sessions/route GET] listed sessions:', data?.length ?? 0, '| user_id:', userId, '| tenant_id:', tenantId)
+  return { ok: true, data: (data ?? []) as ChatSessionSummary[] }
 }
 
 /**
