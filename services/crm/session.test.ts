@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectVisitorNameMarker } from './session'
+import { detectVisitorNameMarker, detectVisitorEmailMarker } from './session'
 
 describe('detectVisitorNameMarker — server-side [NAME:] detection', () => {
   it('extracts and titlecases a name from a marker', () => {
@@ -34,5 +34,43 @@ describe('detectVisitorNameMarker — server-side [NAME:] detection', () => {
 
   it('rejects the EMPTY sentinel echoed into a marker', () => {
     expect(detectVisitorNameMarker('[NAME: EMPTY]')).toBeNull()
+  })
+})
+
+describe('detectVisitorEmailMarker — server-side [EMAIL:] detection', () => {
+  it('extracts an email from a marker', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: sam@example.com]')).toBe('sam@example.com')
+  })
+
+  it('extracts an email embedded in surrounding prose', () => {
+    expect(detectVisitorEmailMarker("I'll follow up. [EMAIL: Sarah@Work.io]")).toBe('sarah@work.io')
+  })
+
+  it('lowercases the captured email', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: RON@EXAMPLE.COM]')).toBe('ron@example.com')
+  })
+
+  it('returns null when no marker is present', () => {
+    expect(detectVisitorEmailMarker('What brings you here today?')).toBeNull()
+  })
+
+  it('returns null for an empty marker', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: ]')).toBeNull()
+  })
+
+  it('rejects a value with no @', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: notanemail]')).toBeNull()
+  })
+
+  it('rejects a value with no dotted domain', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: sam@localhost]')).toBeNull()
+  })
+
+  it('rejects a value with internal whitespace', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: sam @example.com]')).toBeNull()
+  })
+
+  it('rejects the EMPTY sentinel echoed into a marker', () => {
+    expect(detectVisitorEmailMarker('[EMAIL: EMPTY]')).toBeNull()
   })
 })
