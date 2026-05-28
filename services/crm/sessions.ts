@@ -69,11 +69,13 @@ export interface SessionUpdateInput {
   messages: unknown
   visitorName: unknown
   /**
-   * Visitor phone from the Heirloom contact card. Temporarily written to the
-   * `email` column (no dedicated phone column yet — future migration). Optional:
-   * the jefflougheed PATCH path never sends it.
+   * Visitor phone + email from the Heirloom contact card (visitor provides
+   * either or both). Both temporarily land in the `email` column (no dedicated
+   * phone column yet — future migration); when both are present, email wins.
+   * Optional: the jefflougheed PATCH path never sends them.
    */
   phone?: unknown
+  email?: unknown
 }
 
 /**
@@ -129,7 +131,7 @@ export async function updateSession(
   id: string,
   input: SessionUpdateInput,
 ): Promise<SessionResult<null>> {
-  const { messages, visitorName, phone } = input
+  const { messages, visitorName, phone, email } = input
   const supabase = getAdminClient('[sessions/[id]/route]')
 
   // Only write visitor_name when the client sends a non-empty string. The
@@ -138,11 +140,14 @@ export async function updateSession(
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
-  // Contact card phone → email column (temporary reuse, no phone column yet).
+  // Contact card → email column (temporary reuse, no phone column yet). The
+  // visitor may supply phone, email, or both; email wins when both are present.
   const trimmedPhone = typeof phone === 'string' ? phone.trim() : ''
+  const trimmedEmail = typeof email === 'string' ? email.trim() : ''
+  const contactValue = trimmedEmail.length > 0 ? trimmedEmail : trimmedPhone
 
   // Build the update with only the fields actually supplied, so a contact-only
-  // PATCH (phone, no messages) never clobbers the persisted transcript.
+  // PATCH (contact value, no messages) never clobbers the persisted transcript.
   const update: {
     updated_at: string
     status: 'in_progress'
@@ -155,7 +160,7 @@ export async function updateSession(
   }
   if (messages !== undefined) update.messages = messages
   if (trimmedName.length > 0) update.visitor_name = trimmedName
-  if (trimmedPhone.length > 0) update.email = trimmedPhone
+  if (contactValue.length > 0) update.email = contactValue
 
   const { data, error } = await supabase
     .from('chat_sessions')
