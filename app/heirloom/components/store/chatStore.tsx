@@ -21,111 +21,20 @@ import {
   findMostRecentThread,
   type PersistedMessage,
 } from '../../lib/chatPersistence';
+import {
+  chatReducer,
+  initialState,
+  type ChatState,
+  type ChatAction,
+  type Message,
+  type ContactState,
+  type ContactDraft,
+} from './chatReducer';
 
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-/**
- * Outcome of a [CONTACT:] capture card. Non-null means the card has been
- * handled (submitted or declined) for the current thread, so it never reappears.
- */
-export interface ContactState {
-  captured: boolean;
-  phone?: string;
-  email?: string;
-}
-
-/** What the contact card submits — phone, email, or both (visitor's choice). */
-export interface ContactDraft {
-  phone?: string;
-  email?: string;
-}
-
-export interface ChatState {
-  messages: Message[];
-  hasStarted: boolean;
-  isSidebarExpanded: boolean;
-  isLoading: boolean;
-  isChatOpen: boolean;
-  sessionId: string | null;
-  contact: ContactState | null;
-}
-
-export type ChatAction =
-  | { type: 'SEND_MESSAGE'; payload: Message }
-  | { type: 'ADD_ASSISTANT_MESSAGE'; payload: Message }
-  | { type: 'UPDATE_LAST_ASSISTANT'; payload: string }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_SIDEBAR'; payload: boolean }
-  | { type: 'OPEN_CHAT' }
-  | { type: 'CLOSE_CHAT' }
-  | { type: 'SET_SESSION_ID'; payload: string }
-  | { type: 'HYDRATE'; payload: { messages: Message[]; sessionId: string | null } }
-  | { type: 'CAPTURE_CONTACT'; payload: ContactState };
-
-const initialState: ChatState = {
-  messages: [],
-  hasStarted: false,
-  isSidebarExpanded: false,
-  isLoading: false,
-  isChatOpen: false,
-  sessionId: null,
-  contact: null,
-};
-
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
-  switch (action.type) {
-    case 'SEND_MESSAGE':
-      return { ...state, messages: [...state.messages, action.payload], hasStarted: true };
-    case 'ADD_ASSISTANT_MESSAGE':
-      return { ...state, messages: [...state.messages, action.payload], isLoading: false };
-    case 'UPDATE_LAST_ASSISTANT': {
-      // Replace the content of the trailing assistant message (used by the
-      // streaming sendMessage wired in Commit 3).
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'assistant') {
-          messages[i] = { ...messages[i], content: action.payload };
-          break;
-        }
-      }
-      return { ...state, messages };
-    }
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'TOGGLE_SIDEBAR':
-      return { ...state, isSidebarExpanded: !state.isSidebarExpanded };
-    case 'SET_SIDEBAR':
-      return { ...state, isSidebarExpanded: action.payload };
-    case 'OPEN_CHAT':
-      return { ...state, isChatOpen: true };
-    case 'CLOSE_CHAT':
-      return { ...state, isChatOpen: false };
-    case 'SET_SESSION_ID':
-      return { ...state, sessionId: action.payload };
-    case 'HYDRATE':
-      // Replace the conversation wholesale from a recovered buffer. hasStarted
-      // follows whether any messages were restored so the chat opens straight
-      // into the transcript rather than the empty-state greeting.
-      return {
-        ...state,
-        messages: action.payload.messages,
-        sessionId: action.payload.sessionId,
-        hasStarted: action.payload.messages.length > 0,
-        // A freshly loaded thread re-evaluates its own contact markers.
-        contact: null,
-      };
-    case 'CAPTURE_CONTACT':
-      return { ...state, contact: action.payload };
-    default:
-      return state;
-  }
-}
+// Re-export the reducer's state/action contracts so existing consumers keep
+// importing them from chatStore. The pure reducer itself lives in chatReducer.ts
+// (no React/Clerk deps) so its transitions stay unit-testable.
+export type { ChatState, ChatAction, Message, ContactState, ContactDraft };
 
 /** A previous session loaded from the DB, for the Recent sidebar + recovery. */
 export interface RecentSession {
@@ -142,6 +51,8 @@ interface ChatContextType {
   isError: boolean;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
+  /** Clear the active conversation and start fresh (New Chat). History stays. */
+  newChat: () => void;
   /** Mark the contact card handled (one-shot flag); null declines. No DB write. */
   captureContact: (contact: ContactDraft | null) => void;
   /** Persist the contact to the session (PATCH → email column for now). */
@@ -418,6 +329,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Start a fresh conversation (Sidebar "New Chat"). Clears the authoritative
+  // engine refs so the next turn lazily creates a brand-new session, drops only
+  // the active draft slot from localStorage (history under real session keys is
+  // preserved), and resets the reducer to the empty-greeting state. recentSessions
+  // is left intact so the Recent sidebar keeps showing prior threads.
+  const newChat = useCallback(() => {
+    messagesRef.current = [];
+    sessionIdRef.current = null;
+    assistantPendingRef.current = false;
+    isLoadingRef.current = false;
+    clearDraft();
+    dispatch({ type: 'RESET' });
+  }, []);
+
   // Load a previously-fetched session into the conversation (Recent sidebar
   // click). Syncs the engine refs so the next turn continues that session.
   const loadSession = useCallback(
@@ -433,7 +358,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, captureContact, persistContact, claimSession }}
+      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, newChat, captureContact, persistContact, claimSession }}
     >
       {children}
     </ChatContext.Provider>
