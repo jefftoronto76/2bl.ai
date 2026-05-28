@@ -295,3 +295,25 @@ conversation pattern that triggers it. It's a silent quality problem.
 **Where it lives:** Safety check enhancement, inside the existing save flow. No
 schema changes required — output feeds into the existing `safety_check_result`
 jsonb field.
+
+## Security — Worth Watching
+
+### P1 — Rate limiting on /api/sage (highest priority)
+No rate limiting exists on the /api/sage route. A motivated actor
+could hammer it and run up Anthropic API costs significantly. Must
+be addressed before Heirloom gets real traffic. Add rate limiting
+at the middleware or route level.
+
+### P2 — RLS policies audit
+NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are
+public by design — that's the Supabase model. RLS is the only
+protection. Audit all RLS policies to confirm tenant isolation
+is airtight across all tables, especially chat_sessions,
+artifacts, and artifact_media.
+
+### P3 — Consolidate service role client creation
+services/crm/sessions.ts has a local getAdminClient() that
+duplicates the one in services/auth/supabase-admin.ts. Not a
+vulnerability but a maintenance risk — two places to update if
+the service role key or URL ever changes. Consolidate to
+services/auth/supabase-admin.ts.
