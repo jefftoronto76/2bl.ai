@@ -193,6 +193,16 @@ function Work() {
         <span aria-hidden className="absolute -top-px -left-px h-3.5 w-3.5 rounded-tl-[22px] border-t border-l border-accent/50" />
         <span aria-hidden className="absolute -bottom-px -right-px h-3.5 w-3.5 rounded-br-[22px] border-b border-r border-accent/50" />
 
+        <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
+            <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
+            Currently Building
+          </span>
+          <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
+            Products being actively <em className="text-accent">explored, tested, and refined.</em>
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
           {PROJECTS.map((p) => (
             <ProjectCard key={p.id} project={p} />
@@ -236,8 +246,7 @@ function ProjectCard({ project }: { project: Project }) {
         {project.tagline}
       </p>
 
-      <div className="mt-auto flex items-center justify-between border-t border-line pt-3.5 text-[12px] sm:text-[13px] text-muted">
-        <span>{project.domain}</span>
+      <div className="mt-auto flex items-center justify-end border-t border-line pt-3.5 text-[12px] sm:text-[13px] text-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors group-hover:text-accent">
           Visit <Arrow />
         </span>
