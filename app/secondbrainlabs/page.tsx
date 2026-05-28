@@ -11,6 +11,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { TrendingUp, Layers, Sparkles, ShieldCheck } from "lucide-react";
+import { Nav } from "./Nav";
 
 // ──────────────────────────────────────────────────────────────────────
 // Data
@@ -55,41 +56,6 @@ export default function LandingPage() {
       <HowItWorks />
       <SiteFooter />
     </main>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Nav
-// ──────────────────────────────────────────────────────────────────────
-
-function Nav() {
-  return (
-    <nav className="sticky top-0 z-40 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/80">
-      <div className="mx-auto flex h-14 sm:h-16 max-w-[1120px] items-center justify-between px-5 sm:px-8 lg:px-12">
-        <div className="group relative flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.012em] whitespace-nowrap">
-          <span className="grid h-7 w-7 place-items-center overflow-hidden rounded-md bg-ink">
-            <img src="/2bl/2blai_logo.svg" alt="" className="h-full w-full object-cover" />
-          </span>
-          <span className="hidden sm:inline">Second Brain Labs</span>
-
-          {/* Desktop-only hover reveal — full logo illustration popover */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden origin-top-left scale-95 opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:scale-100 group-hover:opacity-100 group-focus-within:scale-100 group-focus-within:opacity-100 motion-reduce:transition-none md:block"
-          >
-            <div className="rounded-xl border border-line bg-ink p-3 shadow-[0_20px_40px_-20px_rgba(31,26,20,0.45)]">
-              <img src="/2bl/2blai_logo.svg" alt="" className="block h-[180px] w-[180px] object-contain" />
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          <BtnGhost href="/sign-in">Sign in</BtnGhost>
-          <BtnPrimary href="#chat">
-            Chat <Arrow />
-          </BtnPrimary>
-        </div>
-      </div>
-    </nav>
   );
 }
 
@@ -193,6 +159,16 @@ function Work() {
         <span aria-hidden className="absolute -top-px -left-px h-3.5 w-3.5 rounded-tl-[22px] border-t border-l border-accent/50" />
         <span aria-hidden className="absolute -bottom-px -right-px h-3.5 w-3.5 rounded-br-[22px] border-b border-r border-accent/50" />
 
+        <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
+            <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
+            Currently Building
+          </span>
+          <span className="font-serif italic text-[14px] sm:text-[17px] leading-[1.4] text-ink-2">
+            Products being actively <em className="text-accent">explored, tested, and refined.</em>
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-2.5 sm:gap-3.5 md:grid-cols-2">
           {PROJECTS.map((p) => (
             <ProjectCard key={p.id} project={p} />
@@ -236,8 +212,7 @@ function ProjectCard({ project }: { project: Project }) {
         {project.tagline}
       </p>
 
-      <div className="mt-auto flex items-center justify-between border-t border-line pt-3.5 text-[12px] sm:text-[13px] text-muted">
-        <span>{project.domain}</span>
+      <div className="mt-auto flex items-center justify-end border-t border-line pt-3.5 text-[12px] sm:text-[13px] text-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors group-hover:text-accent">
           Visit <Arrow />
         </span>
@@ -604,7 +579,7 @@ function SiteFooter() {
             { label: "Writing", comingSoon: true },
           ]} />
           <FooterCol heading="Contact" links={[
-            { label: "hello@secondbrain.labs", href: "mailto:hello@secondbrain.labs" },
+            { label: "hello@2bl.ai", href: "mailto:hello@2bl.ai" },
             { label: "Toronto · Remote" },
           ]} />
         </div>
@@ -703,28 +678,6 @@ function BayTitle({ children }: { children: ReactNode }) {
 // ──────────────────────────────────────────────────────────────────────
 // Button primitives
 // ──────────────────────────────────────────────────────────────────────
-
-function BtnPrimary({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="group inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-ink bg-ink px-3.5 sm:px-[18px] py-2.5 text-[13px] sm:text-sm font-medium leading-none text-paper transition-colors hover:border-accent hover:bg-accent"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function BtnGhost({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-transparent px-3.5 sm:px-[18px] py-2.5 text-[13px] sm:text-sm font-medium leading-none text-muted transition-colors hover:text-ink"
-    >
-      {children}
-    </Link>
-  );
-}
 
 function Arrow({ className = "" }: { className?: string }) {
   return (

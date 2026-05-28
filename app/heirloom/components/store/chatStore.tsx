@@ -186,6 +186,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // (and no empty bubble flashes) — matching the prior Heirloom behavior.
   const assistantPendingRef = useRef(false);
 
+  // Navigate-away guard: a ref (not reducer state) so the beforeunload handler
+  // reads the current value synchronously without re-binding on every render.
+  // Mirrors isLoading — whether a turn is in flight.
+  const isLoadingRef = useRef(false);
+
   // Write the current authoritative transcript to localStorage. Reads the refs
   // (not reducer state) so it always sees the latest turn, even mid-stream when
   // called from the pagehide/visibilitychange flush. No-ops on an empty thread.
@@ -236,6 +241,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: content });
       },
       setStreaming: (val: boolean) => {
+        isLoadingRef.current = val;
         dispatch({ type: 'SET_LOADING', payload: val });
         // Streaming flipping to false marks a completed turn — buffer the final
         // assistant content. We deliberately do NOT buffer per token (every
@@ -319,6 +325,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [isLoaded, isSignedIn]);
+
+  // Warn before leaving while a turn is in flight or any conversation exists.
+  // The condition is deliberately broad: anonymous visitors have no cross-device
+  // DB recovery yet, so an existing thread is treated as unsaved on leave (tighten
+  // to a dirty/confirmed-flush check once signed-in DB recovery lands). Chrome
+  // 119+ needs BOTH preventDefault() and returnValue set to show the dialog.
+  // Reads refs so the single mount-time listener always sees current state — no
+  // re-binding, no leak.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isLoadingRef.current || messagesRef.current.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
 
   // Load a previously-fetched session into the conversation (Recent sidebar
   // click). Syncs the engine refs so the next turn continues that session.
