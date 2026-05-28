@@ -142,8 +142,12 @@ interface ChatContextType {
   isError: boolean;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
-  /** Handle the contact card: a draft submits + persists, null declines. */
+  /** Mark the contact card handled (one-shot flag); null declines. No DB write. */
   captureContact: (contact: ContactDraft | null) => void;
+  /** Persist the contact to the session (PATCH → email column for now). */
+  persistContact: (contact: ContactDraft) => void;
+  /** Claim the current session for the signed-in user (server-resolved). */
+  claimSession: () => Promise<void>;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -369,30 +373,49 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  // Handle the inline contact card. A phone marks the contact captured and
-  // persists it to the session (PATCH writes it to the email column for now —
-  // no phone column yet); null is a decline. Either way `contact` becomes
-  // non-null, so the one-shot card never reappears for this thread.
+  // Mark the contact card handled (one-shot) — sets the `contact` flag so the
+  // card never reappears for this thread. A non-null draft records what was
+  // captured; null is a decline. This does NOT write to the DB — persistence is
+  // `persistContact`, kept separate so the card can save early (before OTP) yet
+  // stay mounted through the verification step.
   const captureContact = useCallback((contact: ContactDraft | null) => {
-    const phone = contact?.phone?.trim() ?? '';
-    const email = contact?.email?.trim() ?? '';
-    // Null arg, or an empty draft, is a decline (the card gates submit on at
-    // least one field, so the empty case is just defensive).
+    const phone = contact?.phone?.trim() || undefined;
+    const email = contact?.email?.trim() || undefined;
     if (!contact || (!phone && !email)) {
       dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: false } });
       return;
     }
-    dispatch({
-      type: 'CAPTURE_CONTACT',
-      payload: { captured: true, phone: phone || undefined, email: email || undefined },
-    });
+    dispatch({ type: 'CAPTURE_CONTACT', payload: { captured: true, phone, email } });
+  }, []);
+
+  // Persist the visitor's contact to the session (PATCH → `email` column for
+  // now; email wins when both present). Called at card submit, before any OTP,
+  // so a declined/failed verification still keeps the contact. No store flag —
+  // see captureContact.
+  const persistContact = useCallback((contact: ContactDraft) => {
+    const phone = contact.phone?.trim() || undefined;
+    const email = contact.email?.trim() || undefined;
+    if (!phone && !email) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     fetch(`/api/sessions/${sid}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: phone || undefined, email: email || undefined }),
+      body: JSON.stringify({ phone, email }),
     }).catch(err => console.error('[heirloom/chat] contact PATCH failed:', err));
+  }, []);
+
+  // Claim the current session for the now-signed-in user (after inline OTP). The
+  // user is resolved server-side from the Clerk session; best-effort, so a
+  // failure leaves the session anonymous without surfacing an error.
+  const claimSession = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      await fetch(`/api/sessions/${sid}/claim`, { method: 'POST' });
+    } catch (err) {
+      console.error('[heirloom/chat] session claim failed:', err);
+    }
   }, []);
 
   // Load a previously-fetched session into the conversation (Recent sidebar
@@ -410,7 +433,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, captureContact }}
+      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, captureContact, persistContact, claimSession }}
     >
       {children}
     </ChatContext.Provider>
