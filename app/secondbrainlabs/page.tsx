@@ -322,18 +322,18 @@ function HowIWork() {
         {PRINCIPLES.map((p) => (
           <article
             key={p.id}
-            className="group flex flex-col gap-3 sm:gap-4 rounded-2xl border border-line bg-paper p-5 sm:p-7 transition-[border-color,transform,box-shadow] hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_18px_36px_-28px_rgba(31,26,20,0.18)]"
+            className="group flex h-full flex-col gap-4 sm:gap-5 rounded-2xl border border-line-2 bg-[color-mix(in_oklab,white_55%,var(--color-paper))] p-6 sm:p-8 transition-[border-color,background-color,box-shadow] hover:border-accent/50 hover:bg-white hover:shadow-[0_4px_16px_-8px_rgba(31,26,20,0.10)]"
           >
             <span
               aria-hidden
-              className="grid h-9 w-9 sm:h-10 sm:w-10 place-items-center rounded-[10px] border border-accent/40 bg-accent-soft text-accent"
+              className="grid h-10 w-10 sm:h-11 sm:w-11 place-items-center rounded-xl border border-accent/20 text-accent"
             >
               {p.icon}
             </span>
-            <h3 className="m-0 font-serif font-medium text-[20px] sm:text-[24px] leading-[1.2] tracking-[-0.012em] text-ink">
+            <h3 className="m-0 font-serif font-semibold text-[20px] sm:text-[24px] leading-[1.2] tracking-[-0.012em] text-ink">
               {p.label}
             </h3>
-            <p className="m-0 text-[14.5px] sm:text-[15px] leading-[1.55] text-ink-2 text-pretty">
+            <p className="m-0 text-[14.5px] sm:text-[15px] leading-[1.55] text-muted text-pretty">
               {p.body}
             </p>
           </article>
