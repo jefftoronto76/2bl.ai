@@ -103,13 +103,13 @@ function Hero() {
       <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-12">
         <h1
           className="m-0 mb-7 max-w-[14ch] font-serif font-normal leading-[1.02] tracking-[-0.022em] text-balance text-ink"
-          style={{ fontSize: "clamp(38px, 7.2vw, 104px)" }}
+          style={{ fontSize: "clamp(36px, 4vw, 56px)" }}
         >
           Software people <em className="font-normal italic text-accent">actually want to use.</em>
         </h1>
         <p
           className="m-0 mb-7 sm:mb-11 max-w-[32ch] font-serif italic font-normal leading-[1.35] text-ink-2 text-pretty"
-          style={{ fontSize: "clamp(20px, 2.6vw, 30px)" }}
+          style={{ fontSize: "20px" }}
         >
           AI changes how software gets built and how people experience it. Second Brain Labs is putting that shift to work.
         </p>
@@ -139,7 +139,7 @@ function SageWidget() {
           Sage
           <span className="ml-1.5 font-normal text-muted text-[12.5px]">· Our AI · trained on our playbooks</span>
         </span>
-        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">
+        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-pos shadow-[0_0_0_3px_rgba(79,122,74,0.18)]" />
           Online
         </span>
@@ -161,8 +161,8 @@ function SageWidget() {
       <div className="flex items-center gap-2 border-t border-line bg-paper px-3.5 py-2.5 text-[11.5px] sm:text-[12.5px] text-dim whitespace-nowrap">
         <span aria-hidden className="block h-2 w-3.5 shrink-0 animate-[sb-pulse_2.4s_ease-in-out_infinite] rounded bg-gradient-to-r from-transparent via-accent to-transparent" />
         <span>Replies in ~5s · No commitment</span>
-        <span className="ml-auto hidden sm:inline-flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">
-          <kbd className="rounded border border-line bg-white px-1.5 py-px font-mono text-[10.5px] text-ink-2">↵</kbd>
+        <span className="ml-auto hidden sm:inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
+          <kbd className="rounded border border-line bg-white px-1.5 py-px font-mono text-[11px] text-ink-2">↵</kbd>
           to send
         </span>
       </div>
@@ -195,7 +195,7 @@ function Work() {
         <span aria-hidden className="absolute -bottom-px -right-px h-3.5 w-3.5 rounded-br-[22px] border-b border-r border-accent/50" />
 
         <div className="mb-3.5 sm:mb-[18px] flex flex-wrap items-center gap-2.5 sm:gap-3 border-b border-dashed border-line px-1 sm:px-2 pb-3.5 sm:pb-[18px]">
-          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[10.5px] uppercase tracking-[0.16em] text-accent">
+          <span className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-2.5 py-[5px] font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
             <span className="inline-block h-1.5 w-1.5 animate-[sb-dot_2.4s_ease-in-out_infinite] rounded-full bg-accent shadow-[0_0_0_3px_rgba(200,84,46,0.2)]" />
             In Production
           </span>
@@ -206,7 +206,7 @@ function Work() {
             {PLATFORM_PILLS.map((label) => (
               <li
                 key={label}
-                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-muted"
+                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
               >
                 {label}
               </li>
@@ -238,7 +238,7 @@ function ProjectCard({ project }: { project: Project }) {
         <span className="font-serif font-medium tracking-[-0.012em] text-[22px] sm:text-2xl leading-none text-ink">
           {project.name}
         </span>
-        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-accent">
+        <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
           <span aria-hidden className="inline-block h-[5px] w-[5px] rounded-full bg-accent" />
           AI · core
         </span>
@@ -342,7 +342,7 @@ function HowIWork() {
 
       <p
         className="m-0 mt-7 sm:mt-10 max-w-[56ch] font-serif leading-[1.4] text-balance text-ink"
-        style={{ fontSize: "clamp(18px, 2.2vw, 26px)" }}
+        style={{ fontSize: "clamp(18px, 1.8vw, 22px)" }}
       >
         Building useful software means listening closely, iterating quickly, and focusing on outcomes.
       </p>
@@ -451,14 +451,14 @@ function HowItWorks() {
         <h2
           id="how-it-works-h"
           className="m-0 mb-[18px] font-serif font-normal leading-[1.04] tracking-[-0.02em] text-ink text-balance"
-          style={{ fontSize: "clamp(36px, 4.6vw, 60px)" }}
+          style={{ fontSize: "clamp(34px, 4.2vw, 56px)" }}
         >
           Want help with your{" "}
           <em className="italic text-accent font-normal">product?</em>
         </h2>
         <p
           className="m-0 max-w-[56ch] font-sans leading-[1.55] text-ink-2 text-pretty"
-          style={{ fontSize: "clamp(16px, 1.5vw, 18px)" }}
+          style={{ fontSize: "clamp(16px, 1.8vw, 18px)" }}
         >
           My background in coaching, revenue leadership, and general management helps uncover product
           risks and opportunities others often miss — especially around economics, retention, and growth.
@@ -495,7 +495,7 @@ function HowItWorks() {
         className="rounded-[18px] border border-line bg-paper p-5 sm:p-7"
       >
         <div className="mb-4 sm:mb-5 flex flex-wrap items-center gap-3">
-          <span className="font-mono text-[10.5px] font-medium uppercase tracking-[0.22em] text-muted">
+          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-muted">
             What you&apos;ll walk away with
           </span>
           <span className="inline-flex items-center rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em] text-ink-2 whitespace-nowrap">
@@ -557,7 +557,7 @@ function StepCard({ step }: { step: Step }) {
           href={step.cta.href}
           target={step.cta.href.startsWith("http") ? "_blank" : undefined}
           rel={step.cta.href.startsWith("http") ? "noopener noreferrer" : undefined}
-          className="mt-auto group/cta inline-flex items-center gap-2.5 self-start whitespace-nowrap rounded-full bg-accent px-[18px] py-3 font-sans text-[13.5px] font-semibold leading-none text-white transition-colors hover:bg-accent-deep"
+          className="mt-auto group/cta inline-flex items-center gap-2.5 self-start whitespace-nowrap rounded-full bg-accent px-[18px] py-3 font-sans text-[14px] font-semibold leading-none text-white transition-colors hover:bg-accent-deep"
         >
           {step.cta.label}
           <Arrow className="transition-transform group-hover/cta:translate-x-0.5" />
@@ -694,7 +694,7 @@ function BayTitle({ children }: { children: ReactNode }) {
   return (
     <h2
       className="m-0 mb-4 font-serif font-normal leading-[1.06] tracking-[-0.014em] text-balance text-ink"
-      style={{ fontSize: "clamp(28px, 4.2vw, 52px)" }}
+      style={{ fontSize: "clamp(30px, 4vw, 52px)" }}
     >
       {children}
     </h2>
