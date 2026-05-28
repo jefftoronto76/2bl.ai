@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 import { getCurrentUserId } from '@/services/auth/get-current-user-id'
+import { syncUser } from '@/services/auth/sync-user'
 import { createSession, listSessions } from '@/services/crm/sessions'
 
 /**
@@ -36,7 +37,13 @@ export async function POST(req: Request) {
     )
   }
 
-  const result = await createSession(tenantId)
+  // Link the session to the signed-in user when there is one. syncUser upserts
+  // the Clerk user into `users` (on clerk_id) and returns their id — no
+  // tenant_users membership, since Heirloom visitors are end-customers, not
+  // admins. Anonymous visitors get null and an unlinked session (unchanged).
+  const userId = await syncUser()
+
+  const result = await createSession(tenantId, userId)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }

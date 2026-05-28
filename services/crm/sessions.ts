@@ -24,18 +24,35 @@ export type SessionResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error: string }
 
-/** POST /api/sessions — create a new prospect session for the tenant. */
-export async function createSession(tenantId: string): Promise<SessionResult<{ id: string }>> {
+/**
+ * POST /api/sessions — create a new prospect session for the tenant. When a
+ * signed-in user's id is supplied it is linked via `user_id`, making the
+ * session recoverable across devices; anonymous creates leave `user_id` null
+ * (unchanged behavior).
+ */
+export async function createSession(
+  tenantId: string,
+  userId?: string | null,
+): Promise<SessionResult<{ id: string }>> {
   const supabase = getAdminClient('[sessions/route]')
+
+  const row: {
+    tenant_id: string
+    messages: never[]
+    status: string
+    session_type: string
+    user_id?: string
+  } = {
+    tenant_id: tenantId,
+    messages: [],
+    status: 'active',
+    session_type: 'prospect',
+  }
+  if (userId) row.user_id = userId
 
   const { data, error } = await supabase
     .from('chat_sessions')
-    .insert({
-      tenant_id: tenantId,
-      messages: [],
-      status: 'active',
-      session_type: 'prospect',
-    })
+    .insert(row)
     .select('id')
     .single()
 
@@ -44,7 +61,7 @@ export async function createSession(tenantId: string): Promise<SessionResult<{ i
     return { ok: false, status: 500, error: error.message }
   }
 
-  console.log('[sessions/route] created session:', data.id, '| tenant_id:', tenantId)
+  console.log('[sessions/route] created session:', data.id, '| tenant_id:', tenantId, '| user_id:', userId ?? null)
   return { ok: true, data: { id: data.id } }
 }
 
