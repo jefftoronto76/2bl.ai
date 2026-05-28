@@ -180,7 +180,7 @@ function Work() {
             {PLATFORM_PILLS.map((label) => (
               <li
                 key={label}
-                className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+                className="inline-flex items-center whitespace-nowrap rounded-full border border-accent bg-accent-soft px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent-deep"
               >
                 {label}
               </li>
@@ -308,7 +308,7 @@ function HowIWork() {
           {CAPABILITY_PILLS.map((label) => (
             <li
               key={label}
-              className="inline-flex items-center whitespace-nowrap rounded-full border border-line bg-white px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted"
+              className="inline-flex items-center whitespace-nowrap rounded-full border border-accent bg-accent-soft px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent-deep"
             >
               {label}
             </li>
