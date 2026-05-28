@@ -128,6 +128,23 @@ export default async function SessionPage({
           {session.visitor_name ?? 'Anonymous'}
         </h1>
 
+        {session.email && (
+          <a
+            href={`mailto:${session.email}`}
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '13px',
+              color: '#2d6a4f',
+              textDecoration: 'none',
+              display: 'inline-block',
+              marginBottom: '12px',
+              wordBreak: 'break-all',
+            }}
+          >
+            {session.email}
+          </a>
+        )}
+
         <div style={{
           display: 'flex',
           alignItems: 'center',

@@ -21,6 +21,7 @@ const DEFAULT_THRESHOLDS: SessionStatusThresholds = {
 interface SessionRow {
   id: string
   visitor_name: string | null
+  email: string | null
   messages: unknown[] | null
   status: string | null
   updated_at: string | null
@@ -34,6 +35,7 @@ interface SessionRow {
 export interface ChatSession {
   id: string
   visitor_name: string | null
+  email: string | null
   messages: unknown[] | null
   status: string | null
   updated_at: string | null
@@ -57,7 +59,7 @@ export async function getInboundChats(tenantId: string): Promise<ChatSession[]> 
     await Promise.all([
       supabase
         .from('chat_sessions')
-        .select('id, visitor_name, messages, status, updated_at, created_at, input_tokens, output_tokens')
+        .select('id, visitor_name, email, messages, status, updated_at, created_at, input_tokens, output_tokens')
         .eq('tenant_id', tenantId)
         .eq('session_type', 'prospect')
         .order('updated_at', { ascending: false }),
