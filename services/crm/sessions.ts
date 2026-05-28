@@ -182,3 +182,57 @@ export async function updateSession(
   console.log('[sessions/[id]/route] updated session:', id, '| tenant_id:', tenantId)
   return { ok: true, data: null }
 }
+
+/**
+ * POST /api/sessions/[id]/claim — link an anonymous session to a now-signed-in
+ * user. The `userId` is resolved server-side from the Clerk session (never a
+ * client-supplied value), and the write is scoped by `id` + host-derived
+ * `tenant_id`. Idempotent: re-claiming a session the same user already owns is a
+ * no-op; a session owned by a different user is refused (403); unowned sessions
+ * are claimed.
+ */
+export async function claimSession(
+  tenantId: string,
+  id: string,
+  userId: string,
+): Promise<SessionResult<null>> {
+  const supabase = getAdminClient('[sessions/[id]/claim]')
+
+  const { data: existing, error: selectError } = await supabase
+    .from('chat_sessions')
+    .select('user_id')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (selectError) {
+    console.error('[sessions/[id]/claim] select error:', JSON.stringify(selectError))
+    return { ok: false, status: 500, error: selectError.message }
+  }
+  if (!existing) {
+    console.warn('[sessions/[id]/claim] no session matched id + tenant:', { id, tenant_id: tenantId })
+    return { ok: false, status: 404, error: 'Session not found' }
+  }
+  if (existing.user_id && existing.user_id !== userId) {
+    console.warn('[sessions/[id]/claim] session owned by another user:', { id })
+    return { ok: false, status: 403, error: 'Session already claimed' }
+  }
+  if (existing.user_id === userId) {
+    return { ok: true, data: null }
+  }
+
+  const { error: updateError } = await supabase
+    .from('chat_sessions')
+    .update({ user_id: userId })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .is('user_id', null)
+
+  if (updateError) {
+    console.error('[sessions/[id]/claim] update error:', JSON.stringify(updateError))
+    return { ok: false, status: 500, error: updateError.message }
+  }
+
+  console.log('[sessions/[id]/claim] claimed session:', id, '| user_id:', userId)
+  return { ok: true, data: null }
+}
