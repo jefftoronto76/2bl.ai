@@ -57,6 +57,11 @@ describe('bufferThread', () => {
     expect(readIndex()).toHaveLength(0);
   });
 
+  it('returns true on a successful write and false on an empty no-op', () => {
+    expect(bufferThread([msg('user', 'saved')], 'sess-ok')).toBe(true);
+    expect(bufferThread([], null)).toBe(false);
+  });
+
   it('refreshes (does not duplicate) the index entry across turns', () => {
     vi.setSystemTime(new Date('2026-05-28T10:00:00.000Z'));
     bufferThread([msg('user', 'Q1')], 'sess-1');

@@ -73,12 +73,14 @@ function safeGet<T>(key: string): T | null {
   }
 }
 
-function safeSet(key: string, value: unknown): void {
-  if (!isStorageAvailable()) return;
+function safeSet(key: string, value: unknown): boolean {
+  if (!isStorageAvailable()) return false;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
     // Quota exceeded / serialization failure — best-effort, so swallow.
+    return false;
   }
 }
 
@@ -123,17 +125,22 @@ function deriveTitle(messages: PersistedMessage[]): string | undefined {
  * Write the current thread to localStorage and refresh its index entry. Stores
  * under the session key when a sessionId exists, otherwise the draft slot.
  * No-op when there are no messages, so empty threads never create index noise.
+ *
+ * Returns true when the thread write succeeded — callers (e.g. the store's
+ * dirty-state tracking) clear their unsaved flag only on a confirmed flush.
+ * Returns false on a no-op (no storage / empty thread) or a failed write.
  */
-export function bufferThread(messages: PersistedMessage[], sessionId: string | null): void {
-  if (!isStorageAvailable() || messages.length === 0) return;
+export function bufferThread(messages: PersistedMessage[], sessionId: string | null): boolean {
+  if (!isStorageAvailable() || messages.length === 0) return false;
 
   const updatedAt = new Date().toISOString();
   const thread: PersistedThread = { sessionId, messages, updatedAt };
   const key = sessionId ? sessionKey(sessionId) : DRAFT_KEY;
   const id = sessionId ?? DRAFT_ID;
 
-  safeSet(key, thread);
+  const ok = safeSet(key, thread);
   upsertIndexEntry({ id, updatedAt, title: deriveTitle(messages) });
+  return ok;
 }
 
 /**
