@@ -37,6 +37,14 @@ function isPlausibleEmail(candidate: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)
 }
 
+function isPlausiblePhone(candidate: string): boolean {
+  // Deliberately lenient (mirrors isPlausibleEmail): must contain at least one
+  // digit and be at least 7 characters. The goal is to reject obvious
+  // non-phones (sentinels, single words), not to validate a numbering plan.
+  if (candidate.length < 7) return false
+  return /\d/.test(candidate)
+}
+
 // Detects whether Sage offered a calendar/booking link in the streamed
 // assistant message. Two shapes are covered: the structured booking card
 // (always emitted on its own line at the end of a message) and a raw
@@ -71,6 +79,20 @@ export function detectVisitorEmailMarker(text: string): string | null {
   const candidate = match[1].trim().toLowerCase()
   if (candidate.length === 0) return null
   return isPlausibleEmail(candidate) ? candidate : null
+}
+
+// Extracts a plausible phone from a [PHONE: x] marker in the assistant text, or
+// null when the marker is absent/empty/implausible. The value is kept verbatim
+// (trimmed) — no normalization, so the visitor's own formatting is preserved.
+// Mirrors PHONE_MARKER in services/chat/ui/v1/registry.ts; kept as a local
+// regex (like detectVisitorEmailMarker) so the CRM service does not depend on
+// the UI-v1 layer. Exported for unit testing.
+export function detectVisitorPhoneMarker(text: string): string | null {
+  const match = text.match(/\[PHONE:\s*([^\]]*)\]/)
+  if (!match) return null
+  const candidate = match[1].trim()
+  if (candidate.length === 0) return null
+  return isPlausiblePhone(candidate) ? candidate : null
 }
 
 // ── Visitor-message contact watcher ────────────────────────────────────────
@@ -325,8 +347,8 @@ async function persistTokenUsage(
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
  * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
- * visitor-message phone/email watcher → visitor_name pre-check → [NAME:] marker
- * capture + persist.
+ * [PHONE:] marker capture + persist → visitor-message phone/email watcher →
+ * visitor_name pre-check → [NAME:] marker capture + persist.
  *
  * `visitorText` is the latest visitor message for this turn (raw, as typed).
  * The contact watcher scans it for a phone/email; null skips the watcher (e.g.
@@ -387,6 +409,17 @@ export async function handleSessionFinish(params: {
     await persistVisitorEmail(sessionId, markerEmail)
   } else {
     console.log('[chat/session] onFinish: no email marker in assistant text')
+  }
+
+  // [PHONE:] marker — mirrors the [EMAIL:] block above, captured independently
+  // of the name flow below (which early-returns). persistVisitorPhone
+  // self-guards against overwriting an already-captured phone.
+  const markerPhone = detectVisitorPhoneMarker(text)
+  if (markerPhone) {
+    console.log('[chat/session] onFinish: phone marker detected:', markerPhone)
+    await persistVisitorPhone(sessionId, markerPhone)
+  } else {
+    console.log('[chat/session] onFinish: no phone marker in assistant text')
   }
 
   // Visitor-message contact watcher — scans the visitor's own message (not
