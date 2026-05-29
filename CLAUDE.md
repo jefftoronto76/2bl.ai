@@ -599,7 +599,7 @@ can import the registry without pulling a client module.
 | File | Exports | Purpose |
 |------|---------|---------|
 | `types.ts` | `MarkerType`, `ParsedMarker`, `MarkerParseResult`, `MarkerDispatch`, `MarkerDefinition`, `MarkerRegistry`, `ChatEngineAccessors`, `UseChatTurnOptions`, `UseChatTurnReturn` | Type contracts for the marker registry and the turn hook. No React. `ChatMessage` / `ChatMode` are imported from `services/chat/server/types`, not redefined. |
-| `registry.ts` | `createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`, `CONTACT_MARKER` | Concrete marker registry. `createMarkerRegistry()` parses content into `{ prose, markers }`, stripping every registered marker (and its trailing incomplete fragment) from prose, collapsing blank lines. `createDefaultRegistry()` preloads every display-stripped marker. `BOOKING_MARKER` (`[BOOKING: …]`, 4 fields, `dispatch: 'client'`); `NAME_MARKER` (`[NAME: firstname]`, 1 field, `dispatch: 'server'`); `EMAIL_MARKER` (`[EMAIL: address]`, 1 field, `dispatch: 'server'`); `CONTACT_MARKER` (`[CONTACT: phone]`, 1 field, `dispatch: 'client'` — triggers the Heirloom `ContactCard`; field is usually empty since the card is the capture surface). |
+| `registry.ts` | `createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER` | Concrete marker registry. `createMarkerRegistry()` parses content into `{ prose, markers }`, stripping every registered marker (and its trailing incomplete fragment) from prose, collapsing blank lines. `createDefaultRegistry()` preloads every display-stripped marker. `BOOKING_MARKER` (`[BOOKING: …]`, 4 fields, `dispatch: 'client'`); `NAME_MARKER` (`[NAME: firstname]`, 1 field, `dispatch: 'server'`); `EMAIL_MARKER` (`[EMAIL: address]`, 1 field, `dispatch: 'server'`). The `[CONTACT:]` marker was retired (contact capture moved to the server-side visitor-message watcher in `services/crm/session.ts`); the `'CONTACT'` member lingers in the `MarkerType` union until the Heirloom `ContactCard` is removed (follow-up). |
 | `useChatTurn.ts` | `useChatTurn` | Store-agnostic turn engine (`'use client'`). Takes injected `ChatEngineAccessors` (`getMessages` / `addMessage` / `updateLastMessage` / `setStreaming` / `setSessionId` / `getSessionId` / `getMode?`) and owns one turn end-to-end: append user message → lazily create a session (`POST /api/sessions`) → stream from `/api/sage` (via the shared `readDataStream`) → persist the transcript (`PATCH /api/sessions/[id]`, `visitorName: null`). Returns `{ send, retry, isStreaming, isError }`. jefflougheed (Zustand `useSageStore`) and Heirloom (`useReducer`) both consume it by wrapping their store in accessors. |
 | `index.ts` | barrel | Re-exports the type contracts + the registry runtime (`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`). `useChatTurn` is imported directly from its module, not the barrel. |
 
@@ -729,33 +729,20 @@ canonical parser; each marker has a **dispatch surface**:
   (`services/prompt/sage-prompt.ts`) — required for fallback-prompt surfaces
   (e.g. Heirloom) that have no tenant `master_prompt`.
 
-### `[CONTACT: phone]` — dispatch `client`
+### `[CONTACT: phone]` — **retired**
 
-- Heirloom-specific. Sage emits it as a trigger to ask the visitor for a way to
-  reach them — **either a phone number or an email** is acceptable; the field is
-  usually empty (the visitor types their contact into the card, Sage doesn't
-  have it). **Client render**: the Heirloom `MessageList` detects the parsed
-  `CONTACT` marker and renders an inline `ContactCard`
-  (`app/heirloom/components/chat/ContactCard.tsx`) after the most recent
-  assistant message carrying it. The card has phone + email inputs (both
-  optional; submit enabled once either has a value). Submit calls
-  `captureContact({ phone?, email? })` → `CAPTURE_CONTACT` + a `PATCH
-  /api/sessions/[id]` that writes each value to its own column
-  (`chat_sessions.phone` / `chat_sessions.email`); the decline link calls
-  `captureContact(null)`. One-shot per thread.
-- **No server-side persistence of the marker field** (unlike `[NAME:]` /
-  `[EMAIL:]`): `handleSessionFinish` does not detect `[CONTACT:]` — the card is
-  the sole capture path. Like every marker it is still stripped from displayed
-  prose client-side.
-- Emission requires the Heirloom `master_prompt` to instruct Sage to emit
-  `[CONTACT:]` when it wants to ask for a phone **or** email (a follow-up; the
-  fallback `DEFAULT_SYSTEM_PROMPT` does not).
-- **Phone sign-up**: when the visitor submits a phone, `ContactCard` runs an
-  inline Clerk phone/OTP sign-up (`useSignUp` from `@clerk/nextjs/legacy`) and,
-  on success, claims the session for the new user via `POST
-  /api/sessions/[id]/claim`. Email submission captures only (email-OTP/sign-up
-  is a future sprint). Declining or any failure is graceful — the contact is
-  still persisted, no account is created, the session stays anonymous.
+- The `[CONTACT:]` marker has been removed from the marker registry. Heirloom
+  contact capture now happens server-side via the **visitor-message contact
+  watcher** (`detectPhoneInText` / `detectEmailInText` in
+  `services/crm/session.ts`), which scans the visitor's own typed message for a
+  phone/email rather than relying on Sage emitting a trigger marker and the
+  visitor filling in an inline card.
+- The `'CONTACT'` member still lingers in the `MarkerType` union, and the
+  Heirloom `ContactCard` + `CAPTURE_CONTACT` store flag still exist in code —
+  these are removed in the follow-up PR (along with the inline Clerk phone/OTP
+  sign-up + `claimSession` flow; account creation is deferred). Once the marker
+  is unregistered, the card no longer renders (the registry never produces a
+  `CONTACT` marker for `MessageList` to anchor on).
 
 **Open behavior** (`open_as` / `embed_code`): The bracket syntax only
 carries `label | description | cta_label | url` — `open_as` and
