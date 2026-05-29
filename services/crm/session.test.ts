@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   detectVisitorNameMarker,
   detectVisitorEmailMarker,
+  detectVisitorPhoneMarker,
   detectEmailInText,
   detectPhoneInText,
 } from './session'
@@ -77,6 +78,36 @@ describe('detectVisitorEmailMarker — server-side [EMAIL:] detection', () => {
 
   it('rejects the EMPTY sentinel echoed into a marker', () => {
     expect(detectVisitorEmailMarker('[EMAIL: EMPTY]')).toBeNull()
+  })
+})
+
+describe('detectVisitorPhoneMarker — server-side [PHONE:] detection', () => {
+  it('extracts a phone from a marker', () => {
+    expect(detectVisitorPhoneMarker('[PHONE: +15551234567]')).toBe('+15551234567')
+  })
+
+  it('extracts a phone embedded in surrounding prose', () => {
+    expect(detectVisitorPhoneMarker("I'll text you. [PHONE: 555-123-4567]")).toBe('555-123-4567')
+  })
+
+  it('keeps the value verbatim (no normalization)', () => {
+    expect(detectVisitorPhoneMarker('[PHONE: (555) 123 4567]')).toBe('(555) 123 4567')
+  })
+
+  it('returns null when no marker is present', () => {
+    expect(detectVisitorPhoneMarker('What brings you here today?')).toBeNull()
+  })
+
+  it('returns null for an empty marker', () => {
+    expect(detectVisitorPhoneMarker('[PHONE: ]')).toBeNull()
+  })
+
+  it('rejects a value shorter than 7 characters', () => {
+    expect(detectVisitorPhoneMarker('[PHONE: 12345]')).toBeNull()
+  })
+
+  it('rejects a value with no digits', () => {
+    expect(detectVisitorPhoneMarker('[PHONE: call me]')).toBeNull()
   })
 })
 

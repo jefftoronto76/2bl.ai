@@ -5,6 +5,7 @@ import {
   BOOKING_MARKER,
   NAME_MARKER,
   EMAIL_MARKER,
+  PHONE_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -111,10 +112,18 @@ describe('EMAIL_MARKER definition', () => {
   })
 })
 
-describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, and EMAIL', () => {
+describe('PHONE_MARKER definition', () => {
+  it('is a single-field server-dispatch marker', () => {
+    expect(PHONE_MARKER.type).toBe('PHONE')
+    expect(PHONE_MARKER.fieldCount).toBe(1)
+    expect(PHONE_MARKER.dispatch).toBe('server')
+  })
+})
+
+describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
+  it('registers BOOKING, NAME, EMAIL, and PHONE', () => {
     const defs = createDefaultRegistry().getDefinitions()
-    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
+    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME', 'PHONE'])
   })
 
   it('strips a [NAME: x] marker from prose and extracts the field', () => {
@@ -158,6 +167,22 @@ describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence',
     expect(prose).toBe('Got it.')
   })
 
+  it('strips a [PHONE: x] marker from prose and extracts the field', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse("Perfect, I'll text you. [PHONE: +1 555 123 4567]")
+    expect(prose).toBe("Perfect, I'll text you.")
+    const phone = markers.find(m => m.type === 'PHONE')
+    expect(phone).toBeDefined()
+    expect(phone?.fields).toEqual(['+1 555 123 4567'])
+  })
+
+  it('strips a trailing incomplete [PHONE: fragment mid-stream', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('Got it.\n[PHONE: +1 555')
+    expect(markers.filter(m => m.type === 'PHONE')).toHaveLength(0)
+    expect(prose).toBe('Got it.')
+  })
+
   it('strips NAME, EMAIL, and BOOKING from the same message', () => {
     const r = createDefaultRegistry()
     const { prose, markers } = r.parse(
@@ -165,5 +190,14 @@ describe('createDefaultRegistry — NAME/EMAIL stripping + BOOKING coexistence',
     )
     expect(prose).toBe('Hi Sam.')
     expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME'])
+  })
+
+  it('strips NAME, EMAIL, PHONE, and BOOKING from the same message', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse(
+      'Hi Sam. [NAME: Sam] [EMAIL: sam@example.com] [PHONE: +15551234567]\n[BOOKING: Intro | chat | Book | https://x.com]',
+    )
+    expect(prose).toBe('Hi Sam.')
+    expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME', 'PHONE'])
   })
 })

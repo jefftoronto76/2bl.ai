@@ -52,6 +52,19 @@ export const EMAIL_MARKER: MarkerDefinition = {
   dispatch: 'server',
 }
 
+/**
+ * The PHONE marker — `[PHONE: value]`. Like NAME and EMAIL, dispatch is
+ * 'server' (the server persists it to chat_sessions.phone in onFinish) but it
+ * is registered on the client render path so it is stripped from displayed
+ * prose rather than shown as raw text.
+ */
+export const PHONE_MARKER: MarkerDefinition = {
+  type: 'PHONE',
+  pattern: /\[PHONE:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'server',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -117,5 +130,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(BOOKING_MARKER)
   registry.register(NAME_MARKER)
   registry.register(EMAIL_MARKER)
+  registry.register(PHONE_MARKER)
   return registry
 }

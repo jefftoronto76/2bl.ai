@@ -121,6 +121,39 @@ never run for a non-admin).
 
 ---
 
+## Contact Capture
+
+Heirloom captures visitor contact information (name, phone, email)
+through two sequential paths with short-circuit logic.
+
+**Why two paths?**
+No single method is reliable in all situations. The marker approach
+depends on the conversational model following prompt instructions.
+The regex approach depends on the visitor typing recognizable patterns.
+Together they cover each other's gaps.
+
+**How it works:**
+
+1. Marker detection runs first — Sage is instructed via the prompt to
+   emit hidden markers ([NAME:], [PHONE:], [EMAIL:]) when a visitor
+   shares contact info. The server reads these after each turn and
+   writes to the database.
+
+2. Regex watcher runs second — if the marker path found nothing, a
+   pattern matcher scans the visitor's own message for phone numbers
+   and emails.
+
+**Design principles:**
+- Sequential not parallel — prevents format conflicts between paths
+- Short-circuit — if the marker path writes successfully, the regex
+  watcher is skipped for that field
+- Self-guarded writes — once a field is captured, neither path
+  overwrites it
+- First capture locks the value — malformed marker values are caught
+  by validation before they can block the fallback
+
+---
+
 ## Heirloom — storefront + AI chat
 
 `app/heirloom/` (Tailwind, `[data-brand="heirloom"]` palette). `page.tsx` is the
