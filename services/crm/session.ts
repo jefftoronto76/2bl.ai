@@ -73,6 +73,45 @@ export function detectVisitorEmailMarker(text: string): string | null {
   return isPlausibleEmail(candidate) ? candidate : null
 }
 
+// ── Visitor-message contact watcher ────────────────────────────────────────
+// Replaces the Heirloom [CONTACT:] card: instead of Sage emitting a marker that
+// triggers a capture UI, the server scans the visitor's own message for a raw
+// phone/email the moment they type it. These detectors run over free-text
+// visitor input (not bracket markers), and the persist helpers self-guard
+// against overwrite — so once a value is captured the watcher effectively stops
+// for the rest of the session. Exported for unit testing.
+
+// Extracts the first plausible email from arbitrary visitor prose, lowercased
+// and with trailing sentence punctuation stripped, or null when none is found.
+export function detectEmailInText(text: string): string | null {
+  const match = text.match(/[^\s@]+@[^\s@]+\.[^\s@]+/)
+  if (!match) return null
+  const candidate = match[0].toLowerCase().replace(/[.,;:!?)\]]+$/, '')
+  return isPlausibleEmail(candidate) ? candidate : null
+}
+
+// Extracts the first plausible phone from arbitrary visitor prose, normalized to
+// E.164, or null when none is found. Validation is digit-count based: a bare
+// 10-digit number is treated as NANP (+1…), an 11-digit leading-1 number keeps
+// its country code, and a value written with a leading + is taken as already
+// international (8–15 digits). KNOWN v1 TRADEOFF: a stray 10-digit sequence in
+// prose (e.g. an order number) can match; the persist self-guard means the
+// first match wins for the session, so a false positive could pre-empt the real
+// number. Accepted for v1 — tighten with contextual cues if it proves noisy.
+export function detectPhoneInText(text: string): string | null {
+  const match = text.match(/\+?\d[\d\s().-]{6,}\d/)
+  if (!match) return null
+  const raw = match[0].trimStart()
+  const hadPlus = raw.startsWith('+')
+  const digits = raw.replace(/\D/g, '')
+  if (hadPlus) {
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null
+  }
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits[0] === '1') return `+${digits}`
+  return null
+}
+
 async function persistVisitorName(sessionId: string, name: string): Promise<void> {
   try {
     const supabase = getAdminClient()
@@ -161,6 +200,50 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<vo
   }
 }
 
+async function persistVisitorPhone(sessionId: string, phone: string): Promise<void> {
+  try {
+    const supabase = getAdminClient()
+    const { data, error: selectError } = await supabase
+      .from('chat_sessions')
+      .select('phone')
+      .eq('id', sessionId)
+      .maybeSingle()
+
+    if (selectError) {
+      console.error('[chat/session] phone select failed:', selectError.message)
+      return
+    }
+
+    if (!data) {
+      console.warn('[chat/session] phone persist skipped — session not found:', sessionId)
+      return
+    }
+
+    if (data.phone && data.phone.length > 0) {
+      console.log('[chat/session] phone already set, skipping write:', {
+        session_id: sessionId,
+        existing: data.phone,
+        extracted: phone,
+      })
+      return
+    }
+
+    const { error: updateError } = await supabase
+      .from('chat_sessions')
+      .update({ phone })
+      .eq('id', sessionId)
+
+    if (updateError) {
+      console.error('[chat/session] phone update failed:', updateError.message)
+      return
+    }
+
+    console.log('[chat/session] phone written:', { session_id: sessionId, phone })
+  } catch (err) {
+    console.error('[chat/session] persistVisitorPhone threw:', err instanceof Error ? err.message : err)
+  }
+}
+
 async function persistCalendarOffered(sessionId: string): Promise<void> {
   try {
     const supabase = getAdminClient()
@@ -242,14 +325,20 @@ async function persistTokenUsage(
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
  * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
- * visitor_name pre-check → [NAME:] marker capture + persist.
+ * visitor-message phone/email watcher → visitor_name pre-check → [NAME:] marker
+ * capture + persist.
+ *
+ * `visitorText` is the latest visitor message for this turn (raw, as typed).
+ * The contact watcher scans it for a phone/email; null skips the watcher (e.g.
+ * the synthetic greeting turn).
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
   text: string
   usage: TokenUsage | null
+  visitorText?: string | null
 }): Promise<void> {
-  const { sessionId, text, usage } = params
+  const { sessionId, text, usage, visitorText } = params
 
   if (!sessionId) {
     console.log('[chat/session] onFinish: no session_id, skipping detection flows')
@@ -298,6 +387,24 @@ export async function handleSessionFinish(params: {
     await persistVisitorEmail(sessionId, markerEmail)
   } else {
     console.log('[chat/session] onFinish: no email marker in assistant text')
+  }
+
+  // Visitor-message contact watcher — scans the visitor's own message (not
+  // Sage's reply) for a raw phone/email and persists on first match. Runs
+  // before the name pre-check below (which early-returns), mirroring the
+  // [EMAIL:] block above. persistVisitorPhone/persistVisitorEmail self-guard
+  // against overwrite, so once captured the watcher stops for the session.
+  if (visitorText && visitorText.length > 0) {
+    const phone = detectPhoneInText(visitorText)
+    if (phone) {
+      console.log('[chat/session] onFinish: phone detected in visitor message')
+      await persistVisitorPhone(sessionId, phone)
+    }
+    const email = detectEmailInText(visitorText)
+    if (email) {
+      console.log('[chat/session] onFinish: email detected in visitor message')
+      await persistVisitorEmail(sessionId, email)
+    }
   }
 
   // Pre-check: skip name detection entirely if visitor_name is already
