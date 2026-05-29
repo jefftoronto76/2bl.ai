@@ -18,6 +18,7 @@ import type { ChatMessage } from '@/services/chat/server/types';
 import {
   bufferThread,
   clearDraft,
+  clearSession,
   findMostRecentThread,
   type PersistedMessage,
 } from '../../lib/chatPersistence';
@@ -277,16 +278,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Start a fresh conversation (Sidebar "New Chat"). Clears the authoritative
-  // engine refs so the next turn lazily creates a brand-new session, drops only
-  // the active draft slot from localStorage (history under real session keys is
-  // preserved), and resets the reducer to the empty-greeting state. recentSessions
-  // is left intact so the Recent sidebar keeps showing prior threads.
+  // engine refs so the next turn lazily creates a brand-new session, drops the
+  // active thread's localStorage entry — both the pre-session draft slot AND the
+  // current session-keyed entry, captured before the ref is nulled — and resets
+  // the reducer to the empty-greeting state. Clearing the session entry is what
+  // prevents the mount rehydration from reloading the just-cleared conversation
+  // on the next refresh. recentSessions is left intact so the Recent sidebar
+  // keeps showing prior threads, and DB rows are untouched (loadable from Recent).
   const newChat = useCallback(() => {
+    const clearedSessionId = sessionIdRef.current;
     messagesRef.current = [];
     sessionIdRef.current = null;
     assistantPendingRef.current = false;
     isLoadingRef.current = false;
     clearDraft();
+    if (clearedSessionId) clearSession(clearedSessionId);
     dispatch({ type: 'RESET' });
   }, []);
 

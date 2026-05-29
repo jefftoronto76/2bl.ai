@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   bufferThread,
   clearDraft,
+  clearSession,
   readThread,
   readIndex,
   findMostRecentThread,
@@ -89,6 +90,27 @@ describe('clearDraft', () => {
     expect(readIndex().some(e => e.id === DRAFT_ID)).toBe(false);
     expect(readThread('sess-9')).not.toBeNull();
     expect(readIndex().some(e => e.id === 'sess-9')).toBe(true);
+  });
+});
+
+describe('clearSession', () => {
+  it('removes the session thread and its index entry, leaving other threads intact', () => {
+    bufferThread([msg('user', 'keep me')], 'sess-keep');
+    bufferThread([msg('user', 'clear me')], 'sess-clear');
+
+    clearSession('sess-clear');
+
+    expect(window.localStorage.getItem(sessionKey('sess-clear'))).toBeNull();
+    expect(readThread('sess-clear')).toBeNull();
+    expect(readIndex().some(e => e.id === 'sess-clear')).toBe(false);
+    expect(readThread('sess-keep')).not.toBeNull();
+    expect(readIndex().some(e => e.id === 'sess-keep')).toBe(true);
+  });
+
+  it('leaves nothing for findMostRecentThread to recover when the only thread is cleared', () => {
+    bufferThread([msg('user', 'only thread')], 'sess-only');
+    clearSession('sess-only');
+    expect(findMostRecentThread()).toBeNull();
   });
 });
 
