@@ -6,12 +6,11 @@
 // chatStore.tsx wires this reducer to React and re-exports these types, so
 // consumers keep importing from chatStore.
 
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+// Message is the canonical UIMessage (Phase 0): { id, role, content, timestamp:number }.
+// Re-exported under the historical name so consumers (MessageList, the chatStore
+// re-export) are unchanged. Type-only import — the reducer stays runtime-pure.
+import type { UIMessage } from '@/services/chat/ui/v1/types';
+export type Message = UIMessage;
 
 export interface ChatState {
   messages: Message[];

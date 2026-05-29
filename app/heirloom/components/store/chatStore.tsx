@@ -14,6 +14,7 @@ import React, {
 import { useUser } from '@clerk/nextjs';
 import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn';
 import type { ChatEngineAccessors } from '@/services/chat/ui/v1';
+import { createUIMessage, reviveUIMessages } from '@/services/chat/ui/v1';
 import type { ChatMessage } from '@/services/chat/server/types';
 import {
   bufferThread,
@@ -73,8 +74,7 @@ function deriveSessionTitle(visitorName: string | null, messages: Message[]): st
 }
 
 function toRecentSession(row: ApiSession): RecentSession {
-  const raw = Array.isArray(row.messages) ? (row.messages as PersistedMessage[]) : [];
-  const messages = raw.map(revive);
+  const messages = reviveUIMessages(row.messages);
   return {
     id: row.id,
     updatedAt: row.updated_at,
@@ -86,17 +86,14 @@ function toRecentSession(row: ApiSession): RecentSession {
 const ChatContext = createContext<ChatContextType | null>(null);
 
 function toMessage(role: 'user' | 'assistant', content: string): Message {
-  return { id: crypto.randomUUID(), role, content, timestamp: new Date() };
+  return createUIMessage(role, content);
 }
 
-// Bridge the in-memory Message (timestamp: Date) and the JSON-serializable
-// PersistedMessage (timestamp: ISO string) the localStorage buffer stores.
+// Bridge the canonical UIMessage (timestamp: number) and the JSON-serializable
+// PersistedMessage (timestamp: ISO string) the localStorage buffer stores. Reads
+// go through reviveUIMessage(s), which also accept legacy ISO-string timestamps.
 function serialize(m: Message): PersistedMessage {
-  return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp.toISOString() };
-}
-
-function revive(m: PersistedMessage): Message {
-  return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp) };
+  return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
@@ -202,7 +199,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const thread = findMostRecentThread();
     if (!thread || thread.messages.length === 0) return;
-    const messages = thread.messages.map(revive);
+    const messages = reviveUIMessages(thread.messages);
     messagesRef.current = messages;
     sessionIdRef.current = thread.sessionId;
     dispatch({ type: 'HYDRATE', payload: { messages, sessionId: thread.sessionId } });

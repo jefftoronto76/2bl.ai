@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { chatReducer, initialState, type ChatState, type Message } from './chatReducer';
 
 function msg(role: 'user' | 'assistant', content: string): Message {
-  return { id: crypto.randomUUID(), role, content, timestamp: new Date() };
+  return { id: crypto.randomUUID(), role, content, timestamp: Date.now() };
 }
 
 // A mid-conversation state: messages sent, a real session assigned, sidebar
