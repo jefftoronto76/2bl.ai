@@ -32,3 +32,10 @@ export {
   toChatMessage,
   toChatMessages,
 } from './message'
+
+// Shared session core type contracts (Phase 1). Types only — the runtime hook
+// and provider (useChatSession, ChatSessionProvider) carry 'use client' and are
+// intentionally NOT re-exported here; import them directly from their modules,
+// like useChatTurn.
+export type { ChatSessionState, ChatSessionStore } from './core/store'
+export type { ChatSession, ChatSessionConfig } from './core/useChatSession'
