@@ -23,12 +23,12 @@
 //
 // This phase is core-only: nothing is wired to either tenant yet.
 
-import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useChatTurn } from '../useChatTurn'
 import type { ChatEngineAccessors, UIMessage } from '../types'
 import type { ChatMode } from '@/services/chat/server/types'
 import { createUIMessage } from '../message'
-import { createChatSessionStore, type ChatSessionStore } from './store'
+import { createChatSessionStore, type ChatSessionStore, type HydrateInput } from './store'
 import { getSingletonStore } from './store-registry'
 
 export interface ChatSessionConfig {
@@ -50,6 +50,10 @@ export interface ChatSession {
   send(input: string): Promise<void>
   retry(): Promise<void>
   setMode(mode: ChatMode): void
+  /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
+  hydrate(input: HydrateInput): void
+  /** Clear the conversation (messages, sessionId, isStreaming, isError). */
+  reset(): void
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
@@ -102,20 +106,35 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
 
   const turn = useChatTurn({ accessors })
 
-  const setMode = useCallback((mode: ChatMode) => store.setState({ mode }), [store])
+  // Mirror the engine's isError into the shared store so it is observable
+  // through the store snapshot AND clearable by reset(). isStreaming already
+  // flows engine→store (via the setStreaming accessor); this makes isError
+  // symmetric. The guard avoids redundant writes (and the re-render they cause).
+  // Without this bridge, reset() would clear store.isError while the surface
+  // kept reading the engine's stale isError.
+  useEffect(() => {
+    if (store.getState().isError !== turn.isError) {
+      store.setState({ isError: turn.isError })
+    }
+  }, [turn.isError, store])
 
-  // isStreaming is read from the shared store (the engine writes it through
-  // setStreaming, so every surface observes it). isError comes from the single
-  // engine instance — with one provider there is one engine, so it is already
-  // shared across all context consumers.
+  const setMode = useCallback((mode: ChatMode) => store.setState({ mode }), [store])
+  const hydrate = useCallback((input: HydrateInput) => store.hydrate(input), [store])
+  const reset = useCallback(() => store.reset(), [store])
+
+  // All conversation state is read from the shared store so every surface under
+  // the provider observes the same values (and reset()/hydrate() are visible to
+  // all). send/retry come from the single engine instance.
   return {
     messages: state.messages,
     sessionId: state.sessionId,
     isStreaming: state.isStreaming,
-    isError: turn.isError,
+    isError: state.isError,
     mode: state.mode,
     send: turn.send,
     retry: turn.retry,
     setMode,
+    hydrate,
+    reset,
   }
 }

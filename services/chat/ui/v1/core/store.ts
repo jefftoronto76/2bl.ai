@@ -30,16 +30,31 @@ export interface ChatSessionState {
   mode: ChatMode
 }
 
+/** Input to hydrate() — the conversation slice restored from a buffer/DB. */
+export interface HydrateInput {
+  messages: UIMessage[]
+  sessionId: string | null
+}
+
 /**
  * Minimal store contract. A subset of zustand's StoreApi — `setState` takes a
  * partial object only (read-then-write is done in the accessors, so functional
  * updates are not part of the surface), and `subscribe` takes a zero-arg
- * listener so it plugs straight into `useSyncExternalStore`.
+ * listener so it plugs straight into `useSyncExternalStore`. `hydrate`/`reset`
+ * are the two higher-level conversation operations (added for Heirloom's
+ * localStorage/DB recovery and New Chat).
  */
 export interface ChatSessionStore {
   getState(): ChatSessionState
   setState(partial: Partial<ChatSessionState>): void
   subscribe(listener: () => void): () => void
+  /** Replace messages + sessionId wholesale (localStorage rehydrate / DB recovery). */
+  hydrate(input: HydrateInput): void
+  /**
+   * Clear the conversation slice — messages, sessionId, isStreaming, isError.
+   * Leaves `mode` untouched (request context, not conversation content).
+   */
+  reset(): void
 }
 
 /** The empty conversation every fresh store starts from. */
@@ -56,7 +71,19 @@ export function initialChatSessionState(): ChatSessionState {
 /**
  * Create a fresh, independent conversation store. Each call is fully isolated —
  * sharing is the registry's job (store-registry.ts), never this factory's.
+ *
+ * Wraps a zustand/vanilla store and adds hydrate/reset. zustand's getState/
+ * setState/subscribe are standalone closures (no `this`), so referencing them
+ * directly keeps the exposed surface stable for useSyncExternalStore.
  */
 export function createChatSessionStore(): ChatSessionStore {
-  return createStore<ChatSessionState>()(() => initialChatSessionState())
+  const store = createStore<ChatSessionState>()(() => initialChatSessionState())
+  return {
+    getState: store.getState,
+    setState: store.setState,
+    subscribe: store.subscribe,
+    hydrate: ({ messages, sessionId }) => store.setState({ messages, sessionId }),
+    reset: () =>
+      store.setState({ messages: [], sessionId: null, isStreaming: false, isError: false }),
+  }
 }

@@ -94,3 +94,70 @@ describe('createChatSessionStore', () => {
     expect(store.getState()).toMatchObject(state)
   })
 })
+
+describe('hydrate', () => {
+  it('replaces messages and sessionId wholesale', () => {
+    const store = createChatSessionStore()
+    store.setState({ messages: [msg('user', 'old')], sessionId: 'old-session' })
+    const restored = [msg('user', 'recovered'), msg('assistant', 'welcome back')]
+    store.hydrate({ messages: restored, sessionId: 'sess-7' })
+    expect(store.getState().messages).toBe(restored)
+    expect(store.getState().sessionId).toBe('sess-7')
+  })
+
+  it('accepts a null sessionId (pre-session draft thread)', () => {
+    const store = createChatSessionStore()
+    store.hydrate({ messages: [msg('user', 'draft')], sessionId: null })
+    expect(store.getState().sessionId).toBeNull()
+    expect(store.getState().messages).toHaveLength(1)
+  })
+
+  it('does not touch mode / isStreaming / isError', () => {
+    const store = createChatSessionStore()
+    store.setState({ mode: 'question', isStreaming: true, isError: true })
+    store.hydrate({ messages: [msg('user', 'hi')], sessionId: 's' })
+    expect(store.getState().mode).toBe('question')
+    expect(store.getState().isStreaming).toBe(true)
+    expect(store.getState().isError).toBe(true)
+  })
+
+  it('notifies subscribers', () => {
+    const store = createChatSessionStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+    store.hydrate({ messages: [msg('user', 'hi')], sessionId: 's' })
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('reset', () => {
+  it('clears messages, sessionId, isStreaming, and isError', () => {
+    const store = createChatSessionStore()
+    store.setState({
+      messages: [msg('user', 'hi'), msg('assistant', 'yo')],
+      sessionId: 'sess-3',
+      isStreaming: true,
+      isError: true,
+    })
+    store.reset()
+    expect(store.getState().messages).toEqual([])
+    expect(store.getState().sessionId).toBeNull()
+    expect(store.getState().isStreaming).toBe(false)
+    expect(store.getState().isError).toBe(false)
+  })
+
+  it('leaves mode untouched (request context, not conversation content)', () => {
+    const store = createChatSessionStore()
+    store.setState({ mode: 'question', messages: [msg('user', 'hi')] })
+    store.reset()
+    expect(store.getState().mode).toBe('question')
+  })
+
+  it('notifies subscribers', () => {
+    const store = createChatSessionStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+    store.reset()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+})

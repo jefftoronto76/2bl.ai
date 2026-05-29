@@ -37,5 +37,5 @@ export {
 // and provider (useChatSession, ChatSessionProvider) carry 'use client' and are
 // intentionally NOT re-exported here; import them directly from their modules,
 // like useChatTurn.
-export type { ChatSessionState, ChatSessionStore } from './core/store'
+export type { ChatSessionState, ChatSessionStore, HydrateInput } from './core/store'
 export type { ChatSession, ChatSessionConfig } from './core/useChatSession'
