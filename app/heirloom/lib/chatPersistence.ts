@@ -147,6 +147,18 @@ export function clearDraft(): void {
   removeIndexEntry(DRAFT_ID);
 }
 
+/**
+ * Drop a session-keyed thread and its index entry. Called by New Chat: once a
+ * conversation has had a completed turn it lives under its real session key
+ * (not the draft slot), so clearDraft alone leaves it behind to be re-hydrated
+ * on the next mount. Removing the session entry is what actually clears the
+ * conversation for good. Mirrors clearDraft for the post-session case.
+ */
+export function clearSession(sessionId: string): void {
+  safeRemove(sessionKey(sessionId));
+  removeIndexEntry(sessionId);
+}
+
 /** Load one buffered thread by id (DRAFT_ID resolves to the draft slot). */
 export function readThread(id: string): PersistedThread | null {
   const key = id === DRAFT_ID ? DRAFT_KEY : sessionKey(id);
