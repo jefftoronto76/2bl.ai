@@ -13,22 +13,6 @@ export interface Message {
   timestamp: Date;
 }
 
-/**
- * Outcome of a [CONTACT:] capture card. Non-null means the card has been
- * handled (submitted or declined) for the current thread, so it never reappears.
- */
-export interface ContactState {
-  captured: boolean;
-  phone?: string;
-  email?: string;
-}
-
-/** What the contact card submits — phone, email, or both (visitor's choice). */
-export interface ContactDraft {
-  phone?: string;
-  email?: string;
-}
-
 export interface ChatState {
   messages: Message[];
   hasStarted: boolean;
@@ -36,7 +20,6 @@ export interface ChatState {
   isLoading: boolean;
   isChatOpen: boolean;
   sessionId: string | null;
-  contact: ContactState | null;
 }
 
 export type ChatAction =
@@ -50,7 +33,6 @@ export type ChatAction =
   | { type: 'CLOSE_CHAT' }
   | { type: 'SET_SESSION_ID'; payload: string }
   | { type: 'HYDRATE'; payload: { messages: Message[]; sessionId: string | null } }
-  | { type: 'CAPTURE_CONTACT'; payload: ContactState }
   | { type: 'RESET' };
 
 export const initialState: ChatState = {
@@ -60,7 +42,6 @@ export const initialState: ChatState = {
   isLoading: false,
   isChatOpen: false,
   sessionId: null,
-  contact: null,
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
@@ -102,24 +83,19 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: action.payload.messages,
         sessionId: action.payload.sessionId,
         hasStarted: action.payload.messages.length > 0,
-        // A freshly loaded thread re-evaluates its own contact markers.
-        contact: null,
       };
-    case 'CAPTURE_CONTACT':
-      return { ...state, contact: action.payload };
     case 'RESET':
-      // Start a fresh conversation: drop the active transcript, session, and
-      // contact flag, and return to the empty-greeting state. Deliberately
-      // preserves UI chrome (isSidebarExpanded, isChatOpen) — the panel stays
-      // open on the greeting — and leaves recentSessions (separate provider
-      // state) untouched so history remains in the Recent sidebar.
+      // Start a fresh conversation: drop the active transcript and session and
+      // return to the empty-greeting state. Deliberately preserves UI chrome
+      // (isSidebarExpanded, isChatOpen) — the panel stays open on the greeting —
+      // and leaves recentSessions (separate provider state) untouched so history
+      // remains in the Recent sidebar.
       return {
         ...state,
         messages: [],
         hasStarted: false,
         isLoading: false,
         sessionId: null,
-        contact: null,
       };
     default:
       return state;

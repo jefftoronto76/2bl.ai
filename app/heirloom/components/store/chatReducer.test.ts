@@ -5,8 +5,8 @@ function msg(role: 'user' | 'assistant', content: string): Message {
   return { id: crypto.randomUUID(), role, content, timestamp: new Date() };
 }
 
-// A mid-conversation state: messages sent, a real session assigned, contact
-// captured, sidebar expanded, panel open, a turn in flight.
+// A mid-conversation state: messages sent, a real session assigned, sidebar
+// expanded, panel open, a turn in flight.
 const activeState: ChatState = {
   messages: [msg('user', 'Tell me about heirlooms'), msg('assistant', 'Gladly.')],
   hasStarted: true,
@@ -14,7 +14,6 @@ const activeState: ChatState = {
   isLoading: true,
   isChatOpen: true,
   sessionId: 'sess-123',
-  contact: { captured: true, email: 'visitor@example.com' },
 };
 
 describe('chatReducer — RESET (New Chat)', () => {
@@ -24,7 +23,6 @@ describe('chatReducer — RESET (New Chat)', () => {
     expect(next.hasStarted).toBe(false);
     expect(next.isLoading).toBe(false);
     expect(next.sessionId).toBeNull();
-    expect(next.contact).toBeNull();
   });
 
   it('preserves UI chrome (sidebar + panel open state)', () => {
