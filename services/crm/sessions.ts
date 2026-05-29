@@ -70,9 +70,9 @@ export interface SessionUpdateInput {
   visitorName: unknown
   /**
    * Visitor phone + email from the Heirloom contact card (visitor provides
-   * either or both). Both temporarily land in the `email` column (no dedicated
-   * phone column yet — future migration); when both are present, email wins.
-   * Optional: the jefflougheed PATCH path never sends them.
+   * either or both). Each writes to its own column (`chat_sessions.phone` /
+   * `chat_sessions.email`); only non-empty values are written. Optional: the
+   * jefflougheed PATCH path never sends them.
    */
   phone?: unknown
   email?: unknown
@@ -140,11 +140,11 @@ export async function updateSession(
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
-  // Contact card → email column (temporary reuse, no phone column yet). The
-  // visitor may supply phone, email, or both; email wins when both are present.
+  // Contact card → dedicated columns. The visitor may supply phone, email, or
+  // both; each non-empty value writes to its own column (no more funneling
+  // phone into email).
   const trimmedPhone = typeof phone === 'string' ? phone.trim() : ''
   const trimmedEmail = typeof email === 'string' ? email.trim() : ''
-  const contactValue = trimmedEmail.length > 0 ? trimmedEmail : trimmedPhone
 
   // Build the update with only the fields actually supplied, so a contact-only
   // PATCH (contact value, no messages) never clobbers the persisted transcript.
@@ -153,6 +153,7 @@ export async function updateSession(
     status: 'in_progress'
     messages?: unknown
     visitor_name?: string
+    phone?: string
     email?: string
   } = {
     updated_at: new Date().toISOString(),
@@ -160,7 +161,8 @@ export async function updateSession(
   }
   if (messages !== undefined) update.messages = messages
   if (trimmedName.length > 0) update.visitor_name = trimmedName
-  if (contactValue.length > 0) update.email = contactValue
+  if (trimmedPhone.length > 0) update.phone = trimmedPhone
+  if (trimmedEmail.length > 0) update.email = trimmedEmail
 
   const { data, error } = await supabase
     .from('chat_sessions')

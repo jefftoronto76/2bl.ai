@@ -59,6 +59,13 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
 
   const conversationMessages = normalizeMessages(req.messages)
 
+  // The latest visitor message for this turn, raw as typed — handed to the
+  // session-finish contact watcher, which scans it (not Sage's reply) for a
+  // phone/email. Falls back to null (skips the watcher) when there is no user
+  // turn yet (e.g. the synthetic greeting).
+  const lastVisitorText =
+    [...conversationMessages].reverse().find(m => m.role === 'user')?.content ?? null
+
   const [basePrompt, bookingSection, config] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
@@ -75,7 +82,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       system: systemPrompt,
       messages: conversationMessages,
       onFinish: async ({ text, usage }) => {
-        await handleSessionFinish({ sessionId, text, usage })
+        await handleSessionFinish({ sessionId, text, usage, visitorText: lastVisitorText })
       },
     })
   } catch (error) {
