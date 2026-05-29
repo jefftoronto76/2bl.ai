@@ -10,6 +10,8 @@
 // connection are deliberately NOT applied here. Those optimizations land as
 // separate commits.
 
+import { generateText } from 'ai'
+import { anthropic } from '@ai-sdk/anthropic'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { TokenUsage } from '@/services/chat/server/types'
 
@@ -110,6 +112,87 @@ export function detectPhoneInText(text: string): string | null {
   if (digits.length === 10) return `+1${digits}`
   if (digits.length === 11 && digits[0] === '1') return `+${digits}`
   return null
+}
+
+// ── Contact extraction (Haiku) ──────────────────────────────────────────────
+// A single focused Anthropic call that extracts name, phone, and email from the
+// visitor's message in one pass — the successor to the regex watchers above.
+// claude-haiku-4-5 is cheap, fast, and well-suited to small structured-
+// extraction tasks. The whole flow fails open: any API/parse error logs and
+// returns the empty result so the conversation is never blocked.
+
+const EXTRACTION_MODEL = 'claude-haiku-4-5'
+
+const EXTRACTION_SYSTEM_PROMPT =
+  'Extract the name, phone number, and email address from the text. ' +
+  'Return ONLY valid JSON: { "name": ..., "phone": ..., "email": ... } ' +
+  'with null for anything not found. No preamble, no explanation.'
+
+export interface ExtractedContact {
+  name: string | null
+  phone: string | null
+  email: string | null
+}
+
+const EMPTY_CONTACT: ExtractedContact = { name: null, phone: null, email: null }
+
+// Coerce a parsed JSON field to a clean string or null. Rejects non-strings,
+// blank strings, and the common textual stand-ins a model may emit for "absent"
+// ("null" / "none" / "n/a") so they don't get persisted as real values.
+function normalizeExtractedField(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  const lower = trimmed.toLowerCase()
+  if (lower === 'null' || lower === 'none' || lower === 'n/a') return null
+  return trimmed
+}
+
+// Parse the model's response into an ExtractedContact. Defensive against the
+// model wrapping JSON in code fences or prose: extract the first {...} block,
+// JSON.parse it, and normalize each field. Any failure returns EMPTY_CONTACT.
+// Exported for unit testing.
+export function parseExtraction(raw: string): ExtractedContact {
+  try {
+    const match = raw.match(/\{[\s\S]*\}/)
+    if (!match) return EMPTY_CONTACT
+    const parsed: unknown = JSON.parse(match[0])
+    if (typeof parsed !== 'object' || parsed === null) return EMPTY_CONTACT
+    const obj = parsed as Record<string, unknown>
+    return {
+      name: normalizeExtractedField(obj.name),
+      phone: normalizeExtractedField(obj.phone),
+      email: normalizeExtractedField(obj.email),
+    }
+  } catch (err) {
+    console.error(
+      '[chat/session] contact extraction JSON parse failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return EMPTY_CONTACT
+  }
+}
+
+// Run the focused Haiku extraction call on a single visitor message. Returns
+// EMPTY_CONTACT for empty input (no API call) and on any error (fail open).
+// Exported for unit testing.
+export async function extractContactFields(visitorText: string): Promise<ExtractedContact> {
+  if (!visitorText || visitorText.trim().length === 0) return EMPTY_CONTACT
+  try {
+    const { text } = await generateText({
+      model: anthropic(EXTRACTION_MODEL),
+      system: EXTRACTION_SYSTEM_PROMPT,
+      prompt: visitorText,
+      maxTokens: 128,
+    })
+    return parseExtraction(text)
+  } catch (err) {
+    console.error(
+      '[chat/session] contact extraction call failed:',
+      err instanceof Error ? err.message : err,
+    )
+    return EMPTY_CONTACT
+  }
 }
 
 async function persistVisitorName(sessionId: string, name: string): Promise<void> {
