@@ -1,9 +1,8 @@
 'use client'
 
-import { useRef, useEffect, useMemo, KeyboardEvent, useState } from 'react'
+import { useRef, useEffect, KeyboardEvent, useState } from 'react'
 import { useSageStore } from '../lib/store'
-import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn'
-import type { ChatEngineAccessors } from '@/services/chat/ui/v1'
+import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useReveal } from '@/hooks/useReveal'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
@@ -19,36 +18,17 @@ import { useSageParameters } from './sage/useSageParameters'
 
 export function Chat() {
   const ref = useReveal()
-  const {
-    messages,
-    isExpanded,
-    isStreaming,
-    mode,
-    expand,
-    collapse,
-  } = useSageStore()
+  // Shell state (overlay open/close) stays on useSageStore; conversation state
+  // comes from the shared session — Hero and this overlay are one conversation
+  // via instanceKey "sage".
+  const { isExpanded, expand, collapse } = useSageStore()
+  const { messages, isStreaming, isError, mode, send, retry, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')
   const sageParameters = useSageParameters()
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  // Accessors read/write live store state via getState() (not the render-time
-  // snapshot) so the turn engine always sees the latest messages/session.
-  const accessors = useMemo<ChatEngineAccessors>(
-    () => ({
-      getMessages: () => useSageStore.getState().messages,
-      addMessage: msg => useSageStore.getState().addMessage(msg),
-      updateLastMessage: content => useSageStore.getState().updateLastMessage(content),
-      setStreaming: val => useSageStore.getState().setStreaming(val),
-      setSessionId: id => useSageStore.getState().setSessionId(id),
-      getSessionId: () => useSageStore.getState().sessionId,
-      getMode: () => useSageStore.getState().mode,
-    }),
-    [],
-  )
-  const turn = useChatTurn({ accessors })
 
   useEffect(() => {
     if (!isExpanded) return
@@ -90,11 +70,20 @@ export function Chat() {
     return () => window.removeEventListener('keydown', handleEscape as any)
   }, [isExpanded, collapse])
 
+  // Mode bridge: the shell opens the overlay via expand('question') (Nav,
+  // SectionProcess, Work), which sets useSageStore.mode. Mirror that into the
+  // shared session when the overlay opens so the greeting and /api/sage reflect
+  // question mode. SectionProcess/Work/Nav stay untouched.
+  useEffect(() => {
+    if (!isExpanded) return
+    setMode(useSageStore.getState().mode)
+  }, [isExpanded, setMode])
+
   const submit = () => {
     const text = input.trim()
     if (!text || isStreaming) return
     setInput('')
-    turn.send(text)
+    send(text)
   }
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -259,12 +248,12 @@ export function Chat() {
                     />
                   )
                 })}
-                {turn.isError && !isStreaming && (
+                {isError && !isStreaming && (
                   <div className="flex justify-start">
                     <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
                       Something went wrong. Please try again.
                       <button
-                        onClick={() => turn.retry()}
+                        onClick={() => retry()}
                         className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
                       >
                         Retry
