@@ -2,9 +2,10 @@
 //
 // Session lifecycle + token tracking. Server-only (service-role client). Owns
 // the onFinish detection flows: token-usage accounting, calendar-offer
-// detection, and first-name capture via the [NAME:] marker Sage emits.
-// Consumed by the chat orchestrator (services/chat/server/index.ts →
-// handleSessionFinish).
+// detection, contact extraction (a focused Haiku call that captures name /
+// phone / email from the visitor's message), and first-name capture via the
+// [NAME:] marker Sage emits. Consumed by the chat orchestrator
+// (services/chat/server/index.ts → handleSessionFinish).
 //
 // NOTE: the eventual Amendment-3 batched single-write and Amendment-5 pooled
 // connection are deliberately NOT applied here. Those optimizations land as
@@ -73,45 +74,6 @@ export function detectVisitorEmailMarker(text: string): string | null {
   const candidate = match[1].trim().toLowerCase()
   if (candidate.length === 0) return null
   return isPlausibleEmail(candidate) ? candidate : null
-}
-
-// ── Visitor-message contact watcher ────────────────────────────────────────
-// Replaces the Heirloom [CONTACT:] card: instead of Sage emitting a marker that
-// triggers a capture UI, the server scans the visitor's own message for a raw
-// phone/email the moment they type it. These detectors run over free-text
-// visitor input (not bracket markers), and the persist helpers self-guard
-// against overwrite — so once a value is captured the watcher effectively stops
-// for the rest of the session. Exported for unit testing.
-
-// Extracts the first plausible email from arbitrary visitor prose, lowercased
-// and with trailing sentence punctuation stripped, or null when none is found.
-export function detectEmailInText(text: string): string | null {
-  const match = text.match(/[^\s@]+@[^\s@]+\.[^\s@]+/)
-  if (!match) return null
-  const candidate = match[0].toLowerCase().replace(/[.,;:!?)\]]+$/, '')
-  return isPlausibleEmail(candidate) ? candidate : null
-}
-
-// Extracts the first plausible phone from arbitrary visitor prose, normalized to
-// E.164, or null when none is found. Validation is digit-count based: a bare
-// 10-digit number is treated as NANP (+1…), an 11-digit leading-1 number keeps
-// its country code, and a value written with a leading + is taken as already
-// international (8–15 digits). KNOWN v1 TRADEOFF: a stray 10-digit sequence in
-// prose (e.g. an order number) can match; the persist self-guard means the
-// first match wins for the session, so a false positive could pre-empt the real
-// number. Accepted for v1 — tighten with contextual cues if it proves noisy.
-export function detectPhoneInText(text: string): string | null {
-  const match = text.match(/\+?\d[\d\s().-]{6,}\d/)
-  if (!match) return null
-  const raw = match[0].trimStart()
-  const hadPlus = raw.startsWith('+')
-  const digits = raw.replace(/\D/g, '')
-  if (hadPlus) {
-    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null
-  }
-  if (digits.length === 10) return `+1${digits}`
-  if (digits.length === 11 && digits[0] === '1') return `+${digits}`
-  return null
 }
 
 // ── Contact extraction (Haiku) ──────────────────────────────────────────────
@@ -408,12 +370,12 @@ async function persistTokenUsage(
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
  * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
- * visitor-message phone/email watcher → visitor_name pre-check → [NAME:] marker
- * capture + persist.
+ * Haiku contact extraction (name / phone / email) → visitor_name pre-check →
+ * [NAME:] marker capture + persist.
  *
  * `visitorText` is the latest visitor message for this turn (raw, as typed).
- * The contact watcher scans it for a phone/email; null skips the watcher (e.g.
- * the synthetic greeting turn).
+ * The contact extraction runs on it; null skips extraction (e.g. the synthetic
+ * greeting turn).
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
@@ -472,21 +434,50 @@ export async function handleSessionFinish(params: {
     console.log('[chat/session] onFinish: no email marker in assistant text')
   }
 
-  // Visitor-message contact watcher — scans the visitor's own message (not
-  // Sage's reply) for a raw phone/email and persists on first match. Runs
-  // before the name pre-check below (which early-returns), mirroring the
-  // [EMAIL:] block above. persistVisitorPhone/persistVisitorEmail self-guard
-  // against overwrite, so once captured the watcher stops for the session.
+  // Contact extraction — one focused Haiku call over the visitor's own latest
+  // message (not Sage's reply) that captures name, phone, and email in a single
+  // pass, replacing the per-field regex watchers. A pre-check reads the row and
+  // skips the call once all three are already captured, so extraction stops
+  // running for the session. Each field is persisted via the existing
+  // self-guarded helper, so an already-set value is never overwritten. Fully
+  // fail-open: a select or extraction error logs and falls through without
+  // blocking the conversation. Runs before the name pre-check below (which
+  // early-returns), mirroring the [EMAIL:] block above.
   if (visitorText && visitorText.length > 0) {
-    const phone = detectPhoneInText(visitorText)
-    if (phone) {
-      console.log('[chat/session] onFinish: phone detected in visitor message')
-      await persistVisitorPhone(sessionId, phone)
-    }
-    const email = detectEmailInText(visitorText)
-    if (email) {
-      console.log('[chat/session] onFinish: email detected in visitor message')
-      await persistVisitorEmail(sessionId, email)
+    try {
+      const { data, error } = await getAdminClient()
+        .from('chat_sessions')
+        .select('visitor_name, phone, email')
+        .eq('id', sessionId)
+        .maybeSingle()
+
+      if (error) {
+        console.error('[chat/session] onFinish: contact extraction pre-check failed:', error.message)
+      } else if (!data) {
+        console.warn('[chat/session] onFinish: session not found for contact extraction:', sessionId)
+      } else {
+        const hasName = typeof data.visitor_name === 'string' && data.visitor_name.length > 0
+        const hasPhone = typeof data.phone === 'string' && data.phone.length > 0
+        const hasEmail = typeof data.email === 'string' && data.email.length > 0
+        if (hasName && hasPhone && hasEmail) {
+          console.log('[chat/session] onFinish: name/phone/email all captured, skipping extraction')
+        } else {
+          const extracted = await extractContactFields(visitorText)
+          console.log('[chat/session] onFinish: contact extraction result:', {
+            name: extracted.name !== null,
+            phone: extracted.phone !== null,
+            email: extracted.email !== null,
+          })
+          if (extracted.name) await persistVisitorName(sessionId, extracted.name)
+          if (extracted.phone) await persistVisitorPhone(sessionId, extracted.phone)
+          if (extracted.email) await persistVisitorEmail(sessionId, extracted.email)
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[chat/session] onFinish: contact extraction flow threw:',
+        err instanceof Error ? err.message : err,
+      )
     }
   }
 
