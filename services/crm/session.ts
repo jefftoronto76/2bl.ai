@@ -178,7 +178,11 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
   }
 }
 
-async function persistVisitorEmail(sessionId: string, email: string): Promise<void> {
+// Persists the visitor's email, self-guarding against overwrite. Returns true
+// only when a new value was actually written; false when the field was already
+// set, the session was missing, or any error occurred — so callers can decide
+// whether a fallback path should still run.
+async function persistVisitorEmail(sessionId: string, email: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
@@ -189,12 +193,12 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<vo
 
     if (selectError) {
       console.error('[chat/session] email select failed:', selectError.message)
-      return
+      return false
     }
 
     if (!data) {
       console.warn('[chat/session] email persist skipped — session not found:', sessionId)
-      return
+      return false
     }
 
     if (data.email && data.email.length > 0) {
@@ -203,7 +207,7 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<vo
         existing: data.email,
         extracted: email,
       })
-      return
+      return false
     }
 
     const { error: updateError } = await supabase
@@ -213,16 +217,22 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<vo
 
     if (updateError) {
       console.error('[chat/session] email update failed:', updateError.message)
-      return
+      return false
     }
 
     console.log('[chat/session] email written:', { session_id: sessionId, email })
+    return true
   } catch (err) {
     console.error('[chat/session] persistVisitorEmail threw:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
-async function persistVisitorPhone(sessionId: string, phone: string): Promise<void> {
+// Persists the visitor's phone, self-guarding against overwrite. Returns true
+// only when a new value was actually written; false when the field was already
+// set, the session was missing, or any error occurred — so callers can decide
+// whether a fallback path should still run.
+async function persistVisitorPhone(sessionId: string, phone: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
@@ -233,12 +243,12 @@ async function persistVisitorPhone(sessionId: string, phone: string): Promise<vo
 
     if (selectError) {
       console.error('[chat/session] phone select failed:', selectError.message)
-      return
+      return false
     }
 
     if (!data) {
       console.warn('[chat/session] phone persist skipped — session not found:', sessionId)
-      return
+      return false
     }
 
     if (data.phone && data.phone.length > 0) {
@@ -247,7 +257,7 @@ async function persistVisitorPhone(sessionId: string, phone: string): Promise<vo
         existing: data.phone,
         extracted: phone,
       })
-      return
+      return false
     }
 
     const { error: updateError } = await supabase
@@ -257,12 +267,14 @@ async function persistVisitorPhone(sessionId: string, phone: string): Promise<vo
 
     if (updateError) {
       console.error('[chat/session] phone update failed:', updateError.message)
-      return
+      return false
     }
 
     console.log('[chat/session] phone written:', { session_id: sessionId, phone })
+    return true
   } catch (err) {
     console.error('[chat/session] persistVisitorPhone threw:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
@@ -347,12 +359,18 @@ async function persistTokenUsage(
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
  * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
- * [PHONE:] marker capture + persist → visitor-message phone/email watcher →
+ * [PHONE:] marker capture + persist → visitor-message regex fallback →
  * visitor_name pre-check → [NAME:] marker capture + persist.
  *
+ * Phone and email each run the marker path first; the visitor-message regex
+ * fallback for a field is short-circuited when the marker path already wrote it
+ * (persist returned true), so a value Sage emitted as a marker is never
+ * re-derived from free text. If the marker found nothing (or failed to write),
+ * the regex fallback gets its chance.
+ *
  * `visitorText` is the latest visitor message for this turn (raw, as typed).
- * The contact watcher scans it for a phone/email; null skips the watcher (e.g.
- * the synthetic greeting turn).
+ * The regex fallback scans it for a phone/email; null skips it (e.g. the
+ * synthetic greeting turn).
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
@@ -402,41 +420,54 @@ export async function handleSessionFinish(params: {
 
   // [EMAIL:] marker — captured independently of the name flow below (which
   // early-returns). persistVisitorEmail self-guards against overwriting an
-  // already-captured email, so no function-level pre-check is needed here.
+  // already-captured email. `emailCaptured` records whether the marker path
+  // actually wrote, so the regex fallback below can be short-circuited.
+  let emailCaptured = false
   const markerEmail = detectVisitorEmailMarker(text)
   if (markerEmail) {
     console.log('[chat/session] onFinish: email marker detected:', markerEmail)
-    await persistVisitorEmail(sessionId, markerEmail)
+    emailCaptured = await persistVisitorEmail(sessionId, markerEmail)
   } else {
     console.log('[chat/session] onFinish: no email marker in assistant text')
   }
 
-  // [PHONE:] marker — mirrors the [EMAIL:] block above, captured independently
-  // of the name flow below (which early-returns). persistVisitorPhone
-  // self-guards against overwriting an already-captured phone.
+  // [PHONE:] marker — mirrors the [EMAIL:] block above. `phoneCaptured` records
+  // whether the marker path actually wrote, gating the regex fallback below.
+  let phoneCaptured = false
   const markerPhone = detectVisitorPhoneMarker(text)
   if (markerPhone) {
     console.log('[chat/session] onFinish: phone marker detected:', markerPhone)
-    await persistVisitorPhone(sessionId, markerPhone)
+    phoneCaptured = await persistVisitorPhone(sessionId, markerPhone)
   } else {
     console.log('[chat/session] onFinish: no phone marker in assistant text')
   }
 
-  // Visitor-message contact watcher — scans the visitor's own message (not
-  // Sage's reply) for a raw phone/email and persists on first match. Runs
-  // before the name pre-check below (which early-returns), mirroring the
-  // [EMAIL:] block above. persistVisitorPhone/persistVisitorEmail self-guard
-  // against overwrite, so once captured the watcher stops for the session.
+  // Visitor-message contact watcher (regex fallback) — scans the visitor's own
+  // message (not Sage's reply) for a raw phone/email. Per field, this runs ONLY
+  // when the marker path above did not already capture it: a successful marker
+  // write short-circuits the regex for that field, so a value Sage emitted as a
+  // marker is never re-derived (and possibly mis-derived) from free text. When
+  // the marker found nothing (or failed to write), the regex gets its chance.
+  // Runs before the name pre-check below (which early-returns).
   if (visitorText && visitorText.length > 0) {
-    const phone = detectPhoneInText(visitorText)
-    if (phone) {
-      console.log('[chat/session] onFinish: phone detected in visitor message')
-      await persistVisitorPhone(sessionId, phone)
+    if (phoneCaptured) {
+      console.log('[chat/session] onFinish: phone captured via marker, skipping regex fallback')
+    } else {
+      const phone = detectPhoneInText(visitorText)
+      if (phone) {
+        console.log('[chat/session] onFinish: phone detected in visitor message')
+        await persistVisitorPhone(sessionId, phone)
+      }
     }
-    const email = detectEmailInText(visitorText)
-    if (email) {
-      console.log('[chat/session] onFinish: email detected in visitor message')
-      await persistVisitorEmail(sessionId, email)
+
+    if (emailCaptured) {
+      console.log('[chat/session] onFinish: email captured via marker, skipping regex fallback')
+    } else {
+      const email = detectEmailInText(visitorText)
+      if (email) {
+        console.log('[chat/session] onFinish: email detected in visitor message')
+        await persistVisitorEmail(sessionId, email)
+      }
     }
   }
 
