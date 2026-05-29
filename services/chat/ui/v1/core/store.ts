@@ -1,0 +1,62 @@
+// services/chat/ui/v1/core/store.ts
+//
+// The conversation state container for the v2 shared session (Phase 1).
+//
+// Holds ONLY the conversation slice that every surface must share —
+// messages, sessionId, streaming flag, error flag, and request-affecting
+// mode. Shell/presentation state (isExpanded, composer focus ref, etc.) is
+// deliberately NOT here; that is a shell concern (see docs/chat-ui-v2-design.md
+// §6 Risk 4). The store is a pure, framework-agnostic value container — no
+// React — so it is unit-testable in isolation and SSR-neutral.
+//
+// Backed by zustand/vanilla (already a dependency; the store this generalizes,
+// src/lib/store.ts, uses zustand) per CLAUDE.md "API Before Build". The exposed
+// ChatSessionStore is a deliberately minimal subset of zustand's StoreApi
+// (getState / setState(partial) / subscribe) so consumers — and
+// useSyncExternalStore — bind to a stable, intentional surface rather than the
+// full library API.
+
+import { createStore } from 'zustand/vanilla'
+import type { ChatMode } from '@/services/chat/server/types'
+import type { UIMessage } from '../types'
+
+/** The shared conversation slice. UIMessage (Phase 0) is canonical throughout. */
+export interface ChatSessionState {
+  messages: UIMessage[]
+  sessionId: string | null
+  isStreaming: boolean
+  isError: boolean
+  /** Request-affecting arrival context (e.g. question mode); null by default. */
+  mode: ChatMode
+}
+
+/**
+ * Minimal store contract. A subset of zustand's StoreApi — `setState` takes a
+ * partial object only (read-then-write is done in the accessors, so functional
+ * updates are not part of the surface), and `subscribe` takes a zero-arg
+ * listener so it plugs straight into `useSyncExternalStore`.
+ */
+export interface ChatSessionStore {
+  getState(): ChatSessionState
+  setState(partial: Partial<ChatSessionState>): void
+  subscribe(listener: () => void): () => void
+}
+
+/** The empty conversation every fresh store starts from. */
+export function initialChatSessionState(): ChatSessionState {
+  return {
+    messages: [],
+    sessionId: null,
+    isStreaming: false,
+    isError: false,
+    mode: null,
+  }
+}
+
+/**
+ * Create a fresh, independent conversation store. Each call is fully isolated —
+ * sharing is the registry's job (store-registry.ts), never this factory's.
+ */
+export function createChatSessionStore(): ChatSessionStore {
+  return createStore<ChatSessionState>()(() => initialChatSessionState())
+}

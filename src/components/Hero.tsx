@@ -1,9 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useSageStore } from '../lib/store'
-import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn'
-import type { ChatEngineAccessors } from '@/services/chat/ui/v1'
+import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
 import { useSageParameters } from './sage/useSageParameters'
@@ -20,12 +19,11 @@ function detectModeFromLocation(): 'question' | null {
 }
 
 export function Hero() {
-  const {
-    messages,
-    isStreaming,
-    setMode,
-    setComposerRef,
-  } = useSageStore()
+  // Conversation state comes from the shared session — Hero and the Chat
+  // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
+  // is shell state and stays on useSageStore.
+  const { setComposerRef } = useSageStore()
+  const { messages, isStreaming, isError, send, retry, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -45,22 +43,6 @@ export function Hero() {
   const chatSurfaceRef = useRef<HTMLDivElement>(null)
 
   const sageParameters = useSageParameters()
-
-  // Accessors read/write live store state via getState() (not the render-time
-  // snapshot) so the turn engine always sees the latest messages/session.
-  const accessors = useMemo<ChatEngineAccessors>(
-    () => ({
-      getMessages: () => useSageStore.getState().messages,
-      addMessage: msg => useSageStore.getState().addMessage(msg),
-      updateLastMessage: content => useSageStore.getState().updateLastMessage(content),
-      setStreaming: val => useSageStore.getState().setStreaming(val),
-      setSessionId: id => useSageStore.getState().setSessionId(id),
-      getSessionId: () => useSageStore.getState().sessionId,
-      getMode: () => useSageStore.getState().mode,
-    }),
-    [],
-  )
-  const turn = useChatTurn({ accessors })
 
   useEffect(() => {
     setComposerRef(textareaRef)
@@ -138,14 +120,14 @@ export function Hero() {
 
   const handleChipClick = (text: string) => {
     setConversationVisible(true)
-    turn.send(text)
+    send(text)
   }
 
   const submit = () => {
     const text = input.trim()
     if (!text || isStreaming) return
     setInput('')
-    turn.send(text)
+    send(text)
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -217,12 +199,12 @@ export function Hero() {
             )
           })}
 
-          {turn.isError && !isStreaming && (
+          {isError && !isStreaming && (
             <div className="flex justify-start">
               <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
                 Something went wrong. Please try again.
                 <button
-                  onClick={() => turn.retry()}
+                  onClick={() => retry()}
                   className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
                 >
                   Retry

@@ -17,6 +17,25 @@ export type {
   ChatEngineAccessors,
   UseChatTurnOptions,
   UseChatTurnReturn,
+  UIMessage,
 } from './types'
 
 export { createMarkerRegistry, createDefaultRegistry, BOOKING_MARKER, NAME_MARKER, EMAIL_MARKER, PHONE_MARKER } from './registry'
+
+// Canonical message helpers (Phase 0). Pure + server-safe, so they belong in
+// the barrel — no 'use client' surface like useChatTurn.
+export {
+  normalizeTimestamp,
+  createUIMessage,
+  reviveUIMessage,
+  reviveUIMessages,
+  toChatMessage,
+  toChatMessages,
+} from './message'
+
+// Shared session core type contracts (Phase 1). Types only — the runtime hook
+// and provider (useChatSession, ChatSessionProvider) carry 'use client' and are
+// intentionally NOT re-exported here; import them directly from their modules,
+// like useChatTurn.
+export type { ChatSessionState, ChatSessionStore } from './core/store'
+export type { ChatSession, ChatSessionConfig } from './core/useChatSession'
