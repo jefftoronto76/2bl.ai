@@ -9,6 +9,7 @@ import {
   parseBookingCards,
   type BookingCardData,
 } from '@/components/sage/parseBookingCards'
+import { CopyTranscriptButton } from './CopyTranscriptButton'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -34,6 +35,23 @@ function formatDate(iso: string) {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+// Render the conversation as clean "Visitor:/Sage:" transcript text for the
+// copy button. Every message is run through parseBookingCards, whose prose has
+// all registered markers stripped ([NAME:], [EMAIL:], [PHONE:], [BOOKING:]), so
+// no bracket syntax leaks into the copied text. Marker-only messages (empty
+// prose after stripping) are dropped so the output has no blank turns.
+function formatTranscript(messages: Message[]): string {
+  return messages
+    .map((msg) => {
+      const prose = parseBookingCards(msg.content).prose.trim()
+      if (!prose) return null
+      const label = msg.role === 'user' ? 'Visitor' : 'Sage'
+      return `${label}: ${prose}`
+    })
+    .filter((line): line is string => line !== null)
+    .join('\n\n')
 }
 
 export default async function SessionPage({
@@ -93,6 +111,7 @@ export default async function SessionPage({
   })
 
   const messages: Message[] = Array.isArray(session.messages) ? session.messages : []
+  const transcriptText = formatTranscript(messages)
 
   return (
     <div style={{ maxWidth: '800px' }}>
@@ -192,7 +211,9 @@ export default async function SessionPage({
           No messages in this session.
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <>
+          <CopyTranscriptButton transcript={transcriptText} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {messages.map((msg) => {
             // Assistant messages may carry [BOOKING: ...] markers (see Booking
             // Card Syntax). Parse them so the transcript shows a readable card
@@ -284,7 +305,8 @@ export default async function SessionPage({
               </div>
             )
           })}
-        </div>
+          </div>
+        </>
       )}
 
       {/*
