@@ -9,7 +9,42 @@
 // (jefflougheed) and a useReducer context (Heirloom) can share one
 // implementation.
 
-import type { ChatMessage, ChatMode } from '@/services/chat/server/types'
+import type { ChatMessage, ChatMode, ChatRole } from '@/services/chat/server/types'
+
+// ── Canonical UI message ────────────────────────────────────────────────────
+
+/**
+ * The canonical in-memory message shape for every chat surface (Phase 0).
+ *
+ * Reconciles the two divergent shapes the surfaces carry today —
+ * jefflougheed's `SageMessage` (`timestamp: number`) and Heirloom's `Message`
+ * (`timestamp: Date`) — onto one contract so a shared session store and the
+ * persisted `chat_sessions.messages` jsonb stop drifting per tenant.
+ *
+ * `timestamp` is **epoch milliseconds (number)**. This is the canonical form
+ * both in memory and on the wire/DB: it is JSON-serializable with no Date
+ * reviver, matches the live jefflougheed shape (so the dominant tenant needs no
+ * change), and is trivially derived from a `Date` or an ISO string by the
+ * adapters in `./message`. Every field is JSON-safe, so `UIMessage` IS the
+ * frozen persisted shape — no separate serialized type is needed.
+ *
+ * The wire request to `/api/sage` still uses the leaner `ChatMessage`
+ * (`{ role, content }`); `toChatMessage` in `./message` performs that
+ * narrowing. `id`/`timestamp` are UI/persistence concerns the model never sees.
+ *
+ * Extension point: file-upload / voice attachments will extend this with an
+ * optional `attachments` field in a later phase. It is intentionally omitted
+ * here — that shape is not yet designed, and Phase 0 freezes only the text
+ * contract.
+ */
+export interface UIMessage {
+  /** Stable client id (e.g. crypto.randomUUID()) for React keys + dedupe. */
+  id: string
+  role: ChatRole
+  content: string
+  /** Epoch milliseconds. Canonical in-memory AND persisted representation. */
+  timestamp: number
+}
 
 // ── Marker contract ───────────────────────────────────────────────────────
 
