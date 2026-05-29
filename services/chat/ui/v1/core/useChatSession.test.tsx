@@ -1,0 +1,203 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { ChatSessionProvider, useChatSessionContext } from './ChatSessionProvider'
+import { __clearSingletonRegistry } from './store-registry'
+
+// ── fetch mock ──────────────────────────────────────────────────────────────
+// Reproduces the three calls useChatTurn makes per turn: POST /api/sessions
+// (lazy session create), POST /api/sage (the SSE-ish data stream), and
+// PATCH /api/sessions/[id] (persist). The /api/sage response is a Vercel AI
+// SDK data stream: lines of the form 0:"<delta>".
+
+let sageShouldFail = false
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function streamResponse(text: string): Response {
+  const payload = `0:${JSON.stringify(text)}\n`
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(payload))
+      controller.close()
+    },
+  })
+  return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+}
+
+const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input.toString()
+  const method = init?.method ?? 'GET'
+  if (url === '/api/sessions' && method === 'POST') return jsonResponse({ id: 'sess-1' })
+  if (url.startsWith('/api/sessions/')) return jsonResponse({ ok: true }) // PATCH persist
+  if (url === '/api/sage') {
+    return sageShouldFail ? new Response('error', { status: 500 }) : streamResponse('Hello there')
+  }
+  throw new Error(`unexpected fetch: ${method} ${url}`)
+})
+
+function sessionCreateCount(): number {
+  return fetchMock.mock.calls.filter(
+    ([input, init]) => input === '/api/sessions' && (init?.method ?? 'GET') === 'POST',
+  ).length
+}
+
+function sageCallCount(): number {
+  return fetchMock.mock.calls.filter(([input]) => input === '/api/sage').length
+}
+
+// ── test consumer ─────────────────────────────────────────────────────────
+
+function Consumer({ id }: { id: string }) {
+  const s = useChatSessionContext()
+  return (
+    <div data-testid={id}>
+      <span data-testid={`${id}-text`}>{s.messages.map((m) => `${m.role}:${m.content}`).join('|')}</span>
+      <span data-testid={`${id}-error`}>{String(s.isError)}</span>
+      <button data-testid={`${id}-send`} onClick={() => void s.send('hi')}>send</button>
+      <button data-testid={`${id}-retry`} onClick={() => void s.retry()}>retry</button>
+    </div>
+  )
+}
+
+beforeEach(() => {
+  sageShouldFail = false
+  fetchMock.mockClear()
+  __clearSingletonRegistry()
+  vi.stubGlobal('fetch', fetchMock)
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+describe('sharing invariant (singleton, one provider, two surfaces)', () => {
+  it('a message sent from one surface appears on the other', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    // The other surface observes the same conversation.
+    expect(screen.getByTestId('b-text').textContent).toContain('user:hi')
+    expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there')
+  })
+
+  it('creates the shared session only once across surfaces', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+
+    // First send creates the session.
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(sessionCreateCount()).toBe(1)
+
+    // Second send from the OTHER surface reuses the shared sessionId — no
+    // second POST /api/sessions.
+    fireEvent.click(screen.getByTestId('b-send'))
+    await waitFor(() => expect(sageCallCount()).toBe(2))
+    expect(sessionCreateCount()).toBe(1)
+  })
+})
+
+describe('shared retry state (single engine)', () => {
+  it('an error from one surface is observed by all surfaces, and retry from any surface recovers', async () => {
+    sageShouldFail = true
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+
+    // Both surfaces see the shared error state.
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('true'))
+    expect(screen.getByTestId('b-error').textContent).toBe('true')
+
+    // Retry from the OTHER surface succeeds and clears the error on both.
+    sageShouldFail = false
+    fireEvent.click(screen.getByTestId('b-retry'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(screen.getByTestId('a-error').textContent).toBe('false')
+    expect(screen.getByTestId('b-error').textContent).toBe('false')
+    expect(sageCallCount()).toBe(2) // initial failure + retry
+  })
+})
+
+describe('isolation invariant (no instanceKey)', () => {
+  it('two providers without an instanceKey do not share a conversation', async () => {
+    render(
+      <>
+        <ChatSessionProvider>
+          <Consumer id="a" />
+        </ChatSessionProvider>
+        <ChatSessionProvider>
+          <Consumer id="b" />
+        </ChatSessionProvider>
+      </>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    // The isolated sibling is untouched.
+    expect(screen.getByTestId('b-text').textContent).toBe('')
+  })
+})
+
+describe('convergence safety net (two providers, same key)', () => {
+  it('separate providers sharing an instanceKey converge on one conversation store', async () => {
+    render(
+      <>
+        <ChatSessionProvider instanceKey="shared">
+          <Consumer id="a" />
+        </ChatSessionProvider>
+        <ChatSessionProvider instanceKey="shared">
+          <Consumer id="b" />
+        </ChatSessionProvider>
+      </>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    // Even across separate provider trees, the shared store keeps the
+    // conversation unified.
+    expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there')
+  })
+})
+
+describe('context guard', () => {
+  it('throws when used outside a provider', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => render(<Consumer id="orphan" />)).toThrow(/within a ChatSessionProvider/)
+  })
+})
