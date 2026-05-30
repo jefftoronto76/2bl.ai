@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 type Billing = 'monthly' | 'annual';
 

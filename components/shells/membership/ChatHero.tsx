@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 
 function EmptyState() {

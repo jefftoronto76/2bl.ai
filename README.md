@@ -206,13 +206,18 @@ Together they cover each other's gaps.
 
 ## Heirloom — storefront + AI chat
 
-`app/heirloom/` (Tailwind, `[data-brand="heirloom"]` palette). `page.tsx` is the
+`app/heirloom/` (Tailwind, `[data-brand="heirloom"]` palette) holds the landing
+page (`components/landing/*`), `layout.tsx`, `globals.css`, and `page.tsx` — the
 product app root: a landing page with a slide-in chat panel layered over it
 (Escape / backdrop-click to close).
 
-- Self-contained chat store + stream reader under `app/heirloom/` — streams from
-  `/api/sage` via a Heirloom-local reader, decoupled from the Sage client
-  (`src/lib/sage.ts` / `stream.ts` are not imported).
+- The chat is the platform **membership shell** — its presentation lives in
+  `components/shells/membership/` (app-importable shared presentation, extracted
+  in centralization Step F); `page.tsx` mounts it.
+- Chat store: `useReducer` shell store (`chatStore.tsx`) composed with the shared
+  `useChatTurn` engine; the pure shell reducer is headless in
+  `services/chat/ui/v1/chatReducer.ts`. Streams from `/api/sage` via the shared
+  `readDataStream` (no Heirloom-local reader).
 - Collapsible sidebar, header, message list, input ported from the legacy repo.
 - Tenant note: until a Heirloom tenant + prompt is configured, `/api/sage` falls
   back to Sage's `DEFAULT_SYSTEM_PROMPT`.

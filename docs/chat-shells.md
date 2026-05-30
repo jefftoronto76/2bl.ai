@@ -59,13 +59,13 @@ context behind the panel, not a co-equal surface.
 | Component | File | Role |
 |-----------|------|------|
 | `HeirloomPage` | `app/heirloom/page.tsx` | Root. Mounts `ChatProvider`, renders `<LandingPage>` with the panel layered over it. |
-| `ChatHero` | `app/heirloom/components/chat/ChatHero.tsx` | Panel body: `Sidebar` + header + message area + input. |
-| `ChatHeader` | `app/heirloom/components/chat/ChatHeader.tsx` | Panel header — "Your Story" label + Account / Close buttons. |
-| `ChatInput` | `app/heirloom/components/chat/ChatInput.tsx` | Auto-growing textarea, Enter-to-send, ArrowUp send button. |
-| `MessageList` | `app/heirloom/components/chat/MessageList.tsx` | Renders turns; auto-scrolls to bottom; bouncing-dots typing indicator. |
-| `Sidebar` | `app/heirloom/components/chat/Sidebar.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
+| `ChatHero` | `components/shells/membership/ChatHero.tsx` | Panel body: `Sidebar` + header + message area + input. |
+| `ChatHeader` | `components/shells/membership/ChatHeader.tsx` | Panel header — "Your Story" label + Account / Close buttons. |
+| `ChatInput` | `components/shells/membership/ChatInput.tsx` | Auto-growing textarea, Enter-to-send, ArrowUp send button. |
+| `MessageList` | `components/shells/membership/MessageList.tsx` | Renders turns; auto-scrolls to bottom; bouncing-dots typing indicator. |
+| `Sidebar` | `components/shells/membership/Sidebar.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
 
-**Store:** `useReducer` in `app/heirloom/components/store/chatStore.tsx` via
+**Store:** `useReducer` in `components/shells/membership/chatStore.tsx` via
 `ChatProvider`. Isolated mode — no `instanceKey`. State includes `messages`,
 `sessionId`, `isLoading`, `isChatOpen`, `isSidebarExpanded`, `hasStarted`.
 `sendMessage` is the shared `useChatTurn().send` wired through

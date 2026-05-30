@@ -1,7 +1,7 @@
 'use client';
 
 import { BookOpen } from 'lucide-react';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 export function Footer() {
   const { dispatch } = useChatStore();

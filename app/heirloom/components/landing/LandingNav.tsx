@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 const navLinks: { label: string; targetId: string }[] = [
   { label: 'How It Works', targetId: 'how-it-works' },

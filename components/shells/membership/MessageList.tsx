@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
-import { Message } from '../store/chatStore';
+import { Message } from './chatStore';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 
 interface MessageListProps {

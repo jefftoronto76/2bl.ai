@@ -158,6 +158,20 @@ log strings).
   `streamPromptChat` back `/api/admin/blocks/chat` and `/api/admin/prompt-chat`,
   returning the Vercel AI SDK data-stream Response unchanged.
 
+### Membership shell extraction ✅ (centralization Step F)
+The Heirloom chat — the platform's **membership shell** — was split per
+Correction 1 (headless logic → `services/`, JSX → `components/`):
+
+- **Headless → `services/chat/ui/v1/`:** `chatReducer.ts` (+ test) — the pure
+  shell reducer (no React/JSX).
+- **JSX → `components/shells/membership/`:** `ChatHero`, `ChatHeader`,
+  `ChatInput`, `MessageList`, `Sidebar`, the `chatStore.tsx` / `ChatProvider`
+  context wrapper, and `ui/*` (`Avatar`, `Button`, `IconButton`).
+- `app/heirloom/` now holds only `page.tsx` (mount), `layout.tsx`,
+  `globals.css`, and `components/landing/*`. The landing files + `page.tsx`
+  import the shell via `@/components/shells/membership/*` (app→components, legal
+  under the Step D eslint rule). Mobile keyboard handling was untouched.
+
 ### Heirloom storefront — landing + chat ✅ (on `heirloom-migration`)
 Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
 

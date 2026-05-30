@@ -1,8 +1,8 @@
 'use client';
 
 import { ChevronDown, CircleUser as UserCircle, X } from 'lucide-react';
-import { IconButton } from '../ui/IconButton';
-import { useChatStore } from '../store/chatStore';
+import { IconButton } from './ui/IconButton';
+import { useChatStore } from './chatStore';
 
 export function ChatHeader() {
   const { dispatch } = useChatStore();
