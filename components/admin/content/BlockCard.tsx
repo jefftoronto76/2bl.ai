@@ -20,7 +20,7 @@ import {
 } from '@/services/prompt/block-types'
 import { orderPrefix } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
-import { formatRelativeTime } from '@/lib/time'
+import { formatRelativeTime } from '@/services/shared/time'
 import type { BlockRowBlock } from './BlockRow'
 
 export type BlockCardBlock = BlockRowBlock

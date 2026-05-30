@@ -19,7 +19,7 @@ import {
   clearSession,
   findMostRecentThread,
   type PersistedMessage,
-} from '../../lib/chatPersistence';
+} from '@/services/chat/ui/v1/persistence';
 import {
   chatReducer,
   initialState,

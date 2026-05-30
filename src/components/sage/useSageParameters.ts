@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { SageParameterPublic } from './parseBookingCards'
+import type { SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 
 export function useSageParameters(): SageParameterPublic[] {
   const [params, setParams] = useState<SageParameterPublic[]>([])

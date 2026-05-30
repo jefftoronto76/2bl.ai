@@ -11,7 +11,7 @@ import {
   DRAFT_ID,
   INDEX_KEY,
   type PersistedMessage,
-} from './chatPersistence';
+} from './persistence';
 
 function msg(role: 'user' | 'assistant', content: string): PersistedMessage {
   return { id: crypto.randomUUID(), role, content, timestamp: '2026-05-28T00:00:00.000Z' };

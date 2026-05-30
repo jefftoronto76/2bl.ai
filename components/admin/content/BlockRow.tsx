@@ -21,7 +21,7 @@ import {
 } from '@/services/prompt/block-types'
 import { orderPrefix, isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
-import { formatRelativeTime } from '@/lib/time'
+import { formatRelativeTime } from '@/services/shared/time'
 
 const PREVIEW_LINE_LIMIT = 8
 const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions
@@ -30,7 +30,7 @@ const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · stat
 // Label-on-top muted/uppercase, value below. Mono toggle for numeric
 // fields (Tokens, Order). suppressHydrationWarning only used by the
 // Updated row whose value crosses bucket boundaries between SSR and
-// client hydration — see formatRelativeTime in src/lib/time.ts.
+// client hydration — see formatRelativeTime in services/shared/time.ts.
 function MetaItem({
   label,
   value,

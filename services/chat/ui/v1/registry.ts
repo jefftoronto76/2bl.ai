@@ -1,7 +1,8 @@
 // services/chat/ui/v1/registry.ts
 //
-// Concrete marker registry — the generalized successor to
-// src/components/sage/parseBookingCards. The AI emits structured markers
+// Concrete marker registry — the generalized successor to the legacy
+// parseBookingCards parser (now the headless wrapper at
+// services/chat/ui/v1/parseBookingCards.ts). The AI emits structured markers
 // (e.g. [BOOKING: ...]) at the end of an assistant message; the registry
 // detects every registered marker, extracts its fields, and strips it from
 // the prose. Runtime, server-safe (no React, no DOM) so it can run in the

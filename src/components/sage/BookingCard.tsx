@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import type { BookingCardData, OpenAs } from './parseBookingCards'
+import type { BookingCardData, OpenAs } from '@/services/chat/ui/v1/parseBookingCards'
 
 interface BookingCardProps extends BookingCardData {
   openAs: OpenAs

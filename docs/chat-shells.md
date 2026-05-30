@@ -85,7 +85,7 @@ when the keyboard is open. Body scroll-lock is always on while the panel
 is open.
 
 **Persistence:** best-effort localStorage buffer via
-`app/heirloom/lib/chatPersistence.ts`. Threads stored under
+`services/chat/ui/v1/persistence.ts`. Threads stored under
 `heirloom:chat:v1:session:<id>`, pre-session threads under a draft slot.
 Signed-in users also get DB recovery via `GET /api/sessions`; DB wins
 over the local buffer only when `updated_at` on the DB session is strictly
@@ -307,7 +307,7 @@ interface ChatConfig {
 |------------|----------------------|-----------------------|
 | Booking cards | Yes — `useSageParameters` + `BookingCard` in `src/components/sage/` | No |
 | Session history | No | Yes — `GET /api/sessions` + Recent sidebar |
-| localStorage persistence | No | Yes — `app/heirloom/lib/chatPersistence.ts` |
+| localStorage persistence | No | Yes — `services/chat/ui/v1/persistence.ts` |
 
 When `ChatConfig` is formalized in a later phase, the convention becomes
 explicit configuration — no behavior change, just a declared contract that

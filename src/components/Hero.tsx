@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useSageStore } from '../lib/store'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
-import { parseBookingCards } from './sage/parseBookingCards'
+import { parseBookingCards } from '@/services/chat/ui/v1/parseBookingCards'
 import { SageReply } from './sage/SageReply'
 import { useSageParameters } from './sage/useSageParameters'
 
