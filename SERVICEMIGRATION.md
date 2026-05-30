@@ -139,6 +139,25 @@ live on `main`.
 - **Auth** — every `/api/platform/*` route re-checks `platform_admin`
   independently of the UI, so the service-role writes can't run for a non-admin.
 
+### Admin/platform route → service delegation ✅ (centralization Step C)
+The inline-logic admin/platform routes flagged in the centralization plan are
+now thin consumers; their business logic moved into services. Behavior is
+byte-for-byte preserved (same queries, validation, status codes, wire format,
+log strings).
+
+- **`services/tenant/`** — `createTenant` / `updateTenant` / `deleteTenant`
+  back `POST /api/platform/tenants` and `PATCH`/`DELETE
+  /api/platform/tenants/[id]`. Routes keep the `platform_admin` gate + parse.
+  `resolveTenantConfig(host)` is DEFERRED to Step I (needs `tenants.shell_type`
+  + confirmed `tenant_branding` columns — Jeff/Studio).
+- **`services/content/`** — `extractText` + `createDocumentAsset` (assets),
+  `createContent` / `getContent` (content), `listTopics` / `createTopic`
+  (topics) back `/api/admin/assets/upload`, `/api/admin/content[/id]`, and
+  `/api/admin/topics`.
+- **`services/prompt/composer.ts`** — `streamBlocksComposer` /
+  `streamPromptChat` back `/api/admin/blocks/chat` and `/api/admin/prompt-chat`,
+  returning the Vercel AI SDK data-stream Response unchanged.
+
 ### Heirloom storefront — landing + chat ✅ (on `heirloom-migration`)
 Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
 

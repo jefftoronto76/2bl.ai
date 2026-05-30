@@ -47,8 +47,9 @@ logic lives (or is migrating) into `services/` with zero Next.js imports;
 format the response. This keeps Next.js replaceable and the services portable.
 
 - **`services/`** — platform business logic. `services/chat/server/` (the chat
-  orchestration engine) is extracted and live; `auth`, `prompt`, `crm`,
-  `payments` are still being carved out (see `SERVICEMIGRATION.md`).
+  orchestration engine), `auth`, `prompt`, `crm`, `tenant`, and `content` are
+  extracted and live; `payments` is still being carved out (see
+  `SERVICEMIGRATION.md`).
 - **`app/`** — routes split by brand/product, resolved at the edge by
   `middleware.ts` (host → route group / segment). Today: `(jefflougheed)` (Sage
   tenant site), `secondbrainlabs` (2bl.ai storefront), `heirloom`

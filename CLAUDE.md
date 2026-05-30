@@ -565,6 +565,7 @@ result so routes preserve their exact status codes.
 | `blocks.ts` | `listActiveBlocks`, `updateBlock`, `createBlock`, `duplicateBlock` (+ `AuthScope`, `BlocksResult`, `BlockUpdate`, `CreateBlockInput`) | Block data-access against `blocks` (and the `content` / `chat_sessions` rows the create/duplicate flows touch). Backs the `app/api/admin/blocks/*` routes (except `blocks/chat`, a streaming composer with no block-table access). |
 | `save.ts` | `saveMasterPrompt(tenantId, prompt, checkResult)` | Manual versioned master-prompt save (legacy path). Backs `POST /api/admin/prompt/save`. |
 | `safety.ts` | `reviewBlockBody`, `reviewMasterPrompt` (+ `CheckResult`, `CheckIssue`) | LLM safety review — single block (fail-open) backs `POST /api/admin/prompt/compile/check`; whole prompt backs the legacy `POST /api/admin/prompt/check`. |
+| `composer.ts` | `streamBlocksComposer`, `streamPromptChat` (+ `BlocksComposerInput`, `PromptChatInput`) | Streaming composer flows for the admin prompt-building surface. Owns the system-prompt construction + `streamText` invocation and returns the Vercel AI SDK data-stream Response (`toDataStreamResponse`) so the composer wire format is preserved; the 502 upstream-error catch lives here. Backs `POST /api/admin/blocks/chat` (`streamBlocksComposer`, maxTokens 4000) and `POST /api/admin/prompt-chat` (`streamPromptChat`, maxTokens 800). The routes stay thin (ANTHROPIC_API_KEY guard + JSON parse). |
 | `block-types.ts` | `BLOCK_TYPES`, `BlockType`, `TYPE_COLORS`, `TYPE_LABELS`, `TYPE_COMPILE_ORDER`, `formatTypeBadgeLabel` | Block taxonomy + badge/colour/compile-order maps. Consumed by the admin Blocks UI (`components/admin/content/*`, `BlocksTable`). (Moved from `src/lib/blockTypes.ts`.) |
 | `block-order.ts` | `isOrdered`, `orderPrefix` | `order`-column helpers for the compile sort + Blocks UI. (Moved from `src/lib/blockOrder.ts`.) |
 | `tokenize.ts` | `tokensFor`, `CHARS_PER_TOKEN` | `ceil(chars/4)` token approximation used by compile + the fullness meters. (Moved from `src/lib/tokenize.ts`.) |
@@ -589,6 +590,35 @@ pure helper safe to import (type-only) from client components.
 | `session.ts` | `handleSessionFinish`, `detectVisitorNameMarker`, `detectVisitorEmailMarker`, `detectVisitorPhoneMarker`, `detectEmailInText`, `detectPhoneInText` | Chat `onFinish` detection flows (server-only): token-usage accounting, calendar-offer detection, `[EMAIL:]`-marker capture (`detectVisitorEmailMarker` → lowercase → `isPlausibleEmail` → `persistVisitorEmail` to `chat_sessions.email`), `[PHONE:]`-marker capture (`detectVisitorPhoneMarker` → trim → `isPlausiblePhone` (must contain a digit and be ≥7 chars) → `persistVisitorPhone` to `chat_sessions.phone`, value kept verbatim — no normalization), a **visitor-message contact watcher**, and `[NAME:]`-marker first-name capture (`detectVisitorNameMarker` → titlecase → `isPlausibleName` → persist to `chat_sessions.visitor_name`). The **contact watcher** scans the visitor's own latest message (`visitorText`, threaded in from `streamChat` — not Sage's reply) via `detectEmailInText` / `detectPhoneInText`: free-text regex that extract + validate a raw email (lowercased, trailing punctuation stripped) or phone (normalized to E.164 — bare 10-digit → `+1…`, 11-digit leading-1 kept, leading-`+` taken as international, 8–15 digits) and persist on first match via `persistVisitorEmail` / `persistVisitorPhone` to `chat_sessions.email` / `chat_sessions.phone`. The persist helpers self-guard against overwrite and `persistVisitorEmail` / `persistVisitorPhone` return a boolean (true = wrote, false = already-set/failed). The regex fallback is **short-circuited per field**: phone/email run the marker path first, and the watcher only attempts a field whose marker write did not succeed — so a value Sage emitted as a marker is never re-derived (and possibly mis-derived) from free text. Marker + fallback run before the name flow's early returns so all capture in one turn. Name capture is **marker-only** — the Haiku extractor was removed in PR #46. No-ops when `sessionId` is null (watcher also skips when `visitorText` is empty). Consumed by the chat orchestrator (`services/chat/server/index.ts`); imports the `TokenUsage` contract type from `services/chat/server/types`. |
 | `sessions.ts` | `createSession`, `updateSession`, `listSessions`, `claimSession` (+ `SessionResult`, `SessionUpdateInput`, `ChatSessionSummary`) | Visitor session writes + signed-in reads. Server-role client, scoped by both `id` AND host-derived `tenant_id` (cross-tenant IDOR guard; cross-tenant id → 404). `createSession` takes an optional `userId` and writes `chat_sessions.user_id` when present (anonymous → null). `listSessions(tenantId, userId)` returns the user's sessions newest-first, scoped by `user_id` + `tenant_id`. `claimSession(tenantId, id, userId)` links an unowned session to `userId` (idempotent re-claim; 403 if owned by another) — the `userId` is always server-resolved, never client-supplied. Backs `POST` / `PATCH /api/sessions/[id]` / `GET /api/sessions` / `POST /api/sessions/[id]/claim`, which are thin (tenant + user resolution + parsing + response mapping). |
 | `inbound.ts` | `getInboundChats` (+ `ChatSession`) | Inbound Chats triage: fetch the tenant's prospect sessions (newest first), resolve idle thresholds, derive each row's read-time status. Backs the `app/admin/page.tsx` Inbound Chats list (thin consumer). |
+| `index.ts` | barrel | Re-exports the public surface above. |
+
+### Tenant service (`services/tenant/`)
+
+Tenant management business logic (server-only). Backs the platform-admin tenant
+routes as thin consumers — the routes own the `platform_admin` auth gate
+(defense-in-depth), JSON parsing, and the `[id]` path param; validation +
+data-access live here. Functions return a discriminated `TenantResult<T>`
+(`{ ok: true; status; data } | { ok: false; status; error }`) so routes preserve
+exact status codes (201/200/400/403/404/409/500), messages, and log strings.
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `tenants.ts` | `createTenant`, `updateTenant`, `deleteTenant` (+ `TenantRow`, `TenantInput`, `TenantResult`) | `tenants`-table create/update/delete against the service-role client. Shared validation (name/type/slug/self-parent/domain) + parent-existence check are factored into helpers reused by create + update. Slug/domain uniqueness pre-checks plus the `23505`/`23503` race/FK catches. Backs `POST /api/platform/tenants` and `PATCH`/`DELETE /api/platform/tenants/[id]`. |
+| `index.ts` | barrel | Re-exports the public surface above. **`resolveTenantConfig(host)` is DEFERRED to Step I** — it depends on `tenants.shell_type` (a Step I schema add by Jeff) and the unconfirmed `tenant_branding` columns, so per workflow rule #3 it is not built against missing schema yet. |
+
+### Content service (`services/content/`)
+
+Content / asset / topic business logic (server-only). Backs the admin
+content-family routes as thin consumers (auth + parsing + required-field
+validation + response mapping). Functions return a discriminated
+`ContentResult<T>` (`{ ok: true; data } | { ok: false; status; error }`).
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `assets.ts` | `extractText`, `createDocumentAsset`, `ACCEPTED_TYPES`, `MAX_FILE_SIZE` (+ `CreateDocumentAssetInput`, `DocumentAsset`) | Document ingestion. `extractText(buffer, mimeType)` extracts raw text (PDF via the Anthropic `/v1/messages` document API, DOCX via mammoth, TXT via Buffer; throws on failure). `createDocumentAsset` inserts the `content` row (`type: 'document'`), uploads the original binary to the Storage `assets` bucket at `{tenant_id}/{content_id}/{filename}`, and stamps `storage_path` — the storage steps are non-fatal (logged, not failed). Backs `POST /api/admin/assets/upload` (route owns multipart parse + size/type validation). |
+| `content.ts` | `createContent`, `getContent` (+ `CreateContentInput`) | `content`-row structured create + single-row tenant-scoped read. Back `POST /api/admin/content` and `GET /api/admin/content/[id]` (404 on miss). |
+| `topics.ts` | `listTopics`, `createTopic` (+ `CreateTopicInput`) | `topics`-row list (ordered by name) + create, tenant-scoped. Back `GET`/`POST /api/admin/topics`. |
+| `types.ts` | `AuthScope`, `ContentResult` | Shared contracts for the service. |
 | `index.ts` | barrel | Re-exports the public surface above. |
 
 ### Chat UI service (`services/chat/ui/v1/`)
@@ -661,7 +691,7 @@ response mapping; the data-access and business logic live in the service.
 | `/api/admin/blocks` | GET | Returns active blocks (`id, title, type, body, is_default`) for the authenticated tenant. Filters `active = true`, ordered by type then title. Used for the Composer's existing-blocks context. |
 | `/api/admin/blocks/[id]` | PATCH | Updates block `status`, `body`, or `order`. Validates status against `'active' \| 'disabled' \| 'deleted'`; `order` must be an integer. Keeps the legacy `active` boolean in sync with `status` so the Composer GET doesn't surface disabled or deleted blocks. Tenant-scoped via `.eq('tenant_id', authCtx.tenant_id)`. |
 | `/api/admin/blocks/save` | POST | Creates a new block (Composer draft confirmation flow + the manual New Block modal). **Body is the only required field**; `title` / `type` / `topic_id` are optional and stored null when omitted (400 only when `body` is missing). |
-| `/api/admin/blocks/chat` | POST | Streaming chat route for the Composer. Accepts `{ type, topic, content, messages, documentContext?, existingBlocks? }`. Returns a Vercel AI SDK data stream. |
+| `/api/admin/blocks/chat` | POST | Streaming chat route for the Composer. Accepts `{ type, topic, content, messages, documentContext?, existingBlocks? }`. Returns a Vercel AI SDK data stream. Thin consumer of `streamBlocksComposer` (`services/prompt/composer.ts`) — route owns only the ANTHROPIC_API_KEY guard + JSON parse. |
 
 ### Sage Parameters
 
@@ -682,10 +712,10 @@ response mapping; the data-access and business logic live in the service.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/admin/assets/upload` | POST | Multipart upload for documents (PDF, DOCX, TXT). Extracts text via Anthropic (PDF) or mammoth (DOCX) or direct Buffer read (TXT), inserts a `content` row with `type: 'document'`, uploads the original binary to the Supabase Storage `assets` bucket at `{tenant_id}/{content_id}/{filename}`, and updates the content record with the storage path. |
-| `/api/admin/content` | POST | Creates a content row from structured input. |
+| `/api/admin/assets/upload` | POST | Multipart upload for documents (PDF, DOCX, TXT). Extracts text via Anthropic (PDF) or mammoth (DOCX) or direct Buffer read (TXT), inserts a `content` row with `type: 'document'`, uploads the original binary to the Supabase Storage `assets` bucket at `{tenant_id}/{content_id}/{filename}`, and updates the content record with the storage path. Thin consumer of `services/content` (`extractText` + `createDocumentAsset`); route owns auth + multipart parse + size/type validation. |
+| `/api/admin/content` | POST | Creates a content row from structured input. Thin consumer of `services/content` (`createContent`). |
 | `/api/admin/content/[id]` | GET | Returns a single content record by id, tenant-scoped. Used to fetch uploaded document raw text. |
-| `/api/admin/topics` | GET, POST | Lists and creates topics for the authenticated tenant. |
+| `/api/admin/topics` | GET, POST | Lists and creates topics for the authenticated tenant. Thin consumer of `services/content` (`listTopics` / `createTopic`). |
 
 ### Public
 
