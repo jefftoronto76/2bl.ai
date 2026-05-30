@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useSageStore } from '../lib/store'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
+import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
 import { useSageParameters } from './sage/useSageParameters'
@@ -30,13 +31,6 @@ export function Hero() {
   // the close-x and back on by textarea focus or a chip click. Independent
   // of isEngaged so the compact hero stays compact after dismissing.
   const [conversationVisible, setConversationVisible] = useState(true)
-  // Mobile only: true while the iOS software keyboard is open (derived from the
-  // visualViewport height drop). Promotes the canvas+composer wrapper to a
-  // viewport-synced fixed surface so the composer stays glued to the keyboard
-  // top and the canvas scrolls directly above it. Always false on desktop
-  // (vv.height never drops), so desktop layout is untouched.
-  const [keyboardOpen, setKeyboardOpen] = useState(false)
-
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
@@ -78,36 +72,24 @@ export function Hero() {
 
   // iOS keyboard handling. Syncs the chat surface to the visual viewport: when
   // the keyboard opens, visualViewport.height shrinks and offsetTop grows — we
-  // mirror both onto the surface (height + a compositor translateY, no
+  // mirror both onto the surface CSS vars (height + a compositor translateY, no
   // transition) so the surface exactly covers the visible area above the
   // keyboard. keyboardOpen flips the surface from display:contents to a fixed
   // flex box (CSS, mobile only). On desktop vv.height never drops, so
-  // keyboardOpen stays false and nothing changes.
-  const syncViewport = useCallback(() => {
-    if (typeof window === 'undefined') return
-    const vv = window.visualViewport
-    if (!vv) return
-    setKeyboardOpen(vv.height < window.innerHeight - 120)
-    const surface = chatSurfaceRef.current
-    if (surface) {
-      surface.style.setProperty('--kb-surface-h', `${vv.height}px`)
-      surface.style.setProperty('--kb-surface-y', `${vv.offsetTop}px`)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const vv = window.visualViewport
-    if (!vv) return
-
-    syncViewport()
-    vv.addEventListener('resize', syncViewport)
-    vv.addEventListener('scroll', syncViewport)
-    return () => {
-      vv.removeEventListener('resize', syncViewport)
-      vv.removeEventListener('scroll', syncViewport)
-    }
-  }, [syncViewport])
+  // keyboardOpen stays false and nothing changes. The visualViewport plumbing
+  // (listener lifecycle, SSR guards, threshold) lives in the shared hook; this
+  // surface deliberately runs it WITHOUT body scroll-lock (position:fixed on the
+  // body breaks iOS keyboard detection in this inline context).
+  const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
+    keyboardThreshold: 120,
+    onViewportChange: ({ height, offsetTop }) => {
+      const surface = chatSurfaceRef.current
+      if (surface) {
+        surface.style.setProperty('--kb-surface-h', `${height}px`)
+        surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
+      }
+    },
+  })
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
