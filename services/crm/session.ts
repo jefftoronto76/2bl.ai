@@ -95,7 +95,7 @@ export function detectVisitorPhoneMarker(text: string): string | null {
   return isPlausiblePhone(candidate) ? candidate : null
 }
 
-// ── Visitor-message contact watcher ────────────────────────────────────────
+// ── Visitor-message contact + name watcher ─────────────────────────────────
 // Replaces the Heirloom [CONTACT:] card: instead of Sage emitting a marker that
 // triggers a capture UI, the server scans the visitor's own message for a raw
 // phone/email the moment they type it. These detectors run over free-text
@@ -110,6 +110,23 @@ export function detectEmailInText(text: string): string | null {
   if (!match) return null
   const candidate = match[0].toLowerCase().replace(/[.,;:!?)\]]+$/, '')
   return isPlausibleEmail(candidate) ? candidate : null
+}
+
+// Extracts a plausible first name from arbitrary visitor prose using
+// strong-intent cue phrases ("my name is", "name's", "call me", "this is"),
+// titlecased and run through isPlausibleName, or null when no match is found.
+// Conservative by design: the regex is anchored on explicit self-introduction
+// cues so stray capitalised words in ordinary sentences do not trigger a match.
+// Exported for unit testing.
+export function detectNameInText(text: string): string | null {
+  const match = text.match(
+    /(?:my name is|name's|call me|this is)\s+([A-Za-z][a-zA-Z'-]*)/i,
+  )
+  if (!match) return null
+  const raw = match[1].trim()
+  if (raw.length === 0) return null
+  const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
+  return isPlausibleName(candidate) ? candidate : null
 }
 
 // Extracts the first plausible phone from arbitrary visitor prose, normalized to

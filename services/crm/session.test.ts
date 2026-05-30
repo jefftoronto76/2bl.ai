@@ -4,6 +4,7 @@ import {
   detectVisitorEmailMarker,
   detectVisitorPhoneMarker,
   detectEmailInText,
+  detectNameInText,
   detectPhoneInText,
 } from './session'
 
@@ -134,6 +135,54 @@ describe('detectEmailInText — free-text visitor email watcher', () => {
 
   it('returns null for a value with no dotted domain', () => {
     expect(detectEmailInText('ping me at sam@localhost')).toBeNull()
+  })
+})
+
+describe('detectNameInText — free-text visitor name watcher', () => {
+  it('captures a name from "my name is X"', () => {
+    expect(detectNameInText('my name is Cassandra')).toBe('Cassandra')
+  })
+
+  it('captures a name embedded in surrounding prose', () => {
+    expect(
+      detectNameInText("Hi, how are you, my name is Cassandra, and I'm looking to write a story"),
+    ).toBe('Cassandra')
+  })
+
+  it("captures a name from \"name's X\"", () => {
+    expect(detectNameInText("name's Jordan")).toBe('Jordan')
+  })
+
+  it('captures a name from "my name\'s X" (contraction)', () => {
+    expect(detectNameInText("my name's Alex")).toBe('Alex')
+  })
+
+  it('captures a name from "call me X"', () => {
+    expect(detectNameInText('call me Priya')).toBe('Priya')
+  })
+
+  it('captures a name from "this is X"', () => {
+    expect(detectNameInText('this is Sam')).toBe('Sam')
+  })
+
+  it('titlecases a lowercase input', () => {
+    expect(detectNameInText('my name is cassandra')).toBe('Cassandra')
+  })
+
+  it('returns null — no cue phrase: "I\'m looking"', () => {
+    expect(detectNameInText("I'm looking")).toBeNull()
+  })
+
+  it('returns null — no cue phrase: "I am here"', () => {
+    expect(detectNameInText('I am here')).toBeNull()
+  })
+
+  it('returns null for an empty string', () => {
+    expect(detectNameInText('')).toBeNull()
+  })
+
+  it('returns null when the captured token fails isPlausibleName (single char)', () => {
+    expect(detectNameInText('call me A')).toBeNull()
   })
 })
 
