@@ -3,6 +3,7 @@
 import { useRef, useEffect, KeyboardEvent, useState } from 'react'
 import { useSageStore } from '../lib/store'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
+import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/hooks/useReveal'
 import { parseBookingCards } from './sage/parseBookingCards'
 import { SageReply } from './sage/SageReply'
@@ -30,30 +31,27 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    if (!isExpanded) return
-    // TEMP DIAGNOSTIC: `?debug=true&nolock=1` skips the body scroll-lock so we
-    // can test whether the position:fixed lock is suppressing the iOS
-    // visualViewport keyboard signal. Remove after diagnosis.
-    const diagParams = new URLSearchParams(window.location.search)
-    if (diagParams.get('debug') === 'true' && diagParams.get('nolock') === '1') return
-    // Scroll lock: freezing the body with position:fixed (not just
-    // overflow:hidden) stops iOS Safari from scrolling the document under the
-    // overlay while the chat is open; the scroll position is restored on close.
-    const scrollY = window.scrollY
-    const body = document.body
-    body.style.position = 'fixed'
-    body.style.top = `-${scrollY}px`
-    body.style.left = '0'
-    body.style.right = '0'
-    return () => {
-      body.style.position = ''
-      body.style.top = ''
-      body.style.left = ''
-      body.style.right = ''
-      window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' })
-    }
-  }, [isExpanded])
+  // TEMP DIAGNOSTIC: `?debug=true&nolock=1` skips the body scroll-lock so we
+  // can test whether the position:fixed lock is suppressing the iOS
+  // visualViewport keyboard signal. Remove after diagnosis.
+  const noLock =
+    typeof window !== 'undefined' &&
+    (() => {
+      const p = new URLSearchParams(window.location.search)
+      return p.get('debug') === 'true' && p.get('nolock') === '1'
+    })()
+
+  // Scroll lock: freezing the body with position:fixed (not just
+  // overflow:hidden) stops iOS Safari from scrolling the document under the
+  // overlay while the chat is open; the scroll position is restored on close.
+  // The overlay's own keyboard handling is pure CSS (100dvh + safe-area
+  // insets), so it consumes only the shared hook's scroll-lock —
+  // trackViewport:false means no visualViewport listeners are attached here.
+  useKeyboardViewport({
+    active: isExpanded,
+    lockBodyScroll: !noLock,
+    trackViewport: false,
+  })
 
   useEffect(() => {
     if (!isExpanded) return
