@@ -134,7 +134,7 @@ export function detectPhoneInText(text: string): string | null {
   return null
 }
 
-async function persistVisitorName(sessionId: string, name: string): Promise<void> {
+async function persistVisitorName(sessionId: string, name: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
@@ -145,12 +145,12 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
 
     if (selectError) {
       console.error('[chat/session] visitor_name select failed:', selectError.message)
-      return
+      return false
     }
 
     if (!data) {
       console.warn('[chat/session] visitor_name persist skipped — session not found:', sessionId)
-      return
+      return false
     }
 
     if (data.visitor_name && data.visitor_name.length > 0) {
@@ -159,7 +159,7 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
         existing: data.visitor_name,
         extracted: name,
       })
-      return
+      return false
     }
 
     const { error: updateError } = await supabase
@@ -169,12 +169,14 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
 
     if (updateError) {
       console.error('[chat/session] visitor_name update failed:', updateError.message)
-      return
+      return false
     }
 
     console.log('[chat/session] visitor_name written:', { session_id: sessionId, name })
+    return true
   } catch (err) {
     console.error('[chat/session] persistVisitorName threw:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
