@@ -516,15 +516,32 @@ export async function handleSessionFinish(params: {
     return
   }
 
-  // [NAME:] marker — the sole name-capture path. When Sage emits [NAME: x] and
-  // x is plausible, persist it. No marker → do nothing (the prior Haiku
-  // fallback was removed in PR 3 once marker emission was proven in production).
+  // [NAME:] marker — primary name-capture path. `nameCaptured` records whether
+  // it actually wrote, gating the regex fallback below (same short-circuit
+  // pattern as phone/email above).
+  let nameCaptured = false
   const markerName = detectVisitorNameMarker(text)
   if (markerName) {
     console.log('[chat/session] onFinish: name marker detected:', markerName)
-    await persistVisitorName(sessionId, markerName)
-    return
+    nameCaptured = await persistVisitorName(sessionId, markerName)
+  } else {
+    console.log('[chat/session] onFinish: no name marker in assistant text')
   }
 
-  console.log('[chat/session] onFinish: no name marker in assistant text')
+  // Visitor-message name watcher (regex fallback) — scans the visitor's own
+  // message for a self-introduction cue ("my name is", "name's", "call me",
+  // "this is"). Only runs when the [NAME:] marker path did not capture: a
+  // successful marker write short-circuits this, so a value Sage emitted as a
+  // marker is never re-derived from free text.
+  if (visitorText && visitorText.length > 0) {
+    if (nameCaptured) {
+      console.log('[chat/session] onFinish: name captured via marker, skipping regex fallback')
+    } else {
+      const name = detectNameInText(visitorText)
+      if (name) {
+        console.log('[chat/session] onFinish: name detected in visitor message')
+        await persistVisitorName(sessionId, name)
+      }
+    }
+  }
 }
