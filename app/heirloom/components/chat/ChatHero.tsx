@@ -1,10 +1,12 @@
 'use client';
 
+import { CSSProperties } from 'react';
 import { Sidebar } from './Sidebar';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { useChatStore } from '../store/chatStore';
+import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 
 function EmptyState() {
   return (
@@ -19,8 +21,22 @@ function EmptyState() {
 export function ChatHero() {
   const { state, isError } = useChatStore();
 
+  // iOS keyboard handling. While the chat panel is open it's a modal overlay,
+  // so we lock body scroll (the landing page behind must not scroll) and pin the
+  // surface to the visual viewport. Under the scroll-lock iOS can't shift the
+  // page, so visualViewport.offsetTop stays 0 and the keyboard simply shrinks
+  // the viewport from the bottom — shrinking the surface from h-full to vv.height
+  // lifts the composer to sit directly above the keyboard. Inert on desktop
+  // (vv.height never drops below the threshold) and while the panel is closed.
+  const { keyboardOpen, height } = useKeyboardViewport({
+    active: state.isChatOpen,
+    lockBodyScroll: true,
+  });
+  const surfaceStyle: CSSProperties | undefined =
+    keyboardOpen && height != null ? { height: `${height}px` } : undefined;
+
   return (
-    <section className="h-full flex bg-background overflow-hidden">
+    <section style={surfaceStyle} className="h-full flex bg-background overflow-hidden">
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
