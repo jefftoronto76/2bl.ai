@@ -1,5 +1,5 @@
-import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getContent } from '@/services/content'
 
 export async function GET(
   _req: Request,
@@ -15,18 +15,10 @@ export async function GET(
 
   const { id } = await params
 
-  const supabase = getAdminClient()
-
-  const { data, error } = await supabase
-    .from('content')
-    .select('id, name, raw')
-    .eq('id', id)
-    .eq('tenant_id', authCtx.tenant_id)
-    .single()
-
-  if (error || !data) {
-    return Response.json({ error: 'Content not found' }, { status: 404 })
+  const result = await getContent(authCtx, id)
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json(data)
+  return Response.json(result.data)
 }
