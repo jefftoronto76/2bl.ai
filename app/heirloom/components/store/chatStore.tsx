@@ -23,15 +23,25 @@ import {
 import {
   chatReducer,
   initialState,
-  type ChatState,
   type ChatAction,
   type Message,
 } from './chatReducer';
 
-// Re-export the reducer's state/action contracts so existing consumers keep
-// importing them from chatStore. The pure reducer itself lives in chatReducer.ts
-// (no React/Clerk deps) so its transitions stay unit-testable.
-export type { ChatState, ChatAction, Message };
+// The context's conversation+shell state shape. Conversation fields are sourced
+// from the shared session, shell fields from the reducer (see ChatProvider) —
+// defined here, where the two are composed, rather than in the shell reducer.
+export interface ChatState {
+  messages: Message[];
+  hasStarted: boolean;
+  isSidebarExpanded: boolean;
+  isLoading: boolean;
+  isChatOpen: boolean;
+  sessionId: string | null;
+}
+
+// Re-export the shell action union + Message so existing consumers keep importing
+// them from chatStore. The pure shell reducer lives in chatReducer.ts.
+export type { ChatAction, Message };
 
 /** A previous session loaded from the DB, for the Recent sidebar + recovery. */
 export interface RecentSession {
