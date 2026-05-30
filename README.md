@@ -121,6 +121,55 @@ never run for a non-admin).
 
 ---
 
+## Chat shells
+
+Every AI chat surface is built on one of two shells. The shell shapes the page
+topology; brand tokens, system prompt, and capability flags are data.
+
+### Widget shell
+
+An AI assistant embedded in a content or marketing page. The page exists
+independently; the chat layers on top of it. Two surfaces share one
+conversation:
+
+- **`Hero.tsx`** — inline composer + canvas in the `#hero` section. Always
+  mounted; no body scroll-lock. iOS keyboard pinning via `visualViewport` CSS
+  vars (`--kb-surface-h` / `--kb-surface-y` + `.chat-surface--kb`).
+- **`Chat.tsx`** — full-viewport overlay, opened from Nav / CTAs. Body
+  scroll-locked while open. Keyboard handling is pure CSS (`100dvh` +
+  safe-area insets).
+
+Both surfaces share state via `ChatSessionProvider instanceKey="sage"`.
+
+**Reference deployment:** `jefflougheed.ca` — the Sage AI assistant.
+
+### Membership shell
+
+The chat IS the product. A slide-in modal panel (fixed, `max-w-2xl`, right
+edge) with sidebar, session history, and account features. One surface drives
+the conversation.
+
+- **`ChatHero.tsx`** — panel body with `Sidebar`, `ChatHeader`, `MessageList`,
+  `ChatInput`. Store via `useReducer` / `ChatProvider` (isolated, no shared
+  instance). iOS keyboard pinning via body scroll-lock + surface height
+  shrink to visual viewport height.
+
+**Reference deployment:** `heirloom.2bl.ai` — the Heirloom biography engine.
+
+### Adding a new product
+
+1. Choose widget (AI feature on a page) or membership (AI is the product).
+2. Create `app/<product>/` with `page.tsx` + `layout.tsx`. Import a new
+   `app/<product>/globals.css` with `:root` token overrides from that layout only.
+3. Add the product host to `middleware.ts` and rewrite it to `/product` path.
+4. Add the domain to `tenants.domain` in Supabase Studio. The chat falls back to
+   `DEFAULT_SYSTEM_PROMPT` until a `master_prompt` row exists for the tenant.
+
+See `docs/chat-shells.md` for the full decision guide, keyboard hook wiring,
+and new-product step-by-step.
+
+---
+
 ## Contact Capture
 
 Heirloom captures visitor contact information (name, phone, email)
