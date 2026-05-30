@@ -8,6 +8,7 @@
     },
     "boundaries/elements": [
       { "type": "services", "pattern": "services/**/*", "mode": "full" },
+      { "type": "components", "pattern": "components/**/*", "mode": "full" },
       { "type": "app", "pattern": "app/**/*", "mode": "full" },
       { "type": "src", "pattern": "src/**/*", "mode": "full" }
     ]
@@ -27,6 +28,11 @@
             "from": ["src"],
             "disallow": ["app"],
             "message": "src/ must not import app/ internals directly. Shared code belongs in services/ (the shared layer)."
+          },
+          {
+            "from": ["components"],
+            "disallow": ["app", "src"],
+            "message": "components/ is app-importable shared presentation. It may import services/ (and sibling components/), but must not reach into app/ or src/ internals."
           }
         ]
       }

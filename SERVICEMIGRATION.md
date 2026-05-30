@@ -183,12 +183,14 @@ via `useReducer` — each wrapping its store in `ChatEngineAccessors`.
 via the shared `readDataStream` (`services/chat/server/stream-utils.ts`). See
 "Chat UI v1 — shared engine" under Completed.
 
-The remaining **visual** components still live in `src/` as consumers of the
-engine (they have NOT moved into `services/chat/ui/`):
+The headless `parseBookingCards` parser moved to
+`services/chat/ui/v1/parseBookingCards.ts` in centralization Step B (it
+delegates to `createDefaultRegistry()` and preserves the `{ prose, cards }`
+API). The remaining **visual** components still live in `src/` as consumers of
+the engine (they have NOT moved into `services/chat/ui/`):
 
 | File | Notes |
 |------|-------|
-| src/components/sage/parseBookingCards.ts | Client parser — now **delegates to `createDefaultRegistry()`** in `services/chat/ui/v1/registry.ts`; remains in `src/` as a thin wrapper preserving the `{ prose, cards }` API. Also strips `[NAME:]` markers. |
 | src/components/sage/BookingCard.tsx | Booking card + inline-embed injection. |
 | src/components/sage/SageReply.tsx | Assistant-message renderer; resolves cards to params by URL match. |
 | src/components/sage/markdownComponents.tsx | Palette-aware markdown renderers. |
@@ -200,7 +202,7 @@ in PR #43 — its `streamSageResponse` fetch+stream logic now lives in the
 
 | File | Notes |
 |------|-------|
-| src/lib/store.ts | Exports both `useSageStore` (public chat) and `useChatStore`. Consumed by Chat, Hero, Nav, SectionProcess, Work — wrapped in `ChatEngineAccessors` for `useChatTurn`. |
+| src/lib/store.ts | Exports `useSageStore` (public-chat shell slice). Consumed by Chat, Hero, Nav, SectionProcess, Work — wrapped in `ChatEngineAccessors` for `useChatTurn`. (The legacy `useChatStore` export was removed in centralization Step A.) |
 
 Note: `readDataStream` (the data-stream reader, shared with the admin composer)
 was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`

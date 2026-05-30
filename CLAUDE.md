@@ -925,3 +925,9 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   `src/lib/store.ts` (`useSageStore`). These are still the source of the
   remaining `app → src` import-boundary warnings, which is why the
   `boundaries/element-types` rule stays at `warn`.
+- **eslint `components` element-type registered (centralization Step D).** Root
+  `components/**` (the Mantine admin UI) is now a first-class boundary element:
+  `app → components` and `components → services` are legal; `components` may not
+  reach into `app` or `src` internals. This is the same allowance the
+  `components/shells/` widget + membership shells will consume in Steps E/F. The
+  rule stays at `warn` until the shells land and Step G flips it to `error`.
