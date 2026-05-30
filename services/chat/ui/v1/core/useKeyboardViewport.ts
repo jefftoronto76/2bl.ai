@@ -77,6 +77,14 @@ export interface UseKeyboardViewportOptions {
    */
   keyboardThreshold?: number
   /**
+   * Whether to attach the `visualViewport` resize/scroll listeners and track
+   * measurements. When `false` the hook reports inert state (no listeners, no
+   * re-renders) and only the optional `lockBodyScroll` runs — for a consumer
+   * that wants the scroll-lock alone (the overlay, whose keyboard handling is
+   * pure CSS today). Default `true`.
+   */
+  trackViewport?: boolean
+  /**
    * Fired synchronously on every viewport sync, before the React state commit,
    * with the live measurement. For surfaces that mirror `height` / `offsetTop`
    * onto an element's CSS vars or inline styles reflow-free (no render
@@ -117,6 +125,7 @@ export function useKeyboardViewport(
     active = true,
     lockBodyScroll = false,
     keyboardThreshold = 120,
+    trackViewport = true,
     onViewportChange,
   } = options
 
@@ -145,7 +154,7 @@ export function useKeyboardViewport(
   // VisualViewport listener lifecycle. Inert (and reset to defaults) whenever
   // `active` is false, on SSR, or without the VisualViewport API.
   useEffect(() => {
-    if (!active) {
+    if (!active || !trackViewport) {
       setState((prev) => (isInert(prev) ? prev : INERT_STATE))
       return
     }
@@ -160,7 +169,7 @@ export function useKeyboardViewport(
       vv.removeEventListener('resize', sync)
       vv.removeEventListener('scroll', sync)
     }
-  }, [active, sync])
+  }, [active, trackViewport, sync])
 
   // Optional body scroll-lock. Freezes the page with position:fixed and the
   // preserved scrollY, restoring the exact scroll position on cleanup. Mirrors

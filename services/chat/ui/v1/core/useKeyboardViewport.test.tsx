@@ -147,6 +147,25 @@ describe('useKeyboardViewport — lifecycle', () => {
     expect(captured.current?.keyboardOpen).toBe(false)
   })
 
+  it('adds no listeners and stays inert when trackViewport is false', () => {
+    const vv = new VisualViewportStub(INNER_HEIGHT, 0)
+    installViewport(vv)
+    const { captured } = renderHookValue({ trackViewport: false })
+    expect(vv.listenerCount('resize')).toBe(0)
+    expect(vv.listenerCount('scroll')).toBe(0)
+    expect(captured.current?.height).toBeNull()
+    expect(captured.current?.keyboardOpen).toBe(false)
+  })
+
+  it('still runs the scroll lock when trackViewport is false', () => {
+    installViewport(new VisualViewportStub(INNER_HEIGHT, 0))
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 80 })
+    Object.defineProperty(window, 'scrollTo', { configurable: true, value: vi.fn() })
+    renderHookValue({ trackViewport: false, lockBodyScroll: true })
+    expect(document.body.style.position).toBe('fixed')
+    expect(document.body.style.top).toBe('-80px')
+  })
+
   it('does not throw without the VisualViewport API', () => {
     installViewport(undefined)
     expect(() => renderHookValue({})).not.toThrow()
