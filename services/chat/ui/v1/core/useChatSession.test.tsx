@@ -58,8 +58,21 @@ function Consumer({ id }: { id: string }) {
     <div data-testid={id}>
       <span data-testid={`${id}-text`}>{s.messages.map((m) => `${m.role}:${m.content}`).join('|')}</span>
       <span data-testid={`${id}-error`}>{String(s.isError)}</span>
+      <span data-testid={`${id}-sid`}>{String(s.sessionId)}</span>
       <button data-testid={`${id}-send`} onClick={() => void s.send('hi')}>send</button>
       <button data-testid={`${id}-retry`} onClick={() => void s.retry()}>retry</button>
+      <button
+        data-testid={`${id}-hydrate`}
+        onClick={() =>
+          s.hydrate({
+            messages: [{ id: 'h1', role: 'user', content: 'recovered', timestamp: 1 }],
+            sessionId: 'recovered-1',
+          })
+        }
+      >
+        hydrate
+      </button>
+      <button data-testid={`${id}-reset`} onClick={() => s.reset()}>reset</button>
     </div>
   )
 }
@@ -192,6 +205,103 @@ describe('convergence safety net (two providers, same key)', () => {
     // Even across separate provider trees, the shared store keeps the
     // conversation unified.
     expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there')
+  })
+})
+
+describe('hydrate (additive API)', () => {
+  it('singleton: a hydrate on one surface is observed by all (jefflougheed unaffected)', () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-hydrate'))
+
+    expect(screen.getByTestId('a-text').textContent).toContain('user:recovered')
+    expect(screen.getByTestId('b-text').textContent).toContain('user:recovered')
+    expect(screen.getByTestId('a-sid').textContent).toBe('recovered-1')
+    expect(screen.getByTestId('b-sid').textContent).toBe('recovered-1')
+  })
+
+  it('isolated: a hydrate affects only that instance', () => {
+    render(
+      <>
+        <ChatSessionProvider>
+          <Consumer id="a" />
+        </ChatSessionProvider>
+        <ChatSessionProvider>
+          <Consumer id="b" />
+        </ChatSessionProvider>
+      </>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-hydrate'))
+
+    expect(screen.getByTestId('a-text').textContent).toContain('user:recovered')
+    expect(screen.getByTestId('b-text').textContent).toBe('')
+    expect(screen.getByTestId('b-sid').textContent).toBe('null')
+  })
+})
+
+describe('reset (additive API)', () => {
+  it('singleton: clears the shared conversation across all surfaces', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(screen.getByTestId('a-sid').textContent).toBe('sess-1')
+
+    fireEvent.click(screen.getByTestId('b-reset'))
+
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toBe(''))
+    expect(screen.getByTestId('b-text').textContent).toBe('')
+    expect(screen.getByTestId('a-sid').textContent).toBe('null')
+  })
+
+  it('clears the shared error state (reset clears isError)', async () => {
+    sageShouldFail = true
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('true'))
+
+    fireEvent.click(screen.getByTestId('a-reset'))
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('false'))
+  })
+
+  it('isolated: reset clears only that instance', async () => {
+    render(
+      <>
+        <ChatSessionProvider>
+          <Consumer id="a" />
+        </ChatSessionProvider>
+        <ChatSessionProvider>
+          <Consumer id="b" />
+        </ChatSessionProvider>
+      </>,
+    )
+
+    fireEvent.click(screen.getByTestId('a-hydrate'))
+    fireEvent.click(screen.getByTestId('b-hydrate'))
+    expect(screen.getByTestId('a-text').textContent).toContain('user:recovered')
+
+    fireEvent.click(screen.getByTestId('a-reset'))
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toBe(''))
+    // b is a separate isolated instance — untouched by a's reset.
+    expect(screen.getByTestId('b-text').textContent).toContain('user:recovered')
   })
 })
 

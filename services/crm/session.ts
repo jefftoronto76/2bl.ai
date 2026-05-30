@@ -95,7 +95,7 @@ export function detectVisitorPhoneMarker(text: string): string | null {
   return isPlausiblePhone(candidate) ? candidate : null
 }
 
-// ── Visitor-message contact watcher ────────────────────────────────────────
+// ── Visitor-message contact + name watcher ─────────────────────────────────
 // Replaces the Heirloom [CONTACT:] card: instead of Sage emitting a marker that
 // triggers a capture UI, the server scans the visitor's own message for a raw
 // phone/email the moment they type it. These detectors run over free-text
@@ -110,6 +110,23 @@ export function detectEmailInText(text: string): string | null {
   if (!match) return null
   const candidate = match[0].toLowerCase().replace(/[.,;:!?)\]]+$/, '')
   return isPlausibleEmail(candidate) ? candidate : null
+}
+
+// Extracts a plausible first name from arbitrary visitor prose using
+// strong-intent cue phrases ("my name is", "name's", "call me", "this is"),
+// titlecased and run through isPlausibleName, or null when no match is found.
+// Conservative by design: the regex is anchored on explicit self-introduction
+// cues so stray capitalised words in ordinary sentences do not trigger a match.
+// Exported for unit testing.
+export function detectNameInText(text: string): string | null {
+  const match = text.match(
+    /(?:my name is|name's|call me|this is)\s+([A-Za-z][a-zA-Z'-]*)/i,
+  )
+  if (!match) return null
+  const raw = match[1].trim()
+  if (raw.length === 0) return null
+  const candidate = raw[0].toUpperCase() + raw.slice(1).toLowerCase()
+  return isPlausibleName(candidate) ? candidate : null
 }
 
 // Extracts the first plausible phone from arbitrary visitor prose, normalized to
@@ -134,7 +151,7 @@ export function detectPhoneInText(text: string): string | null {
   return null
 }
 
-async function persistVisitorName(sessionId: string, name: string): Promise<void> {
+async function persistVisitorName(sessionId: string, name: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
@@ -145,12 +162,12 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
 
     if (selectError) {
       console.error('[chat/session] visitor_name select failed:', selectError.message)
-      return
+      return false
     }
 
     if (!data) {
       console.warn('[chat/session] visitor_name persist skipped — session not found:', sessionId)
-      return
+      return false
     }
 
     if (data.visitor_name && data.visitor_name.length > 0) {
@@ -159,7 +176,7 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
         existing: data.visitor_name,
         extracted: name,
       })
-      return
+      return false
     }
 
     const { error: updateError } = await supabase
@@ -169,12 +186,14 @@ async function persistVisitorName(sessionId: string, name: string): Promise<void
 
     if (updateError) {
       console.error('[chat/session] visitor_name update failed:', updateError.message)
-      return
+      return false
     }
 
     console.log('[chat/session] visitor_name written:', { session_id: sessionId, name })
+    return true
   } catch (err) {
     console.error('[chat/session] persistVisitorName threw:', err instanceof Error ? err.message : err)
+    return false
   }
 }
 
@@ -497,15 +516,32 @@ export async function handleSessionFinish(params: {
     return
   }
 
-  // [NAME:] marker — the sole name-capture path. When Sage emits [NAME: x] and
-  // x is plausible, persist it. No marker → do nothing (the prior Haiku
-  // fallback was removed in PR 3 once marker emission was proven in production).
+  // [NAME:] marker — primary name-capture path. `nameCaptured` records whether
+  // it actually wrote, gating the regex fallback below (same short-circuit
+  // pattern as phone/email above).
+  let nameCaptured = false
   const markerName = detectVisitorNameMarker(text)
   if (markerName) {
     console.log('[chat/session] onFinish: name marker detected:', markerName)
-    await persistVisitorName(sessionId, markerName)
-    return
+    nameCaptured = await persistVisitorName(sessionId, markerName)
+  } else {
+    console.log('[chat/session] onFinish: no name marker in assistant text')
   }
 
-  console.log('[chat/session] onFinish: no name marker in assistant text')
+  // Visitor-message name watcher (regex fallback) — scans the visitor's own
+  // message for a self-introduction cue ("my name is", "name's", "call me",
+  // "this is"). Only runs when the [NAME:] marker path did not capture: a
+  // successful marker write short-circuits this, so a value Sage emitted as a
+  // marker is never re-derived from free text.
+  if (visitorText && visitorText.length > 0) {
+    if (nameCaptured) {
+      console.log('[chat/session] onFinish: name captured via marker, skipping regex fallback')
+    } else {
+      const name = detectNameInText(visitorText)
+      if (name) {
+        console.log('[chat/session] onFinish: name detected in visitor message')
+        await persistVisitorName(sessionId, name)
+      }
+    }
+  }
 }

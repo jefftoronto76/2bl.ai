@@ -130,4 +130,44 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
     expect(updates.filter(u => 'email' in u)).toEqual([{ email: 'hello@example.com' }])
     expect(selectCols.filter(c => c === 'email')).toHaveLength(1)
   })
+
+  it('skips the regex name fallback when the [NAME:] marker captures', async () => {
+    const { client, updates } = makeAdminClient({
+      visitor_name: null,
+      email: null,
+      phone: null,
+      calendar_offered: true,
+    })
+    adminHolder.client = client
+
+    await handleSessionFinish({
+      sessionId: 's5',
+      text: 'Great to meet you. [NAME: cassandra]',
+      usage: null,
+      // A different name in free text — if the regex ran it would write this.
+      visitorText: 'my name is Priya',
+    })
+
+    // Only the marker name (titlecased from 'cassandra') should be written.
+    expect(updates.filter(u => 'visitor_name' in u)).toEqual([{ visitor_name: 'Cassandra' }])
+  })
+
+  it('runs the regex name fallback when no [NAME:] marker is present', async () => {
+    const { client, updates } = makeAdminClient({
+      visitor_name: null,
+      email: null,
+      phone: null,
+      calendar_offered: true,
+    })
+    adminHolder.client = client
+
+    await handleSessionFinish({
+      sessionId: 's6',
+      text: 'What brings you here today?',
+      usage: null,
+      visitorText: 'my name is Cassandra',
+    })
+
+    expect(updates.filter(u => 'visitor_name' in u)).toEqual([{ visitor_name: 'Cassandra' }])
+  })
 })

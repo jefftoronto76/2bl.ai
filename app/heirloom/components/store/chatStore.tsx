@@ -5,16 +5,14 @@ import React, {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useReducer,
   useRef,
   useState,
   ReactNode,
 } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { useChatTurn } from '@/services/chat/ui/v1/useChatTurn';
-import type { ChatEngineAccessors } from '@/services/chat/ui/v1';
-import type { ChatMessage } from '@/services/chat/server/types';
+import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
+import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
   bufferThread,
   clearDraft,
@@ -25,15 +23,25 @@ import {
 import {
   chatReducer,
   initialState,
-  type ChatState,
   type ChatAction,
   type Message,
 } from './chatReducer';
 
-// Re-export the reducer's state/action contracts so existing consumers keep
-// importing them from chatStore. The pure reducer itself lives in chatReducer.ts
-// (no React/Clerk deps) so its transitions stay unit-testable.
-export type { ChatState, ChatAction, Message };
+// The context's conversation+shell state shape. Conversation fields are sourced
+// from the shared session, shell fields from the reducer (see ChatProvider) —
+// defined here, where the two are composed, rather than in the shell reducer.
+export interface ChatState {
+  messages: Message[];
+  hasStarted: boolean;
+  isSidebarExpanded: boolean;
+  isLoading: boolean;
+  isChatOpen: boolean;
+  sessionId: string | null;
+}
+
+// Re-export the shell action union + Message so existing consumers keep importing
+// them from chatStore. The pure shell reducer lives in chatReducer.ts.
+export type { ChatAction, Message };
 
 /** A previous session loaded from the DB, for the Recent sidebar + recovery. */
 export interface RecentSession {
@@ -55,7 +63,7 @@ interface ChatContextType {
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
-// we narrow it to the persisted message shape and revive timestamps below.
+// reviveUIMessages narrows + revives it (incl. legacy ISO timestamps) below.
 interface ApiSession {
   id: string;
   messages: unknown;
@@ -73,8 +81,7 @@ function deriveSessionTitle(visitorName: string | null, messages: Message[]): st
 }
 
 function toRecentSession(row: ApiSession): RecentSession {
-  const raw = Array.isArray(row.messages) ? (row.messages as PersistedMessage[]) : [];
-  const messages = raw.map(revive);
+  const messages = reviveUIMessages(row.messages);
   return {
     id: row.id,
     updatedAt: row.updated_at,
@@ -85,128 +92,96 @@ function toRecentSession(row: ApiSession): RecentSession {
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
-function toMessage(role: 'user' | 'assistant', content: string): Message {
-  return { id: crypto.randomUUID(), role, content, timestamp: new Date() };
-}
-
-// Bridge the in-memory Message (timestamp: Date) and the JSON-serializable
-// PersistedMessage (timestamp: ISO string) the localStorage buffer stores.
+// Bridge the canonical UIMessage (timestamp: number) to the JSON-serializable
+// PersistedMessage (timestamp: ISO string) the localStorage buffer stores. Reads
+// go through reviveUIMessage(s), which also accept legacy ISO-string timestamps.
 function serialize(m: Message): PersistedMessage {
-  return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp.toISOString() };
-}
-
-function revive(m: PersistedMessage): Message {
-  return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp) };
+  return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(chatReducer, initialState);
+  // Shell state only (sidebar + panel open). Conversation state now lives in the
+  // shared session below. The reducer's conversation actions remain defined but
+  // are no longer dispatched from here (removed in a follow-up commit).
+  const [shellState, dispatch] = useReducer(chatReducer, initialState);
   const { isLoaded, isSignedIn } = useUser();
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
-  // Authoritative, synchronously-updated mirrors of the conversation state the
-  // engine reads/writes. The reducer drives rendering, but its dispatch is
-  // async — so the engine reads these refs (updated inline in the accessors)
-  // to avoid persisting a stale transcript when useChatTurn reads getMessages()
-  // synchronously after the stream settles. Messages and sessionId are mutated
-  // ONLY through these accessors (no component dispatches SEND_MESSAGE /
-  // ADD_ASSISTANT_MESSAGE / UPDATE_LAST_ASSISTANT / SET_SESSION_ID), so the
-  // refs and reducer never diverge.
-  const messagesRef = useRef<Message[]>([]);
-  const sessionIdRef = useRef<string | null>(null);
-  // The engine eagerly seeds an empty assistant message before streaming; we
-  // defer materializing it until the first token so the typing indicator shows
-  // (and no empty bubble flashes) — matching the prior Heirloom behavior.
-  const assistantPendingRef = useRef(false);
+  // The conversation engine + state, isolated to this provider (no instanceKey).
+  const session = useChatSession({});
+  const { messages, sessionId, isStreaming, isError, send, hydrate, reset } = session;
 
-  // Navigate-away guard: a ref (not reducer state) so the beforeunload handler
-  // reads the current value synchronously without re-binding on every render.
-  // Mirrors isLoading — whether a turn is in flight.
-  const isLoadingRef = useRef(false);
+  // Latest-value mirror refs, assigned during render, so event handlers
+  // (pagehide / beforeunload) and newChat read the current transcript/session
+  // synchronously without re-binding listeners.
+  const messagesRef = useRef<Message[]>(messages);
+  const sessionIdRef = useRef<string | null>(sessionId);
+  const isStreamingRef = useRef<boolean>(isStreaming);
+  messagesRef.current = messages;
+  sessionIdRef.current = sessionId;
+  isStreamingRef.current = isStreaming;
 
-  // Write the current authoritative transcript to localStorage. Reads the refs
-  // (not reducer state) so it always sees the latest turn, even mid-stream when
-  // called from the pagehide/visibilitychange flush. No-ops on an empty thread.
+  // Last sessionId the buffering effect acted on. Lets clearDraft + re-buffer
+  // fire only on a genuine null→id transition (a live send creating a session) —
+  // never on every render, and never when hydrate() restores an id (primed in
+  // hydrateConversation below).
+  const prevSessionIdRef = useRef<string | null>(sessionId);
+
+  // Write the current transcript to localStorage. Reads the mirror ref so a
+  // mid-stream flush sees the latest tokens. Drops the empty streaming-assistant
+  // placeholder so it is never persisted (it is skipped on render too). No-ops
+  // on an empty thread (bufferThread guards length 0).
   const persistCurrent = useCallback(() => {
-    bufferThread(messagesRef.current.map(serialize), sessionIdRef.current);
+    const msgs = messagesRef.current.filter(
+      m => !(m.role === 'assistant' && m.content === ''),
+    );
+    bufferThread(msgs.map(serialize), sessionIdRef.current);
   }, []);
 
-  const accessors = useMemo<ChatEngineAccessors>(
-    () => ({
-      getMessages: () => messagesRef.current,
-      addMessage: (msg: ChatMessage) => {
-        if (msg.role === 'user') {
-          const m = toMessage('user', msg.content);
-          messagesRef.current = [...messagesRef.current, m];
-          dispatch({ type: 'SEND_MESSAGE', payload: m });
-          // Buffer the user turn immediately so an interrupted reply (page
-          // closed mid-stream, before the DB PATCH) still recovers the question.
-          persistCurrent();
-          return;
-        }
-        // assistant
-        if (msg.content === '') {
-          assistantPendingRef.current = true;
-          return;
-        }
-        const m = toMessage('assistant', msg.content);
-        messagesRef.current = [...messagesRef.current, m];
-        assistantPendingRef.current = false;
-        dispatch({ type: 'ADD_ASSISTANT_MESSAGE', payload: m });
-        persistCurrent();
-      },
-      updateLastMessage: (content: string) => {
-        if (assistantPendingRef.current) {
-          assistantPendingRef.current = false;
-          const m = toMessage('assistant', content);
-          messagesRef.current = [...messagesRef.current, m];
-          dispatch({ type: 'ADD_ASSISTANT_MESSAGE', payload: m });
-          return;
-        }
-        const msgs = [...messagesRef.current];
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          if (msgs[i].role === 'assistant') {
-            msgs[i] = { ...msgs[i], content };
-            break;
-          }
-        }
-        messagesRef.current = msgs;
-        dispatch({ type: 'UPDATE_LAST_ASSISTANT', payload: content });
-      },
-      setStreaming: (val: boolean) => {
-        isLoadingRef.current = val;
-        dispatch({ type: 'SET_LOADING', payload: val });
-        // Streaming flipping to false marks a completed turn — buffer the final
-        // assistant content. We deliberately do NOT buffer per token (every
-        // updateLastMessage) to avoid thrashing localStorage during the stream.
-        if (!val) persistCurrent();
-      },
-      setSessionId: (id: string) => {
-        // A real session id arrived — drop the draft slot so it is not left as
-        // an orphan, then re-buffer the thread under its session key.
-        clearDraft();
-        sessionIdRef.current = id;
-        dispatch({ type: 'SET_SESSION_ID', payload: id });
-        persistCurrent();
-      },
-      getSessionId: () => sessionIdRef.current,
-    }),
-    [persistCurrent],
-  )
+  // Hydrate the conversation from a buffer / DB row. Primes prevSessionIdRef so
+  // the sessionId effect does NOT treat a restored session id as a new draft→
+  // session transition — which would needlessly clearDraft + re-buffer, bumping
+  // updatedAt and breaking most-recent-wins recovery.
+  const hydrateConversation = useCallback(
+    (input: { messages: Message[]; sessionId: string | null }) => {
+      prevSessionIdRef.current = input.sessionId;
+      hydrate(input);
+    },
+    [hydrate],
+  );
 
-  const turn = useChatTurn({ accessors })
+  // Buffer on TURN BOUNDARIES only — keyed on isStreaming, never on messages, so
+  // there is no per-token localStorage thrash. Fires on turn start (false→true:
+  // the user message is present → recoverable if the reply is interrupted) and
+  // turn finish (true→false: final assistant content). hydrate() does not touch
+  // isStreaming, so restoring a thread never triggers a write here.
+  useEffect(() => {
+    persistCurrent();
+  }, [isStreaming, persistCurrent]);
+
+  // When a real session id arrives mid-turn (engine lazy-create), drop the orphan
+  // draft slot and re-buffer under the session key. Guarded by a prev-value
+  // compare so it fires only on an actual transition — not on every render, and
+  // not when hydrate() restored the id (prevSessionIdRef was primed to match).
+  useEffect(() => {
+    if (sessionId === prevSessionIdRef.current) return;
+    prevSessionIdRef.current = sessionId;
+    if (sessionId) {
+      clearDraft();
+      persistCurrent();
+    }
+  }, [sessionId, persistCurrent]);
 
   // Rehydrate the most recently buffered thread on mount so a refresh restores
-  // the conversation. Syncs the engine refs too, so the next turn continues the
-  // same session (and PATCHes the same DB row) without touching the DB path.
+  // the conversation. hydrateConversation is stable → runs once.
   useEffect(() => {
     const thread = findMostRecentThread();
     if (!thread || thread.messages.length === 0) return;
-    const messages = thread.messages.map(revive);
-    messagesRef.current = messages;
-    sessionIdRef.current = thread.sessionId;
-    dispatch({ type: 'HYDRATE', payload: { messages, sessionId: thread.sessionId } });
-  }, []);
+    hydrateConversation({
+      messages: reviveUIMessages(thread.messages),
+      sessionId: thread.sessionId,
+    });
+  }, [hydrateConversation]);
 
   // Flush the live transcript when the page is hidden or unloaded, so a turn
   // still streaming (never reached the DB) survives a tab close / app switch.
@@ -226,8 +201,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Signed-in cross-device recovery + Recent list. Fetch the user's DB sessions,
   // populate the Recent sidebar, and — most-recent-wins — hydrate from the newest
   // DB session only when it is strictly newer than the local buffer (so this
-  // never clobbers a fresher local thread). Anonymous users skip this entirely
-  // and keep localStorage-only behavior.
+  // never clobbers a fresher local thread). Anonymous users skip this entirely.
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
@@ -247,9 +221,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const localMs = local ? new Date(local.updatedAt).getTime() : 0;
         if (new Date(newest.updatedAt).getTime() <= localMs) return;
 
-        messagesRef.current = newest.messages;
-        sessionIdRef.current = newest.id;
-        dispatch({ type: 'HYDRATE', payload: { messages: newest.messages, sessionId: newest.id } });
+        hydrateConversation({ messages: newest.messages, sessionId: newest.id });
       } catch (err) {
         console.error('[heirloom/chat] DB session recovery failed:', err);
       }
@@ -257,18 +229,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, hydrateConversation]);
 
   // Warn before leaving while a turn is in flight or any conversation exists.
   // The condition is deliberately broad: anonymous visitors have no cross-device
-  // DB recovery yet, so an existing thread is treated as unsaved on leave (tighten
-  // to a dirty/confirmed-flush check once signed-in DB recovery lands). Chrome
-  // 119+ needs BOTH preventDefault() and returnValue set to show the dialog.
-  // Reads refs so the single mount-time listener always sees current state — no
-  // re-binding, no leak.
+  // DB recovery yet, so an existing thread is treated as unsaved on leave. Chrome
+  // 119+ needs BOTH preventDefault() and returnValue set. Reads the mirror refs
+  // so the single mount-time listener always sees current state.
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isLoadingRef.current || messagesRef.current.length > 0) {
+      if (isStreamingRef.current || messagesRef.current.length > 0) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -277,41 +247,43 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
-  // Start a fresh conversation (Sidebar "New Chat"). Clears the authoritative
-  // engine refs so the next turn lazily creates a brand-new session, drops the
-  // active thread's localStorage entry — both the pre-session draft slot AND the
-  // current session-keyed entry, captured before the ref is nulled — and resets
-  // the reducer to the empty-greeting state. Clearing the session entry is what
-  // prevents the mount rehydration from reloading the just-cleared conversation
-  // on the next refresh. recentSessions is left intact so the Recent sidebar
-  // keeps showing prior threads, and DB rows are untouched (loadable from Recent).
+  // Start a fresh conversation (Sidebar "New Chat"). Drops the active thread's
+  // localStorage entries — both the pre-session draft slot AND the current
+  // session-keyed entry (captured before reset) — so the next mount does not
+  // re-hydrate the just-cleared conversation, then resets the session. Shell
+  // state (sidebar/panel) is preserved; recentSessions + DB rows are untouched.
   const newChat = useCallback(() => {
-    const clearedSessionId = sessionIdRef.current;
-    messagesRef.current = [];
-    sessionIdRef.current = null;
-    assistantPendingRef.current = false;
-    isLoadingRef.current = false;
+    const cleared = sessionIdRef.current;
     clearDraft();
-    if (clearedSessionId) clearSession(clearedSessionId);
-    dispatch({ type: 'RESET' });
-  }, []);
+    if (cleared) clearSession(cleared);
+    prevSessionIdRef.current = null;
+    reset();
+  }, [reset]);
 
-  // Load a previously-fetched session into the conversation (Recent sidebar
-  // click). Syncs the engine refs so the next turn continues that session.
+  // Load a previously-fetched session into the conversation (Recent sidebar).
   const loadSession = useCallback(
     (id: string) => {
-      const session = recentSessions.find(s => s.id === id);
-      if (!session) return;
-      messagesRef.current = session.messages;
-      sessionIdRef.current = session.id;
-      dispatch({ type: 'HYDRATE', payload: { messages: session.messages, sessionId: session.id } });
+      const found = recentSessions.find(s => s.id === id);
+      if (!found) return;
+      hydrateConversation({ messages: found.messages, sessionId: found.id });
     },
-    [recentSessions],
+    [recentSessions, hydrateConversation],
   );
+
+  // The context state preserves the historical ChatState shape: conversation
+  // fields are sourced from the session, shell fields from the reducer.
+  const state: ChatState = {
+    messages,
+    hasStarted: messages.length > 0,
+    isSidebarExpanded: shellState.isSidebarExpanded,
+    isLoading: isStreaming,
+    isChatOpen: shellState.isChatOpen,
+    sessionId,
+  };
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: turn.send, isError: turn.isError, recentSessions, loadSession, newChat }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat }}
     >
       {children}
     </ChatContext.Provider>
