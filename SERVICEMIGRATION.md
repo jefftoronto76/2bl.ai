@@ -233,12 +233,12 @@ Correction 1 (headless → `services/`, JSX → `components/`):
   `useChatSessionContext()` (one conversation across both surfaces). The iOS
   keyboard handling and the Chat mode-bridge were preserved unchanged.
 
-Remaining in `src/components/` (intentionally, deferred past Step E):
-
-| File | Role |
-|------|------|
-| src/components/Nav.tsx | jefflougheed nav chrome — **no chat coupling**; only `ShareModal` (deferred `src→app` warning). |
-| src/components/SectionProcess.tsx | jefflougheed marketing section; consumes the widget only via the headless `useWidgetShell` (relocated into `app/(jefflougheed)/components/` in Step E). |
+`src/components/` is now **empty and removed**. The last resident, `Nav.tsx`
+(jefflougheed nav chrome — **no chat coupling**; only `ShareModal`), was
+relocated into `app/(jefflougheed)/components/Nav.tsx` (importing `ShareModal`
+via relative `./ShareModal`), which clears the final `src→app` boundary warning
+(`boundaries/element-types` now reports **0** warnings). `SectionProcess.tsx`
+had already moved there in Step E. `src/` now holds only `calendly.d.ts`.
 
 Note: `readDataStream` (the data-stream reader, shared with the admin composer)
 was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`
