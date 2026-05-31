@@ -7,7 +7,7 @@ import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewp
 import { useReveal } from '@/services/shared/useReveal'
 import { parseBookingCards } from '@/services/chat/ui/v1/parseBookingCards'
 import { SageReply } from './sage/SageReply'
-import { useSageParameters } from './sage/useSageParameters'
+import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 
 // NOTE: This file owns two surfaces — the in-page `#chat` anchor section
 // and the full-viewport overlay. The overlay opens from the in-page `#chat`

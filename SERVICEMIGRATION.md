@@ -227,7 +227,9 @@ the engine (they have NOT moved into `services/chat/ui/`):
 | src/components/sage/BookingCard.tsx | Booking card + inline-embed injection. |
 | src/components/sage/SageReply.tsx | Assistant-message renderer; resolves cards to params by URL match. |
 | src/components/sage/markdownComponents.tsx | Palette-aware markdown renderers. |
-| src/components/sage/useSageParameters.ts | Fetches `/api/sage/parameters`. |
+
+(The headless `useSageParameters` data hook moved to
+`services/chat/ui/v1/useSageParameters.ts` in centralization Step E.)
 
 Client transport that still lives in `src/lib/` (`src/lib/sage.ts` was deleted
 in PR #43 — its `streamSageResponse` fetch+stream logic now lives in the

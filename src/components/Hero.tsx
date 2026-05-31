@@ -6,7 +6,7 @@ import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionPro
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { parseBookingCards } from '@/services/chat/ui/v1/parseBookingCards'
 import { SageReply } from './sage/SageReply'
-import { useSageParameters } from './sage/useSageParameters'
+import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 
 function detectModeFromLocation(): 'question' | null {
   if (typeof window === 'undefined') return null
