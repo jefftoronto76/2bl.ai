@@ -1,5 +1,5 @@
-import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { createContent } from '@/services/content'
 
 export async function POST(req: Request) {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -28,18 +28,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const supabase = getAdminClient()
-
-  const { data, error } = await supabase
-    .from('content')
-    .insert({ tenant_id: authCtx.tenant_id, owner_id: authCtx.owner_id, name, type, raw })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('[content/create] insert failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  const result = await createContent(authCtx, { name, type, raw })
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json(data)
+  return Response.json(result.data)
 }

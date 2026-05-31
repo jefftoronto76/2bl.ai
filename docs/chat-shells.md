@@ -15,8 +15,8 @@ the chat is a feature layered on top of it.
 
 | Surface | File | Role |
 |---------|------|------|
-| `Hero` | `src/components/Hero.tsx` | Inline chat embedded in the `#hero` section. Always mounted; keyboard handling via CSS vars. |
-| `Chat` | `src/components/Chat.tsx` | Full-viewport overlay. `position: fixed; top: 0; height: 100dvh`. Toggled open/closed. |
+| `Hero` | `components/shells/widget/Hero.tsx` | Inline chat embedded in the `#hero` section. Always mounted; keyboard handling via CSS vars. |
+| `Chat` | `components/shells/widget/Chat.tsx` | Full-viewport overlay. `position: fixed; top: 0; height: 100dvh`. Toggled open/closed. |
 
 Both surfaces share **one conversation** via `ChatSessionProvider` with
 `instanceKey="sage"` (singleton mode in `useChatSession` — see
@@ -59,13 +59,13 @@ context behind the panel, not a co-equal surface.
 | Component | File | Role |
 |-----------|------|------|
 | `HeirloomPage` | `app/heirloom/page.tsx` | Root. Mounts `ChatProvider`, renders `<LandingPage>` with the panel layered over it. |
-| `ChatHero` | `app/heirloom/components/chat/ChatHero.tsx` | Panel body: `Sidebar` + header + message area + input. |
-| `ChatHeader` | `app/heirloom/components/chat/ChatHeader.tsx` | Panel header — "Your Story" label + Account / Close buttons. |
-| `ChatInput` | `app/heirloom/components/chat/ChatInput.tsx` | Auto-growing textarea, Enter-to-send, ArrowUp send button. |
-| `MessageList` | `app/heirloom/components/chat/MessageList.tsx` | Renders turns; auto-scrolls to bottom; bouncing-dots typing indicator. |
-| `Sidebar` | `app/heirloom/components/chat/Sidebar.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
+| `ChatHero` | `components/shells/membership/ChatHero.tsx` | Panel body: `Sidebar` + header + message area + input. |
+| `ChatHeader` | `components/shells/membership/ChatHeader.tsx` | Panel header — "Your Story" label + Account / Close buttons. |
+| `ChatInput` | `components/shells/membership/ChatInput.tsx` | Auto-growing textarea, Enter-to-send, ArrowUp send button. |
+| `MessageList` | `components/shells/membership/MessageList.tsx` | Renders turns; auto-scrolls to bottom; bouncing-dots typing indicator. |
+| `Sidebar` | `components/shells/membership/Sidebar.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
 
-**Store:** `useReducer` in `app/heirloom/components/store/chatStore.tsx` via
+**Store:** `useReducer` in `components/shells/membership/chatStore.tsx` via
 `ChatProvider`. Isolated mode — no `instanceKey`. State includes `messages`,
 `sessionId`, `isLoading`, `isChatOpen`, `isSidebarExpanded`, `hasStarted`.
 `sendMessage` is the shared `useChatTurn().send` wired through
@@ -85,7 +85,7 @@ when the keyboard is open. Body scroll-lock is always on while the panel
 is open.
 
 **Persistence:** best-effort localStorage buffer via
-`app/heirloom/lib/chatPersistence.ts`. Threads stored under
+`services/chat/ui/v1/persistence.ts`. Threads stored under
 `heirloom:chat:v1:session:<id>`, pre-session threads under a draft slot.
 Signed-in users also get DB recovery via `GET /api/sessions`; DB wins
 over the local buffer only when `updated_at` on the DB session is strictly
@@ -305,9 +305,9 @@ interface ChatConfig {
 
 | Capability | Widget (jefflougheed) | Membership (Heirloom) |
 |------------|----------------------|-----------------------|
-| Booking cards | Yes — `useSageParameters` + `BookingCard` in `src/components/sage/` | No |
+| Booking cards | Yes — `BookingCard` in `components/shells/widget/sage/`, `useSageParameters` in `services/chat/ui/v1/` | No |
 | Session history | No | Yes — `GET /api/sessions` + Recent sidebar |
-| localStorage persistence | No | Yes — `app/heirloom/lib/chatPersistence.ts` |
+| localStorage persistence | No | Yes — `services/chat/ui/v1/persistence.ts` |
 
 When `ChatConfig` is formalized in a later phase, the convention becomes
 explicit configuration — no behavior change, just a declared contract that

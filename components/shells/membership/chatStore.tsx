@@ -19,13 +19,13 @@ import {
   clearSession,
   findMostRecentThread,
   type PersistedMessage,
-} from '../../lib/chatPersistence';
+} from '@/services/chat/ui/v1/persistence';
 import {
   chatReducer,
   initialState,
   type ChatAction,
   type Message,
-} from './chatReducer';
+} from '@/services/chat/ui/v1/chatReducer';
 
 // The context's conversation+shell state shape. Conversation fields are sourced
 // from the shared session, shell fields from the reducer (see ChatProvider) —

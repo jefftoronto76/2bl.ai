@@ -139,6 +139,39 @@ live on `main`.
 - **Auth** — every `/api/platform/*` route re-checks `platform_admin`
   independently of the UI, so the service-role writes can't run for a non-admin.
 
+### Admin/platform route → service delegation ✅ (centralization Step C)
+The inline-logic admin/platform routes flagged in the centralization plan are
+now thin consumers; their business logic moved into services. Behavior is
+byte-for-byte preserved (same queries, validation, status codes, wire format,
+log strings).
+
+- **`services/tenant/`** — `createTenant` / `updateTenant` / `deleteTenant`
+  back `POST /api/platform/tenants` and `PATCH`/`DELETE
+  /api/platform/tenants/[id]`. Routes keep the `platform_admin` gate + parse.
+  `resolveTenantConfig(host)` is DEFERRED to Step I (needs `tenants.shell_type`
+  + confirmed `tenant_branding` columns — Jeff/Studio).
+- **`services/content/`** — `extractText` + `createDocumentAsset` (assets),
+  `createContent` / `getContent` (content), `listTopics` / `createTopic`
+  (topics) back `/api/admin/assets/upload`, `/api/admin/content[/id]`, and
+  `/api/admin/topics`.
+- **`services/prompt/composer.ts`** — `streamBlocksComposer` /
+  `streamPromptChat` back `/api/admin/blocks/chat` and `/api/admin/prompt-chat`,
+  returning the Vercel AI SDK data-stream Response unchanged.
+
+### Membership shell extraction ✅ (centralization Step F)
+The Heirloom chat — the platform's **membership shell** — was split per
+Correction 1 (headless logic → `services/`, JSX → `components/`):
+
+- **Headless → `services/chat/ui/v1/`:** `chatReducer.ts` (+ test) — the pure
+  shell reducer (no React/JSX).
+- **JSX → `components/shells/membership/`:** `ChatHero`, `ChatHeader`,
+  `ChatInput`, `MessageList`, `Sidebar`, the `chatStore.tsx` / `ChatProvider`
+  context wrapper, and `ui/*` (`Avatar`, `Button`, `IconButton`).
+- `app/heirloom/` now holds only `page.tsx` (mount), `layout.tsx`,
+  `globals.css`, and `components/landing/*`. The landing files + `page.tsx`
+  import the shell via `@/components/shells/membership/*` (app→components, legal
+  under the Step D eslint rule). Mobile keyboard handling was untouched.
+
 ### Heirloom storefront — landing + chat ✅ (on `heirloom-migration`)
 Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
 
@@ -183,41 +216,35 @@ via `useReducer` — each wrapping its store in `ChatEngineAccessors`.
 via the shared `readDataStream` (`services/chat/server/stream-utils.ts`). See
 "Chat UI v1 — shared engine" under Completed.
 
-The remaining **visual** components still live in `src/` as consumers of the
-engine (they have NOT moved into `services/chat/ui/`):
+### Widget shell extraction ✅ (centralization Step E)
+The jefflougheed Sage chat — the platform's **widget shell** — was split per
+Correction 1 (headless → `services/`, JSX → `components/`):
 
-| File | Notes |
-|------|-------|
-| src/components/sage/parseBookingCards.ts | Client parser — now **delegates to `createDefaultRegistry()`** in `services/chat/ui/v1/registry.ts`; remains in `src/` as a thin wrapper preserving the `{ prose, cards }` API. Also strips `[NAME:]` markers. |
-| src/components/sage/BookingCard.tsx | Booking card + inline-embed injection. |
-| src/components/sage/SageReply.tsx | Assistant-message renderer; resolves cards to params by URL match. |
-| src/components/sage/markdownComponents.tsx | Palette-aware markdown renderers. |
-| src/components/sage/useSageParameters.ts | Fetches `/api/sage/parameters`. |
+- **JSX → `components/shells/widget/`:** `Hero`, `Chat`, and `sage/*`
+  (`SageReply`, `BookingCard`, `markdownComponents`).
+- **Headless → `services/chat/ui/v1/`:** `useWidgetShell` (the shell-state
+  store — extracted from the old `src/lib/store.ts` `useSageStore`, which was
+  deleted; the conversation slice had already migrated to `useChatSession`) and
+  `useSageParameters` (data hook). The headless `parseBookingCards` parser had
+  already moved in Step B.
+- `useReveal` moved to `services/shared/`; the orphaned `Work.tsx` was deleted.
+- `app/(jefflougheed)/page.tsx` mounts the singleton
+  `<ChatSessionProvider instanceKey="sage">`; Hero + Chat consume
+  `useChatSessionContext()` (one conversation across both surfaces). The iOS
+  keyboard handling and the Chat mode-bridge were preserved unchanged.
 
-Client transport that still lives in `src/lib/` (`src/lib/sage.ts` was deleted
-in PR #43 — its `streamSageResponse` fetch+stream logic now lives in the
-`useChatTurn` hook):
+Remaining in `src/components/` (intentionally, deferred past Step E):
 
-| File | Notes |
-|------|-------|
-| src/lib/store.ts | Exports both `useSageStore` (public chat) and `useChatStore`. Consumed by Chat, Hero, Nav, SectionProcess, Work — wrapped in `ChatEngineAccessors` for `useChatTurn`. |
+| File | Role |
+|------|------|
+| src/components/Nav.tsx | jefflougheed nav chrome — **no chat coupling**; only `ShareModal` (deferred `src→app` warning). |
+| src/components/SectionProcess.tsx | jefflougheed marketing section; consumes the widget only via the headless `useWidgetShell` (relocated into `app/(jefflougheed)/components/` in Step E). |
 
 Note: `readDataStream` (the data-stream reader, shared with the admin composer)
 was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`
 (V5) — named to avoid colliding with the chat `stream.ts`.
 `services/chat/ui/v1/useChatTurn.ts`, `components/admin/PromptBuilderChat.tsx`,
 and `app/admin/prompt-builder/page.tsx` import it from there now.
-
-The jefflougheed.ca consumers below stay in `src/components/` and become thin
-consumers of the chat service once its UI half exists — do not move or delete
-without explicit instruction from Jeff:
-
-| File | Role |
-|------|------|
-| src/components/Chat.tsx | Visitor chat overlay — consumes the chat service. |
-| src/components/Hero.tsx | Imports sage/* + store + sage.ts; drives streaming/booking. |
-| src/components/Nav.tsx | Imports `useSageStore`. |
-| src/components/SectionProcess.tsx | Imports `useSageStore` (expand question mode). |
 
 ---
 

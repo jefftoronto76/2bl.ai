@@ -16,8 +16,8 @@
 // toChatMessage / toChatMessages below.
 //
 // Phase 0 is contract-only: nothing here is wired into the existing stores or
-// components yet. The Zustand store, the Heirloom reducer, and chatPersistence
-// keep their current shapes until Phase 1 adopts these helpers.
+// components yet. The Zustand store, the Heirloom reducer, and the persistence
+// buffer keep their current shapes until Phase 1 adopts these helpers.
 
 import type { ChatMessage, ChatRole } from '@/services/chat/server/types'
 import type { UIMessage } from './types'

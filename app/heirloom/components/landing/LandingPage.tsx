@@ -12,7 +12,7 @@ import { PricingSection } from './PricingSection';
 import { AddOnsSection } from './AddOnsSection';
 import { CtaSection } from './CtaSection';
 import { Footer } from './Footer';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 function HeroSection() {
   const { dispatch } = useChatStore();

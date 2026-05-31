@@ -2,7 +2,7 @@
 
 import { useState, useRef, KeyboardEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from './chatStore';
 
 export function ChatInput() {
   const [value, setValue] = useState('');

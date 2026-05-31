@@ -8,8 +8,8 @@ import {
   ChevronRight,
   Clock,
 } from 'lucide-react';
-import { IconButton } from '../ui/IconButton';
-import { useChatStore } from '../store/chatStore';
+import { IconButton } from './ui/IconButton';
+import { useChatStore } from './chatStore';
 
 const navItems = [
   { icon: SquarePen, label: 'New Chat', action: 'newChat' as const },

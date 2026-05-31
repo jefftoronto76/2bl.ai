@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import { ChatProvider, useChatStore } from './components/store/chatStore';
+import { ChatProvider, useChatStore } from '@/components/shells/membership/chatStore';
 import { LandingPage } from './components/landing/LandingPage';
-import { ChatHero } from './components/chat/ChatHero';
+import { ChatHero } from '@/components/shells/membership/ChatHero';
 
 // App root for the Heirloom storefront: the landing page with a slide-in chat
 // panel layered over it. The panel is always mounted and slides off-canvas when

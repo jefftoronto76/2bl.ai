@@ -8,7 +8,7 @@ import {
 import {
   parseBookingCards,
   type BookingCardData,
-} from '@/components/sage/parseBookingCards'
+} from '@/services/chat/ui/v1/parseBookingCards'
 import { CopyTranscriptButton } from './CopyTranscriptButton'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'

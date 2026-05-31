@@ -3,7 +3,7 @@
 import ReactMarkdown from 'react-markdown'
 import { BookingCard } from './BookingCard'
 import { markdownComponents } from './markdownComponents'
-import type { BookingCardData, SageParameterPublic } from './parseBookingCards'
+import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 
 export function SageReply({
   prose,

@@ -1,5 +1,5 @@
-import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { listTopics, createTopic } from '@/services/content'
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -10,20 +10,12 @@ export async function GET() {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = getAdminClient()
-
-  const { data, error } = await supabase
-    .from('topics')
-    .select('id, name, type')
-    .eq('tenant_id', authCtx.tenant_id)
-    .order('name')
-
-  if (error) {
-    console.error('[topics] fetch failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  const result = await listTopics(authCtx)
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json(data)
+  return Response.json(result.data)
 }
 
 export async function POST(req: Request) {
@@ -49,18 +41,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
-  const supabase = getAdminClient()
-
-  const { data, error } = await supabase
-    .from('topics')
-    .insert({ name, type, tenant_id: authCtx.tenant_id })
-    .select('id, name, type')
-    .single()
-
-  if (error) {
-    console.error('[topics] insert failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  const result = await createTopic(authCtx, { name, type })
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json(data)
+  return Response.json(result.data)
 }

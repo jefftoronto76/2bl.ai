@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { useChatStore } from '../store/chatStore';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 export function CtaSection() {
   const [visible, setVisible] = useState(false);

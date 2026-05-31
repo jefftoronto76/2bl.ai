@@ -1,4 +1,4 @@
-// app/heirloom/lib/chatPersistence.ts
+// services/chat/ui/v1/persistence.ts
 //
 // Client-side localStorage buffering for the Heirloom chat. Best-effort
 // durability: every turn is written here as it completes so a refresh or an

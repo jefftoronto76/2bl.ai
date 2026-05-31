@@ -1,8 +1,16 @@
 # Chat UI v2 — Foundation Design: Shared Session Pattern
 
-*Status: design — no implementation yet.*
-*Branch: `feat/chat-ui-v2-foundation`*
-*Audience: engineering review before extraction begins.*
+*Status: **SHIPPED**. The shared-session core in this design is live — see
+`services/chat/ui/v1/core/` (`store.ts`, `store-registry.ts`, `useChatSession.ts`,
+`ChatSessionProvider.tsx`). jefflougheed mounts one
+`<ChatSessionProvider instanceKey="sage">` in `app/(jefflougheed)/page.tsx`;
+Hero + Chat consume `useChatSessionContext()`. The §6 Risk 1 behavior change
+(error/retry state moved into the shared store → **shared retry across surfaces**)
+is **done, not pending**. The jefflougheed conversation slice was removed from
+the old `useSageStore`; its remaining shell slice became the headless
+`useWidgetShell` store in centralization Step E. This document is retained as the
+design record; the sections below describe the now-live behavior.*
+*Branch: `feat/chat-ui-v2-foundation` (landed).*
 
 This document designs the **shared/singleton session pattern** that lets
 multiple UI surfaces drive **one** conversation instance. It is the
