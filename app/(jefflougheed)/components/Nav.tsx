@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type CSSProperties } from 'react'
-import { ShareModal } from '@/app/(jefflougheed)/components/ShareModal'
+import { ShareModal } from './ShareModal'
 
 const LINKS = [
   { label: 'Book', href: '#how-it-works', kind: 'scroll' },

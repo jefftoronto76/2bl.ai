@@ -1,4 +1,4 @@
-import { Nav } from '@/components/Nav'
+import { Nav } from './components/Nav'
 import { Hero } from '@/components/shells/widget/Hero'
 import { Problem } from './components/Problem'
 import { SectionOutcomes } from './components/SectionOutcomes'
