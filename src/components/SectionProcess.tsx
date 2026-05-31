@@ -41,7 +41,7 @@ import {
   ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
-import { useSageStore } from '../lib/store'
+import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
 
@@ -309,7 +309,7 @@ function SymptomReveal({
 }) {
   const [open, setOpen] = useState(false)
   const panelId = 'sp-symptom-panel'
-  const expand = useSageStore((s) => s.expand)
+  const expand = useWidgetShell((s) => s.expand)
 
   const handleAskSageClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()

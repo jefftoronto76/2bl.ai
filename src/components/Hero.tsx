@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, KeyboardEvent } from 'react'
-import { useSageStore } from '../lib/store'
+import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { parseBookingCards } from '@/services/chat/ui/v1/parseBookingCards'
@@ -22,8 +22,8 @@ function detectModeFromLocation(): 'question' | null {
 export function Hero() {
   // Conversation state comes from the shared session — Hero and the Chat
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
-  // is shell state and stays on useSageStore.
-  const { setComposerRef } = useSageStore()
+  // is shell state and lives in useWidgetShell.
+  const { setComposerRef } = useWidgetShell()
   const { messages, isStreaming, isError, send, retry, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')

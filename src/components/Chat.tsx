@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useEffect, KeyboardEvent, useState } from 'react'
-import { useSageStore } from '../lib/store'
+import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/services/shared/useReveal'
@@ -10,19 +10,20 @@ import { SageReply } from './sage/SageReply'
 import { useSageParameters } from './sage/useSageParameters'
 
 // NOTE: This file owns two surfaces — the in-page `#chat` anchor section
-// and the full-viewport overlay. The overlay opens from the Nav "CHAT"
-// link, the in-page `#chat` CTA, and Work's "Click here" — each calls
-// `expand()` which flips `isExpanded` to true. Hero (src/components/Hero.tsx)
-// is a separate, independent inline chat that does NOT use expand() and does
-// NOT render this overlay. Hero and the overlay share session state
-// (messages, sessionId, isStreaming, mode) via useSageStore.
+// and the full-viewport overlay. The overlay opens from the in-page `#chat`
+// CTA and SectionProcess's "question" link — each calls `expand()` which
+// flips `isExpanded` to true. Hero (the inline composer) is a separate,
+// independent surface that does NOT use expand() and does NOT render this
+// overlay. Hero and the overlay share conversation state (messages, sessionId,
+// isStreaming, mode) via the shared session (useChatSession, instanceKey
+// "sage"); the overlay open/close + shell mode live in the useWidgetShell store.
 
 export function Chat() {
   const ref = useReveal()
-  // Shell state (overlay open/close) stays on useSageStore; conversation state
+  // Shell state (overlay open/close) lives in useWidgetShell; conversation state
   // comes from the shared session — Hero and this overlay are one conversation
   // via instanceKey "sage".
-  const { isExpanded, expand, collapse } = useSageStore()
+  const { isExpanded, expand, collapse } = useWidgetShell()
   const { messages, isStreaming, isError, mode, send, retry, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')
@@ -68,13 +69,13 @@ export function Chat() {
     return () => window.removeEventListener('keydown', handleEscape as any)
   }, [isExpanded, collapse])
 
-  // Mode bridge: the shell opens the overlay via expand('question') (Nav,
-  // SectionProcess, Work), which sets useSageStore.mode. Mirror that into the
+  // Mode bridge: the shell opens the overlay via expand('question')
+  // (SectionProcess), which sets useWidgetShell.mode. Mirror that into the
   // shared session when the overlay opens so the greeting and /api/sage reflect
-  // question mode. SectionProcess/Work/Nav stay untouched.
+  // question mode. SectionProcess stays untouched.
   useEffect(() => {
     if (!isExpanded) return
-    setMode(useSageStore.getState().mode)
+    setMode(useWidgetShell.getState().mode)
   }, [isExpanded, setMode])
 
   const submit = () => {
