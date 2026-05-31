@@ -45,9 +45,8 @@ account creation in chat**.
 - ~~History page missing the `tenant_id` filter~~ — **fixed (PR #38):**
   `app/admin/prompt-studio/history/page.tsx` now resolves the tenant via
   `getAuthContext()` and scopes the `chat_sessions` query by `tenant_id`.
-- Chat-UI strangle (`services/chat/ui/v1/`) — deferred intentionally
-  (`src/components/sage/*`, `Chat.tsx`, `Hero.tsx`, `src/lib/{store,sage}.ts`);
-  the 6 remaining `app→src` boundary warnings all trace to this.
+- Chat-UI strangle (`services/chat/ui/v1/`) — **complete** (Steps E/F + Nav
+  relocation; `boundaries/element-types` reports **0** warnings).
 
 The chat-service UI move and tenant-hierarchy cycle prevention remain **known
 deferred items** — see "Next — Heirloom" and "Known deferred items" below.
@@ -73,8 +72,8 @@ tenants migrated onto it:
 
 `useChatTurn` is store-agnostic (injected `ChatEngineAccessors`), so jefflougheed
 (Zustand) and Heirloom (`useReducer`) share one turn engine and one marker
-registry. The visual components stay in `src/` as consumers (see "Chat service —
-UI half (partially extracted)").
+registry. The visual components moved to `components/shells/widget/` (Steps E/F;
+see "Chat service — UI half (fully extracted)" below).
 
 ### Stage 1 — Planning
 - MIGRATION.md written and approved (full 6-phase plan)
@@ -204,7 +203,7 @@ Bringing Heirloom onto the platform (steps 1–2 of "Next — Heirloom" below):
 
 ---
 
-## Chat service — UI half (partially extracted, PRs #42-46)
+## Chat service — UI half (fully extracted, PRs #42-46 + Steps E/F + Nav)
 
 The server half was done earlier (above). The **engine half of the UI is now
 extracted** into `services/chat/ui/v1/`: the marker registry (`registry.ts` —
@@ -233,12 +232,12 @@ Correction 1 (headless → `services/`, JSX → `components/`):
   `useChatSessionContext()` (one conversation across both surfaces). The iOS
   keyboard handling and the Chat mode-bridge were preserved unchanged.
 
-Remaining in `src/components/` (intentionally, deferred past Step E):
-
-| File | Role |
-|------|------|
-| src/components/Nav.tsx | jefflougheed nav chrome — **no chat coupling**; only `ShareModal` (deferred `src→app` warning). |
-| src/components/SectionProcess.tsx | jefflougheed marketing section; consumes the widget only via the headless `useWidgetShell` (relocated into `app/(jefflougheed)/components/` in Step E). |
+`src/components/` is now **empty and removed**. The last resident, `Nav.tsx`
+(jefflougheed nav chrome — **no chat coupling**; only `ShareModal`), was
+relocated into `app/(jefflougheed)/components/Nav.tsx` (importing `ShareModal`
+via relative `./ShareModal`), which clears the final `src→app` boundary warning
+(`boundaries/element-types` now reports **0** warnings). `SectionProcess.tsx`
+had already moved there in Step E. `src/` now holds only `calendly.d.ts`.
 
 Note: `readDataStream` (the data-stream reader, shared with the admin composer)
 was moved out of `src/lib/stream.ts` to `services/chat/server/stream-utils.ts`
@@ -299,10 +298,8 @@ bug today (behavior is correct and contracts are frozen).
   is installed and `.eslintrc.json` (extending `next/core-web-vitals`) defines
   `app` / `src` / `services` elements with a `boundaries/element-types` rule
   forbidding direct `app/` ↔ `src/` imports (services/ is the shared layer). It
-  is set to **`warn`, not `error`**, because the strangle migration is mid-flight
-  — the **6 remaining** `app→src` warnings are all the deferred chat-UI layer
-  (see "Strangle status" below), so erroring would break the currently-passing
-  build. Flip to `error` once those finish moving into `services/`.
+  is set to **`warn`, not `error`** — the strangle is now complete (0 warnings;
+  see "Strangle status" below). Flip to `error` in Step G (a separate review pass).
   (`react/no-unescaped-entities` and `@next/next/no-html-link-for-pages`
   are downgraded to `warn` too: the codebase was never linted and violates them
   pre-existingly; fixing that is out of scope here.)
@@ -312,40 +309,32 @@ bug today (behavior is correct and contracts are frozen).
   `app/admin/prompt/page.tsx` imports it from the new path. Nothing imports it
   from `src/lib/` any more.
 
-### Strangle status (V5)
+### Strangle status (complete — 14 → 0)
 
-The `app→src` boundary warnings are being driven to zero by relocating the last
-shared `src/` code. **V5 cleared 8 of 14** (`14 → 6`):
+**V5 cleared 8 of 14** (`14 → 6`):
 - `src/lib/{blockTypes,blockOrder,tokenize,sage-prompt}` → `services/prompt/`;
   `src/lib/stream.ts` (`readDataStream`) → `services/chat/server/stream-utils.ts`.
 - `src/context/admin-user.tsx` → `services/auth/admin-user-context.tsx`.
 - `src/components/PromptEditor.tsx` → `components/admin/PromptEditor.tsx`.
 
-The **remaining** warnings are all the **chat-UI visual half** (see "Chat
-service — UI half (partially extracted)"): `app/(jefflougheed)/page.tsx`
-importing `Chat` / `Hero` / `Nav` / `SectionProcess` from `src/components/`, and
-`Problem` / `Session` importing `useReveal` from `src/hooks/`. Those components
-can't move yet because they still import `src/lib/store.ts` (`useSageStore`) and
-`src/components/sage/*`, and consume `useChatTurn` from `services/chat/ui/v1/`
-(`src/lib/sage.ts` is gone, deleted in PR #43) — moving the components without
-`store.ts` / `sage/*` would just relocate the warnings (and `useReveal` is still
-shared by the `src/components/` orphans `WhyMe` / `QuoteCarouselSection`).
-Clearing the last warnings = moving the chat-UI visual components, tracked as a
-separate effort.
+**Steps E/F + Nav cleared the remaining 6** (`6 → 0`):
+- `Chat.tsx`, `Hero.tsx`, `sage/*` → `components/shells/widget/` (Step E).
+- `useWidgetShell`, `useSageParameters` → `services/chat/ui/v1/`; `useReveal` → `services/shared/` (Step E).
+- `SectionProcess.tsx`, `Nav.tsx` → `app/(jefflougheed)/components/` (Step E + Nav relocation).
+- Membership shell → `components/shells/membership/`; `chatReducer` → `services/chat/ui/v1/` (Step F).
+- `src/lib/store.ts` (`useSageStore`), `src/lib/sage.ts`, `src/hooks/useReveal.ts` deleted.
+- `src/components/` empty and removed; `src/` holds only `calendly.d.ts`.
+
+`boundaries/element-types` now reports **0** warnings. Rule stays at `warn` until Step G flips it to `error`.
 
 ---
 
 ## Pending Investigation
 
-The following files are not imported by jefflougheed.ca entry points.
-Ownership unknown — do not touch until investigated:
-- src/components/About.tsx
-- src/components/Problems.tsx
-- src/components/Process.tsx
-- src/components/WhyMe.tsx
-- src/components/Work.tsx
-- src/components/QuoteCarouselSection.tsx
-- src/components/CareerHighlights.tsx (references public/logos/2blai_logo.svg)
+~~`src/components/` orphans (About, Problems, Process, WhyMe, Work, QuoteCarouselSection,
+CareerHighlights) — listed here for ownership investigation.~~ `src/components/` no
+longer exists (removed as part of strangle completion — Steps E/F/Nav). These files
+are gone; investigation is moot.
 
 ---
 
@@ -380,23 +369,13 @@ Tracked, intentionally not done yet, none blocking Heirloom's first iteration:
    extracted first (out of MIGRATION.md's `auth → prompt → crm → chat` order),
    so it reaches around the missing services and reads their concerns directly.
    See "Dependency-order problem" and "Not started — other Phase 3 services"
-   above. Also pending here: the `@/services/*` tsconfig alias and the
-   import-boundary lint rule ("Phase 3 infrastructure gaps").
+   above.
 2. **Tenant-hierarchy infinite-loop / cycle prevention.** `PATCH
    /api/platform/tenants/[id]` blocks a tenant being its own parent, but does
    NOT prevent deeper cycles (A→B→A). The list's tree walk drops cycles from the
    root set rather than infinite-looping, so today this is malformed state, not
    a crash — but a full ancestry/descendant check should land before tenant
    hierarchies get deep.
-3. **Chat-service UI move to `services/chat/ui/v1/`.** The client primitives
-   (parseBookingCards, BookingCard, SageReply, markdownComponents,
-   useSageParameters) still live in `src/components/sage/`; the client transport
-   (`sage.ts`, `store.ts`) is still in `src/lib/` (`readDataStream` already moved
-   to `services/chat/server/stream-utils.ts` in V5, resolving the shared-admin
-   coupling). This is also the blocker for the last **6 boundary warnings** — the
-   jefflougheed page's `Chat`/`Hero`/`Nav`/`SectionProcess` imports and
-   `useReveal` can't move until this layer does. See "Chat service — UI half NOT
-   yet extracted" and "Strangle status (V5)" above.
 
 **Phase 4 — security hardening** (RLS primary, Clerk→Supabase JWT, audit log;
 MIGRATION.md Phase 4) remains the major security milestone and is unchanged.

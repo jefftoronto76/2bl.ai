@@ -176,7 +176,7 @@ session start.
 ## Design System
 
 - **Admin interface:** Mantine v7 — components in `/components/admin/`
-- **Public site:** Tailwind — components in `/src/components/`
+- **Public site:** Tailwind — components in `app/(jefflougheed)/components/` and the shared shells under `components/shells/`
 - **Shared design tokens:** `/components/admin/theme/mantine-theme.ts`
 - **SBL storefront:** Tailwind — the Second Brain Labs storefront (`2bl.ai`,
   served from `/secondbrainlabs`) has its own isolated token + font set in
@@ -425,10 +425,11 @@ shared presentation), with the headless pieces (`useWidgetShell`,
 jefflougheed marketing section that consumes the widget only via the headless
 `useWidgetShell` store (Step E relocates it into `app/(jefflougheed)/components/`).
 
-The following remain in `src/components/` **intentionally**:
-
-`Nav.tsx` — jefflougheed nav chrome with no chat coupling; its only cross-module
-dependency is `ShareModal` (a deferred `src→app` warning, out of scope for Step E).
+`Nav.tsx` — jefflougheed nav chrome with no chat coupling — has been relocated
+into `app/(jefflougheed)/components/` (it imports `ShareModal` via relative
+`./ShareModal`). With this move `src/components/` is **empty and removed**; the
+last `boundaries/element-types` warning (the old `Nav → ShareModal` `src→app`
+pair) is cleared. `src/` now holds only `calendly.d.ts`.
 
 Do not move or delete these without explicit instruction from Jeff.
 
@@ -462,14 +463,15 @@ page-local client components.
 
 ## Public Site (Visitor)
 
-Public-facing components in `/src/components/`. Tailwind + inline
-styles (no Mantine on the public side).
+Public-facing components live in `app/(jefflougheed)/components/` and the shared
+widget shell (`components/shells/widget/`). Tailwind + inline styles (no Mantine
+on the public side).
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | `Chat` (Sage overlay + `#chat` anchor section) | `components/shells/widget/Chat.tsx` | Full-viewport visitor chat overlay plus the in-page `#chat` anchor section that CTAs into it. Mounted from `app/(jefflougheed)/page.tsx`; toggled via `useWidgetShell.expand()` / `collapse()`. **Overlay** is `position: fixed; top: 0; height: 100dvh` by default so iOS 17.4+ resizes when the keyboard opens. On iOS, a VisualViewport listener pins the overlay to the visual viewport by setting `overlayRef.current.style.height = vv.height + 'px'` and `style.transform = 'translateY(' + vv.offsetTop + 'px)'` on `resize` / `scroll` (and once on open, to prime). Position is driven by a **compositor `transform`, not `top`** — reflow-free, so the overlay stays glued to the viewport while the keyboard animates instead of lagging/floating to mid-screen (the overlay also carries no `top`/`height` CSS transition). Same listener sets `keyboardOpen` state (`vv.height < window.innerHeight * 0.75`) which drives the tagline opacity. Compact 56px header (`h-14`, `bg-bg/90` backdrop-blur) with a status pip (`h-1.5 w-1.5 rounded-full`, `bg-accent` when `isStreaming`, `bg-accent/35` otherwise) next to a Playfair 22px wordmark; 44×44 SVG close button. Assistant messages render through `SageReply` — typographic block with a 2px `border-accent/35` left rule, `pl-4`, Playfair 18px prose, `max-w-[680px]`, `sage-slide-up` entry animation; **no bubble** (no bg, no border-radius, no shadow). Visitor messages render as right-aligned italic Playfair `<p>`s with `max-w-[560px]` and the `.sage-visitor-msg` class (defined in `app/globals.css`), which applies CSS curly quotes via `::before` / `::after` — the message content string itself never contains the quote glyphs. Empty state **is** the greeting: mode-aware Playfair copy ("Hi, I'm Sage. *What brings you here?*" default, "Ask me anything about *Jeff's work*." question-mode) in the same left-rule card style. First user send populates `messages` and the empty state unmounts. There is no `sendGreeting` — `messages.length === 0` is the canonical greeting state. Body scroll lock freezes the document with `position: fixed` + `top: -scrollY` on open and restores the scroll position (`window.scrollTo`) on close — hardened beyond `overflow: hidden`, which iOS ignores during focused-input auto-scroll, so the page can't scroll under the overlay and `visualViewport.offsetTop` stays stable. The scroll-lock is applied via the shared `useKeyboardViewport` hook (`trackViewport: false`, `lockBodyScroll: true`, `active: isExpanded`) — no inline effect in this file. Keyboard handling on the overlay is pure CSS (`100dvh` + safe-area insets); no `visualViewport` listener is attached here. Composer tray padding is `pb-[max(12px,env(safe-area-inset-bottom))]`; send button is `bg-accent` `h-11 w-11 rounded-full`; textarea is `bg-bg rounded-xl`. The streaming indicator uses three dots with the `sage-pulse` keyframes and carries `data-sage-streaming` for the reduced-motion guard. Reduced motion is honored at the CSS layer via `@media (prefers-reduced-motion: reduce)` disabling animations on `.sage-animate`, `.sage-visitor-msg`, and `[data-sage-streaming] > *`. Only two intentional inline `style` props remain in the overlay JSX: the tagline `opacity: keyboardOpen ? 0 : 1`, and the per-dot `animationDelay` on the streaming indicator — everything else is Tailwind (`markdownComponents` and `BookingCard` internals excepted). The overlay container sets **no inline color tokens** — it inherits the inkwell palette from `html[data-palette="inkwell"]`, and assistant prose color resolves through `var(--color-text-primary)` via `markdownComponents` (`components/shells/widget/sage/markdownComponents.tsx`), which uses palette tokens rather than hardcoded hex. Reads `mode` from the shared session (`useChatSessionContext`); the shell open/close + question `mode` live in `useWidgetShell`. On mount, `detectModeFromLocation()` parses `?mode=question` from the hash-query or top-level search string and — if `'question'` — calls `expand('question')` to auto-open the overlay. `mode` is read by the `useChatTurn` engine (`services/chat/ui/v1/`) via injected `ChatEngineAccessors` and sent to `/api/sage` on every send/retry so the server appends the question-mode CONTEXT block — the send → create-session → stream → PATCH lifecycle lives in the hook, not in this component. Marker parsing is documented separately under "Marker Syntax"; `SageReply` resolves each parsed card to a `sage_parameters` row by URL match and spreads `openAs` / `embedCode` into `<BookingCard>`. **`#chat` anchor section** (same file) renders: eyebrow "Not Sure Yet?" → headline → lede → green Start/Continue CTA → outlined Book a Session link. The inline 240px transcript preview that used to render when `messages.length > 0` has been removed; the CTA label still toggles "Start a Conversation" / "Continue Conversation" based on `messages.length`. Reveal animation on the anchor section is unchanged. |
 | `Hero` | `components/shells/widget/Hero.tsx` | **Chat-first hero** — the landing headline ("Hi, I'm *Jeff*."), lede, and `sage-line` sit above an **inline chat surface** (composer + conversation canvas + suggestion chips) in the same `#hero` section. It is a standalone inline chat that **shares conversation state with the Chat overlay** via the shared session (`useChatSessionContext`, instanceKey `"sage"` — the two surfaces drive one conversation) but does **not** use `expand()`. The turn engine is the shared session's `useChatTurn` (owned by the single `ChatSessionProvider`); `submit()`, Enter-to-send (`onKey`), and the suggestion-chip `handleChipClick` all call `session.send(text)`, the error block's Retry calls `session.retry()`, and `session.isError` drives that block. Only `setComposerRef` is shell state (`useWidgetShell`). `isStreaming` (session) drives the three-dot `sage-pulse` indicator and disables the composer/chips. Messages render like the overlay: visitor as right-aligned italic Playfair `.sage-visitor-msg`, assistant via `SageReply` (booking cards parsed by `parseBookingCards`, params from `useSageParameters`). `isEngaged = messages.length > 0 && conversationVisible` toggles the `.stage` → `.stage engaged` class; a `close-x` button collapses the canvas (`conversationVisible`), and the 5 suggestion chips render only when not engaged. On mount it registers the textarea via `setComposerRef` and runs `detectModeFromLocation()` — `?mode=question` (hash-query or top-level search) → `setMode('question')` + focuses the composer. **iOS keyboard handling**: the shared `useKeyboardViewport` hook (no scroll-lock — deliberate; `position: fixed` on the body breaks iOS keyboard detection in an inline context) fires `onViewportChange` on every `visualViewport` resize/scroll event, writing `--kb-surface-h` and `--kb-surface-y` CSS vars onto `chatSurfaceRef` and returning `keyboardOpen`; `keyboardOpen` flips `.chat-surface--kb` (mobile only — the viewport height never drops below the threshold on desktop, so layout is untouched). The CSS vars drive the fixed-position surface overlay (height + compositor `translateY`) so the composer sits directly above the keyboard without needing `position: fixed` on the surface itself. |
-| `Nav` | `src/components/Nav.tsx` | Top fixed navigation for jefflougheed.ca. Three entries from a `LINKS` array: `Book` (`kind: 'scroll'` → smooth-scrolls to `#how-it-works`), `Labs` (`kind: 'external'` → `https://www.2bl.ai`), and `Share` (`kind: 'share'` → opens `ShareModal`). Desktop renders the links inline; mobile uses a hamburger that toggles a fixed dropdown. Scroll past 60px (or an open mobile menu) swaps the bar to a blurred translucent background with a bottom border. **No chat coupling** — Nav does not import `useWidgetShell`/the session and never calls `expand()`. Its only cross-module dependency is `ShareModal` (`@/app/(jefflougheed)/components/ShareModal`), the source of a deferred `src→app` boundary warning (out of scope for centralization Step E; Nav stays in `src/components/` for now). Styles are inline + a small `<style>` block (no `app/globals.css` `nav-chat-*` classes). |
+| `Nav` | `app/(jefflougheed)/components/Nav.tsx` | Top fixed navigation for jefflougheed.ca. Three entries from a `LINKS` array: `Book` (`kind: 'scroll'` → smooth-scrolls to `#how-it-works`), `Labs` (`kind: 'external'` → `https://www.2bl.ai`), and `Share` (`kind: 'share'` → opens `ShareModal`). Desktop renders the links inline; mobile uses a hamburger that toggles a fixed dropdown. Scroll past 60px (or an open mobile menu) swaps the bar to a blurred translucent background with a bottom border. **No chat coupling** — Nav does not import `useWidgetShell`/the session and never calls `expand()`. Its only cross-module dependency is `ShareModal`, imported via relative `./ShareModal` now that Nav sits alongside it in `app/(jefflougheed)/components/` (the old `src→app` boundary warning is cleared). Styles are inline + a small `<style>` block (no `app/globals.css` `nav-chat-*` classes). |
 
 ### Discovery-call link cleanup
 
@@ -479,7 +481,7 @@ system prompt; Sage may still offer it at her discretion during a
 conversation. Remaining intentional references:
 
 - `services/prompt/sage-prompt.ts` — `DEFAULT_SYSTEM_PROMPT` pricing + behavior + booking-link sections
-- `src/components/Session.tsx` — `handleDiscoveryClick` popup invocation and the "Start with a free 15-minute call →" link
+- `app/(jefflougheed)/components/Session.tsx` — `handleDiscoveryClick` popup invocation and the "Start with a free 15-minute call →" link
 
 Do not remove these without explicit instruction.
 
@@ -489,7 +491,7 @@ The Heirloom chat is the platform's **membership shell** (the chat IS the
 product — a slide-in modal panel; see "Chat shells" in README). As of
 centralization Step F its presentation lives in **`components/shells/membership/`**
 (Tailwind + the `[data-brand="heirloom"]` palette — no Mantine, isolated from the
-Sage visitor chat in `src/components/`), app-importable shared presentation that
+Sage visitor chat in `components/shells/widget/`), app-importable shared presentation that
 `app/heirloom/page.tsx` mounts. It keeps its own `useReducer`-backed shell store
 (`chatStore.tsx` here; the pure `chatReducer.ts` is headless in
 `services/chat/ui/v1/`), but its turn engine is the **shared `useChatTurn` hook**
@@ -652,7 +654,7 @@ can import the registry without pulling a client module.
 | `chatReducer.ts` | `chatReducer`, `initialState`, `Message` (+ `ShellState`, `ChatAction`) | Pure Heirloom **shell** reducer (no React, no JSX) — sidebar + chat-panel open/close state (`TOGGLE_SIDEBAR` / `SET_SIDEBAR` / `OPEN_CHAT` / `CLOSE_CHAT`). Conversation state lives in the shared session (`useChatSession`); this owns only presentation/shell state, composed with the session by the membership-shell `ChatProvider`. Re-exports `Message = UIMessage`. Moved here from `app/heirloom/components/store/chatReducer.ts` in centralization Step F. Unit-tested in `chatReducer.test.ts`. |
 | `useSageParameters.ts` | `useSageParameters` | Headless `'use client'` data hook (no JSX) — fetches `/api/sage/parameters` on mount and returns the public `SageParameterPublic[]` (resilient to fetch errors; returns `[]`). Consumed by the widget-shell `Hero` and `Chat` to resolve `open_as` / `embed_code` for each parsed `[BOOKING: …]` card by URL match. Moved here from `src/components/sage/useSageParameters.ts` in centralization Step E. |
 | `useWidgetShell.ts` | `useWidgetShell` | The jefflougheed widget-shell presentation store — a headless module-level Zustand singleton (no JSX) owning **shell** state only: `isExpanded`, `expand(mode?)`, `collapse`, `mode`, `setMode`, `composerRef`, `setComposerRef`. Conversation state (messages/sessionId/streaming/error/mode) lives in the shared session (`useChatSession`, instanceKey `"sage"`) — NOT here. Being a module singleton is load-bearing: the overlay (`Chat`), the inline `Hero` composer, and `SectionProcess` read/write the same object, so opening the overlay from one surface is seen by the others. `expand('question')` sets `isExpanded` + `mode` together — the pairing Chat's mode-bridge depends on. Extracted from `src/lib/store.ts` (`useSageStore`) in centralization Step E; the conversation slice had already migrated to `useChatSession`, and five callerless fields (`visitorName`/`setVisitorName`, `hasGreeted`/`setGreeted`, `focusComposer`) plus the callerless `reset()` were dropped. Unit-tested in `useWidgetShell.test.ts`. |
-| `useChatTurn.ts` | `useChatTurn` | Store-agnostic turn engine (`'use client'`). Takes injected `ChatEngineAccessors` (`getMessages` / `addMessage` / `updateLastMessage` / `setStreaming` / `setSessionId` / `getSessionId` / `getMode?`) and owns one turn end-to-end: append user message → lazily create a session (`POST /api/sessions`) → stream from `/api/sage` (via the shared `readDataStream`) → persist the transcript (`PATCH /api/sessions/[id]`, `visitorName: null`). Returns `{ send, retry, isStreaming, isError }`. jefflougheed (Zustand `useSageStore`) and Heirloom (`useReducer`) both consume it by wrapping their store in accessors. |
+| `useChatTurn.ts` | `useChatTurn` | Store-agnostic turn engine (`'use client'`). Takes injected `ChatEngineAccessors` (`getMessages` / `addMessage` / `updateLastMessage` / `setStreaming` / `setSessionId` / `getSessionId` / `getMode?`) and owns one turn end-to-end: append user message → lazily create a session (`POST /api/sessions`) → stream from `/api/sage` (via the shared `readDataStream`) → persist the transcript (`PATCH /api/sessions/[id]`, `visitorName: null`). Returns `{ send, retry, isStreaming, isError }`. jefflougheed (via `ChatSessionProvider`/`useChatSession`, `instanceKey="sage"`) and Heirloom (`useReducer` via `ChatProvider`) both consume it by wrapping their store in `ChatEngineAccessors`. |
 | `index.ts` | barrel | Re-exports the type contracts + the registry runtime (`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`, `PHONE_MARKER`). `useChatTurn` is imported directly from its module, not the barrel. |
 
 **`core/` — session + keyboard infrastructure**
@@ -962,11 +964,12 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   `services/chat/ui/v1/` (PRs #42–46); `src/lib/sage.ts` and `src/lib/store.ts`
   were deleted. The widget-shell visual components (`Hero`, `Chat`, `sage/*`)
   now live in `components/shells/widget/`, with the headless `useWidgetShell` +
-  `useSageParameters` in `services/chat/ui/v1/`. The only `src/components/`
-  residents left are `Nav.tsx` (deferred `ShareModal` `src→app` warning) and
-  `SectionProcess.tsx` (relocated into `app/(jefflougheed)/components/` in Step
-  E). The `boundaries/element-types` rule stays at `warn` until Step G flips it
-  to `error`.
+  `useSageParameters` in `services/chat/ui/v1/`. `Nav.tsx` was relocated into
+  `app/(jefflougheed)/components/` (importing `ShareModal` via relative
+  `./ShareModal`), which clears the last `src→app` boundary warning and empties
+  `src/components/` (directory removed; `src/` holds only `calendly.d.ts`).
+  `boundaries/element-types` is now at **0 warnings**; the rule stays at `warn`
+  until Step G flips it to `error`.
 - **eslint `components` element-type registered (centralization Step D).** Root
   `components/**` (the Mantine admin UI) is now a first-class boundary element:
   `app → components` and `components → services` are legal; `components` may not
