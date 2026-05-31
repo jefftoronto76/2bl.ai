@@ -1,6 +1,6 @@
 'use client'
 
-import { useReveal } from '@/hooks/useReveal'
+import { useReveal } from '@/services/shared/useReveal'
 import { useEffect } from 'react'
 
 export function Session() {
