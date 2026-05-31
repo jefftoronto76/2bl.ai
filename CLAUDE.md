@@ -433,13 +433,14 @@ dependency is `ShareModal` (a deferred `src→app` warning, out of scope for Ste
 Do not move or delete these without explicit instruction from Jeff.
 
 Notes:
-- `SectionProcess.tsx` (stays in `src/components/`) imports
-  `FEATURED_TESTIMONIALS` from the moved
-  `app/(jefflougheed)/components/SectionTestimonials` — a temporary cross-tree
-  import that resolves when `SectionProcess` itself moves in Phase 3.
+- `SectionProcess.tsx` now lives in `app/(jefflougheed)/components/`
+  (relocated in centralization Step E). It does **not** import
+  `FEATURED_TESTIMONIALS` (an earlier note to that effect was stale); its only
+  cross-module dependency is the headless `useWidgetShell` store
+  (`app→services`, legal).
 - `public/logos/` deliberately still holds the platform `2blai_logo.svg` and
-  the duplicate/variant logos referenced by the orphan `CareerHighlights.tsx`
-  — only the specific jefflougheed logos were namespaced.
+  some duplicate/variant logos — only the specific jefflougheed logos were
+  namespaced.
 - The earlier DesignLab logo filename typo is fixed: `SectionCareer`
   references `/sage/jefflougheed/logos/DesignLab_Logo.svg` and the on-disk
   file is spelled to match, so the logo resolves.
