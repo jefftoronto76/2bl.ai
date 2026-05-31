@@ -19,20 +19,17 @@ the chat is a feature layered on top of it.
 | `Chat` | `components/shells/widget/Chat.tsx` | Full-viewport overlay. `position: fixed; top: 0; height: 100dvh`. Toggled open/closed. |
 
 Both surfaces share **one conversation** via `ChatSessionProvider` with
-`instanceKey="sage"` (singleton mode in `useChatSession` — see
-`docs/chat-ui-v2-design.md` §2). Until the v2 extraction ships, they share
-state through the module-level Zustand store `useSageStore`
-(`src/lib/store.ts`), which is `create(...)`'d once at module scope so every
-subscriber reads and writes the same store object.
+`instanceKey="sage"` (singleton mode in `useChatSession`).
 
 **Shell state vs conversation state:**
 
 - Shell state — `isExpanded`, `expand()` / `collapse()`, `composerRef`,
-  `mode` — lives in `useSageStore`. Only the widget shell owns this layer;
-  neither `Heirloom` nor any future membership shell reads it.
-- Conversation state — `messages`, `sessionId`, `isStreaming` — is the shared
-  slice both Hero and Chat write through identical `ChatEngineAccessors`
-  that call `useSageStore.getState()`.
+  `mode` — lives in `useWidgetShell` (`services/chat/ui/v1/useWidgetShell.ts`).
+  Only the widget shell owns this layer; neither Heirloom nor any future
+  membership shell reads it.
+- Conversation state — `messages`, `sessionId`, `isStreaming` — lives in the
+  `ChatSessionProvider` instance; both Hero and Chat read it via
+  `useChatSessionContext()`.
 
 **Keyboard handling — widget surfaces differ from each other:**
 
