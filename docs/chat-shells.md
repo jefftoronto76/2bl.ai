@@ -15,8 +15,8 @@ the chat is a feature layered on top of it.
 
 | Surface | File | Role |
 |---------|------|------|
-| `Hero` | `src/components/Hero.tsx` | Inline chat embedded in the `#hero` section. Always mounted; keyboard handling via CSS vars. |
-| `Chat` | `src/components/Chat.tsx` | Full-viewport overlay. `position: fixed; top: 0; height: 100dvh`. Toggled open/closed. |
+| `Hero` | `components/shells/widget/Hero.tsx` | Inline chat embedded in the `#hero` section. Always mounted; keyboard handling via CSS vars. |
+| `Chat` | `components/shells/widget/Chat.tsx` | Full-viewport overlay. `position: fixed; top: 0; height: 100dvh`. Toggled open/closed. |
 
 Both surfaces share **one conversation** via `ChatSessionProvider` with
 `instanceKey="sage"` (singleton mode in `useChatSession` — see
@@ -305,7 +305,7 @@ interface ChatConfig {
 
 | Capability | Widget (jefflougheed) | Membership (Heirloom) |
 |------------|----------------------|-----------------------|
-| Booking cards | Yes — `useSageParameters` + `BookingCard` in `src/components/sage/` | No |
+| Booking cards | Yes — `BookingCard` in `components/shells/widget/sage/`, `useSageParameters` in `services/chat/ui/v1/` | No |
 | Session history | No | Yes — `GET /api/sessions` + Recent sidebar |
 | localStorage persistence | No | Yes — `services/chat/ui/v1/persistence.ts` |
 

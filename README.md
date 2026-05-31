@@ -111,8 +111,8 @@ never run for a non-admin).
 
 ## Sage — public AI chat
 
-`src/components/Chat.tsx` (overlay) + `app/api/sage/route.ts` (thin adapter over
-`services/chat/server`).
+`components/shells/widget/Chat.tsx` (overlay) + `app/api/sage/route.ts` (thin
+adapter over `services/chat/server`).
 
 - `claude-sonnet-4-6` via the Vercel AI SDK data-stream format.
 - System prompt resolved per tenant from `master_prompt`, with booking-card and
