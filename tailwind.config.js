@@ -36,6 +36,14 @@ export default {
         serif: ['var(--font-serif)', 'Times New Roman', 'serif'],
         sans: ['var(--font-sans)', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
+      keyframes: {
+        waveform: { '0%,100%': { transform: 'scaleY(0.35)' }, '50%': { transform: 'scaleY(1)' } },
+        recpulse: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.25' } },
+      },
+      animation: {
+        waveform: 'waveform 0.9s ease-in-out infinite',
+        recpulse: 'recpulse 1.2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
