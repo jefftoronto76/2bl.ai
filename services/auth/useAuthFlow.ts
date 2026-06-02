@@ -2,19 +2,19 @@
 
 // services/auth/useAuthFlow.ts
 //
-// Client-side authentication flow hook for the magic-link / OTP membership
+// Client-side authentication flow hook for the email OTP / phone OTP membership
 // workflow. Orchestrates:
-//   - Email magic link (sign-in: emailLink.sendLink + waitForVerification;
-//                       sign-up: verifications.sendEmailLink + waitForEmailLinkVerification)
-//   - Phone OTP        (sign-in: phoneCode.sendCode + phoneCode.verifyCode;
-//                       sign-up: verifications.sendPhoneCode + verifications.verifyPhoneCode)
+//   - Email OTP  (sign-in: prepareFirstFactor email_code;
+//                 sign-up: prepareEmailAddressVerification email_code)
+//   - Phone OTP  (sign-in: phoneCode.sendCode + phoneCode.verifyCode;
+//                 sign-up: verifications.sendPhoneCode + verifications.verifyPhoneCode)
 //
-// Written for Clerk v7 (Future API): useSignIn/useSignUp return
-// SignInFutureResource / SignUpFutureResource — NOT the classic SignInResource.
-// setActive no longer exists; sessions are activated via .finalize().
-// All methods return { error: ClerkAPIError | null } instead of throwing.
+// Written for Clerk v7 stable API. useSignIn/useSignUp return the classic
+// SignInResource / SignUpResource. setActive is used for session activation.
+// Email methods use try/catch; phone methods use { error } destructuring
+// (the phone path predates this file and is left as-is — it is working).
 //
-// New-vs-existing user: sign-in is attempted first. When Clerk returns
+// New-vs-existing user: sign-in is attempted first. When Clerk throws with
 // form_identifier_not_found the hook transparently retries via sign-up. The
 // caller never needs to distinguish the two cases.
 
@@ -83,9 +83,7 @@ async function callValidationGate(type: AuthContactType, value: string): Promise
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAuthFlow(): UseAuthFlowReturn {
-  // Clerk v7 Future API: hooks return { signIn: SignInFutureResource | null }
-  // and { signUp: SignUpFutureResource | null }. No isLoaded, no setActive.
-  const { signIn } = useSignIn()
+  const { signIn, setActive } = useSignIn()
   const { signUp } = useSignUp()
 
   const [stage, setStage] = useState<AuthFlowStage>('idle')
@@ -111,11 +109,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
     setContactValue('')
   }, [])
 
-  // ── Email link ─────────────────────────────────────────────────────────────
+  // ── Email OTP ──────────────────────────────────────────────────────────────
 
   const sendEmail = useCallback(
     async (email: string) => {
-      if (!signIn || !signUp) return
+      if (!signIn || !signUp || !setActive) return
 
       setStage('sending')
       setError(null)
@@ -125,81 +123,48 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        const verificationUrl = window.location.href
-
         // Try sign-in first (existing user).
-        const { error: createErr } = await signIn.create({ identifier: email })
-
-        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
-          // New user — create sign-up and send email link.
-          const { error: signUpErr } = await signUp.create({ emailAddress: email })
-          if (signUpErr) {
-            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
+        let si
+        try {
+          si = await signIn.create({ identifier: email })
+        } catch (createErr: unknown) {
+          const code = (
+            createErr as { errors?: Array<{ code: string }> }
+          )?.errors?.[0]?.code
+          if (code && NOT_FOUND_CODES.has(code)) {
+            // New user — create sign-up and send email_code OTP.
+            await signUp.create({ emailAddress: email })
+            await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
+            flowTypeRef.current = 'signup'
+            if (mountedRef.current) setStage('otp_input')
             return
           }
-
-          const { error: sendErr } = await signUp.verifications.sendEmailLink({ verificationUrl })
-          if (sendErr) {
-            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-            return
-          }
-
-          flowTypeRef.current = 'signup'
-          if (mountedRef.current) setStage('email_sent')
-
-          // Wait in background — resolves when clicked or expired.
-          void signUp.verifications.waitForEmailLinkVerification().then(({ error: waitErr }) => {
-            if (!mountedRef.current) return
-            if (waitErr) { setError(extractErrorMessage(waitErr)); setStage('error'); return }
-            const v = signUp.verifications.emailLinkVerification
-            if (v?.status === 'verified') {
-              void signUp.finalize().then(({ error: finalizeErr }) => {
-                if (!mountedRef.current) return
-                if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-                else setStage('success')
-              })
-            } else {
-              setStage('expired')
-            }
-          })
-          return
+          throw createErr
         }
 
-        if (createErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
-          return
+        // Existing user — find the email_code factor and send OTP.
+        const emailFactor = si.supportedFirstFactors?.find(
+          (f) => f.strategy === 'email_code',
+        ) as { strategy: 'email_code'; emailAddressId: string } | undefined
+
+        if (!emailFactor) {
+          throw new Error(
+            'Email code sign-in is not available for this account. Please use phone or another method.',
+          )
         }
 
-        // Existing user — send sign-in email link.
-        const { error: sendErr } = await signIn.emailLink.sendLink({ verificationUrl })
-        if (sendErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-          return
-        }
+        await si.prepareFirstFactor({
+          strategy: 'email_code',
+          emailAddressId: emailFactor.emailAddressId,
+        })
 
         flowTypeRef.current = 'signin'
-        if (mountedRef.current) setStage('email_sent')
-
-        // Wait in background — resolves when clicked or expired.
-        void signIn.emailLink.waitForVerification().then(({ error: waitErr }) => {
-          if (!mountedRef.current) return
-          if (waitErr) { setError(extractErrorMessage(waitErr)); setStage('error'); return }
-          const v = signIn.emailLink.verification
-          if (v?.status === 'verified') {
-            void signIn.finalize().then(({ error: finalizeErr }) => {
-              if (!mountedRef.current) return
-              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-              else setStage('success')
-            })
-          } else {
-            setStage('expired')
-          }
-        })
+        if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
     },
-    [signIn, signUp],
+    [signIn, signUp, setActive],
   )
 
   // ── Phone OTP ──────────────────────────────────────────────────────────────
@@ -261,11 +226,38 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
   const verifyOtp = useCallback(
     async (code: string) => {
-      if (!signIn || !signUp) return
+      if (!signIn || !signUp || !setActive) return
 
       setStage('verifying')
       setError(null)
 
+      // ── Email OTP paths (stable API, try/catch) ──────────────────────────
+      if (contactType === 'email') {
+        try {
+          if (flowTypeRef.current === 'signup') {
+            const result = await signUp.attemptEmailAddressVerification({ code })
+            if (result.status === 'complete') {
+              await setActive({ session: result.createdSessionId })
+              if (mountedRef.current) setStage('success')
+            } else {
+              if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
+            }
+          } else {
+            const result = await signIn.attemptFirstFactor({ strategy: 'email_code', code })
+            if (result.status === 'complete') {
+              await setActive({ session: result.createdSessionId })
+              if (mountedRef.current) setStage('success')
+            } else {
+              if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
+            }
+          }
+        } catch (err: unknown) {
+          if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('otp_input') }
+        }
+        return
+      }
+
+      // ── Phone OTP paths (unchanged) ──────────────────────────────────────
       try {
         if (flowTypeRef.current === 'signup') {
           const { error: verifyErr } = await signUp.verifications.verifyPhoneCode({ code })
@@ -302,7 +294,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('otp_input') }
       }
     },
-    [signIn, signUp],
+    [signIn, signUp, setActive, contactType],
   )
 
   // ── Resend ─────────────────────────────────────────────────────────────────
