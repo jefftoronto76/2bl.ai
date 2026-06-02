@@ -37,6 +37,9 @@ export interface ChatState {
   isLoading: boolean;
   isChatOpen: boolean;
   sessionId: string | null;
+  /** True when the visitor is signed in via Clerk. Drives feature gates
+   *  (voice, uploads, memory persistence) and sidebar activation. */
+  isMember: boolean;
 }
 
 // Re-export the shell action union + Message so existing consumers keep importing
@@ -60,6 +63,13 @@ interface ChatContextType {
   loadSession: (id: string) => void;
   /** Clear the active conversation and start fresh (New Chat). History stays. */
   newChat: () => void;
+  /**
+   * Link the current anonymous session to the newly-signed-in user.
+   * Called by MagicLinkCard's onSuccess after Clerk authentication completes.
+   * No-ops gracefully when no session exists yet. The existing isSignedIn
+   * effect handles DB recovery and Recent-sidebar refresh automatically.
+   */
+  claimCurrentSession: () => Promise<void>;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -270,8 +280,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [recentSessions, hydrateConversation],
   );
 
+  // Link the current anonymous session to the newly-signed-in user. Called by
+  // MagicLinkCard's onSuccess after Clerk auth completes. Idempotent — the
+  // route returns 200 if already claimed by the same user. The isSignedIn
+  // effect above handles DB recovery + Recent refresh once Clerk updates.
+  const claimCurrentSession = useCallback(async () => {
+    const id = sessionIdRef.current;
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/sessions/${id}/claim`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('[heirloom/chat] session claim failed:', res.status, data);
+      } else {
+        console.log('[heirloom/chat] session claimed:', id);
+      }
+    } catch (err) {
+      console.error('[heirloom/chat] session claim error:', err);
+    }
+  }, []);
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
+  // isMember derives directly from Clerk — no local state needed.
   const state: ChatState = {
     messages,
     hasStarted: messages.length > 0,
@@ -279,11 +310,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     isLoading: isStreaming,
     isChatOpen: shellState.isChatOpen,
     sessionId,
+    isMember: isLoaded && !!isSignedIn,
   };
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, claimCurrentSession }}
     >
       {children}
     </ChatContext.Provider>

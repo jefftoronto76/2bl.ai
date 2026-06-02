@@ -66,6 +66,19 @@ export const PHONE_MARKER: MarkerDefinition = {
   dispatch: 'server',
 }
 
+/**
+ * The AUTH_PROMPT marker — `[AUTH_PROMPT: reason]`. Dispatch is 'client':
+ * the membership shell renders a MagicLinkCard inline below the prose when
+ * this marker is encountered. Stripped from prose in all other contexts
+ * (widget shell, admin transcript) via createDefaultRegistry().
+ */
+export const AUTH_PROMPT_MARKER: MarkerDefinition = {
+  type: 'AUTH_PROMPT',
+  pattern: /\[AUTH_PROMPT:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'client',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -132,5 +145,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(NAME_MARKER)
   registry.register(EMAIL_MARKER)
   registry.register(PHONE_MARKER)
+  registry.register(AUTH_PROMPT_MARKER)
   return registry
 }
