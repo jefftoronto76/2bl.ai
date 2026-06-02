@@ -63,12 +63,6 @@ export function LandingNav() {
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
-            className="hidden sm:inline-flex font-body text-base font-medium text-text-muted hover:text-text-primary transition-colors"
-          >
-            Log in
-          </button>
-          <button
-            type="button"
             onClick={() => dispatch({ type: 'OPEN_CHAT' })}
             className="bg-accent hover:bg-accent-hover text-background font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
           >
