@@ -4,6 +4,9 @@ import { Table, Badge, Box, Center, Group, Paper, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 
 function formatDate(iso: string) {
+  // No timeZone specified — uses the browser's local timezone. Called only in
+  // client-rendered output (suppressHydrationWarning on the element) so the
+  // server's UTC default never persists to the user.
   return new Date(iso).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -63,7 +66,7 @@ export function HistoryTable({ rows }: { rows: SessionRow[] }) {
                     <Text variant="label">{blockName}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                    <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }} suppressHydrationWarning>
                       {formatDate(session.created_at)}
                     </Text>
                   </Table.Td>
@@ -113,7 +116,7 @@ export function HistoryTable({ rows }: { rows: SessionRow[] }) {
                 <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
                   {exchanges} exchanges
                 </Text>
-                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }} suppressHydrationWarning>
                   {formatDate(session.created_at)}
                 </Text>
               </Group>

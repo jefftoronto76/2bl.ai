@@ -213,8 +213,9 @@ export function BlockCard({
               */}
               <Text
                 variant="muted"
-                style={{ fontSize: 'var(--mantine-font-size-xs)' }}
+                style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
                 suppressHydrationWarning
+                title={new Date(block.updated_at).toLocaleString()}
               >
                 Updated {formatRelativeTime(block.updated_at)}
               </Text>

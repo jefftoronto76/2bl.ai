@@ -36,11 +36,13 @@ function MetaItem({
   value,
   mono = false,
   hydrationSensitive = false,
+  title,
 }: {
   label: string
   value: string
   mono?: boolean
   hydrationSensitive?: boolean
+  title?: string
 }) {
   return (
     <Stack gap={2}>
@@ -60,8 +62,10 @@ function MetaItem({
           fontFamily: mono
             ? 'var(--mantine-font-family-monospace)'
             : undefined,
+          cursor: title ? 'default' : undefined,
         }}
         suppressHydrationWarning={hydrationSensitive}
+        title={title}
       >
         {value}
       </Text>
@@ -149,6 +153,7 @@ function ExpandedRowPanel({
           label="Updated"
           value={formatRelativeTime(block.updated_at)}
           hydrationSensitive
+          title={new Date(block.updated_at).toLocaleString()}
         />
         <MetaItem
           label="Order"
@@ -322,8 +327,9 @@ export function BlockRow({
           */}
           <Text
             variant="muted"
-            style={{ fontSize: 'var(--mantine-font-size-xs)' }}
+            style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
             suppressHydrationWarning
+            title={new Date(block.updated_at).toLocaleString()}
           >
             Updated {formatRelativeTime(block.updated_at)}
           </Text>
