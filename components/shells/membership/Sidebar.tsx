@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   ChevronRight,
   Clock,
+  LogIn,
 } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { useChatStore } from './chatStore';
@@ -21,6 +22,7 @@ const navItems = [
 export function Sidebar() {
   const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
   const expanded = state.isSidebarExpanded;
+  const { isMember } = state;
 
   return (
     <aside
@@ -55,6 +57,17 @@ export function Sidebar() {
             </button>
           ))}
         </nav>
+
+        {expanded && !isMember && (
+          <div className="mt-4 px-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2.5">
+              <LogIn size={13} className="flex-shrink-0 text-text-muted" />
+              <p className="font-body text-xs text-text-muted leading-snug">
+                Sign in to save your story across sessions.
+              </p>
+            </div>
+          </div>
+        )}
 
         {expanded && recentSessions.length > 0 && (
           <div className="mt-4 px-3">

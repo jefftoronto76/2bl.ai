@@ -10,6 +10,7 @@ import {
   Check,
   FileText,
   AudioLines,
+  Lock,
 } from 'lucide-react';
 import { useChatStore } from './chatStore';
 
@@ -164,6 +165,7 @@ export function ChatInput() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const { sendMessage, state } = useChatStore();
+  const { isMember } = state;
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -325,35 +327,55 @@ export function ChatInput() {
             />
 
             <div className="flex items-center gap-1 pl-0.5 pr-1 py-0.5">
+              {/* Attachment + voice buttons are member-only. When locked they
+                  remain focusable so screen readers can announce the gate. */}
               <button
                 type="button"
-                aria-label="Attach files"
-                title="Attach files"
-                onClick={() => fileInputRef.current?.click()}
-                className="grid place-items-center w-[34px] h-[34px] rounded-[10px] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label={isMember ? 'Attach files' : 'Sign in to attach files'}
+                aria-disabled={!isMember}
+                title={isMember ? 'Attach files' : 'Sign in to unlock'}
+                onClick={isMember ? () => fileInputRef.current?.click() : undefined}
+                className={cn(
+                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  isMember
+                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                    : 'text-text-muted opacity-40 cursor-not-allowed',
+                )}
               >
-                <Paperclip size={18} />
+                {isMember ? <Paperclip size={18} /> : <Lock size={15} />}
               </button>
               <button
                 type="button"
-                aria-label="Add a photo"
-                title="Add a photo"
-                onClick={() => imageInputRef.current?.click()}
-                className="grid place-items-center w-[34px] h-[34px] rounded-[10px] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label={isMember ? 'Add a photo' : 'Sign in to add photos'}
+                aria-disabled={!isMember}
+                title={isMember ? 'Add a photo' : 'Sign in to unlock'}
+                onClick={isMember ? () => imageInputRef.current?.click() : undefined}
+                className={cn(
+                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  isMember
+                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                    : 'text-text-muted opacity-40 cursor-not-allowed',
+                )}
               >
-                <ImageIcon size={18} />
+                {isMember ? <ImageIcon size={18} /> : <Lock size={15} />}
               </button>
 
               <div className="flex-1" />
 
               <button
                 type="button"
-                aria-label="Record voice"
-                title="Record voice"
-                onClick={startRecording}
-                className="grid place-items-center w-[34px] h-[34px] rounded-[10px] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label={isMember ? 'Record voice' : 'Sign in to record voice'}
+                aria-disabled={!isMember}
+                title={isMember ? 'Record voice' : 'Sign in to unlock'}
+                onClick={isMember ? startRecording : undefined}
+                className={cn(
+                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  isMember
+                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                    : 'text-text-muted opacity-40 cursor-not-allowed',
+                )}
               >
-                <Mic size={18} />
+                {isMember ? <Mic size={18} /> : <Lock size={15} />}
               </button>
               <button
                 type="button"
