@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import {
   ActionIcon,
   Badge,
@@ -8,6 +9,7 @@ import {
   Group,
   Highlight,
   Progress,
+  TextInput,
   Stack,
   Switch,
   Table,
@@ -201,6 +203,7 @@ export interface BlockRowProps {
   onToggleSelect: (blockId: string) => void
   onToggleStatus: (blockId: string, nextStatus: 'active' | 'disabled') => void
   onEdit: (blockId: string) => void
+  onRename: (blockId: string, newTitle: string) => void
   onDuplicate: (blockId: string) => void
   onDelete: (blockId: string) => void
   onToggleExpand?: (blockId: string) => void
@@ -230,10 +233,15 @@ export function BlockRow({
   onToggleSelect,
   onToggleStatus,
   onEdit,
+  onRename,
   onDuplicate,
   onDelete,
   onToggleExpand,
 }: BlockRowProps) {
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
   const tokens = tokensFor(block.body)
   const barPct = maxVisibleTokens > 0 ? (tokens / maxVisibleTokens) * 100 : 0
 
@@ -259,6 +267,21 @@ export function BlockRow({
   function handleDelete() {
     console.log('[BlockRow] delete', { blockId: block.id })
     onDelete(block.id)
+  }
+
+  function startRename() {
+    setRenameValue(block.title)
+    setRenaming(true)
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function commitRename() {
+    setRenaming(false)
+    onRename(block.id, renameValue)
+  }
+
+  function cancelRename() {
+    setRenaming(false)
   }
 
   return (
@@ -291,34 +314,49 @@ export function BlockRow({
       </Table.Td>
       <Table.Td>
         <Stack gap={2}>
-          <Text variant="label">
-            <span
-              aria-hidden
-              style={{
-                fontFamily: 'var(--mantine-font-family-monospace)',
-                fontSize: 'var(--mantine-font-size-xs)',
-                color: 'var(--mantine-color-dimmed)',
-                display: 'inline-block',
-                width: '2ch',
-                marginRight: 8,
+          {renaming ? (
+            <TextInput
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={e => setRenameValue(e.currentTarget.value)}
+              onBlur={commitRename}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
               }}
+              size="xs"
+              style={{ width: '100%' }}
+              aria-label="Block title"
+            />
+          ) : (
+            <Text
+              variant="label"
+              onDoubleClick={startRename}
+              style={{ cursor: 'text' }}
+              title="Double-click to rename"
             >
-              {orderPrefix(block.order)}
-            </span>
-            {/*
-              Step 18 — search highlighting. Order prefix stays plain
-              so numeric queries don't tag the prefix digits; only the
-              title text is wrapped. Empty query short-circuits to
-              plain text.
-            */}
-            {highlight.trim() ? (
-              <Highlight component="span" highlight={highlight}>
-                {block.title}
-              </Highlight>
-            ) : (
-              block.title
-            )}
-          </Text>
+              <span
+                aria-hidden
+                style={{
+                  fontFamily: 'var(--mantine-font-family-monospace)',
+                  fontSize: 'var(--mantine-font-size-xs)',
+                  color: 'var(--mantine-color-dimmed)',
+                  display: 'inline-block',
+                  width: '2ch',
+                  marginRight: 8,
+                }}
+              >
+                {orderPrefix(block.order)}
+              </span>
+              {highlight.trim() ? (
+                <Highlight component="span" highlight={highlight}>
+                  {block.title}
+                </Highlight>
+              ) : (
+                block.title
+              )}
+            </Text>
+          )}
           {/*
             Relative timestamp under the title. Pure render-time
             computation — no interval tick. suppressHydrationWarning

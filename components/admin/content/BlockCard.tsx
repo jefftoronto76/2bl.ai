@@ -1,6 +1,6 @@
 'use client'
 
-import { type KeyboardEvent, type MouseEvent } from 'react'
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import {
   ActionIcon,
   Badge,
@@ -11,6 +11,7 @@ import {
   Progress,
   Stack,
   Switch,
+  TextInput,
 } from '@mantine/core'
 import { IconCopy, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
@@ -47,6 +48,7 @@ export interface BlockCardProps {
   onToggleSelect: (blockId: string) => void
   onToggleStatus: (blockId: string, nextStatus: 'active' | 'disabled') => void
   onOpenEdit: (blockId: string) => void
+  onRename: (blockId: string, newTitle: string) => void
   onDuplicate: (blockId: string) => void
   onDelete: (blockId: string) => void
 }
@@ -84,11 +86,31 @@ export function BlockCard({
   onToggleSelect,
   onToggleStatus,
   onOpenEdit,
+  onRename,
   onDuplicate,
   onDelete,
 }: BlockCardProps) {
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
   const tokens = tokensFor(block.body)
   const barPct = maxVisibleTokens > 0 ? (tokens / maxVisibleTokens) * 100 : 0
+
+  function startRename() {
+    setRenameValue(block.title)
+    setRenaming(true)
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function commitRename() {
+    setRenaming(false)
+    onRename(block.id, renameValue)
+  }
+
+  function cancelRename() {
+    setRenaming(false)
+  }
 
   function handleStatusToggle(checked: boolean) {
     const nextStatus = checked ? 'active' : 'disabled'
@@ -100,11 +122,13 @@ export function BlockCard({
   }
 
   function handleTapBody() {
+    if (renaming) return
     console.log('[BlockCard] tap to open edit', { blockId: block.id })
     onOpenEdit(block.id)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (renaming) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       handleTapBody()
@@ -168,14 +192,32 @@ export function BlockCard({
               {formatTypeBadgeLabel(block.type)}
             </Badge>
             <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+              {renaming ? (
+                <TextInput
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.currentTarget.value)}
+                  onBlur={commitRename}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                    if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                  }}
+                  size="xs"
+                  style={{ width: '100%' }}
+                  aria-label="Block title"
+                />
+              ) : (
               <Text
                 variant="label"
+                onDoubleClick={startRename}
                 style={{
                   minWidth: 0,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  cursor: 'text',
                 }}
+                title="Double-click to rename"
               >
                 <span
                   aria-hidden
@@ -191,12 +233,6 @@ export function BlockCard({
                 >
                   {orderPrefix(block.order)}
                 </span>
-                {/*
-                  Step 18 — search highlighting. Same pattern as the
-                  desktop row: prefix stays plain so numeric queries
-                  don't tag the prefix digits, only the title text is
-                  wrapped. Empty query short-circuits to plain.
-                */}
                 {highlight.trim() ? (
                   <Highlight component="span" highlight={highlight}>
                     {block.title}
@@ -205,6 +241,7 @@ export function BlockCard({
                   block.title
                 )}
               </Text>
+              )}
               {/*
                 Relative timestamp under the title. Pure render-time
                 computation — no interval tick. suppressHydrationWarning
