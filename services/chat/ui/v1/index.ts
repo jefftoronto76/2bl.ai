@@ -21,7 +21,7 @@ export type {
   AuthPromptData,
 } from './types'
 
-export { createMarkerRegistry, createDefaultRegistry, BOOKING_MARKER, NAME_MARKER, EMAIL_MARKER, PHONE_MARKER, AUTH_PROMPT_MARKER } from './registry'
+export { createMarkerRegistry, createDefaultRegistry, BOOKING_MARKER, NAME_MARKER, EMAIL_MARKER, PHONE_MARKER, ACCOUNT_CREATE_MARKER } from './registry'
 
 // Canonical message helpers (Phase 0). Pure + server-safe, so they belong in
 // the barrel — no 'use client' surface like useChatTurn.

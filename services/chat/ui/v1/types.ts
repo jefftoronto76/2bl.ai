@@ -49,15 +49,15 @@ export interface UIMessage {
 // ── Marker contract ───────────────────────────────────────────────────────
 
 /** Known structured markers the AI may emit in an assistant message. */
-export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'AUTH_PROMPT'
+export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'ACCOUNT_CREATE'
 
 /**
- * Parsed data for an AUTH_PROMPT marker — `[AUTH_PROMPT: reason]`.
+ * Parsed data for an ACCOUNT_CREATE marker — `[ACCOUNT_CREATE: reason]`.
  * `reason` is free text the engine passes through, surfaced as a muted
  * subheading in the MagicLinkCard (e.g. "to save your memories").
  */
 export interface AuthPromptData {
-  type: 'AUTH_PROMPT'
+  type: 'ACCOUNT_CREATE'
   reason: string
 }
 
