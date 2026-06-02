@@ -8,6 +8,7 @@ import {
   Checkbox,
   Group,
   Highlight,
+  Popover,
   Progress,
   TextInput,
   Stack,
@@ -71,6 +72,47 @@ function MetaItem({
       >
         {value}
       </Text>
+    </Stack>
+  )
+}
+
+function DupConfirmContent({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (skipNext: boolean) => void
+  onCancel: () => void
+}) {
+  const [skip, setSkip] = useState(false)
+  return (
+    <Stack gap="sm">
+      <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+        Duplicate this block?
+      </Text>
+      <Group gap="xs" wrap="nowrap">
+        <input
+          type="checkbox"
+          id="dup-skip-confirm"
+          checked={skip}
+          onChange={e => setSkip(e.currentTarget.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label
+          htmlFor="dup-skip-confirm"
+          style={{
+            fontSize: 'var(--mantine-font-size-xs)',
+            color: 'var(--mantine-color-dimmed)',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          Don&apos;t ask again
+        </label>
+      </Group>
+      <Group gap="xs" justify="flex-end">
+        <Button variant="default" size="xs" onClick={onCancel}>Cancel</Button>
+        <Button size="xs" onClick={() => onConfirm(skip)}>Duplicate</Button>
+      </Group>
     </Stack>
   )
 }
@@ -241,6 +283,12 @@ export function BlockRow({
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const [dupPopoverOpen, setDupPopoverOpen] = useState(false)
+  const [skipDupConfirm, setSkipDupConfirm] = useState(() =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem('block-admin:skip-dup-confirm') === 'true'
+      : false
+  )
 
   const tokens = tokensFor(block.body)
   const barPct = maxVisibleTokens > 0 ? (tokens / maxVisibleTokens) * 100 : 0
@@ -259,8 +307,22 @@ export function BlockRow({
     onEdit(block.id)
   }
 
-  function handleDuplicate() {
-    console.log('[BlockRow] duplicate', { blockId: block.id })
+  function handleDuplicateClick() {
+    if (skipDupConfirm) {
+      console.log('[BlockRow] duplicate (skip confirm)', { blockId: block.id })
+      onDuplicate(block.id)
+    } else {
+      setDupPopoverOpen(true)
+    }
+  }
+
+  function confirmDuplicate(skipNext: boolean) {
+    if (skipNext) {
+      localStorage.setItem('block-admin:skip-dup-confirm', 'true')
+      setSkipDupConfirm(true)
+    }
+    setDupPopoverOpen(false)
+    console.log('[BlockRow] duplicate confirmed', { blockId: block.id, skipNext })
     onDuplicate(block.id)
   }
 
@@ -450,16 +512,33 @@ export function BlockRow({
           >
             <IconPencil size={16} />
           </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="md"
-            onClick={handleDuplicate}
-            disabled={isSaving}
-            aria-label="Duplicate block"
+          <Popover
+            opened={dupPopoverOpen}
+            onClose={() => setDupPopoverOpen(false)}
+            position="bottom-end"
+            withArrow
+            shadow="md"
+            width={220}
           >
-            <IconCopy size={16} />
-          </ActionIcon>
+            <Popover.Target>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={handleDuplicateClick}
+                disabled={isSaving}
+                aria-label="Duplicate block"
+              >
+                <IconCopy size={16} />
+              </ActionIcon>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <DupConfirmContent
+                onConfirm={confirmDuplicate}
+                onCancel={() => setDupPopoverOpen(false)}
+              />
+            </Popover.Dropdown>
+          </Popover>
           <ActionIcon
             variant="subtle"
             color="red"
