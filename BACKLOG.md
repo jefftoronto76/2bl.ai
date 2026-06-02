@@ -333,6 +333,23 @@ Options to evaluate:
 Goal: one definition, per-tenant override capability,
 applies automatically to new tenants.
 
+## Prompt Admin UX
+
+- [ ] **Block rename.** Ability to edit the name/title of an existing block
+      inline on the Blocks page or in the expanded panel. Currently the title
+      is set at creation and not editable without going through the raw form.
+
+- [ ] **Copy block confirmation.** The copy/duplicate button should show a
+      confirmation dialog before creating the duplicate, with a "don't show
+      again" option (persisted to localStorage) to prevent accidental
+      duplicates. The current single-click duplicate fires immediately with no
+      undo.
+
+- [ ] **Copy block text.** Add a "copy text" action to each block that copies
+      the block body to the clipboard. Intended for easy sharing with other
+      tools (e.g. pasting into a doc or another AI). Clipboard icon beside the
+      existing action buttons; show a transient "Copied" toast on success.
+
 ## Code Quality — Pre-existing Warnings
 
 Do not fix these inside feature branches. Address in a dedicated cleanup pass.
