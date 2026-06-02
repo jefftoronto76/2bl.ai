@@ -937,6 +937,16 @@ ordered by title ascending. This order is enforced in
 
 ---
 
+## Dependency & API Rules
+
+Before writing any code that depends on a third-party SDK or API, read
+`package.json` to confirm the exact installed version. Write only to the
+stable, documented API for that version. Never use experimental, future,
+beta, or preview API shapes unless explicitly instructed. If a stable and
+unstable path exist for the same thing, always take the stable path.
+
+---
+
 ## Definition of Done
 
 A task is complete when all of the following are true:

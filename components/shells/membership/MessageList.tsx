@@ -107,7 +107,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
 
           const result = parsed[i];
           const prose = result?.prose ?? '';
-          const authPrompt = result?.markers.find((m) => m.type === 'AUTH_PROMPT');
+          const authPrompt = result?.markers.find((m) => m.type === 'ACCOUNT_CREATE');
 
           // Skip assistant messages with no prose AND no auth prompt.
           if (!prose && !authPrompt) return null;

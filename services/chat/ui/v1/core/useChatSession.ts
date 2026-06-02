@@ -48,6 +48,8 @@ export interface ChatSession {
   isError: boolean
   mode: ChatMode
   send(input: string): Promise<void>
+  /** Send without rendering the user message — see useChatTurn.sendHidden. */
+  sendHidden(content: string): Promise<void>
   retry(): Promise<void>
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
@@ -132,6 +134,7 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     isError: state.isError,
     mode: state.mode,
     send: turn.send,
+    sendHidden: turn.sendHidden,
     retry: turn.retry,
     setMode,
     hydrate,

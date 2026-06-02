@@ -3,7 +3,7 @@
 // components/shells/membership/MagicLinkCard.tsx
 //
 // Inline authentication card rendered in the Heirloom chat transcript when the
-// engine emits an [AUTH_PROMPT: reason] marker. Owns the full email-magic-link
+// engine emits an [ACCOUNT_CREATE: reason] marker. Owns the full email-magic-link
 // / phone-OTP flow via useAuthFlow, including new-vs-existing user handling.
 //
 // Layout mirrors an assistant message bubble (Bot avatar + rounded card) so

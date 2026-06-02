@@ -64,6 +64,13 @@ interface ChatContextType {
   /** Clear the active conversation and start fresh (New Chat). History stays. */
   newChat: () => void;
   /**
+   * Inject a synthetic assistant message carrying an ACCOUNT_CREATE marker so
+   * the chat surface renders a MagicLinkCard without a round-trip to the API.
+   * Called when a guest deliberately initiates sign-in (e.g. taps "Sign in"
+   * in the ChatHeader dropdown).
+   */
+  dispatchSystemSignal: (signal: string) => void;
+  /**
    * Link the current anonymous session to the newly-signed-in user.
    * Called by MagicLinkCard's onSuccess after Clerk authentication completes.
    * No-ops gracefully when no session exists yet. The existing isSignedIn
@@ -119,7 +126,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // The conversation engine + state, isolated to this provider (no instanceKey).
   const session = useChatSession({});
-  const { messages, sessionId, isStreaming, isError, send, hydrate, reset } = session;
+  const { messages, sessionId, isStreaming, isError, send, sendHidden, hydrate, reset } = session;
 
   // Latest-value mirror refs, assigned during render, so event handlers
   // (pagehide / beforeunload) and newChat read the current transcript/session
@@ -280,6 +287,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [recentSessions, hydrateConversation],
   );
 
+  // Inject a hidden system signal into the API context so the guide responds
+  // conversationally (asks for name, eventually emits ACCOUNT_CREATE). The
+  // [SYSTEM: ...] message is never added to the store and never renders in the
+  // UI — only the guide's reply is visible to the member.
+  const dispatchSystemSignal = useCallback((signal: string) => {
+    sendHidden(`[SYSTEM: ${signal}]`);
+  }, [sendHidden]);
+
   // Link the current anonymous session to the newly-signed-in user. Called by
   // MagicLinkCard's onSuccess after Clerk auth completes. Idempotent — the
   // route returns 200 if already claimed by the same user. The isSignedIn
@@ -315,7 +330,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, claimCurrentSession }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession }}
     >
       {children}
     </ChatContext.Provider>

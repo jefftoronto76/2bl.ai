@@ -49,15 +49,15 @@ export interface UIMessage {
 // ── Marker contract ───────────────────────────────────────────────────────
 
 /** Known structured markers the AI may emit in an assistant message. */
-export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'AUTH_PROMPT'
+export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'ACCOUNT_CREATE'
 
 /**
- * Parsed data for an AUTH_PROMPT marker — `[AUTH_PROMPT: reason]`.
+ * Parsed data for an ACCOUNT_CREATE marker — `[ACCOUNT_CREATE: reason]`.
  * `reason` is free text the engine passes through, surfaced as a muted
  * subheading in the MagicLinkCard (e.g. "to save your memories").
  */
 export interface AuthPromptData {
-  type: 'AUTH_PROMPT'
+  type: 'ACCOUNT_CREATE'
   reason: string
 }
 
@@ -137,6 +137,14 @@ export interface UseChatTurnOptions {
 /** Public surface returned by the useChatTurn hook. */
 export interface UseChatTurnReturn {
   send(input: string): Promise<void>
+  /**
+   * Like send(), but the user message is injected into the API context only —
+   * it is never added to the store or persisted, so it never renders in the UI.
+   * The assistant reply IS added and rendered normally. Used by system signals
+   * (e.g. dispatchSystemSignal) where the application drives a guide turn
+   * without showing a user bubble.
+   */
+  sendHidden(content: string): Promise<void>
   retry(): Promise<void>
   isStreaming: boolean
   isError: boolean
