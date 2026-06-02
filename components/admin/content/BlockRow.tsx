@@ -15,7 +15,7 @@ import {
   Switch,
   Table,
 } from '@mantine/core'
-import { IconChevronRight, IconCopy, IconPencil, IconTrash } from '@tabler/icons-react'
+import { IconCheck, IconChevronRight, IconClipboard, IconCopy, IconPencil, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import {
   TYPE_COLORS,
@@ -27,7 +27,7 @@ import { tokensFor } from '@/services/prompt/tokenize'
 import { formatRelativeTime } from '@/services/shared/time'
 
 const PREVIEW_LINE_LIMIT = 8
-const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions
+const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions (copy+edit+dup+delete)
 
 // Metadata entry inside the right-hand panel of the expanded row.
 // Label-on-top muted/uppercase, value below. Mono toggle for numeric
@@ -283,6 +283,7 @@ export function BlockRow({
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
   const [dupPopoverOpen, setDupPopoverOpen] = useState(false)
   const [skipDupConfirm, setSkipDupConfirm] = useState(() =>
     typeof window !== 'undefined'
@@ -329,6 +330,17 @@ export function BlockRow({
   function handleDelete() {
     console.log('[BlockRow] delete', { blockId: block.id })
     onDelete(block.id)
+  }
+
+  async function handleCopyBody() {
+    try {
+      await navigator.clipboard.writeText(block.body)
+      console.log('[BlockRow] body copied', { blockId: block.id })
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[BlockRow] clipboard write failed')
+    }
   }
 
   function startRename() {
@@ -502,6 +514,16 @@ export function BlockRow({
       </Table.Td>
       <Table.Td>
         <Group gap="xs" wrap="nowrap">
+          <ActionIcon
+            variant="subtle"
+            color={copied ? 'green' : 'gray'}
+            size="md"
+            onClick={handleCopyBody}
+            disabled={isSaving}
+            aria-label="Copy block body"
+          >
+            {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
+          </ActionIcon>
           <ActionIcon
             variant="subtle"
             color="gray"

@@ -15,7 +15,7 @@ import {
   Switch,
   TextInput,
 } from '@mantine/core'
-import { IconCopy, IconTrash } from '@tabler/icons-react'
+import { IconCheck, IconClipboard, IconCopy, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import {
   TYPE_COLORS,
@@ -136,6 +136,7 @@ export function BlockCard({
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
   const [dupPopoverOpen, setDupPopoverOpen] = useState(false)
   const [skipDupConfirm, setSkipDupConfirm] = useState(() =>
     typeof window !== 'undefined'
@@ -208,6 +209,18 @@ export function BlockCard({
     e.stopPropagation()
     console.log('[BlockCard] delete', { blockId: block.id })
     onDelete(block.id)
+  }
+
+  async function handleCopyBody(e: MouseEvent) {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(block.body)
+      console.log('[BlockCard] body copied', { blockId: block.id })
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[BlockCard] clipboard write failed')
+    }
   }
 
   function stop(e: MouseEvent) {
@@ -381,8 +394,18 @@ export function BlockCard({
           />
         </Group>
 
-        {/* Actions — Duplicate (non-destructive) before Delete (destructive) */}
+        {/* Actions — Copy body · Duplicate · Delete */}
         <Group justify="flex-end">
+          <ActionIcon
+            variant="subtle"
+            color={copied ? 'green' : 'gray'}
+            size="lg"
+            onClick={handleCopyBody}
+            disabled={isSaving}
+            aria-label="Copy block body"
+          >
+            {copied ? <IconCheck size={18} /> : <IconClipboard size={18} />}
+          </ActionIcon>
           <Popover
             opened={dupPopoverOpen}
             onClose={() => setDupPopoverOpen(false)}
