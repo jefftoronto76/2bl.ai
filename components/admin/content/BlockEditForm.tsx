@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Button, Group, NumberInput, Select, Stack, Textarea, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Group, NumberInput, Select, Stack, Textarea, TextInput, Tooltip } from '@mantine/core'
+import { IconCheck, IconClipboard } from '@tabler/icons-react'
 import { SafetyCheckAlert } from './SafetyCheckAlert'
 import {
   useBlockEditForm,
@@ -41,6 +42,7 @@ type EditModeProps = {
   onSave: (draft: EditBlockDraft) => Promise<void>
   onSaveAnyway: (draft: EditBlockDraft) => Promise<void>
   onCancel: () => void
+  onRename?: (newTitle: string) => void
 }
 
 type NewModeProps = {
@@ -107,6 +109,32 @@ export function BlockEditForm(props: BlockEditFormProps) {
   const [type, setType] = useState<BlockType | ''>('')
   const [topicId, setTopicId] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+
+  // Edit-mode title rename — seeded from block.title, committed on blur/Enter.
+  const [drawerTitle, setDrawerTitle] = useState(
+    !isNew ? (props as EditModeProps).block.title : '',
+  )
+
+  // Clipboard copy state for edit mode.
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopyBody() {
+    if (isNew) return
+    try {
+      await navigator.clipboard.writeText((props as EditModeProps).block.body)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[BlockEditForm] clipboard write failed')
+    }
+  }
+
+  function commitTitleRename() {
+    if (isNew) return
+    const trimmed = drawerTitle.trim()
+    if (!trimmed || trimmed === (props as EditModeProps).block.title) return
+    ;(props as EditModeProps).onRename?.(trimmed)
+  }
 
   // 'edit' mode local state for the Order field — seeded from the
   // existing block's order. Empty string is the "unordered" / cleared
@@ -257,6 +285,22 @@ export function BlockEditForm(props: BlockEditFormProps) {
           />
         </>
       )}
+      {!isNew && (
+        <TextInput
+          label="Title"
+          value={drawerTitle}
+          onChange={e => setDrawerTitle(e.currentTarget.value)}
+          onBlur={commitTitleRename}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commitTitleRename() }
+            if (e.key === 'Escape') {
+              setDrawerTitle((props as EditModeProps).block.title)
+            }
+          }}
+          size="sm"
+          disabled={busy}
+        />
+      )}
       <Textarea
         label={isNew ? 'Body' : undefined}
         value={draft}
@@ -293,37 +337,52 @@ export function BlockEditForm(props: BlockEditFormProps) {
         onRemoveOffending={onRemoveOffending}
         disabled={busy}
       />
-      <Group gap="xs">
-        <Button
-          variant="filled"
-          color="green"
-          size="sm"
-          onClick={handleSubmit}
-          loading={busy}
-        >
-          {checking ? 'Checking...' : saving ? savingLabel : submitLabel}
-        </Button>
-        {hasIssues && (
+      <Group gap="xs" justify="space-between">
+        <Group gap="xs">
           <Button
-            variant="default"
-            color="yellow"
+            variant="filled"
+            color="green"
             size="sm"
-            onClick={handleSubmitAnyway}
-            disabled={checking}
-            loading={saving}
+            onClick={handleSubmit}
+            loading={busy}
           >
-            Save Anyway
+            {checking ? 'Checking...' : saving ? savingLabel : submitLabel}
           </Button>
+          {hasIssues && (
+            <Button
+              variant="default"
+              color="yellow"
+              size="sm"
+              onClick={handleSubmitAnyway}
+              disabled={checking}
+              loading={saving}
+            >
+              Save Anyway
+            </Button>
+          )}
+          <Button
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={handleCancel}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+        </Group>
+        {!isNew && (
+          <Tooltip label={copied ? 'Copied!' : 'Copy body'} withArrow position="left">
+            <ActionIcon
+              variant="subtle"
+              color={copied ? 'green' : 'gray'}
+              size="md"
+              onClick={handleCopyBody}
+              aria-label="Copy block body to clipboard"
+            >
+              {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
+            </ActionIcon>
+          </Tooltip>
         )}
-        <Button
-          variant="subtle"
-          color="gray"
-          size="sm"
-          onClick={handleCancel}
-          disabled={busy}
-        >
-          Cancel
-        </Button>
       </Group>
     </Stack>
   )

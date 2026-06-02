@@ -572,6 +572,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
       >
         {editingBlock && (
           <BlockEditForm
+            key={editingBlock.id}
             block={{
               id: editingBlock.id,
               title: editingBlock.title,
@@ -581,6 +582,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
             onSave={handleFormSave}
             onSaveAnyway={handleFormSaveAnyway}
             onCancel={handleCancelEdit}
+            onRename={newTitle => handleRename(editingBlock.id, newTitle)}
           />
         )}
       </EditContainer>
