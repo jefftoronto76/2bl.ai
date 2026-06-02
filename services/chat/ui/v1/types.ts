@@ -137,6 +137,14 @@ export interface UseChatTurnOptions {
 /** Public surface returned by the useChatTurn hook. */
 export interface UseChatTurnReturn {
   send(input: string): Promise<void>
+  /**
+   * Like send(), but the user message is injected into the API context only —
+   * it is never added to the store or persisted, so it never renders in the UI.
+   * The assistant reply IS added and rendered normally. Used by system signals
+   * (e.g. dispatchSystemSignal) where the application drives a guide turn
+   * without showing a user bubble.
+   */
+  sendHidden(content: string): Promise<void>
   retry(): Promise<void>
   isStreaming: boolean
   isError: boolean

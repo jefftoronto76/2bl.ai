@@ -126,7 +126,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // The conversation engine + state, isolated to this provider (no instanceKey).
   const session = useChatSession({});
-  const { messages, sessionId, isStreaming, isError, send, hydrate, reset } = session;
+  const { messages, sessionId, isStreaming, isError, send, sendHidden, hydrate, reset } = session;
 
   // Latest-value mirror refs, assigned during render, so event handlers
   // (pagehide / beforeunload) and newChat read the current transcript/session
@@ -287,20 +287,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [recentSessions, hydrateConversation],
   );
 
-  // Inject a synthetic assistant message with an ACCOUNT_CREATE marker so the
-  // chat surface renders a MagicLinkCard without a round-trip to the API.
+  // Inject a hidden system signal into the API context so the guide responds
+  // conversationally (asks for name, eventually emits ACCOUNT_CREATE). The
+  // [SYSTEM: ...] message is never added to the store and never renders in the
+  // UI — only the guide's reply is visible to the member.
   const dispatchSystemSignal = useCallback((signal: string) => {
-    const syntheticMsg: Message = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `[ACCOUNT_CREATE: ${signal}]`,
-      timestamp: Date.now(),
-    };
-    hydrateConversation({
-      messages: [...messagesRef.current, syntheticMsg],
-      sessionId: sessionIdRef.current,
-    });
-  }, [hydrateConversation]);
+    sendHidden(`[SYSTEM: ${signal}]`);
+  }, [sendHidden]);
 
   // Link the current anonymous session to the newly-signed-in user. Called by
   // MagicLinkCard's onSuccess after Clerk auth completes. Idempotent — the

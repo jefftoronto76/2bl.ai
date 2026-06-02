@@ -135,6 +135,53 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors, setStreaming, persist],
   )
 
+  // Like send(), but the user message is included in msgsToSend for the API
+  // without being added to the store. The assistant reply renders normally. Used
+  // for system signals where the application drives a guide turn without showing
+  // a user bubble.
+  const sendHidden = useCallback(
+    async (content: string) => {
+      if (!content.trim() || streamingRef.current) return
+
+      setIsError(false)
+      const hiddenMsg: ChatMessage = { role: 'user', content: content.trim() }
+      const msgsToSend = [...accessors.getMessages(), hiddenMsg]
+      // Deliberately NOT calling accessors.addMessage(hiddenMsg) — hidden from UI.
+      setStreaming(true)
+      accessors.addMessage({ role: 'assistant', content: '' })
+
+      let activeSessionId = accessors.getSessionId()
+      if (!activeSessionId) {
+        try {
+          const res = await fetch('/api/sessions', { method: 'POST' })
+          const data = await res.json()
+          console.log('[chat/turn] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
+          if (data.id) {
+            activeSessionId = data.id
+            accessors.setSessionId(data.id)
+          }
+        } catch (err) {
+          console.error('[chat/turn] POST /api/sessions failed:', err)
+        }
+      }
+
+      try {
+        await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
+          accessors.updateLastMessage(chunk),
+        )
+      } catch {
+        accessors.updateLastMessage('')
+        setIsError(true)
+        setStreaming(false)
+        return
+      }
+      setStreaming(false)
+
+      if (activeSessionId) persist(activeSessionId)
+    },
+    [accessors, setStreaming, persist],
+  )
+
   const retry = useCallback(async () => {
     if (streamingRef.current) return
     setIsError(false)
@@ -160,5 +207,5 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     if (sessionId) persist(sessionId)
   }, [accessors, setStreaming, persist])
 
-  return { send, retry, isStreaming, isError }
+  return { send, sendHidden, retry, isStreaming, isError }
 }
