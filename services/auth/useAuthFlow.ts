@@ -4,26 +4,19 @@
 //
 // Client-side authentication flow hook for the magic-link / OTP membership
 // workflow. Orchestrates:
-//   - Email magic link (sign-in: Clerk createEmailLinkFlow polling;
-//                       sign-up: prepareEmailAddressVerification redirect)
-//   - Phone OTP        (sign-in: attemptFirstFactor;
-//                       sign-up: preparePhoneNumberVerification + attemptPhoneNumberVerification)
+//   - Email magic link (sign-in: emailLink.sendLink + waitForVerification;
+//                       sign-up: verifications.sendEmailLink + waitForEmailLinkVerification)
+//   - Phone OTP        (sign-in: phoneCode.sendCode + phoneCode.verifyCode;
+//                       sign-up: verifications.sendPhoneCode + verifications.verifyPhoneCode)
 //
-// The hook calls POST /api/auth/magic-link first (validation + rate-limit gate),
-// then uses Clerk's useSignIn / useSignUp hooks to actually send and verify.
+// Written for Clerk v7 (Future API): useSignIn/useSignUp return
+// SignInFutureResource / SignUpFutureResource — NOT the classic SignInResource.
+// setActive no longer exists; sessions are activated via .finalize().
+// All methods return { error: ClerkAPIError | null } instead of throwing.
 //
 // New-vs-existing user: sign-in is attempted first. When Clerk returns
 // form_identifier_not_found the hook transparently retries via sign-up. The
 // caller never needs to distinguish the two cases.
-//
-// Email link completion:
-//   - Sign-in flow: startEmailLinkFlow polls Clerk's API; resolves when the
-//     link is clicked from any tab. If clicked in the same tab, the Clerk
-//     redirect completes the session before the promise resolves — ClerkProvider
-//     picks it up and useUser().isSignedIn becomes true naturally.
-//   - Sign-up flow: redirect-only (prepareEmailAddressVerification + Clerk's
-//     __clerk_ticket redirect). No polling is needed because ClerkProvider on
-//     the redirect target page handles completion.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSignIn, useSignUp } from '@clerk/nextjs'
@@ -36,7 +29,7 @@ export type AuthFlowStage =
   | 'email_sent'  // email dispatched, waiting for link click
   | 'otp_input'   // OTP sent, waiting for code entry
   | 'verifying'   // OTP code verification in flight
-  | 'success'     // session established (same-tab polling / OTP path)
+  | 'success'     // session established
   | 'expired'     // magic link expired; resend is available
   | 'error'       // unrecoverable; reset() to start over
 
@@ -44,48 +37,35 @@ export type AuthContactType = 'email' | 'phone'
 
 export interface UseAuthFlowReturn {
   stage: AuthFlowStage
-  /** Which contact method was submitted. */
   contactType: AuthContactType | null
-  /** The submitted email or phone (displayed in "check your…" states). */
   contactValue: string
-  /** Human-readable error for the current stage. Null when no error. */
   error: string | null
   sendEmail: (email: string) => Promise<void>
   sendPhone: (phone: string) => Promise<void>
-  /** Phone OTP path only — submit the 6-digit code. */
   verifyOtp: (code: string) => Promise<void>
-  /** Re-send to the same contact. Available in email_sent and expired stages. */
   resend: () => Promise<void>
-  /** Cancel everything and return to idle. */
   reset: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getClerkErrorCode(err: unknown): string | null {
-  if (err && typeof err === 'object' && 'errors' in err) {
-    const errors = (err as { errors: Array<{ code?: string }> }).errors
-    return errors[0]?.code ?? null
-  }
-  return null
-}
-
-function extractClerkError(err: unknown): string {
-  if (err && typeof err === 'object' && 'errors' in err) {
-    const errors = (err as { errors: Array<{ longMessage?: string; message?: string }> }).errors
-    const msg = errors[0]?.longMessage ?? errors[0]?.message
-    if (msg) return msg
-  }
-  if (err instanceof Error) return err.message
-  return 'Something went wrong. Please try again.'
-}
-
 /** Error codes Clerk returns when the identifier has no account. */
 const NOT_FOUND_CODES = new Set([
   'form_identifier_not_found',
   'strategy_for_user_invalid',
-  'session_exists', // occasionally returned when sign-up is needed instead
 ])
+
+function extractErrorMessage(err: unknown): string {
+  if (!err) return 'Something went wrong. Please try again.'
+  if (typeof err === 'object' && err !== null) {
+    if ('longMessage' in err && typeof (err as { longMessage?: string }).longMessage === 'string')
+      return (err as { longMessage: string }).longMessage
+    if ('message' in err && typeof (err as { message?: string }).message === 'string')
+      return (err as { message: string }).message
+  }
+  if (err instanceof Error) return err.message
+  return 'Something went wrong. Please try again.'
+}
 
 /** Hit the server validation + rate-limit gate before calling Clerk. */
 async function callValidationGate(type: AuthContactType, value: string): Promise<void> {
@@ -103,33 +83,27 @@ async function callValidationGate(type: AuthContactType, value: string): Promise
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAuthFlow(): UseAuthFlowReturn {
-  const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn()
-  const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp()
+  // Clerk v7 Future API: hooks return { signIn: SignInFutureResource | null }
+  // and { signUp: SignUpFutureResource | null }. No isLoaded, no setActive.
+  const { signIn } = useSignIn()
+  const { signUp } = useSignUp()
 
   const [stage, setStage] = useState<AuthFlowStage>('idle')
   const [contactType, setContactType] = useState<AuthContactType | null>(null)
   const [contactValue, setContactValue] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // 'signin' | 'signup' — which Clerk flow is active. Determines which verify /
-  // setActive / resend path to take. Written before any await so it is always
-  // consistent with the in-flight Clerk state.
+  // 'signin' | 'signup' — which Clerk flow is active.
   const flowTypeRef = useRef<'signin' | 'signup' | null>(null)
 
-  // Cancels the email-link polling loop. Set when startEmailLinkFlow is called;
-  // cleared on reset / unmount.
-  const cancelEmailFlowRef = useRef<(() => void) | null>(null)
-
-  // Stop polling when the component unmounts.
+  // Guards setState calls after unmount.
+  const mountedRef = useRef(true)
   useEffect(() => {
-    return () => {
-      cancelEmailFlowRef.current?.()
-    }
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
   }, [])
 
   const reset = useCallback(() => {
-    cancelEmailFlowRef.current?.()
-    cancelEmailFlowRef.current = null
     flowTypeRef.current = null
     setStage('idle')
     setError(null)
@@ -141,10 +115,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
   const sendEmail = useCallback(
     async (email: string) => {
-      if (!signInLoaded || !signUpLoaded || !signIn || !signUp) return
-
-      cancelEmailFlowRef.current?.()
-      cancelEmailFlowRef.current = null
+      if (!signIn || !signUp) return
 
       setStage('sending')
       setError(null)
@@ -154,82 +125,88 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        const redirectUrl = window.location.href
+        const verificationUrl = window.location.href
 
-        // ── Try sign-in first (existing user) ─────────────────────────────
-        let usedSignUp = false
-        try {
-          await signIn.create({ identifier: email })
+        // Try sign-in first (existing user).
+        const { error: createErr } = await signIn.create({ identifier: email })
 
-          const emailFactor = signIn.supportedFirstFactors?.find(
-            (f): f is { strategy: 'email_link'; emailAddressId: string } =>
-              f.strategy === 'email_link',
-          )
-          if (!emailFactor) {
-            throw new Error('Email sign-in is not configured for this account.')
+        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
+          // New user — create sign-up and send email link.
+          const { error: signUpErr } = await signUp.create({ emailAddress: email })
+          if (signUpErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
+            return
           }
 
-          // startEmailLinkFlow sends the email and polls for same-tab completion.
-          const { startEmailLinkFlow, cancelEmailLinkFlow } = signIn.createEmailLinkFlow()
-          cancelEmailFlowRef.current = cancelEmailLinkFlow
-          flowTypeRef.current = 'signin'
+          const { error: sendErr } = await signUp.verifications.sendEmailLink({ verificationUrl })
+          if (sendErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+            return
+          }
 
-          setStage('email_sent')
-
-          // Run in background — resolves when the link is clicked in another tab
-          // (cross-tab polling). If clicked in the same tab, Clerk's redirect
-          // completes the session before this promise resolves; ClerkProvider
-          // handles it and the hook's success branch becomes a no-op race.
-          startEmailLinkFlow({
-            emailAddressId: emailFactor.emailAddressId,
-            redirectUrl,
-          })
-            .then(async (result) => {
-              if (result.status === 'complete' && result.createdSessionId) {
-                await setSignInActive({ session: result.createdSessionId })
-                setStage('success')
-              } else {
-                setStage('expired')
-              }
-            })
-            .catch((err: unknown) => {
-              // AbortError = cancelEmailLinkFlow() was called (reset / unmount) — silent.
-              if ((err as { name?: string })?.name !== 'AbortError') {
-                setError(extractClerkError(err))
-                setStage('error')
-              }
-            })
-        } catch (signInErr: unknown) {
-          const code = getClerkErrorCode(signInErr)
-          if (!NOT_FOUND_CODES.has(code ?? '')) throw signInErr
-
-          // ── New user — create sign-up and send via email link redirect ────
-          usedSignUp = true
-          await signUp.create({ emailAddress: email })
-          await signUp.prepareEmailAddressVerification({
-            strategy: 'email_link',
-            redirectUrl,
-          })
           flowTypeRef.current = 'signup'
-          setStage('email_sent')
-          // Sign-up email links complete via Clerk's __clerk_ticket redirect.
-          // No polling needed — ClerkProvider on the landing page handles it.
+          if (mountedRef.current) setStage('email_sent')
+
+          // Wait in background — resolves when clicked or expired.
+          void signUp.verifications.waitForEmailLinkVerification().then(({ error: waitErr }) => {
+            if (!mountedRef.current) return
+            if (waitErr) { setError(extractErrorMessage(waitErr)); setStage('error'); return }
+            const v = signUp.verifications.emailLinkVerification
+            if (v?.status === 'verified') {
+              void signUp.finalize().then(({ error: finalizeErr }) => {
+                if (!mountedRef.current) return
+                if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
+                else setStage('success')
+              })
+            } else {
+              setStage('expired')
+            }
+          })
+          return
         }
 
-        void usedSignUp // consumed above; suppress unused-var lint
+        if (createErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
+          return
+        }
+
+        // Existing user — send sign-in email link.
+        const { error: sendErr } = await signIn.emailLink.sendLink({ verificationUrl })
+        if (sendErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+          return
+        }
+
+        flowTypeRef.current = 'signin'
+        if (mountedRef.current) setStage('email_sent')
+
+        // Wait in background — resolves when clicked or expired.
+        void signIn.emailLink.waitForVerification().then(({ error: waitErr }) => {
+          if (!mountedRef.current) return
+          if (waitErr) { setError(extractErrorMessage(waitErr)); setStage('error'); return }
+          const v = signIn.emailLink.verification
+          if (v?.status === 'verified') {
+            void signIn.finalize().then(({ error: finalizeErr }) => {
+              if (!mountedRef.current) return
+              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
+              else setStage('success')
+            })
+          } else {
+            setStage('expired')
+          }
+        })
       } catch (err: unknown) {
-        setError(extractClerkError(err))
-        setStage('error')
+        if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
     },
-    [signIn, signUp, signInLoaded, signUpLoaded, setSignInActive],
+    [signIn, signUp],
   )
 
   // ── Phone OTP ──────────────────────────────────────────────────────────────
 
   const sendPhone = useCallback(
     async (phone: string) => {
-      if (!signInLoaded || !signUpLoaded || !signIn || !signUp) return
+      if (!signIn || !signUp) return
 
       setStage('sending')
       setError(null)
@@ -240,26 +217,44 @@ export function useAuthFlow(): UseAuthFlowReturn {
         await callValidationGate('phone', phone)
 
         // Try sign-in first (existing user).
-        try {
-          await signIn.create({ strategy: 'phone_code', identifier: phone })
-          flowTypeRef.current = 'signin'
-        } catch (signInErr: unknown) {
-          const code = getClerkErrorCode(signInErr)
-          if (!NOT_FOUND_CODES.has(code ?? '')) throw signInErr
+        const { error: createErr } = await signIn.create({ identifier: phone })
 
+        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
           // New user — create sign-up and send OTP.
-          await signUp.create({ phoneNumber: phone })
-          await signUp.preparePhoneNumberVerification({ strategy: 'phone_code' })
+          const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
+          if (signUpErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
+            return
+          }
+          const { error: sendErr } = await signUp.verifications.sendPhoneCode()
+          if (sendErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+            return
+          }
           flowTypeRef.current = 'signup'
+          if (mountedRef.current) setStage('otp_input')
+          return
         }
 
-        setStage('otp_input')
+        if (createErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
+          return
+        }
+
+        // Existing user — send phone OTP.
+        const { error: sendErr } = await signIn.phoneCode.sendCode()
+        if (sendErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+          return
+        }
+
+        flowTypeRef.current = 'signin'
+        if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
-        setError(extractClerkError(err))
-        setStage('error')
+        if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
     },
-    [signIn, signUp, signInLoaded, signUpLoaded],
+    [signIn, signUp],
   )
 
   // ── OTP verification ───────────────────────────────────────────────────────
@@ -273,45 +268,49 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
       try {
         if (flowTypeRef.current === 'signup') {
-          const result = await signUp.attemptPhoneNumberVerification({ code })
-          if (result.status === 'complete' && result.createdSessionId) {
-            await setSignUpActive({ session: result.createdSessionId })
-            setStage('success')
+          const { error: verifyErr } = await signUp.verifications.verifyPhoneCode({ code })
+          if (verifyErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
+            return
+          }
+          if (signUp.status === 'complete') {
+            const { error: finalizeErr } = await signUp.finalize()
+            if (mountedRef.current) {
+              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
+              else setStage('success')
+            }
           } else {
-            setError('Verification did not complete. Please try again.')
-            setStage('otp_input')
+            if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
           }
         } else {
-          const result = await signIn.attemptFirstFactor({
-            strategy: 'phone_code',
-            code,
-          })
-          if (result.status === 'complete' && result.createdSessionId) {
-            await setSignInActive({ session: result.createdSessionId })
-            setStage('success')
+          const { error: verifyErr } = await signIn.phoneCode.verifyCode({ code })
+          if (verifyErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
+            return
+          }
+          if (signIn.status === 'complete') {
+            const { error: finalizeErr } = await signIn.finalize()
+            if (mountedRef.current) {
+              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
+              else setStage('success')
+            }
           } else {
-            setError('Verification did not complete. Please try again.')
-            setStage('otp_input')
+            if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
           }
         }
       } catch (err: unknown) {
-        // Leave user in otp_input so they can correct the code.
-        setError(extractClerkError(err))
-        setStage('otp_input')
+        if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('otp_input') }
       }
     },
-    [signIn, signUp, setSignInActive, setSignUpActive],
+    [signIn, signUp],
   )
 
   // ── Resend ─────────────────────────────────────────────────────────────────
 
   const resend = useCallback(async () => {
     if (!contactType || !contactValue) return
-    if (contactType === 'email') {
-      await sendEmail(contactValue)
-    } else {
-      await sendPhone(contactValue)
-    }
+    if (contactType === 'email') await sendEmail(contactValue)
+    else await sendPhone(contactValue)
   }, [contactType, contactValue, sendEmail, sendPhone])
 
   return {
