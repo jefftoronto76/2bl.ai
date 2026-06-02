@@ -332,3 +332,34 @@ Options to evaluate:
 
 Goal: one definition, per-tenant override capability,
 applies automatically to new tenants.
+
+## Code Quality — Pre-existing Warnings
+
+Do not fix these inside feature branches. Address in a dedicated cleanup pass.
+
+- [ ] **Unescaped apostrophes/quotes in JSX** — multiple files. Raw `'` and
+      `"` characters inside JSX text nodes trigger the
+      `react/no-unescaped-entities` rule. Replace with `&apos;` and `&quot;`
+      respectively.
+
+- [ ] **`<img>` instead of Next.js `<Image />`** — multiple files. Raw `<img>`
+      tags bypass Next.js image optimisation (automatic WebP conversion, lazy
+      loading, size hints). Each instance is a missed LCP improvement. Migrate
+      to `next/image` `<Image />` with explicit `width`/`height` or `fill`.
+
+- [ ] **`<a>` tag instead of `<Link />` in SectionProcess.tsx line 360** —
+      raw anchor bypasses the Next.js client-side router and triggers the
+      `@next/next/no-html-link-for-pages` rule. Replace with `<Link href="…">`.
+
+- [ ] **Custom font loading not in `_document.js`** —
+      `app/(jefflougheed)/layout.tsx` loads Google Fonts via a `<link>` tag in
+      the layout rather than through `next/font`. This triggers the
+      `@next/next/no-page-custom-font` rule and prevents font preloading
+      optimisations. Migrate to `next/font/google`.
+
+- [ ] **`useEffect` missing dependency `messages.length`** —
+      `components/admin/PromptBuilderChat.tsx` line 100. The exhaustive-deps
+      lint rule flags this; the effect may not re-run when `messages` grows.
+      Audit the intended behaviour and either add the dependency or suppress
+      with a documented justification comment.
+
