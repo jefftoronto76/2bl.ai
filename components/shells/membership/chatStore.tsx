@@ -64,6 +64,13 @@ interface ChatContextType {
   /** Clear the active conversation and start fresh (New Chat). History stays. */
   newChat: () => void;
   /**
+   * Inject a synthetic assistant message carrying an ACCOUNT_CREATE marker so
+   * the chat surface renders a MagicLinkCard without a round-trip to the API.
+   * Called when a guest deliberately initiates sign-in (e.g. taps "Sign in"
+   * in the ChatHeader dropdown).
+   */
+  dispatchSystemSignal: (signal: string) => void;
+  /**
    * Link the current anonymous session to the newly-signed-in user.
    * Called by MagicLinkCard's onSuccess after Clerk authentication completes.
    * No-ops gracefully when no session exists yet. The existing isSignedIn
@@ -280,6 +287,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [recentSessions, hydrateConversation],
   );
 
+  // Inject a synthetic assistant message with an ACCOUNT_CREATE marker so the
+  // chat surface renders a MagicLinkCard without a round-trip to the API.
+  const dispatchSystemSignal = useCallback((signal: string) => {
+    const syntheticMsg: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `[ACCOUNT_CREATE: ${signal}]`,
+      timestamp: Date.now(),
+    };
+    hydrateConversation({
+      messages: [...messagesRef.current, syntheticMsg],
+      sessionId: sessionIdRef.current,
+    });
+  }, [hydrateConversation]);
+
   // Link the current anonymous session to the newly-signed-in user. Called by
   // MagicLinkCard's onSuccess after Clerk auth completes. Idempotent — the
   // route returns 200 if already claimed by the same user. The isSignedIn
@@ -315,7 +337,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, claimCurrentSession }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession }}
     >
       {children}
     </ChatContext.Provider>
