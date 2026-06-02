@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
-import { Message } from './chatStore';
+import { Message, useChatStore } from './chatStore';
+import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 
 interface MessageListProps {
@@ -76,6 +77,7 @@ function TypingIndicator() {
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { claimCurrentSession } = useChatStore();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -86,15 +88,41 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
     m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
   );
 
+  // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
+  // sync the newly-authenticated user into the members table.
+  const handleAuthSuccess = useCallback(async () => {
+    await claimCurrentSession();
+    await fetch('/api/members/sync', { method: 'POST' }).catch((err) =>
+      console.error('[heirloom/MessageList] members sync failed:', err),
+    );
+  }, [claimCurrentSession]);
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         {messages.map((msg, i) => {
-          const content = msg.role === 'user' ? msg.content : parsed[i]?.prose ?? '';
-          // Skip an assistant message with no prose (only a marker, or cleared
-          // on error).
-          if (msg.role === 'assistant' && !content) return null;
-          return <MessageBubble key={msg.id} message={msg} content={content} />;
+          if (msg.role === 'user') {
+            return <MessageBubble key={msg.id} message={msg} content={msg.content} />;
+          }
+
+          const result = parsed[i];
+          const prose = result?.prose ?? '';
+          const authPrompt = result?.markers.find((m) => m.type === 'AUTH_PROMPT');
+
+          // Skip assistant messages with no prose AND no auth prompt.
+          if (!prose && !authPrompt) return null;
+
+          return (
+            <div key={msg.id} className="flex flex-col gap-3">
+              {prose && <MessageBubble message={msg} content={prose} />}
+              {authPrompt && (
+                <MagicLinkCard
+                  reason={authPrompt.fields[0] || undefined}
+                  onSuccess={handleAuthSuccess}
+                />
+              )}
+            </div>
+          );
         })}
         {isLoading && <TypingIndicator />}
         {isError && <ErrorBubble />}
