@@ -18,8 +18,11 @@ import {
   clearDraft,
   clearSession,
   findMostRecentThread,
+  readIndex,
+  DRAFT_ID,
   type PersistedMessage,
 } from '@/services/chat/ui/v1/persistence';
+import { createUIMessage } from '@/services/chat/ui/v1/message';
 import {
   chatReducer,
   initialState,
@@ -77,6 +80,17 @@ interface ChatContextType {
    * effect handles DB recovery and Recent-sidebar refresh automatically.
    */
   claimCurrentSession: () => Promise<void>;
+  /**
+   * Sync the members row then claim EVERY anonymous session from this browser's
+   * localStorage index. Called by SaveChatCTA after sign-up so the full
+   * conversation history is linked — not just the current session.
+   */
+  claimAllSessions: () => Promise<void>;
+  /**
+   * Append a synthetic assistant message to the conversation without a network
+   * round-trip. Used after sign-up to confirm membership in-chat.
+   */
+  injectAssistantMessage: (content: string) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -315,6 +329,53 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Sync the Heirloom members row, then claim every real session in the
+  // localStorage index so the full conversation history is linked to the new
+  // user — not just the current session. Fire-and-forget per session; a failed
+  // claim on one session does not abort the others.
+  const claimAllSessions = useCallback(async () => {
+    // 1. Create/refresh the members row (email + phone from Clerk).
+    await fetch('/api/members/sync', { method: 'POST' }).catch(err =>
+      console.error('[heirloom/chat] members sync failed:', err)
+    );
+
+    // 2. Collect all real session IDs from the localStorage index.
+    const realIds = readIndex()
+      .map(e => e.id)
+      .filter(id => id !== DRAFT_ID);
+
+    // Include the in-memory session in case it hasn't flushed to the index yet.
+    const currentId = sessionIdRef.current;
+    if (currentId && !realIds.includes(currentId)) {
+      realIds.push(currentId);
+    }
+
+    await Promise.allSettled(
+      realIds.map(id =>
+        fetch(`/api/sessions/${id}/claim`, { method: 'POST' })
+          .then(r => {
+            if (!r.ok) console.warn('[heirloom/chat] claim failed:', id, r.status);
+            else console.log('[heirloom/chat] claimed session:', id);
+          })
+          .catch(err => console.error('[heirloom/chat] claim error:', id, err))
+      )
+    );
+  }, []);
+
+  // Append a synthetic assistant message without a network round-trip. Uses
+  // hydrateConversation so prevSessionIdRef stays primed (no spurious draft →
+  // session transition) and the buffer-flush effects pick it up naturally.
+  const injectAssistantMessage = useCallback(
+    (content: string) => {
+      const msg: Message = createUIMessage('assistant', content);
+      hydrateConversation({
+        messages: [...messagesRef.current, msg],
+        sessionId: sessionIdRef.current,
+      });
+    },
+    [hydrateConversation],
+  );
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
   // isMember derives directly from Clerk — no local state needed.
@@ -330,7 +391,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage }}
     >
       {children}
     </ChatContext.Provider>
