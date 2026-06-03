@@ -29,6 +29,7 @@ export function SaveChatCTA() {
   const flow = useAuthFlow();
 
   const [open, setOpen] = useState(false);
+  const [nameValue, setNameValue] = useState('');
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -36,11 +37,13 @@ export function SaveChatCTA() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // After Clerk auth completes: claim all sessions and inject confirmation message.
+  // After Clerk auth completes: pass name through to claimAllSessions, then inject
+  // the confirmation message. nameValue is written to users.name (column exists on
+  // `users`). members table has no name column — name never touches members.
   useEffect(() => {
     if (flow.stage !== 'success') return;
     void (async () => {
-      await claimAllSessions();
+      await claimAllSessions(nameValue.trim() || undefined);
       injectAssistantMessage("You're now a member — your story is saved.");
       setOpen(false);
     })();
@@ -67,6 +70,7 @@ export function SaveChatCTA() {
 
   function handleClose() {
     setOpen(false);
+    setNameValue('');
     setInputValue('');
     setOtpValue('');
     setResendCooldown(0);
@@ -93,6 +97,11 @@ export function SaveChatCTA() {
     await flow.resend();
   }
 
+  // ── Input class shared across the eggshell (bg-text-primary) modal card ───
+
+  const inputCls =
+    'flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-body text-background placeholder-background/30 focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all disabled:opacity-50';
+
   // ── Modal form stages ──────────────────────────────────────────────────────
 
   const { stage, error } = flow;
@@ -102,7 +111,7 @@ export function SaveChatCTA() {
       return (
         <div className="flex items-center gap-2 py-1">
           <Check size={16} className="text-accent flex-shrink-0" />
-          <p className="text-text-primary text-sm font-body font-medium">You&apos;re in.</p>
+          <p className="text-background text-sm font-body font-medium">You&apos;re in.</p>
         </div>
       );
     }
@@ -113,21 +122,21 @@ export function SaveChatCTA() {
           <div className="flex items-start gap-2 mb-3">
             <Check size={15} className="text-accent mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-text-primary text-sm font-body font-medium">Link sent</p>
-              <p className="text-text-muted text-sm font-body mt-0.5">
+              <p className="text-background text-sm font-body font-medium">Link sent</p>
+              <p className="text-background/60 text-sm font-body mt-0.5">
                 Check {flow.contactValue} and click the link to continue.
               </p>
             </div>
           </div>
           {resendCooldown > 0 ? (
-            <p className="text-text-muted text-xs font-body" aria-live="polite">
+            <p className="text-background/50 text-xs font-body" aria-live="polite">
               Resend in {resendCooldown}s
             </p>
           ) : (
             <button
               type="button"
               onClick={handleResend}
-              className="text-accent text-sm font-body hover:text-accent-hover underline underline-offset-2 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded"
+              className="text-background/80 text-sm font-body hover:text-background underline underline-offset-2 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40 rounded"
             >
               Resend link
             </button>
@@ -139,8 +148,8 @@ export function SaveChatCTA() {
     if (stage === 'otp_input' || stage === 'verifying') {
       return (
         <div>
-          <p className="text-text-primary text-sm font-body font-medium mb-0.5">Code sent</p>
-          <p className="text-text-muted text-sm font-body mb-3">
+          <p className="text-background text-sm font-body font-medium mb-0.5">Code sent</p>
+          <p className="text-background/60 text-sm font-body mb-3">
             Enter the code sent to {flow.contactValue}
           </p>
           <form onSubmit={handleOtpSubmit} className="flex gap-2" noValidate>
@@ -154,26 +163,26 @@ export function SaveChatCTA() {
               placeholder="------"
               aria-label="6-digit verification code"
               autoComplete="one-time-code"
-              className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder-text-muted text-center tracking-[0.3em] focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+              className="flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-mono text-background placeholder-background/30 text-center tracking-[0.3em] focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all"
             />
             <button
               type="submit"
               disabled={otpValue.length !== 6 || stage === 'verifying'}
               aria-label="Verify code"
-              className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
             >
               {stage === 'verifying' ? <Spinner /> : <ArrowRight size={15} />}
             </button>
           </form>
           {error && (
-            <p className="mt-2 text-xs text-amber-400/80 font-body" role="alert" aria-live="polite">
+            <p className="mt-2 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">
               {error}
             </p>
           )}
           <button
             type="button"
             onClick={handleResend}
-            className="mt-2 text-text-muted text-xs font-body hover:text-text-primary transition-colors focus:outline-none focus-visible:underline"
+            className="mt-2 text-background/50 text-xs font-body hover:text-background transition-colors focus:outline-none focus-visible:underline"
           >
             Resend code
           </button>
@@ -185,8 +194,8 @@ export function SaveChatCTA() {
       return (
         <div>
           <div className="flex items-start gap-2 mb-3">
-            <AlertCircle size={15} className="text-amber-400/80 mt-0.5 flex-shrink-0" />
-            <p className="text-text-primary text-sm font-body">
+            <AlertCircle size={15} className="text-amber-600/90 mt-0.5 flex-shrink-0" />
+            <p className="text-background text-sm font-body">
               {stage === 'expired'
                 ? 'The link has expired.'
                 : (error ?? 'Something went wrong.')}
@@ -200,7 +209,7 @@ export function SaveChatCTA() {
               setOtpValue('');
               setResendCooldown(0);
             }}
-            className="flex items-center gap-1.5 text-accent text-sm font-body hover:text-accent-hover transition-colors focus:outline-none focus-visible:underline"
+            className="flex items-center gap-1.5 text-background/80 text-sm font-body hover:text-background transition-colors focus:outline-none focus-visible:underline"
           >
             <RotateCcw size={13} />
             Try again
@@ -213,10 +222,24 @@ export function SaveChatCTA() {
     const isSending = stage === 'sending';
     return (
       <div>
+        {/* Name — goes to users.name (column exists). members has no name column. */}
+        <input
+          type="text"
+          value={nameValue}
+          onChange={e => setNameValue(e.target.value)}
+          placeholder="Your name"
+          aria-label="Your name"
+          autoComplete="given-name"
+          className={inputCls}
+        />
+
+        <hr className="border-background/15 my-4" />
+
+        {/* Email / Phone tab toggle */}
         <div
           role="tablist"
           aria-label="Sign-in method"
-          className="flex gap-0.5 mb-3 bg-background/50 rounded-lg p-0.5"
+          className="flex gap-0.5 mb-3 bg-background/10 rounded-lg p-0.5"
         >
           {(['email', 'phone'] as const).map(t => (
             <button
@@ -228,10 +251,10 @@ export function SaveChatCTA() {
                 setTab(t);
                 setInputValue('');
               }}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-body font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-body font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40 ${
                 tab === t
-                  ? 'bg-surface text-text-primary shadow-sm'
-                  : 'text-text-muted hover:text-text-primary'
+                  ? 'bg-accent text-background shadow-sm'
+                  : 'text-background/60 hover:text-background'
               }`}
             >
               {t === 'email' ? <Mail size={12} /> : <Phone size={12} />}
@@ -239,6 +262,8 @@ export function SaveChatCTA() {
             </button>
           ))}
         </div>
+
+        {/* Contact input */}
         <form onSubmit={handleContactSubmit} className="flex gap-2" noValidate>
           <input
             ref={inputRef}
@@ -250,19 +275,20 @@ export function SaveChatCTA() {
             autoComplete={tab === 'email' ? 'email' : 'tel'}
             aria-label={tab === 'email' ? 'Email address' : 'Phone number'}
             disabled={isSending}
-            className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
+            className={inputCls}
           />
           <button
             type="submit"
             disabled={!inputValue.trim() || isSending}
             aria-label={tab === 'email' ? 'Send magic link' : 'Send code'}
-            className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
           >
             {isSending ? <Spinner /> : <ArrowRight size={15} />}
           </button>
         </form>
+
         {stage === 'idle' && error && (
-          <p className="mt-2 text-xs text-amber-400/80 font-body" role="alert" aria-live="polite">
+          <p className="mt-2 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">
             {error}
           </p>
         )}
@@ -274,20 +300,19 @@ export function SaveChatCTA() {
 
   return (
     <>
-      {/* CTA button — left-aligned with the composer */}
+      {/* CTA button — left-aligned with the composer. Colors via Tailwind tokens;
+          font size, font family, and exact padding kept as inline style per spec. */}
       <div className="max-w-2xl mx-auto px-4 mt-3">
         <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Save this chat to your book"
+          className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
           style={{
-            background: '#C9A96E',
-            color: '#1C0F06',
             fontSize: '14.5px',
             fontFamily: 'system-ui, sans-serif',
             padding: '11px 22px',
           }}
-          className="flex items-center gap-2 rounded-lg font-medium hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
         >
           <Bookmark size={15} />
           Save this chat
@@ -309,21 +334,22 @@ export function SaveChatCTA() {
             aria-hidden="true"
           />
 
-          {/* Card — bottom sheet on mobile, centered on sm+ */}
-          <div className="relative z-10 w-full sm:max-w-sm sm:mx-4 bg-surface border border-border rounded-t-2xl sm:rounded-2xl px-6 py-6">
+          {/* Card — eggshell (bg-text-primary) background, dark text throughout.
+              Bottom sheet on mobile, centered card on sm+. */}
+          <div className="relative z-10 w-full sm:max-w-sm sm:mx-4 bg-text-primary rounded-t-2xl sm:rounded-2xl px-6 py-6">
             <button
               type="button"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-text-muted hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-background/40 hover:text-background transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40"
             >
               <X size={16} />
             </button>
 
-            <p className="text-text-primary font-display font-semibold text-lg mb-1 pr-8">
+            <p className="text-background font-display font-semibold text-lg mb-1 pr-8">
               Save your story
             </p>
-            <p className="text-text-muted text-sm font-body mb-5">
+            <p className="text-background/60 text-sm font-body mb-5">
               Create a free account to keep this conversation and pick up where you left off.
             </p>
 

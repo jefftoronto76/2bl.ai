@@ -84,8 +84,10 @@ interface ChatContextType {
    * Sync the members row then claim EVERY anonymous session from this browser's
    * localStorage index. Called by SaveChatCTA after sign-up so the full
    * conversation history is linked — not just the current session.
+   * Optional name is written to users.name (column exists on `users`).
+   * members table has no name column — name never touches members.
    */
-  claimAllSessions: () => Promise<void>;
+  claimAllSessions: (name?: string) => Promise<void>;
   /**
    * Append a synthetic assistant message to the conversation without a network
    * round-trip. Used after sign-up to confirm membership in-chat.
@@ -333,9 +335,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // localStorage index so the full conversation history is linked to the new
   // user — not just the current session. Fire-and-forget per session; a failed
   // claim on one session does not abort the others.
-  const claimAllSessions = useCallback(async () => {
+  const claimAllSessions = useCallback(async (name?: string) => {
     // 1. Create/refresh the members row (email + phone from Clerk).
-    await fetch('/api/members/sync', { method: 'POST' }).catch(err =>
+    // name goes to users.name — members table has no name column.
+    await fetch('/api/members/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name ?? null }),
+    }).catch(err =>
       console.error('[heirloom/chat] members sync failed:', err)
     );
 
