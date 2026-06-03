@@ -170,7 +170,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
 
   async function patchBlock(
     id: string,
-    updates: { status?: BlockStatus; body?: string; order?: number },
+    updates: { status?: BlockStatus; title?: string; body?: string; order?: number },
   ): Promise<boolean> {
     try {
       const res = await fetch(`/api/admin/blocks/${id}`, {
@@ -197,6 +197,28 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
 
   function handleEdit(id: string) {
     setEditingId(id)
+  }
+
+  async function handleRename(id: string, newTitle: string) {
+    const trimmed = newTitle.trim()
+    if (!trimmed) return
+    const current = items.find(b => b.id === id)
+    if (!current || current.title === trimmed) return
+    console.log('[BlocksTable] rename dispatch:', { id, newTitle: trimmed })
+    setSavingId(id)
+    const ok = await patchBlock(id, { title: trimmed })
+    if (ok) {
+      console.log('[BlocksTable] rename success:', { id, newTitle: trimmed })
+      setItems(prev => prev.map(b => (b.id === id ? { ...b, title: trimmed } : b)))
+    } else {
+      console.error('[BlocksTable] rename failed:', { id })
+      notifications.show({
+        color: 'red',
+        title: 'Rename failed',
+        message: 'Could not rename this block. Try again.',
+      })
+    }
+    setSavingId(null)
   }
 
   function handleCancelEdit() {
@@ -508,6 +530,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
                     onToggleSelect={toggleSelect}
                     onToggleStatus={handleStatusChange}
                     onEdit={handleEdit}
+                    onRename={handleRename}
                     onDuplicate={handleDuplicate}
                     onDelete={setDeleteTargetId}
                     onToggleExpand={toggleExpand}
@@ -530,6 +553,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
                 onToggleSelect={toggleSelect}
                 onToggleStatus={handleStatusChange}
                 onOpenEdit={handleEdit}
+                onRename={handleRename}
                 onDuplicate={handleDuplicate}
                 onDelete={setDeleteTargetId}
               />
@@ -548,6 +572,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
       >
         {editingBlock && (
           <BlockEditForm
+            key={editingBlock.id}
             block={{
               id: editingBlock.id,
               title: editingBlock.title,
@@ -557,6 +582,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
             onSave={handleFormSave}
             onSaveAnyway={handleFormSaveAnyway}
             onCancel={handleCancelEdit}
+            onRename={newTitle => handleRename(editingBlock.id, newTitle)}
           />
         )}
       </EditContainer>

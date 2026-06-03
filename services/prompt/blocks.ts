@@ -22,6 +22,7 @@ export type BlocksResult<T> =
 
 export interface BlockUpdate {
   status?: 'active' | 'disabled' | 'deleted'
+  title?: string
   body?: string
   active?: boolean
   order?: number

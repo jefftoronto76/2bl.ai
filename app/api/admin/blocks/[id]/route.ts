@@ -19,7 +19,7 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { status?: string; body?: string; order?: number }
+  let body: { status?: string; title?: string; body?: string; order?: number }
   try {
     body = await req.json()
   } catch {
@@ -27,6 +27,14 @@ export async function PATCH(
   }
 
   const updates: BlockUpdate = {}
+
+  if (typeof body.title === 'string') {
+    const title = body.title.trim()
+    if (!title) {
+      return Response.json({ error: 'Title cannot be empty' }, { status: 400 })
+    }
+    updates.title = title
+  }
 
   if (typeof body.status === 'string') {
     if (!VALID_STATUSES.includes(body.status as BlockStatus)) {

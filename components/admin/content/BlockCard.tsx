@@ -1,18 +1,21 @@
 'use client'
 
-import { type KeyboardEvent, type MouseEvent } from 'react'
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import {
   ActionIcon,
   Badge,
+  Button,
   Checkbox,
   Group,
   Highlight,
   Paper,
+  Popover,
   Progress,
   Stack,
   Switch,
+  TextInput,
 } from '@mantine/core'
-import { IconCopy, IconTrash } from '@tabler/icons-react'
+import { IconCheck, IconClipboard, IconCopy, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import {
   TYPE_COLORS,
@@ -47,6 +50,7 @@ export interface BlockCardProps {
   onToggleSelect: (blockId: string) => void
   onToggleStatus: (blockId: string, nextStatus: 'active' | 'disabled') => void
   onOpenEdit: (blockId: string) => void
+  onRename: (blockId: string, newTitle: string) => void
   onDuplicate: (blockId: string) => void
   onDelete: (blockId: string) => void
 }
@@ -75,6 +79,47 @@ export interface BlockCardProps {
  * 44px tap target around Mantine's ~24px Checkbox without affecting
  * visual layout.
  */
+function CardDupConfirmContent({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (skipNext: boolean) => void
+  onCancel: () => void
+}) {
+  const [skip, setSkip] = useState(false)
+  return (
+    <Stack gap="sm">
+      <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+        Duplicate this block?
+      </Text>
+      <Group gap="xs" wrap="nowrap">
+        <input
+          type="checkbox"
+          id="card-dup-skip-confirm"
+          checked={skip}
+          onChange={e => setSkip(e.currentTarget.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label
+          htmlFor="card-dup-skip-confirm"
+          style={{
+            fontSize: 'var(--mantine-font-size-xs)',
+            color: 'var(--mantine-color-dimmed)',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          Don&apos;t ask again
+        </label>
+      </Group>
+      <Group gap="xs" justify="flex-end">
+        <Button variant="default" size="xs" onClick={onCancel}>Cancel</Button>
+        <Button size="xs" onClick={() => onConfirm(skip)}>Duplicate</Button>
+      </Group>
+    </Stack>
+  )
+}
+
 export function BlockCard({
   block,
   selected,
@@ -84,11 +129,38 @@ export function BlockCard({
   onToggleSelect,
   onToggleStatus,
   onOpenEdit,
+  onRename,
   onDuplicate,
   onDelete,
 }: BlockCardProps) {
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
+  const [dupPopoverOpen, setDupPopoverOpen] = useState(false)
+  const [skipDupConfirm, setSkipDupConfirm] = useState(() =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem('block-admin:skip-dup-confirm') === 'true'
+      : false
+  )
+
   const tokens = tokensFor(block.body)
   const barPct = maxVisibleTokens > 0 ? (tokens / maxVisibleTokens) * 100 : 0
+
+  function startRename() {
+    setRenameValue(block.title)
+    setRenaming(true)
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function commitRename() {
+    setRenaming(false)
+    onRename(block.id, renameValue)
+  }
+
+  function cancelRename() {
+    setRenaming(false)
+  }
 
   function handleStatusToggle(checked: boolean) {
     const nextStatus = checked ? 'active' : 'disabled'
@@ -100,20 +172,36 @@ export function BlockCard({
   }
 
   function handleTapBody() {
+    if (renaming) return
     console.log('[BlockCard] tap to open edit', { blockId: block.id })
     onOpenEdit(block.id)
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (renaming) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       handleTapBody()
     }
   }
 
-  function handleDuplicate(e: MouseEvent) {
+  function handleDuplicateClick(e: MouseEvent) {
     e.stopPropagation()
-    console.log('[BlockCard] duplicate', { blockId: block.id })
+    if (skipDupConfirm) {
+      console.log('[BlockCard] duplicate (skip confirm)', { blockId: block.id })
+      onDuplicate(block.id)
+    } else {
+      setDupPopoverOpen(true)
+    }
+  }
+
+  function confirmDuplicate(skipNext: boolean) {
+    if (skipNext) {
+      localStorage.setItem('block-admin:skip-dup-confirm', 'true')
+      setSkipDupConfirm(true)
+    }
+    setDupPopoverOpen(false)
+    console.log('[BlockCard] duplicate confirmed', { blockId: block.id, skipNext })
     onDuplicate(block.id)
   }
 
@@ -121,6 +209,18 @@ export function BlockCard({
     e.stopPropagation()
     console.log('[BlockCard] delete', { blockId: block.id })
     onDelete(block.id)
+  }
+
+  async function handleCopyBody(e: MouseEvent) {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(block.body)
+      console.log('[BlockCard] body copied', { blockId: block.id })
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[BlockCard] clipboard write failed')
+    }
   }
 
   function stop(e: MouseEvent) {
@@ -168,14 +268,32 @@ export function BlockCard({
               {formatTypeBadgeLabel(block.type)}
             </Badge>
             <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+              {renaming ? (
+                <TextInput
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={e => setRenameValue(e.currentTarget.value)}
+                  onBlur={commitRename}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                    if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                  }}
+                  size="xs"
+                  style={{ width: '100%' }}
+                  aria-label="Block title"
+                />
+              ) : (
               <Text
                 variant="label"
+                onDoubleClick={startRename}
                 style={{
                   minWidth: 0,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  cursor: 'text',
                 }}
+                title="Double-click to rename"
               >
                 <span
                   aria-hidden
@@ -191,12 +309,6 @@ export function BlockCard({
                 >
                   {orderPrefix(block.order)}
                 </span>
-                {/*
-                  Step 18 — search highlighting. Same pattern as the
-                  desktop row: prefix stays plain so numeric queries
-                  don't tag the prefix digits, only the title text is
-                  wrapped. Empty query short-circuits to plain.
-                */}
                 {highlight.trim() ? (
                   <Highlight component="span" highlight={highlight}>
                     {block.title}
@@ -205,6 +317,7 @@ export function BlockCard({
                   block.title
                 )}
               </Text>
+              )}
               {/*
                 Relative timestamp under the title. Pure render-time
                 computation — no interval tick. suppressHydrationWarning
@@ -213,8 +326,9 @@ export function BlockCard({
               */}
               <Text
                 variant="muted"
-                style={{ fontSize: 'var(--mantine-font-size-xs)' }}
+                style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
                 suppressHydrationWarning
+                title={new Date(block.updated_at).toLocaleString()}
               >
                 Updated {formatRelativeTime(block.updated_at)}
               </Text>
@@ -280,18 +394,45 @@ export function BlockCard({
           />
         </Group>
 
-        {/* Actions — Duplicate (non-destructive) before Delete (destructive) */}
+        {/* Actions — Copy body · Duplicate · Delete */}
         <Group justify="flex-end">
           <ActionIcon
             variant="subtle"
-            color="gray"
+            color={copied ? 'green' : 'gray'}
             size="lg"
-            onClick={handleDuplicate}
+            onClick={handleCopyBody}
             disabled={isSaving}
-            aria-label="Duplicate block"
+            aria-label="Copy block body"
           >
-            <IconCopy size={18} />
+            {copied ? <IconCheck size={18} /> : <IconClipboard size={18} />}
           </ActionIcon>
+          <Popover
+            opened={dupPopoverOpen}
+            onClose={() => setDupPopoverOpen(false)}
+            position="bottom-end"
+            withArrow
+            shadow="md"
+            width={220}
+          >
+            <Popover.Target>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="lg"
+                onClick={handleDuplicateClick}
+                disabled={isSaving}
+                aria-label="Duplicate block"
+              >
+                <IconCopy size={18} />
+              </ActionIcon>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <CardDupConfirmContent
+                onConfirm={confirmDuplicate}
+                onCancel={() => setDupPopoverOpen(false)}
+              />
+            </Popover.Dropdown>
+          </Popover>
           <ActionIcon
             variant="subtle"
             color="red"

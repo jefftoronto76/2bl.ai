@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import {
   ActionIcon,
   Badge,
@@ -7,12 +8,14 @@ import {
   Checkbox,
   Group,
   Highlight,
+  Popover,
   Progress,
+  TextInput,
   Stack,
   Switch,
   Table,
 } from '@mantine/core'
-import { IconChevronRight, IconCopy, IconPencil, IconTrash } from '@tabler/icons-react'
+import { IconCheck, IconChevronRight, IconClipboard, IconCopy, IconPencil, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import {
   TYPE_COLORS,
@@ -24,7 +27,7 @@ import { tokensFor } from '@/services/prompt/tokenize'
 import { formatRelativeTime } from '@/services/shared/time'
 
 const PREVIEW_LINE_LIMIT = 8
-const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions
+const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions (copy+edit+dup+delete)
 
 // Metadata entry inside the right-hand panel of the expanded row.
 // Label-on-top muted/uppercase, value below. Mono toggle for numeric
@@ -36,11 +39,13 @@ function MetaItem({
   value,
   mono = false,
   hydrationSensitive = false,
+  title,
 }: {
   label: string
   value: string
   mono?: boolean
   hydrationSensitive?: boolean
+  title?: string
 }) {
   return (
     <Stack gap={2}>
@@ -60,11 +65,54 @@ function MetaItem({
           fontFamily: mono
             ? 'var(--mantine-font-family-monospace)'
             : undefined,
+          cursor: title ? 'default' : undefined,
         }}
         suppressHydrationWarning={hydrationSensitive}
+        title={title}
       >
         {value}
       </Text>
+    </Stack>
+  )
+}
+
+function DupConfirmContent({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (skipNext: boolean) => void
+  onCancel: () => void
+}) {
+  const [skip, setSkip] = useState(false)
+  return (
+    <Stack gap="sm">
+      <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+        Duplicate this block?
+      </Text>
+      <Group gap="xs" wrap="nowrap">
+        <input
+          type="checkbox"
+          id="dup-skip-confirm"
+          checked={skip}
+          onChange={e => setSkip(e.currentTarget.checked)}
+          style={{ cursor: 'pointer' }}
+        />
+        <label
+          htmlFor="dup-skip-confirm"
+          style={{
+            fontSize: 'var(--mantine-font-size-xs)',
+            color: 'var(--mantine-color-dimmed)',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          Don&apos;t ask again
+        </label>
+      </Group>
+      <Group gap="xs" justify="flex-end">
+        <Button variant="default" size="xs" onClick={onCancel}>Cancel</Button>
+        <Button size="xs" onClick={() => onConfirm(skip)}>Duplicate</Button>
+      </Group>
     </Stack>
   )
 }
@@ -149,6 +197,7 @@ function ExpandedRowPanel({
           label="Updated"
           value={formatRelativeTime(block.updated_at)}
           hydrationSensitive
+          title={new Date(block.updated_at).toLocaleString()}
         />
         <MetaItem
           label="Order"
@@ -196,6 +245,7 @@ export interface BlockRowProps {
   onToggleSelect: (blockId: string) => void
   onToggleStatus: (blockId: string, nextStatus: 'active' | 'disabled') => void
   onEdit: (blockId: string) => void
+  onRename: (blockId: string, newTitle: string) => void
   onDuplicate: (blockId: string) => void
   onDelete: (blockId: string) => void
   onToggleExpand?: (blockId: string) => void
@@ -225,10 +275,22 @@ export function BlockRow({
   onToggleSelect,
   onToggleStatus,
   onEdit,
+  onRename,
   onDuplicate,
   onDelete,
   onToggleExpand,
 }: BlockRowProps) {
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
+  const [dupPopoverOpen, setDupPopoverOpen] = useState(false)
+  const [skipDupConfirm, setSkipDupConfirm] = useState(() =>
+    typeof window !== 'undefined'
+      ? localStorage.getItem('block-admin:skip-dup-confirm') === 'true'
+      : false
+  )
+
   const tokens = tokensFor(block.body)
   const barPct = maxVisibleTokens > 0 ? (tokens / maxVisibleTokens) * 100 : 0
 
@@ -246,14 +308,54 @@ export function BlockRow({
     onEdit(block.id)
   }
 
-  function handleDuplicate() {
-    console.log('[BlockRow] duplicate', { blockId: block.id })
+  function handleDuplicateClick() {
+    if (skipDupConfirm) {
+      console.log('[BlockRow] duplicate (skip confirm)', { blockId: block.id })
+      onDuplicate(block.id)
+    } else {
+      setDupPopoverOpen(true)
+    }
+  }
+
+  function confirmDuplicate(skipNext: boolean) {
+    if (skipNext) {
+      localStorage.setItem('block-admin:skip-dup-confirm', 'true')
+      setSkipDupConfirm(true)
+    }
+    setDupPopoverOpen(false)
+    console.log('[BlockRow] duplicate confirmed', { blockId: block.id, skipNext })
     onDuplicate(block.id)
   }
 
   function handleDelete() {
     console.log('[BlockRow] delete', { blockId: block.id })
     onDelete(block.id)
+  }
+
+  async function handleCopyBody() {
+    try {
+      await navigator.clipboard.writeText(block.body)
+      console.log('[BlockRow] body copied', { blockId: block.id })
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[BlockRow] clipboard write failed')
+    }
+  }
+
+  function startRename() {
+    setRenameValue(block.title)
+    setRenaming(true)
+    setTimeout(() => renameInputRef.current?.select(), 0)
+  }
+
+  function commitRename() {
+    setRenaming(false)
+    onRename(block.id, renameValue)
+  }
+
+  function cancelRename() {
+    setRenaming(false)
   }
 
   return (
@@ -286,34 +388,49 @@ export function BlockRow({
       </Table.Td>
       <Table.Td>
         <Stack gap={2}>
-          <Text variant="label">
-            <span
-              aria-hidden
-              style={{
-                fontFamily: 'var(--mantine-font-family-monospace)',
-                fontSize: 'var(--mantine-font-size-xs)',
-                color: 'var(--mantine-color-dimmed)',
-                display: 'inline-block',
-                width: '2ch',
-                marginRight: 8,
+          {renaming ? (
+            <TextInput
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={e => setRenameValue(e.currentTarget.value)}
+              onBlur={commitRename}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
               }}
+              size="xs"
+              style={{ width: '100%' }}
+              aria-label="Block title"
+            />
+          ) : (
+            <Text
+              variant="label"
+              onDoubleClick={startRename}
+              style={{ cursor: 'text' }}
+              title="Double-click to rename"
             >
-              {orderPrefix(block.order)}
-            </span>
-            {/*
-              Step 18 — search highlighting. Order prefix stays plain
-              so numeric queries don't tag the prefix digits; only the
-              title text is wrapped. Empty query short-circuits to
-              plain text.
-            */}
-            {highlight.trim() ? (
-              <Highlight component="span" highlight={highlight}>
-                {block.title}
-              </Highlight>
-            ) : (
-              block.title
-            )}
-          </Text>
+              <span
+                aria-hidden
+                style={{
+                  fontFamily: 'var(--mantine-font-family-monospace)',
+                  fontSize: 'var(--mantine-font-size-xs)',
+                  color: 'var(--mantine-color-dimmed)',
+                  display: 'inline-block',
+                  width: '2ch',
+                  marginRight: 8,
+                }}
+              >
+                {orderPrefix(block.order)}
+              </span>
+              {highlight.trim() ? (
+                <Highlight component="span" highlight={highlight}>
+                  {block.title}
+                </Highlight>
+              ) : (
+                block.title
+              )}
+            </Text>
+          )}
           {/*
             Relative timestamp under the title. Pure render-time
             computation — no interval tick. suppressHydrationWarning
@@ -322,8 +439,9 @@ export function BlockRow({
           */}
           <Text
             variant="muted"
-            style={{ fontSize: 'var(--mantine-font-size-xs)' }}
+            style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
             suppressHydrationWarning
+            title={new Date(block.updated_at).toLocaleString()}
           >
             Updated {formatRelativeTime(block.updated_at)}
           </Text>
@@ -398,6 +516,16 @@ export function BlockRow({
         <Group gap="xs" wrap="nowrap">
           <ActionIcon
             variant="subtle"
+            color={copied ? 'green' : 'gray'}
+            size="md"
+            onClick={handleCopyBody}
+            disabled={isSaving}
+            aria-label="Copy block body"
+          >
+            {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
+          </ActionIcon>
+          <ActionIcon
+            variant="subtle"
             color="gray"
             size="md"
             onClick={handleEdit}
@@ -406,16 +534,33 @@ export function BlockRow({
           >
             <IconPencil size={16} />
           </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="md"
-            onClick={handleDuplicate}
-            disabled={isSaving}
-            aria-label="Duplicate block"
+          <Popover
+            opened={dupPopoverOpen}
+            onClose={() => setDupPopoverOpen(false)}
+            position="bottom-end"
+            withArrow
+            shadow="md"
+            width={220}
           >
-            <IconCopy size={16} />
-          </ActionIcon>
+            <Popover.Target>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={handleDuplicateClick}
+                disabled={isSaving}
+                aria-label="Duplicate block"
+              >
+                <IconCopy size={16} />
+              </ActionIcon>
+            </Popover.Target>
+            <Popover.Dropdown>
+              <DupConfirmContent
+                onConfirm={confirmDuplicate}
+                onCancel={() => setDupPopoverOpen(false)}
+              />
+            </Popover.Dropdown>
+          </Popover>
           <ActionIcon
             variant="subtle"
             color="red"
