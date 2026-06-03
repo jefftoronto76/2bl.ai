@@ -7,6 +7,7 @@ import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
+import { SaveChatCTA } from './SaveChatCTA';
 
 function EmptyState() {
   return (
@@ -51,6 +52,7 @@ export function ChatHero() {
 
           <div className="pb-4">
             <ChatInput />
+            <SaveChatCTA />
           </div>
         </div>
       </div>
