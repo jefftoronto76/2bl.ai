@@ -1,7 +1,5 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { clerkMiddleware } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-
-const isAdminRoute = createRouteMatcher(['/admin(.*)'])
 
 const SBL_HOSTS = new Set(['2bl.ai', 'www.2bl.ai'])
 const HEIRLOOM_HOSTS = new Set(['heirloom.2bl.ai'])
@@ -71,12 +69,13 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
-  // ─── Clerk auth (unchanged) ───
-  if (isAdminRoute(req)) {
-    await auth.protect()
-  }
-
   // ─── Admin palette tag ───
+  // Auth protection for /admin is handled in app/admin/layout.tsx via
+  // currentUser() + redirect('/sign-in'). Doing it here via auth.protect()
+  // redirects to Clerk's Account Portal on the primary domain (2bl.ai), which
+  // breaks access from other domain aliases (jefflougheed.ca) — the user lands
+  // on 2bl.ai instead of signing in on the same host. The layout gate redirects
+  // to a relative /sign-in path, keeping the user on the current domain.
   // The shared /admin surface is a light UI (white Mantine surfaces). Tag it
   // with x-admin so the root layout drops the inkwell dark palette — otherwise
   // the inkwell text tokens render near-white text on the white admin surfaces.
