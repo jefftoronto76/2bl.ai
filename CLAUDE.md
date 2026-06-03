@@ -969,6 +969,15 @@ A task is complete when all of the following are true:
 Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
 `SERVICEMIGRATION.md` for the full picture.
 
+- **Save CTA message threshold should be tenant-configurable.** Currently
+  hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
+  Should be a per-tenant setting stored in `tenants.settings` JSONB with a
+  default of 4. Same pattern as `chat_in_progress_idle_seconds` /
+  `chat_active_idle_seconds` — admin UI in Settings, fetched via
+  `GET /api/admin/tenant-settings`, written via `PATCH /api/admin/tenant-settings`.
+  Schema change (add key to `tenants.settings` JSONB) is Jeff's Studio work;
+  code work proceeds once the column convention is confirmed.
+
 - **`services/payments/` not created.** Stripe Connect work is deferred; not
   even a scaffold exists yet.
 - **Chat-UI strangle — widget shell extracted (centralization Step E).** The
