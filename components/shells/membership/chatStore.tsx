@@ -377,6 +377,21 @@ export function ChatProvider({
           .catch(err => console.error('[heirloom/chat] claim error:', id, err))
       )
     );
+
+    // 3. Mark the invite token used now that sign-up is complete.
+    const token = inviteTokenRef.current;
+    if (token) {
+      fetch('/api/heirloom/invites/use', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      })
+        .then(r => {
+          if (!r.ok) console.warn('[heirloom/chat] invite mark-used failed:', r.status);
+          else console.log('[heirloom/chat] invite marked used');
+        })
+        .catch(err => console.error('[heirloom/chat] invite mark-used error:', err));
+    }
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses
