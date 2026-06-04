@@ -96,6 +96,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const { isSignedIn, isLoaded } = useUser();
   const flow = useAuthFlow();
 
+  const [nameValue, setNameValue] = useState('');
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -170,6 +171,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
 
   const handleReset = useCallback(() => {
     flow.reset();
+    setNameValue('');
     setInputValue('');
     setOtpValue('');
     setResendCooldown(0);
@@ -327,6 +329,20 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
         {reason && (
           <p className="text-text-muted text-xs font-body mb-3">{reason}</p>
         )}
+
+        {/* Name */}
+        <input
+          type="text"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          placeholder="Your name"
+          aria-label="Your name"
+          autoComplete="given-name"
+          disabled={isSending}
+          className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
+        />
+
+        <hr className="border-accent/15 my-4" />
 
         {/* Email / Phone tab toggle */}
         <div
