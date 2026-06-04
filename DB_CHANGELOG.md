@@ -1,5 +1,58 @@
 # DB Changelog
 
+## 2026-06-03
+
+### Dual Clerk ID auth lookup — schema additions
+**Type:** Schema changes (3)
+**Executed by:** Jeff in Supabase Studio
+
+**Purpose:** Clerk issues different user IDs across dev and production/preview
+instances. When a Vercel preview environment uses the dev Clerk instance, the
+lookup `clerk_id = dev_id` silently fails because the Supabase row was inserted
+with the prod Clerk ID. Adding `clerk_id_dev` to both tables and logging all
+lookup attempts lets the new `findUserByClerkId` service resolve users correctly
+across environments.
+
+#### 1. `users.clerk_id_dev` column
+
+```sql
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS clerk_id_dev text;
+```
+
+- Nullable text column storing the Clerk user ID for the dev/preview environment
+- Not a unique constraint — the unique constraint stays on `clerk_id` (prod)
+- Populated manually in Studio for any user whose dev Clerk ID differs from prod
+
+#### 2. `members.clerk_id_dev` column
+
+```sql
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS clerk_id_dev text;
+```
+
+- Same pattern as `users.clerk_id_dev` above
+- The primary conflict column for `members` remains `clerk_user_id`
+
+#### 3. `auth_logs` table
+
+```sql
+CREATE TABLE IF NOT EXISTS public.auth_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  clerk_id_attempted text NOT NULL,
+  matched_table text,           -- 'users' | 'members' | null
+  matched_column text,          -- 'clerk_id' | 'clerk_id_dev' | 'clerk_user_id' | null
+  user_id uuid,
+  member_id uuid,
+  environment text,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+- Append-only log, no FK constraints (fire-and-forget writes from the auth service)
+- `environment` = `VERCEL_ENV` (prod/preview/development) or `NODE_ENV` as fallback
+- Written non-blocking on every `findUserByClerkId` call regardless of outcome
+
+---
+
 ## 2026-05-28
 
 ### Add `user_id` column to `chat_sessions`
