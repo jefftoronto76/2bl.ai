@@ -1,58 +1,42 @@
-'use client';
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+import { getAdminClient } from '@/services/auth/supabase-admin';
+import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
+import { validateInvite } from '@/services/invites';
+import HeirloomApp from './HeirloomApp';
 
-import { useEffect } from 'react';
-import { ChatProvider, useChatStore } from '@/components/shells/membership/chatStore';
-import { LandingPage } from './components/landing/LandingPage';
-import { ChatHero } from '@/components/shells/membership/ChatHero';
-
-// App root for the Heirloom storefront: the landing page with a slide-in chat
-// panel layered over it. The panel is always mounted and slides off-canvas when
-// closed; the backdrop only renders while open. Escape and a backdrop click
-// both close the panel.
-function HeirloomApp() {
-  const { state, dispatch } = useChatStore();
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && state.isChatOpen) {
-        dispatch({ type: 'CLOSE_CHAT' });
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [state.isChatOpen, dispatch]);
-
-  return (
-    <div className="relative overflow-hidden">
-      <LandingPage />
-
-      {state.isChatOpen && (
-        <div
-          aria-hidden="true"
-          onClick={() => dispatch({ type: 'CLOSE_CHAT' })}
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-        />
-      )}
-
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Heirloom chat"
-        aria-hidden={!state.isChatOpen}
-        className={`fixed top-0 right-0 h-full z-50 w-full max-w-2xl transform transition-transform duration-500 ease-in-out ${
-          state.isChatOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
-      >
-        <ChatHero />
-      </div>
-    </div>
-  );
+interface PageProps {
+  searchParams: Promise<{ invite?: string }>;
 }
 
-export default function HeirloomPage() {
-  return (
-    <ChatProvider>
-      <HeirloomApp />
-    </ChatProvider>
-  );
+export default async function HeirloomPage({ searchParams }: PageProps) {
+  const { userId: clerkId } = await auth();
+  const { invite: token } = await searchParams;
+
+  // Signed-in user — pass through without a token if they are already a member.
+  if (clerkId) {
+    const supabase = getAdminClient();
+    const { data: member } = await supabase
+      .from('members')
+      .select('id')
+      .eq('clerk_user_id', clerkId)
+      .eq('tenant_id', HEIRLOOM_TENANT_ID)
+      .maybeSingle();
+
+    if (member) {
+      return <HeirloomApp inviteToken={null} />;
+    }
+    // Signed in but not yet a member — fall through to invite check.
+  }
+
+  // Validate the invite token when present.
+  if (token) {
+    const invite = await validateInvite(token);
+    if (invite) {
+      return <HeirloomApp inviteToken={token} />;
+    }
+  }
+
+  // No valid token and not an existing member.
+  redirect('/heirloom/coming-soon');
 }

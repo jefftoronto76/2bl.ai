@@ -132,7 +132,17 @@ function serialize(m: Message): PersistedMessage {
   return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
 }
 
-export function ChatProvider({ children }: { children: ReactNode }) {
+export function ChatProvider({
+  children,
+  inviteToken = null,
+}: {
+  children: ReactNode;
+  inviteToken?: string | null;
+}) {
+  // Stored in a ref so claimAllSessions can read the token at call time
+  // without it appearing in the dependency array. Wired to mark-used in
+  // claimAllSessions once sign-up completes.
+  const inviteTokenRef = useRef<string | null>(inviteToken);
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
   // are no longer dispatched from here (removed in a follow-up commit).
