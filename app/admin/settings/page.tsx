@@ -2,6 +2,7 @@ import { Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
 import { ChatThresholds } from './ChatThresholds'
+import { InviteGateSettings } from './InviteGateSettings'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,9 @@ export default function SettingsPage() {
           </section>
           <section aria-labelledby="thresholds-heading">
             <ChatThresholds />
+          </section>
+          <section aria-labelledby="gate-heading">
+            <InviteGateSettings />
           </section>
         </Stack>
       </div>

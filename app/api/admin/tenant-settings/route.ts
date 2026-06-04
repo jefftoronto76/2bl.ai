@@ -4,6 +4,7 @@ import { getAuthContext } from '@/services/auth/get-auth-context'
 interface TenantSettings {
   chat_in_progress_idle_seconds: number
   chat_active_idle_seconds: number
+  invite_gate_enabled: boolean
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -23,7 +24,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('tenants')
-    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds')
+    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings')
     .eq('id', authCtx.tenant_id)
     .maybeSingle()
 
@@ -37,9 +38,12 @@ export async function GET() {
     return Response.json({ error: 'Tenant not found' }, { status: 404 })
   }
 
+  const tenantSettings = data.settings as Record<string, unknown> | null
+
   const settings: TenantSettings = {
     chat_in_progress_idle_seconds: data.chat_in_progress_idle_seconds,
     chat_active_idle_seconds: data.chat_active_idle_seconds,
+    invite_gate_enabled: (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true,
   }
   console.log('[tenant-settings] GET', { tenant_id: authCtx.tenant_id, ...settings })
 
@@ -58,6 +62,7 @@ export async function PATCH(req: Request) {
   let body: {
     chat_in_progress_idle_seconds?: unknown
     chat_active_idle_seconds?: unknown
+    invite_gate_enabled?: unknown
   }
   try {
     body = await req.json()
@@ -65,38 +70,61 @@ export async function PATCH(req: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (!isPositiveInteger(body.chat_in_progress_idle_seconds)) {
-    return Response.json(
-      { error: 'chat_in_progress_idle_seconds must be a positive integer' },
-      { status: 400 },
-    )
-  }
-  if (!isPositiveInteger(body.chat_active_idle_seconds)) {
-    return Response.json(
-      { error: 'chat_active_idle_seconds must be a positive integer' },
-      { status: 400 },
-    )
-  }
-  if (body.chat_in_progress_idle_seconds >= body.chat_active_idle_seconds) {
-    return Response.json(
-      { error: 'chat_in_progress_idle_seconds must be less than chat_active_idle_seconds' },
-      { status: 400 },
-    )
-  }
-
-  const inProgress: number = body.chat_in_progress_idle_seconds
-  const active: number = body.chat_active_idle_seconds
-
   const supabase = getAdminClient()
+
+  // Build the tenants column update — only include provided fields.
+  const colUpdate: Record<string, unknown> = {}
+
+  if (body.chat_in_progress_idle_seconds !== undefined || body.chat_active_idle_seconds !== undefined) {
+    if (!isPositiveInteger(body.chat_in_progress_idle_seconds)) {
+      return Response.json(
+        { error: 'chat_in_progress_idle_seconds must be a positive integer' },
+        { status: 400 },
+      )
+    }
+    if (!isPositiveInteger(body.chat_active_idle_seconds)) {
+      return Response.json(
+        { error: 'chat_active_idle_seconds must be a positive integer' },
+        { status: 400 },
+      )
+    }
+    if (body.chat_in_progress_idle_seconds >= body.chat_active_idle_seconds) {
+      return Response.json(
+        { error: 'chat_in_progress_idle_seconds must be less than chat_active_idle_seconds' },
+        { status: 400 },
+      )
+    }
+    colUpdate.chat_in_progress_idle_seconds = body.chat_in_progress_idle_seconds
+    colUpdate.chat_active_idle_seconds = body.chat_active_idle_seconds
+  }
+
+  if (body.invite_gate_enabled !== undefined) {
+    if (typeof body.invite_gate_enabled !== 'boolean') {
+      return Response.json({ error: 'invite_gate_enabled must be a boolean' }, { status: 400 })
+    }
+    // Read-modify-write the JSONB settings column.
+    const { data: current, error: fetchErr } = await supabase
+      .from('tenants')
+      .select('settings')
+      .eq('id', authCtx.tenant_id)
+      .maybeSingle()
+    if (fetchErr) {
+      console.error('[tenant-settings] settings fetch failed:', fetchErr.message)
+      return Response.json({ error: fetchErr.message }, { status: 500 })
+    }
+    const existing = (current?.settings as Record<string, unknown> | null) ?? {}
+    colUpdate.settings = { ...existing, invite_gate_enabled: body.invite_gate_enabled }
+  }
+
+  if (Object.keys(colUpdate).length === 0) {
+    return Response.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
 
   const { data, error } = await supabase
     .from('tenants')
-    .update({
-      chat_in_progress_idle_seconds: inProgress,
-      chat_active_idle_seconds: active,
-    })
+    .update(colUpdate)
     .eq('id', authCtx.tenant_id)
-    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds')
+    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings')
     .single()
 
   if (error) {
@@ -104,9 +132,12 @@ export async function PATCH(req: Request) {
     return Response.json({ error: error.message }, { status: 500 })
   }
 
+  const tenantSettings = data.settings as Record<string, unknown> | null
+
   const settings: TenantSettings = {
     chat_in_progress_idle_seconds: data.chat_in_progress_idle_seconds,
     chat_active_idle_seconds: data.chat_active_idle_seconds,
+    invite_gate_enabled: (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true,
   }
   console.log('[tenant-settings] PATCH', { tenant_id: authCtx.tenant_id, ...settings })
 
