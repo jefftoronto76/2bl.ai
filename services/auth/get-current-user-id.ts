@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server'
-import { getAdminClient } from './supabase-admin'
+import { findUserByClerkId } from './findUserByClerkId'
 
 /**
  * Read-only resolution of the current Clerk user to their Supabase `users.id`.
@@ -16,13 +16,6 @@ export async function getCurrentUserId(): Promise<string | null> {
   const { userId: clerkId } = await auth()
   if (!clerkId) return null
 
-  const supabase = getAdminClient()
-  const { data, error } = await supabase
-    .from('users')
-    .select('id')
-    .eq('clerk_id', clerkId)
-    .maybeSingle()
-
-  if (error || !data) return null
-  return data.id as string
+  const found = await findUserByClerkId(clerkId)
+  return found?.user?.id ?? null
 }

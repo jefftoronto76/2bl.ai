@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server'
 import { headers } from 'next/headers'
 import { getAdminClient } from './supabase-admin'
 import { resolveTenantIdFromHost } from './resolve-tenant-from-host'
+import { findUserByClerkId } from './findUserByClerkId'
 
 export interface AuthContext {
   owner_id: string
@@ -27,17 +28,13 @@ export async function getAuthContext(): Promise<AuthContext> {
     throw new Error('Unauthorized')
   }
 
-  const supabase = getAdminClient()
-
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('clerk_id', clerkId)
-    .single()
-
-  if (userError || !user) {
+  const found = await findUserByClerkId(clerkId)
+  if (!found?.user) {
     throw new Error('User not found')
   }
+  const user = found.user
+
+  const supabase = getAdminClient()
 
   // Fetch ALL memberships — never .single() here: a platform admin belongs to
   // many tenants, and .single() throwing on >1 row is exactly what took admin
