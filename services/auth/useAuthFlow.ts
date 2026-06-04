@@ -247,6 +247,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             }
             if (signUp.status === 'complete') {
               const { error: finalizeErr } = await signUp.finalize()
+              console.log('[useAuthFlow] signUp.finalize():', { finalizeErr })
               if (mountedRef.current) {
                 if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
                 else setStage('success')
@@ -262,6 +263,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             }
             if (signIn.status === 'complete') {
               const { error: finalizeErr } = await signIn.finalize()
+              console.log('[useAuthFlow] signIn.finalize():', { finalizeErr })
               if (mountedRef.current) {
                 if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
                 else setStage('success')
@@ -286,6 +288,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           }
           if (signUp.status === 'complete') {
             const { error: finalizeErr } = await signUp.finalize()
+            console.log('[useAuthFlow] signUp.finalize():', { finalizeErr })
             if (mountedRef.current) {
               if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               else setStage('success')
@@ -301,6 +304,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           }
           if (signIn.status === 'complete') {
             const { error: finalizeErr } = await signIn.finalize()
+            console.log('[useAuthFlow] signIn.finalize():', { finalizeErr })
             if (mountedRef.current) {
               if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               else setStage('success')
