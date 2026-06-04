@@ -97,6 +97,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const flow = useAuthFlow();
 
   const [nameValue, setNameValue] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -148,12 +149,16 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const handleContactSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      if (!nameValue.trim()) {
+        setNameError('Please enter your name.');
+        return;
+      }
       const val = inputValue.trim();
       if (!val) return;
       if (tab === 'email') void flow.sendEmail(val);
       else void flow.sendPhone(val);
     },
-    [inputValue, tab, flow],
+    [nameValue, inputValue, tab, flow],
   );
 
   const handleOtpSubmit = useCallback(
@@ -172,6 +177,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const handleReset = useCallback(() => {
     flow.reset();
     setNameValue('');
+    setNameError(null);
     setInputValue('');
     setOtpValue('');
     setResendCooldown(0);
@@ -334,13 +340,14 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
         <input
           type="text"
           value={nameValue}
-          onChange={(e) => setNameValue(e.target.value)}
+          onChange={(e) => { setNameValue(e.target.value); setNameError(null); }}
           placeholder="Your name"
           aria-label="Your name"
           autoComplete="given-name"
           disabled={isSending}
           className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
         />
+        <FieldError message={nameError} />
 
         <hr className="border-accent/15 my-4" />
 

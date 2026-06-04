@@ -30,6 +30,7 @@ export function SaveChatCTA() {
 
   const [open, setOpen] = useState(false);
   const [nameValue, setNameValue] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -71,6 +72,7 @@ export function SaveChatCTA() {
   function handleClose() {
     setOpen(false);
     setNameValue('');
+    setNameError(null);
     setInputValue('');
     setOtpValue('');
     setResendCooldown(0);
@@ -79,6 +81,10 @@ export function SaveChatCTA() {
 
   function handleContactSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!nameValue.trim()) {
+      setNameError('Please enter your name.');
+      return;
+    }
     const val = inputValue.trim();
     if (!val) return;
     setResendCooldown(RESEND_COOLDOWN_S);
@@ -205,6 +211,7 @@ export function SaveChatCTA() {
             type="button"
             onClick={() => {
               flow.reset();
+              setNameError(null);
               setInputValue('');
               setOtpValue('');
               setResendCooldown(0);
@@ -226,12 +233,17 @@ export function SaveChatCTA() {
         <input
           type="text"
           value={nameValue}
-          onChange={e => setNameValue(e.target.value)}
+          onChange={e => { setNameValue(e.target.value); setNameError(null); }}
           placeholder="Your name"
           aria-label="Your name"
           autoComplete="given-name"
           className={inputCls}
         />
+        {nameError && (
+          <p className="mt-1.5 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">
+            {nameError}
+          </p>
+        )}
 
         <hr className="border-background/15 my-4" />
 
