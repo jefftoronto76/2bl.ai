@@ -4,19 +4,17 @@
 //
 // Client-side authentication flow hook for the email OTP / phone OTP membership
 // workflow. Orchestrates:
-//   - Email OTP  (sign-in: prepareFirstFactor email_code;
-//                 sign-up: prepareEmailAddressVerification email_code)
-//   - Phone OTP  (sign-in: phoneCode.sendCode + phoneCode.verifyCode;
-//                 sign-up: verifications.sendPhoneCode + verifications.verifyPhoneCode)
+//   - Email OTP  (sign-up: verifications.sendEmailCode;
+//                 sign-in: emailCode.sendCode)
+//   - Phone OTP  (sign-up: verifications.sendPhoneCode;
+//                 sign-in: phoneCode.sendCode)
 //
 // Written for Clerk v7 stable API. useSignIn/useSignUp return the classic
-// SignInResource / SignUpResource. setActive is used for session activation.
-// Email methods use try/catch; phone methods use { error } destructuring
-// (the phone path predates this file and is left as-is — it is working).
+// SignInResource / SignUpResource.
 //
-// New-vs-existing user: sign-in is attempted first. When Clerk throws with
-// form_identifier_not_found the hook transparently retries via sign-up. The
-// caller never needs to distinguish the two cases.
+// New-vs-existing user: sign-up is attempted first (this is a sign-up surface).
+// When Clerk throws form_identifier_exists the hook transparently falls back to
+// sign-in. The caller never needs to distinguish the two cases.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSignIn, useSignUp } from '@clerk/nextjs'
@@ -49,11 +47,15 @@ export interface UseAuthFlowReturn {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Error codes Clerk returns when the identifier has no account. */
-const NOT_FOUND_CODES = new Set([
-  'form_identifier_not_found',
-  'strategy_for_user_invalid',
-])
+/** Extract the first Clerk error code from a thrown ClerkAPIResponseError. */
+function getClerkErrorCode(err: unknown): string | null {
+  if (typeof err !== 'object' || err === null) return null
+  if (!('errors' in err) || !Array.isArray((err as Record<string, unknown>).errors)) return null
+  const first = (err as { errors: unknown[] }).errors[0]
+  if (typeof first !== 'object' || first === null || !('code' in first)) return null
+  const code = (first as Record<string, unknown>).code
+  return typeof code === 'string' ? code : null
+}
 
 function extractErrorMessage(err: unknown): string {
   if (!err) return 'Something went wrong. Please try again.'
@@ -123,16 +125,35 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        // Try sign-in first (existing user).
-        const { error: createErr } = await signIn.create({ identifier: email })
+        // Try sign-up first (this is a sign-up surface).
+        let isExistingUser = false
+        try {
+          await signUp.create({ emailAddress: email })
+        } catch (signUpCreateErr: unknown) {
+          if (getClerkErrorCode(signUpCreateErr) === 'form_identifier_exists') {
+            // Account already exists — fall back to sign-in silently.
+            isExistingUser = true
+          } else {
+            throw signUpCreateErr
+          }
+        }
 
-        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
-          // New user — create sign-up and send email code.
-          const { error: signUpErr } = await signUp.create({ emailAddress: email })
-          if (signUpErr) {
-            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
+        if (isExistingUser) {
+          // Existing user — sign in and send email code.
+          const { error: createErr } = await signIn.create({ identifier: email })
+          if (createErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
             return
           }
+          const { error: sendErr } = await signIn.emailCode.sendCode()
+          if (sendErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+            return
+          }
+          flowTypeRef.current = 'signin'
+          if (mountedRef.current) setStage('otp_input')
+        } else {
+          // New user — send email code via sign-up.
           const { error: sendErr } = await signUp.verifications.sendEmailCode()
           if (sendErr) {
             if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
@@ -140,23 +161,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           }
           flowTypeRef.current = 'signup'
           if (mountedRef.current) setStage('otp_input')
-          return
         }
-
-        if (createErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
-          return
-        }
-
-        // Existing user — send email code.
-        const { error: sendErr } = await signIn.emailCode.sendCode()
-        if (sendErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-          return
-        }
-
-        flowTypeRef.current = 'signin'
-        if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
@@ -178,16 +183,35 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('phone', phone)
 
-        // Try sign-in first (existing user).
-        const { error: createErr } = await signIn.create({ identifier: phone })
+        // Try sign-up first (this is a sign-up surface).
+        let isExistingUser = false
+        try {
+          await signUp.create({ phoneNumber: phone })
+        } catch (signUpCreateErr: unknown) {
+          if (getClerkErrorCode(signUpCreateErr) === 'form_identifier_exists') {
+            // Account already exists — fall back to sign-in silently.
+            isExistingUser = true
+          } else {
+            throw signUpCreateErr
+          }
+        }
 
-        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
-          // New user — create sign-up and send OTP.
-          const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
-          if (signUpErr) {
-            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
+        if (isExistingUser) {
+          // Existing user — sign in and send phone OTP.
+          const { error: createErr } = await signIn.create({ identifier: phone })
+          if (createErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
             return
           }
+          const { error: sendErr } = await signIn.phoneCode.sendCode()
+          if (sendErr) {
+            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+            return
+          }
+          flowTypeRef.current = 'signin'
+          if (mountedRef.current) setStage('otp_input')
+        } else {
+          // New user — send phone OTP via sign-up.
           const { error: sendErr } = await signUp.verifications.sendPhoneCode()
           if (sendErr) {
             if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
@@ -195,23 +219,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           }
           flowTypeRef.current = 'signup'
           if (mountedRef.current) setStage('otp_input')
-          return
         }
-
-        if (createErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
-          return
-        }
-
-        // Existing user — send phone OTP.
-        const { error: sendErr } = await signIn.phoneCode.sendCode()
-        if (sendErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-          return
-        }
-
-        flowTypeRef.current = 'signin'
-        if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
