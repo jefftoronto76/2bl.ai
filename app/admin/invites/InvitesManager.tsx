@@ -6,12 +6,14 @@ import {
   Badge,
   Box,
   Button,
+  Card,
   Center,
   Code,
   Group,
   Modal,
   Skeleton,
   Stack,
+  Switch,
   Table,
   TextInput,
   Tooltip,
@@ -55,6 +57,12 @@ export function InvitesManager() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
 
+  // Gate toggle state
+  const [gateEnabled, setGateEnabled] = useState(true)
+  const [gateSaved, setGateSaved] = useState<boolean | null>(null)
+  const [gateSaving, setGateSaving] = useState(false)
+  const [gateLoading, setGateLoading] = useState(true)
+
   // New invite modal state
   const [modalOpen, setModalOpen] = useState(false)
   const [modalUrl, setModalUrl] = useState('')
@@ -87,7 +95,67 @@ export function InvitesManager() {
     }
   }, [])
 
+  const fetchGateSettings = useCallback(async () => {
+    console.log('[invites] fetching gate settings')
+    try {
+      const res = await fetch('/api/admin/tenant-settings')
+      if (!res.ok) throw new Error(`${res.status}`)
+      const data: { invite_gate_enabled: boolean } = await res.json()
+      console.log('[invites] gate settings fetched:', data)
+      setGateSaved(data.invite_gate_enabled)
+      setGateEnabled(data.invite_gate_enabled)
+    } catch (err) {
+      console.error('[invites] gate settings fetch failed:', err)
+      notifications.show({
+        color: 'red',
+        title: 'Failed to load gate settings',
+        message: 'Could not load invite gate settings.',
+      })
+    } finally {
+      setGateLoading(false)
+    }
+  }, [])
+
   useEffect(() => { fetchInvites() }, [fetchInvites])
+  useEffect(() => { fetchGateSettings() }, [fetchGateSettings])
+
+  const gateDirty = gateSaved !== null && gateEnabled !== gateSaved
+
+  async function handleGateSave() {
+    console.log('[invites] PATCH gate:', { invite_gate_enabled: gateEnabled })
+    setGateSaving(true)
+    try {
+      const res = await fetch('/api/admin/tenant-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invite_gate_enabled: gateEnabled }),
+      })
+      if (!res.ok) {
+        const body: unknown = await res.json().catch(() => null)
+        const msg =
+          typeof body === 'object' && body !== null && 'error' in body
+            ? String((body as { error: unknown }).error)
+            : 'Failed to save gate settings.'
+        console.error('[invites] PATCH gate failed:', msg)
+        notifications.show({ color: 'red', title: 'Save failed', message: msg })
+        return
+      }
+      const data: { invite_gate_enabled: boolean } = await res.json()
+      console.log('[invites] PATCH gate success:', data)
+      setGateSaved(data.invite_gate_enabled)
+      setGateEnabled(data.invite_gate_enabled)
+      notifications.show({
+        color: 'green',
+        title: 'Invite gate saved',
+        message: `Invite gate is now ${data.invite_gate_enabled ? 'on' : 'off'}.`,
+      })
+    } catch (err) {
+      console.error('[invites] PATCH gate request failed:', err)
+      notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })
+    } finally {
+      setGateSaving(false)
+    }
+  }
 
   async function handleGenerate() {
     setGenerating(true)
@@ -167,6 +235,52 @@ export function InvitesManager() {
 
   return (
     <>
+      {/* Gate toggle */}
+      <Stack gap="md" mb="xl">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+          <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
+            <Text
+              id="gate-heading"
+              variant="title"
+              style={{ fontSize: 'var(--mantine-font-size-md)' }}
+            >
+              Invite Gate
+            </Text>
+            <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+              Control whether Heirloom chat requires membership or an invite to access.
+            </Text>
+          </Stack>
+        </Group>
+        {gateLoading ? (
+          <Skeleton height={100} radius="md" />
+        ) : (
+          <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+            <Stack gap="sm">
+              <Switch
+                label="Require an invite to access Heirloom chat"
+                description="When enabled, visitors must present an invite link or be an active member to open the chat."
+                checked={gateEnabled}
+                onChange={(e) => setGateEnabled(e.currentTarget.checked)}
+                disabled={gateSaving}
+                size="md"
+              />
+              <Group gap="xs" justify="flex-end">
+                <Button
+                  variant="filled"
+                  color="green"
+                  size="sm"
+                  onClick={handleGateSave}
+                  loading={gateSaving}
+                  disabled={!gateDirty}
+                >
+                  Save
+                </Button>
+              </Group>
+            </Stack>
+          </Card>
+        )}
+      </Stack>
+
       {/* Section header */}
       <Group justify="space-between" align="center" mb="md">
         <div>
@@ -182,6 +296,7 @@ export function InvitesManager() {
           color="green"
           loading={generating}
           onClick={handleGenerate}
+          disabled={!gateEnabled}
         >
           Generate invite
         </Button>
@@ -194,6 +309,7 @@ export function InvitesManager() {
         placeholder="someone@example.com"
         value={emailInput}
         onChange={e => setEmailInput(e.currentTarget.value)}
+        disabled={!gateEnabled}
         mb="lg"
         style={{ maxWidth: 360 }}
       />
