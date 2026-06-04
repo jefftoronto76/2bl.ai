@@ -301,6 +301,7 @@ export function SaveChatCTA() {
             disabled={isSending}
             className={inputCls}
           />
+          <div id="clerk-captcha" />
           <button
             type="submit"
             disabled={!inputValue.trim() || isSending}

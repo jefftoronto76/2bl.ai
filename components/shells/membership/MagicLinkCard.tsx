@@ -401,6 +401,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             disabled={isSending}
             className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
           />
+          <div id="clerk-captcha" />
           <SendButton
             disabled={!inputValue.trim() || isSending}
             loading={isSending}
