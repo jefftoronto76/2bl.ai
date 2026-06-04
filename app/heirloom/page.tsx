@@ -1,58 +1,38 @@
-'use client';
+import { auth } from '@clerk/nextjs/server';
+import { getAdminClient } from '@/services/auth/supabase-admin';
+import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
+import HeirloomApp from './HeirloomApp';
 
-import { useEffect } from 'react';
-import { ChatProvider, useChatStore } from '@/components/shells/membership/chatStore';
-import { LandingPage } from './components/landing/LandingPage';
-import { ChatHero } from '@/components/shells/membership/ChatHero';
+export const dynamic = 'force-dynamic';
 
-// App root for the Heirloom storefront: the landing page with a slide-in chat
-// panel layered over it. The panel is always mounted and slides off-canvas when
-// closed; the backdrop only renders while open. Escape and a backdrop click
-// both close the panel.
-function HeirloomApp() {
-  const { state, dispatch } = useChatStore();
+export default async function HeirloomPage() {
+  const { userId: clerkId } = await auth();
+  const supabase = getAdminClient();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && state.isChatOpen) {
-        dispatch({ type: 'CLOSE_CHAT' });
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [state.isChatOpen, dispatch]);
+  // Read the invite gate toggle from tenants.settings JSONB.
+  // Default to true (gate on) when the key is absent — preserves safe behavior
+  // until the admin explicitly disables it.
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('settings')
+    .eq('id', HEIRLOOM_TENANT_ID)
+    .maybeSingle();
 
-  return (
-    <div className="relative overflow-hidden">
-      <LandingPage />
+  const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
+  const gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
 
-      {state.isChatOpen && (
-        <div
-          aria-hidden="true"
-          onClick={() => dispatch({ type: 'CLOSE_CHAT' })}
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-        />
-      )}
+  // Check if the signed-in user is an active member.
+  let isAuthorized = false;
+  if (clerkId) {
+    const { data: member } = await supabase
+      .from('members')
+      .select('id')
+      .eq('clerk_user_id', clerkId)
+      .eq('tenant_id', HEIRLOOM_TENANT_ID)
+      .eq('status', 'active')
+      .maybeSingle();
+    isAuthorized = !!member;
+  }
 
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Heirloom chat"
-        aria-hidden={!state.isChatOpen}
-        className={`fixed top-0 right-0 h-full z-50 w-full max-w-2xl transform transition-transform duration-500 ease-in-out ${
-          state.isChatOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
-      >
-        <ChatHero />
-      </div>
-    </div>
-  );
-}
-
-export default function HeirloomPage() {
-  return (
-    <ChatProvider>
-      <HeirloomApp />
-    </ChatProvider>
-  );
+  return <HeirloomApp gateEnabled={gateEnabled} isAuthorized={isAuthorized} />;
 }

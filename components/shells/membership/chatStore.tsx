@@ -93,6 +93,11 @@ interface ChatContextType {
    * round-trip. Used after sign-up to confirm membership in-chat.
    */
   injectAssistantMessage: (content: string) => void;
+  /**
+   * True when the invite gate is active AND the visitor is not an authorized
+   * member. Chat UI renders GateView instead of the conversation when true.
+   */
+  isGated: boolean;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -132,7 +137,17 @@ function serialize(m: Message): PersistedMessage {
   return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
 }
 
-export function ChatProvider({ children }: { children: ReactNode }) {
+export function ChatProvider({
+  children,
+  gateEnabled = true,
+  isAuthorized = false,
+}: {
+  children: ReactNode;
+  /** Whether the invite gate is enabled (from tenant settings). Default: true. */
+  gateEnabled?: boolean;
+  /** Whether the current visitor is an active member or invite holder. Default: false. */
+  isAuthorized?: boolean;
+}) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
   // are no longer dispatched from here (removed in a follow-up commit).
@@ -398,7 +413,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized }}
     >
       {children}
     </ChatContext.Provider>
