@@ -33,6 +33,7 @@ export function SaveChatCTA() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
+  const [contactError, setContactError] = useState<string | null>(null);
   const [otpValue, setOtpValue] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
@@ -74,6 +75,7 @@ export function SaveChatCTA() {
     setNameValue('');
     setNameError(null);
     setInputValue('');
+    setContactError(null);
     setOtpValue('');
     setResendCooldown(0);
     flow.reset();
@@ -87,6 +89,14 @@ export function SaveChatCTA() {
     }
     const val = inputValue.trim();
     if (!val) return;
+    if (tab === 'phone') {
+      const digits = val.replace(/\D/g, '');
+      if (digits.length < 7 || digits.length > 15) {
+        setContactError('Please enter a valid phone number.');
+        return;
+      }
+    }
+    setContactError(null);
     setResendCooldown(RESEND_COOLDOWN_S);
     if (tab === 'email') void flow.sendEmail(val);
     else void flow.sendPhone(val);
@@ -213,6 +223,7 @@ export function SaveChatCTA() {
               flow.reset();
               setNameError(null);
               setInputValue('');
+              setContactError(null);
               setOtpValue('');
               setResendCooldown(0);
             }}
@@ -262,6 +273,7 @@ export function SaveChatCTA() {
               onClick={() => {
                 setTab(t);
                 setInputValue('');
+                setContactError(null);
               }}
               className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-body font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40 ${
                 tab === t
@@ -282,7 +294,7 @@ export function SaveChatCTA() {
             type={tab === 'email' ? 'email' : 'tel'}
             inputMode={tab === 'email' ? 'email' : 'tel'}
             value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
+            onChange={e => { setInputValue(e.target.value); setContactError(null); }}
             placeholder={tab === 'email' ? 'your@email.com' : '+1 (555) 000-0000'}
             autoComplete={tab === 'email' ? 'email' : 'tel'}
             aria-label={tab === 'email' ? 'Email address' : 'Phone number'}
@@ -298,6 +310,11 @@ export function SaveChatCTA() {
             {isSending ? <Spinner /> : <ArrowRight size={15} />}
           </button>
         </form>
+        {contactError && (
+          <p className="mt-1.5 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">
+            {contactError}
+          </p>
+        )}
 
         {stage === 'idle' && error && (
           <p className="mt-2 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">

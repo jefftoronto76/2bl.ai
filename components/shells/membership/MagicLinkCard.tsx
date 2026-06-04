@@ -100,6 +100,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const [nameError, setNameError] = useState<string | null>(null);
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
+  const [contactError, setContactError] = useState<string | null>(null);
   const [otpValue, setOtpValue] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
@@ -155,6 +156,14 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
       }
       const val = inputValue.trim();
       if (!val) return;
+      if (tab === 'phone') {
+        const digits = val.replace(/\D/g, '');
+        if (digits.length < 7 || digits.length > 15) {
+          setContactError('Please enter a valid phone number.');
+          return;
+        }
+      }
+      setContactError(null);
       if (tab === 'email') void flow.sendEmail(val);
       else void flow.sendPhone(val);
     },
@@ -179,6 +188,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
     setNameValue('');
     setNameError(null);
     setInputValue('');
+    setContactError(null);
     setOtpValue('');
     setResendCooldown(0);
   }, [flow]);
@@ -186,6 +196,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const handleTabChange = useCallback((next: 'email' | 'phone') => {
     setTab(next);
     setInputValue('');
+    setContactError(null);
   }, []);
 
   // ── Stage rendering ────────────────────────────────────────────────────────
@@ -383,7 +394,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             type={tab === 'email' ? 'email' : 'tel'}
             inputMode={tab === 'email' ? 'email' : 'tel'}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => { setInputValue(e.target.value); setContactError(null); }}
             placeholder={tab === 'email' ? 'your@email.com' : '+1 (555) 000-0000'}
             autoComplete={tab === 'email' ? 'email' : 'tel'}
             aria-label={tab === 'email' ? 'Email address' : 'Phone number'}
@@ -396,6 +407,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             label={tab === 'email' ? 'Send magic link' : 'Send code'}
           />
         </form>
+        <FieldError message={contactError} />
 
         {/* Show inline error when we bounced back to idle after a failure */}
         {stage === 'idle' && error && <FieldError message={error} />}
