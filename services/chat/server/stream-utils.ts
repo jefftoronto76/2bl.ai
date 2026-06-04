@@ -16,24 +16,35 @@ export async function readDataStream(
 
   const decoder = new TextDecoder()
   let accumulated = ''
+  let buffer = ''
+
+  const processLine = (line: string) => {
+    const match = line.match(/^0:"(.*)"$/)
+    if (match) {
+      try {
+        const delta = JSON.parse(`"${match[1]}"`)
+        accumulated += delta
+        onChunk(accumulated)
+      } catch {
+        // skip malformed lines
+      }
+    }
+  }
 
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
 
-    const text = decoder.decode(value, { stream: true })
-    for (const line of text.split('\n')) {
-      const match = line.match(/^0:"(.*)"$/)
-      if (match) {
-        try {
-          const delta = JSON.parse(`"${match[1]}"`)
-          accumulated += delta
-          onChunk(accumulated)
-        } catch {
-          // skip malformed lines
-        }
-      }
+    if (done) {
+      // Flush any incomplete line that was never terminated with a newline
+      if (buffer) processLine(buffer)
+      break
     }
+
+    const text = buffer + decoder.decode(value, { stream: true })
+    const lines = text.split('\n')
+    // The last element may be an incomplete line — hold it for the next read
+    buffer = lines.pop() ?? ''
+    for (const line of lines) processLine(line)
   }
 
   return accumulated
