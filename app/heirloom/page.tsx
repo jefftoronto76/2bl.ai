@@ -1,5 +1,4 @@
 import { auth } from '@clerk/nextjs/server';
-import { redirect } from 'next/navigation';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
 import { validateInvite } from '@/services/invites';
@@ -37,6 +36,6 @@ export default async function HeirloomPage({ searchParams }: PageProps) {
     }
   }
 
-  // No valid token and not an existing member.
-  redirect('/heirloom/coming-soon');
+  // No valid token and not an existing member — render the landing page.
+  return <HeirloomApp inviteToken={null} />;
 }
