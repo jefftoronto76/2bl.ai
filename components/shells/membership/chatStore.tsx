@@ -382,6 +382,7 @@ export function ChatProvider({
           .catch(err => console.error('[heirloom/chat] claim error:', id, err))
       )
     );
+
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses

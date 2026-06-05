@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
+import { useUser } from '@clerk/nextjs';
 import { Message, useChatStore } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
@@ -18,6 +19,21 @@ const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
 // they never render as raw bracket text. Heirloom has no booking-card UI yet,
 // so booking cards are dropped and only the surrounding prose is shown.
 const markerRegistry = createDefaultRegistry();
+
+// Shown to platform_admin users only — never to regular members.
+// Renders the raw marker bracket text that was stripped from displayed prose.
+function DebugPill({ raw }: { raw: string }) {
+  return (
+    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-black/60 border border-white/10 w-fit">
+      <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted opacity-50 select-none">
+        debug
+      </span>
+      <span className="font-mono text-xs text-text-muted opacity-75 break-all">
+        {raw}
+      </span>
+    </div>
+  );
+}
 
 function MessageBubble({ message, content }: { message: Message; content: string }) {
   const isUser = message.role === 'user';
@@ -78,6 +94,10 @@ function TypingIndicator() {
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { claimCurrentSession } = useChatStore();
+  const { user } = useUser();
+
+  // Gate strictly on Clerk publicMetadata — never expose debug view to members.
+  const isAdmin = user?.publicMetadata?.role === 'platform_admin';
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,15 +122,30 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         {messages.map((msg, i) => {
           if (msg.role === 'user') {
+            // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and
+            // never added to the store, so this branch handles any future case
+            // where system-tagged content reaches messages (e.g. a stored
+            // hidden turn), without touching non-admin paths.
+            if (isAdmin && /^\[SYSTEM:\s*[^\]]*\]/.test(msg.content.trim())) {
+              return (
+                <div key={msg.id} className="flex justify-end">
+                  <DebugPill raw={msg.content.trim()} />
+                </div>
+              );
+            }
             return <MessageBubble key={msg.id} message={msg} content={msg.content} />;
           }
 
           const result = parsed[i];
           const prose = result?.prose ?? '';
           const authPrompt = result?.markers.find((m) => m.type === 'ACCOUNT_CREATE');
+          // All parsed markers (NAME, EMAIL, PHONE, BOOKING, ACCOUNT_CREATE) are
+          // shown as debug pills when admin. result.markers is already populated
+          // by the registry — debug view is purely additive display.
+          const debugMarkers = isAdmin ? (result?.markers ?? []) : [];
 
-          // Skip assistant messages with no prose AND no auth prompt.
-          if (!prose && !authPrompt) return null;
+          // Skip empty assistant messages — no prose, no auth prompt, no debug.
+          if (!prose && !authPrompt && debugMarkers.length === 0) return null;
 
           return (
             <div key={msg.id} className="flex flex-col gap-3">
@@ -120,6 +155,13 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
                   reason={authPrompt.fields[0] || undefined}
                   onSuccess={handleAuthSuccess}
                 />
+              )}
+              {debugMarkers.length > 0 && (
+                <div className="flex flex-col gap-1.5 ml-11">
+                  {debugMarkers.map((m, idx) => (
+                    <DebugPill key={idx} raw={m.raw} />
+                  ))}
+                </div>
               )}
             </div>
           );
