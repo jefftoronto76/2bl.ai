@@ -93,6 +93,11 @@ interface ChatContextType {
    * round-trip. Used after sign-up to confirm membership in-chat.
    */
   injectAssistantMessage: (content: string) => void;
+  /**
+   * True when the invite gate is active AND the visitor is not an authorized
+   * member. Chat UI renders GateView instead of the conversation when true.
+   */
+  isGated: boolean;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -134,15 +139,15 @@ function serialize(m: Message): PersistedMessage {
 
 export function ChatProvider({
   children,
-  inviteToken = null,
+  gateEnabled = true,
+  isAuthorized = false,
 }: {
   children: ReactNode;
-  inviteToken?: string | null;
+  /** Whether the invite gate is enabled (from tenant settings). Default: true. */
+  gateEnabled?: boolean;
+  /** Whether the current visitor is an active member or invite holder. Default: false. */
+  isAuthorized?: boolean;
 }) {
-  // Stored in a ref so claimAllSessions can read the token at call time
-  // without it appearing in the dependency array. Wired to mark-used in
-  // claimAllSessions once sign-up completes.
-  const inviteTokenRef = useRef<string | null>(inviteToken);
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
   // are no longer dispatched from here (removed in a follow-up commit).
@@ -378,20 +383,6 @@ export function ChatProvider({
       )
     );
 
-    // 3. Mark the invite token used now that sign-up is complete.
-    const token = inviteTokenRef.current;
-    if (token) {
-      fetch('/api/heirloom/invites/use', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      })
-        .then(r => {
-          if (!r.ok) console.warn('[heirloom/chat] invite mark-used failed:', r.status);
-          else console.log('[heirloom/chat] invite marked used');
-        })
-        .catch(err => console.error('[heirloom/chat] invite mark-used error:', err));
-    }
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses
@@ -423,7 +414,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized }}
     >
       {children}
     </ChatContext.Provider>

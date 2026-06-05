@@ -46,12 +46,13 @@ function HeirloomInner() {
 }
 
 interface HeirloomAppProps {
-  inviteToken: string | null;
+  gateEnabled: boolean;
+  isAuthorized: boolean;
 }
 
-export default function HeirloomApp({ inviteToken }: HeirloomAppProps) {
+export default function HeirloomApp({ gateEnabled, isAuthorized }: HeirloomAppProps) {
   return (
-    <ChatProvider inviteToken={inviteToken}>
+    <ChatProvider gateEnabled={gateEnabled} isAuthorized={isAuthorized}>
       <HeirloomInner />
     </ChatProvider>
   );

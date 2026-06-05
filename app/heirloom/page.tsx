@@ -4,38 +4,49 @@ import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
 import { validateInvite } from '@/services/invites';
 import HeirloomApp from './HeirloomApp';
 
-interface PageProps {
+export const dynamic = 'force-dynamic';
+
+export default async function HeirloomPage({
+  searchParams,
+}: {
   searchParams: Promise<{ invite?: string }>;
-}
-
-export default async function HeirloomPage({ searchParams }: PageProps) {
+}) {
   const { userId: clerkId } = await auth();
-  const { invite: token } = await searchParams;
+  const params = await searchParams;
+  const inviteToken = params.invite;
 
-  // Signed-in user — pass through without a token if they are already a member.
+  const supabase = getAdminClient();
+
+  // Read the invite gate toggle from tenants.settings JSONB.
+  // Default to true (gate on) when the key is absent — preserves safe behavior
+  // until the admin explicitly disables it.
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('settings')
+    .eq('id', HEIRLOOM_TENANT_ID)
+    .maybeSingle();
+
+  const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
+  const gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
+
+  // Check if the signed-in user is an active member.
+  let isAuthorized = false;
   if (clerkId) {
-    const supabase = getAdminClient();
     const { data: member } = await supabase
       .from('members')
       .select('id')
       .eq('clerk_user_id', clerkId)
       .eq('tenant_id', HEIRLOOM_TENANT_ID)
+      .eq('status', 'active')
       .maybeSingle();
-
-    if (member) {
-      return <HeirloomApp inviteToken={null} />;
-    }
-    // Signed in but not yet a member — fall through to invite check.
+    isAuthorized = !!member;
   }
 
-  // Validate the invite token when present.
-  if (token) {
-    const invite = await validateInvite(token);
-    if (invite) {
-      return <HeirloomApp inviteToken={token} />;
-    }
+  // A valid unused invite token also grants full access.
+  if (!isAuthorized && inviteToken) {
+    const row = await validateInvite(inviteToken);
+    if (row !== null) isAuthorized = true;
   }
 
-  // No valid token and not an existing member — render the landing page.
-  return <HeirloomApp inviteToken={null} />;
+  return <HeirloomApp gateEnabled={gateEnabled} isAuthorized={isAuthorized} />;
 }

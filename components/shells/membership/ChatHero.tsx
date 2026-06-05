@@ -8,6 +8,7 @@ import { MessageList } from './MessageList';
 import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
+import { GateView } from './GateView';
 
 function EmptyState() {
   return (
@@ -20,7 +21,7 @@ function EmptyState() {
 }
 
 export function ChatHero() {
-  const { state, isError } = useChatStore();
+  const { state, isError, isGated } = useChatStore();
 
   // iOS keyboard handling. While the chat panel is open it's a modal overlay,
   // so we lock body scroll (the landing page behind must not scroll) and pin the
@@ -44,16 +45,22 @@ export function ChatHero() {
         <ChatHeader />
 
         <div className="flex flex-col flex-1 min-h-0">
-          {state.hasStarted ? (
-            <MessageList messages={state.messages} isLoading={state.isLoading} isError={isError} />
+          {isGated ? (
+            <GateView />
           ) : (
-            <EmptyState />
-          )}
+            <>
+              {state.hasStarted ? (
+                <MessageList messages={state.messages} isLoading={state.isLoading} isError={isError} />
+              ) : (
+                <EmptyState />
+              )}
 
-          <div className="pb-4">
-            <ChatInput />
-            <SaveChatCTA />
-          </div>
+              <div className="pb-4">
+                <ChatInput />
+                <SaveChatCTA />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>
