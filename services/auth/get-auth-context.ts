@@ -2,6 +2,8 @@ import { auth } from '@clerk/nextjs/server'
 import { headers } from 'next/headers'
 import { getAdminClient } from './supabase-admin'
 import { resolveTenantIdFromHost } from './resolve-tenant-from-host'
+import { logAuthEvent } from '@/services/audit'
+import { AuthEventType } from '@/services/audit/types'
 
 export interface AuthContext {
   owner_id: string
@@ -24,6 +26,13 @@ export async function getAuthContext(): Promise<AuthContext> {
   const { userId: clerkId } = await auth()
   console.log('[getAuthContext] clerk userId:', clerkId)
   if (!clerkId) {
+    const hdrs = await headers()
+    void logAuthEvent({
+      event_type: AuthEventType.ADMIN_ACCESS_FAILED,
+      outcome: 'failure',
+      failure_reason: 'no_clerk_session',
+      correlation_id: hdrs.get('x-correlation-id'),
+    })
     throw new Error('Unauthorized')
   }
 
