@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
+import { logEvent, AuditAction } from '@/services/audit'
 
 const VALID_STATUSES = ['active', 'disabled', 'deleted'] as const
 type BlockStatus = typeof VALID_STATUSES[number]
@@ -66,6 +67,21 @@ export async function PATCH(
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  // Derive the most descriptive action: a status=deleted write is a logical delete
+  const action =
+    updates.status === 'deleted' ? AuditAction.BLOCK_DELETE : AuditAction.BLOCK_UPDATE
+
+  void logEvent({
+    action,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'block',
+    target_id: id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    changes: { after: updates },
+    metadata: {},
+  })
 
   return Response.json(result.data)
 }

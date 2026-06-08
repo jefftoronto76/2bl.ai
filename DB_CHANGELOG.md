@@ -1,5 +1,97 @@
 # DB Changelog
 
+## 2026-06-08
+
+### Create `audit_events` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Columns:**
+- `id` (bigint generated always as identity)
+- `product_id` (text, nullable)
+- `tenant_id` (uuid, nullable)
+- `actor_id` (uuid, nullable, FK → users)
+- `actor_type` (text default 'user': 'user' | 'system' | 'anonymous')
+- `actor_email` (text, nullable)
+- `clerk_user_id` (text, nullable)
+- `action` (text NOT NULL — namespaced noun.verb e.g. 'block.update')
+- `target_type` (text, nullable)
+- `target_id` (text, nullable)
+- `outcome` (text default 'success': 'success' | 'failure')
+- `ip_address` (inet, nullable)
+- `user_agent` (text, nullable)
+- `correlation_id` (uuid, nullable — from x-correlation-id middleware header)
+- `changes` (jsonb, nullable — {before, after} where relevant)
+- `metadata` (jsonb NOT NULL default '{}')
+- `created_at` (timestamptz NOT NULL default now())
+- Primary key: (id, created_at)
+- Indexes: `idx_audit_tenant_time` (tenant_id, created_at desc), `idx_audit_actor_time` (actor_id, created_at desc), `idx_audit_action_time` (action, created_at desc), `idx_audit_target` (target_type, target_id), `idx_audit_created_brin` (brin on created_at)
+
+**Immutability:**
+- `prevent_audit_mutation()` trigger function created (raises exception on UPDATE/DELETE)
+- BEFORE UPDATE trigger and BEFORE DELETE trigger added to `audit_events`
+- `REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM public, authenticated, anon`
+
+**RLS:** Enabled. Tenant admins read own tenant's rows; platform admins read all. Append path via service-role client (bypasses RLS).
+
+---
+
+### Create `auth_events` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Columns:**
+- `id` (bigint generated always as identity)
+- `tenant_id` (uuid, nullable)
+- `clerk_user_id` (text, nullable)
+- `actor_id` (uuid, nullable, FK → users)
+- `email` (text, nullable — claimed email, may be unverified on failure)
+- `event_type` (text NOT NULL — 'sign_up' | 'sign_in' | 'sign_out' | 'otp_sent' | 'otp_verified' | 'sign_in_failed' | 'mfa_failed' | 'session_created' | 'session_revoked' | 'admin_access' | 'admin_access_failed' | 'user_deleted' | 'password_reset')
+- `outcome` (text default 'success')
+- `failure_reason` (text, nullable)
+- `ip_address` (inet, nullable)
+- `user_agent` (text, nullable)
+- `correlation_id` (uuid, nullable)
+- `svix_event_id` (text, unique — idempotency key for Clerk webhook deliveries; null for app-logged events)
+- `metadata` (jsonb NOT NULL default '{}')
+- `created_at` (timestamptz NOT NULL default now())
+- Primary key: (id, created_at)
+- Indexes: `idx_auth_tenant_time` (tenant_id, created_at desc), `idx_auth_user_time` (clerk_user_id, created_at desc), `idx_auth_type_time` (event_type, created_at desc), `idx_auth_created_brin` (brin on created_at)
+
+**Immutability:**
+- Same `prevent_audit_mutation()` trigger function reused
+- BEFORE UPDATE and BEFORE DELETE triggers added to `auth_events`
+- `REVOKE UPDATE, DELETE, TRUNCATE ON auth_events FROM public, authenticated, anon`
+
+**RLS:** Enabled. Users read own rows (by clerk_user_id); platform admins read all. Append path via service-role client.
+
+---
+
+### Backfill — document pre-existing `auth_logs` table
+**Type:** Documentation backfill (no schema change)
+**Executed by:** Pre-existing — created in Supabase Studio at an earlier date (exact date unknown)
+
+**Purpose:** `auth_logs` is a Clerk ID resolution diagnostic table created to help
+troubleshoot Clerk ID lookup issues. It is **not** a general audit log and should
+not be confused with `auth_events` (the new append-only auth-event table).
+
+**Columns:**
+- `id` (uuid, PK)
+- `clerk_id_attempted` (text)
+- `matched_table` (text)
+- `matched_column` (text)
+- `user_id` (uuid)
+- `member_id` (uuid)
+- `environment` (text)
+- `created_at` (timestamptz)
+
+**Notes:**
+- No `tenant_id`, `action`, `outcome`, or immutability enforcement
+- Not replaced by `auth_events` — preserved as-is for its diagnostic purpose
+- This entry was added to DB_CHANGELOG.md retroactively in the audit-log sprint
+
+---
+
 ## 2026-05-28
 
 ### Add `user_id` column to `chat_sessions`

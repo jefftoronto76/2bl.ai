@@ -1,5 +1,6 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { logEvent, AuditAction } from '@/services/audit'
 
 type OpenAs = 'new_tab' | 'popup'
 
@@ -164,6 +165,16 @@ export async function PATCH(req: Request) {
     key,
     open_as: parameter.open_as,
     has_embed_code: Boolean(parameter.embed_code),
+  })
+
+  void logEvent({
+    action: AuditAction.SAGE_PARAMETER_UPSERT,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'sage_parameter',
+    target_id: key,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { open_as: openAs, has_embed_code: Boolean(embedCode) },
   })
 
   return Response.json(parameter)

@@ -381,6 +381,12 @@ routing in addition to Clerk auth**:
   the Heirloom host via `isApiPath`, so admin API calls resolve there too.)
 - **jefflougheed.ca passes through** to `/` unchanged — no `x-sbl` /
   `x-heirloom` tag, no rewrite.
+- **Correlation ID generation:** a `crypto.randomUUID()` is generated at the
+  top of every request handler and written as `x-correlation-id` onto
+  `requestHeaders`. The header propagates through all `NextResponse.next` /
+  `NextResponse.rewrite` returns (including the SBL, Heirloom, admin, and
+  fallthrough paths), so every API route can read `req.headers.get('x-correlation-id')`
+  and forward it to `logEvent` / `logAuthEvent` for end-to-end traceability.
 - **Clerk auth (unchanged):** after the domain check, `/admin(.*)` routes are
   still protected via `auth.protect()`.
 
@@ -612,6 +618,27 @@ pure helper safe to import (type-only) from client components.
 | `inbound.ts` | `getInboundChats` (+ `ChatSession`) | Inbound Chats triage: fetch the tenant's prospect sessions (newest first), resolve idle thresholds, derive each row's read-time status. Backs the `app/admin/page.tsx` Inbound Chats list (thin consumer). |
 | `index.ts` | barrel | Re-exports the public surface above. |
 
+### Audit service (`services/audit/`)
+
+Centralised audit and auth-event logging. Server-only. Imported as
+`@/services/audit` (barrel) or `@/services/audit/types` (types only).
+
+| File | Exports | Purpose |
+|------|---------|---------|
+| `types.ts` | `AuditAction` (const + type), `AuthEventType` (const + type), `AuditEventInput`, `AuthEventInput` | Typed action-name constants (`AuditAction.BLOCK_UPDATE = 'block.update'`, etc.) and input interfaces matching the DB schema. Eliminates magic strings at every call site. |
+| `audit.ts` | `logEvent(input: AuditEventInput): Promise<void>`, `logAuthEvent(input: AuthEventInput): Promise<void>` | Thin service-role writes to `audit_events` and `auth_events` respectively. **Fire-and-forget** — all errors are caught and `console.error`'d; neither function ever throws, so a logging failure never blocks or fails the originating request. Call with `void logEvent(…)` from API routes. |
+| `index.ts` | barrel | Re-exports `logEvent`, `logAuthEvent`, `AuditAction`, `AuthEventType`, and both input types. |
+
+`logEvent` is called (with `void`) from every mutating admin API route,
+every platform tenant route, every session route, and the Heirloom
+membership-claim route. `logAuthEvent` is called from
+`services/auth/get-auth-context.ts` (unauthorized-access path).
+
+The corresponding DB tables (`audit_events`, `auth_events`) must be created by
+Jeff in Supabase Studio before audit rows are written. See DB_CHANGELOG.md and
+the plan in `.claude/plans/` for the exact SQL. Until those tables exist, all
+`logEvent` / `logAuthEvent` calls return silently (the error is swallowed).
+
 ### Invite service (`services/invites/`)
 
 Invite-only access control for Heirloom. Server-only. Backs the admin invite
@@ -764,6 +791,7 @@ response mapping; the data-access and business logic live in the service.
 | `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
 | `/api/sessions/[id]/claim` | POST | Links an anonymous session to the now-signed-in user. Resolves the user **server-side** from the active Clerk session (`ensureClerkUser`, no client-supplied `user_id` → no IDOR) and stamps `chat_sessions.user_id` (`claimSession`, scoped by `id` + host `tenant_id`). 401 when no Clerk session. **Now client-orphaned** — its only caller (the Heirloom `ContactCard` inline phone/OTP sign-up) was removed; the route is retained, reversible, for a future signed-in flow (account creation is deferred). |
 | `/api/heirloom/members/claim` | POST | Creates a `pending` membership record for the signed-in Clerk user (`claimMembership`). Called by `GateView.handleClaimSuccess` after MagicLinkCard sign-up completes. Idempotent — existing rows (any status) are left unchanged. Returns 401 when no Clerk session, 500 on DB error. |
+| `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
 
 ---
 
@@ -932,6 +960,9 @@ Row Level Security is enforced at the Supabase layer.
 | `artifacts` | id (uuid, PK), tenant_id (uuid, FK → tenants), user_id (uuid, FK → users), session_id (uuid, FK → chat_sessions), type (text — e.g. 'memory' for Heirloom; general-purpose across tenants), title (text), body (text), metadata (jsonb), status (text: 'draft' \| 'published'), created_at (timestamptz), updated_at (timestamptz). Created in Studio 2026-05-25; **not yet wired to chat** (pending PR). |
 | `artifact_media` | id (uuid, PK), artifact_id (uuid, FK → artifacts), type (text), url (text), filename (text), mime_type (text), size (integer), created_at (timestamptz). Media attached to an `artifact`. Created in Studio 2026-05-25; **not yet wired to chat** (pending PR). |
 | `members` | id (uuid, PK), clerk_user_id (text, unique — the Clerk user id, e.g. `user_...`), tenant_id (uuid, FK → tenants — scopes the member to a product tenant), email (text, nullable — synced from Clerk on auth), phone (text, nullable — synced from Clerk on auth), status (text, default 'active'), created_at (timestamptz), updated_at (timestamptz). Heirloom membership record created/updated on each authentication via `syncMember` (`services/auth/sync-member.ts`). Heirloom tenant_id: `20767f1d-1148-4e43-ab73-f6da88f0ac56`. |
+| `audit_events` | id (bigint generated always as identity), product_id (text, nullable — 'sage' \| 'heirloom' \| 'platform'), tenant_id (uuid, nullable — null = platform-level event), actor_id (uuid, nullable — users.id), actor_type (text default 'user': 'user' \| 'system' \| 'anonymous'), actor_email (text, nullable), clerk_user_id (text, nullable — Clerk correlation id, separate from actor_id), action (text — namespaced noun.verb e.g. 'block.update'; see `AuditAction` constants in `services/audit/types.ts`), target_type (text, nullable — 'block' \| 'tenant' \| 'session' etc.), target_id (text, nullable), outcome (text default 'success': 'success' \| 'failure'), ip_address (inet, nullable), user_agent (text, nullable), correlation_id (uuid, nullable — from `x-correlation-id` middleware header), changes (jsonb, nullable — `{before, after}` where relevant), metadata (jsonb NOT NULL default '{}'), created_at (timestamptz NOT NULL default now()). PK: (id, created_at). **Append-only** — BEFORE UPDATE/DELETE triggers raise an exception; UPDATE/DELETE/TRUNCATE revoked from all non-service-role roles. RLS enabled: tenant admins read own rows; platform admins read all. ⚠️ Must be created by Jeff in Supabase Studio before audit rows are written. |
+| `auth_events` | id (bigint generated always as identity), tenant_id (uuid, nullable), clerk_user_id (text, nullable), actor_id (uuid, nullable — users.id when resolved), email (text, nullable — claimed email, may be unverified on failure), event_type (text — 'sign_up' \| 'sign_in' \| 'sign_out' \| 'otp_sent' \| 'otp_verified' \| 'sign_in_failed' \| 'mfa_failed' \| 'session_created' \| 'session_revoked' \| 'admin_access' \| 'admin_access_failed' \| 'user_deleted' \| 'password_reset'), outcome (text default 'success'), failure_reason (text, nullable), ip_address (inet, nullable), user_agent (text, nullable), correlation_id (uuid, nullable), svix_event_id (text, unique — idempotency key for Clerk webhook deliveries; null for app-logged events), metadata (jsonb NOT NULL default '{}'), created_at (timestamptz NOT NULL default now()). PK: (id, created_at). **Append-only** — same immutability enforcement as `audit_events`. RLS enabled: users read their own rows; platform admins read all. Written by `logAuthEvent` (`services/audit/audit.ts`) and the Clerk webhook receiver (`/api/webhooks/clerk`). ⚠️ Must be created by Jeff in Supabase Studio before auth events are written. |
+| `auth_logs` | id (uuid PK), clerk_id_attempted (text), matched_table (text), matched_column (text), user_id (uuid), member_id (uuid), environment (text), created_at (timestamptz). **Pre-existing Clerk ID resolution diagnostic table** — created in Supabase Studio to help troubleshoot Clerk ID lookup issues. Not a general audit log; no `tenant_id`, `action`, `outcome`, or immutability. Preserved as-is. This is NOT the same as `auth_events` — do not confuse them. Undocumented in DB_CHANGELOG.md until 2026-06-08 (see backfill entry). |
 
 **Deployment note — tenant_id backfill required**: `master_prompt` and
 `master_prompt_history` rows must have `tenant_id` populated before

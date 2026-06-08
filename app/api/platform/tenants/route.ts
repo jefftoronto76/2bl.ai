@@ -1,5 +1,6 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { createTenant, type TenantInput } from '@/services/tenant'
+import { logEvent, AuditAction } from '@/services/audit'
 
 // Tenant creation is a privileged, cross-tenant write. Gate it on the same
 // signal the (platform) layout/page use — Clerk publicMetadata.role —
@@ -28,5 +29,17 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.TENANT_CREATE,
+    actor_id: null,
+    actor_type: 'user',
+    clerk_user_id: user.id,
+    target_type: 'tenant',
+    target_id: (result.data as { id?: string })?.id ?? null,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { name: body.name, type: body.type },
+  })
+
   return Response.json(result.data, { status: result.status })
 }
