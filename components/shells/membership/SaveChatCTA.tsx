@@ -287,6 +287,9 @@ export function SaveChatCTA() {
           </button>
         </form>
 
+        {/* Required by Clerk bot-protection for sign-up flows */}
+        <div id="clerk-captcha" />
+
         {stage === 'idle' && error && (
           <p className="mt-2 text-xs text-amber-600/90 font-body" role="alert" aria-live="polite">
             {error}
