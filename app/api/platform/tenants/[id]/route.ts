@@ -1,5 +1,6 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
+import { logEvent, AuditAction } from '@/services/audit'
 
 // PATCH/DELETE for a single tenant. Same gate as POST /api/platform/tenants —
 // platform_admin only, re-checked here so these privileged service-role writes
@@ -43,10 +44,20 @@ export async function PATCH(req: Request, context: RouteContext) {
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.TENANT_UPDATE,
+    target_type: 'tenant',
+    target_id: id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    changes: { after: body },
+    metadata: {},
+  })
+
   return Response.json(result.data, { status: result.status })
 }
 
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(req: Request, context: RouteContext) {
   const denied = await denyUnlessPlatformAdmin()
   if (denied) return denied
 
@@ -59,5 +70,14 @@ export async function DELETE(_req: Request, context: RouteContext) {
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.TENANT_DELETE,
+    target_type: 'tenant',
+    target_id: id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: {},
+  })
+
   return Response.json(result.data, { status: result.status })
 }

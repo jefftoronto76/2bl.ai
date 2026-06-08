@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 import { ensureClerkUser } from '@/services/auth/ensure-clerk-user'
 import { claimSession } from '@/services/crm/sessions'
+import { logEvent, AuditAction } from '@/services/audit'
 
 /**
  * POST /api/sessions/[id]/claim — after an inline phone/OTP sign-up, link the
@@ -31,6 +32,16 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.SESSION_CLAIM,
+    tenant_id: tenantId,
+    actor_id: userId,
+    target_type: 'session',
+    target_id: id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: {},
+  })
 
   return NextResponse.json({ ok: true })
 }

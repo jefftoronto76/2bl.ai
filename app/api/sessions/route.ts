@@ -3,6 +3,7 @@ import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 import { getCurrentUserId } from '@/services/auth/get-current-user-id'
 import { syncUser } from '@/services/auth/sync-user'
 import { createSession, listSessions } from '@/services/crm/sessions'
+import { logEvent, AuditAction } from '@/services/audit'
 
 /**
  * GET /api/sessions — the signed-in user's sessions for this tenant, newest
@@ -47,6 +48,17 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.SESSION_CREATE,
+    tenant_id: tenantId,
+    actor_id: userId,
+    actor_type: userId ? 'user' : 'anonymous',
+    target_type: 'session',
+    target_id: result.data.id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: {},
+  })
 
   return NextResponse.json({ id: result.data.id })
 }
