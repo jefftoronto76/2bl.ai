@@ -8,7 +8,7 @@
 // they do not throw.
 //
 // Sign-in OTP:
-//   signIn.create({ identifier }) → signIn.emailCode.sendCode() / phoneCode.sendCode()
+//   signIn.emailCode.sendCode({ emailAddress }) / phoneCode.sendCode({ phoneNumber })
 //   → signIn.emailCode.verifyCode({ code }) / phoneCode.verifyCode({ code })
 //   → signIn.finalize({ navigate: () => {} })
 //
@@ -18,8 +18,8 @@
 //   → signUp.verifications.verifyEmailCode({ code }) / verifyPhoneCode({ code })
 //   → signUp.finalize({ navigate: () => {} })
 //
-// New-vs-existing user: sign-in is attempted first. When Clerk returns
-// form_identifier_not_found the hook transparently retries via sign-up.
+// New-vs-existing user: sendCode is attempted first. When Clerk returns
+// form_identifier_not_found the hook transparently creates a sign-up.
 // The caller never needs to distinguish the two cases.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -130,10 +130,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        // Try sign-in first (existing user). Core 3 returns { error } — never throws.
-        const { error: createErr } = await signIn.create({ identifier: email })
+        // Core 3: sendCode with emailAddress handles user lookup internally.
+        // Returns form_identifier_not_found when the email has no account.
+        const { error: signInErr } = await signIn.emailCode.sendCode({ emailAddress: email })
 
-        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
+        if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
           // New user — create sign-up and send email OTP.
           const { error: signUpErr } = await signUp.create({ emailAddress: email })
           if (signUpErr) {
@@ -150,18 +151,12 @@ export function useAuthFlow(): UseAuthFlowReturn {
           return
         }
 
-        if (createErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
+        if (signInErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(signInErr)); setStage('error') }
           return
         }
 
-        // Existing user — send email OTP via sign-in.
-        const { error: sendErr } = await signIn.emailCode.sendCode()
-        if (sendErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-          return
-        }
-
+        // Existing user — OTP sent via sendCode above.
         flowTypeRef.current = 'signin'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
@@ -185,10 +180,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('phone', phone)
 
-        // Try sign-in first (existing user). Core 3 returns { error } — never throws.
-        const { error: createErr } = await signIn.create({ identifier: phone })
+        // Core 3: sendCode with phoneNumber handles user lookup internally.
+        // Returns form_identifier_not_found when the phone has no account.
+        const { error: signInErr } = await signIn.phoneCode.sendCode({ phoneNumber: phone })
 
-        if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
+        if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
           // New user — create sign-up and send phone OTP.
           const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
           if (signUpErr) {
@@ -205,18 +201,12 @@ export function useAuthFlow(): UseAuthFlowReturn {
           return
         }
 
-        if (createErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(createErr)); setStage('error') }
+        if (signInErr) {
+          if (mountedRef.current) { setError(extractErrorMessage(signInErr)); setStage('error') }
           return
         }
 
-        // Existing user — send phone OTP via sign-in.
-        const { error: sendErr } = await signIn.phoneCode.sendCode()
-        if (sendErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-          return
-        }
-
+        // Existing user — OTP sent via sendCode above.
         flowTypeRef.current = 'signin'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
