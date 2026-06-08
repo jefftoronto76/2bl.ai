@@ -10,13 +10,13 @@
 // Sign-in OTP:
 //   signIn.create({ identifier }) → signIn.emailCode.sendCode() / phoneCode.sendCode()
 //   → signIn.emailCode.verifyCode({ code }) / phoneCode.verifyCode({ code })
-//   → signIn.finalize()
+//   → signIn.finalize({ navigate: () => {} })
 //
 // Sign-up OTP:
 //   signUp.create({ emailAddress / phoneNumber })
-//   → signUp.sendEmailCode() / sendPhoneCode()
-//   → signUp.verifyEmailCode({ code }) / verifyPhoneCode({ code })
-//   → signUp.finalize()
+//   → signUp.verifications.sendEmailCode() / sendPhoneCode()
+//   → signUp.verifications.verifyEmailCode({ code }) / verifyPhoneCode({ code })
+//   → signUp.finalize({ navigate: () => {} })
 //
 // New-vs-existing user: sign-in is attempted first. When Clerk returns
 // form_identifier_not_found the hook transparently retries via sign-up.
@@ -140,7 +140,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
             return
           }
-          const { error: sendErr } = await signUp.sendEmailCode()
+          const { error: sendErr } = await signUp.verifications.sendEmailCode()
           if (sendErr) {
             if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
             return
@@ -195,7 +195,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
             return
           }
-          const { error: sendErr } = await signUp.sendPhoneCode()
+          const { error: sendErr } = await signUp.verifications.sendPhoneCode()
           if (sendErr) {
             if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
             return
@@ -239,14 +239,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
       if (contactType === 'email') {
         try {
           if (flowTypeRef.current === 'signup') {
-            const { error: verifyErr } = await signUp.verifyEmailCode({ code })
+            const { error: verifyErr } = await signUp.verifications.verifyEmailCode({ code })
             if (verifyErr) {
               if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
               return
             }
             if (signUp.status === 'complete') {
               try {
-                await signUp.finalize()
+                await signUp.finalize({ navigate: () => {} })
                 if (mountedRef.current) setStage('success')
               } catch (finalizeErr: unknown) {
                 if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
@@ -262,7 +262,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             }
             if (signIn.status === 'complete') {
               try {
-                await signIn.finalize()
+                await signIn.finalize({ navigate: () => {} })
                 if (mountedRef.current) setStage('success')
               } catch (finalizeErr: unknown) {
                 if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
@@ -280,14 +280,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
       // ── Phone OTP paths ──────────────────────────────────────────────────
       try {
         if (flowTypeRef.current === 'signup') {
-          const { error: verifyErr } = await signUp.verifyPhoneCode({ code })
+          const { error: verifyErr } = await signUp.verifications.verifyPhoneCode({ code })
           if (verifyErr) {
             if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
             return
           }
           if (signUp.status === 'complete') {
             try {
-              await signUp.finalize()
+              await signUp.finalize({ navigate: () => {} })
               if (mountedRef.current) setStage('success')
             } catch (finalizeErr: unknown) {
               if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
@@ -303,7 +303,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           }
           if (signIn.status === 'complete') {
             try {
-              await signIn.finalize()
+              await signIn.finalize({ navigate: () => {} })
               if (mountedRef.current) setStage('success')
             } catch (finalizeErr: unknown) {
               if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
