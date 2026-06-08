@@ -1,5 +1,94 @@
 # DB Changelog
 
+## 2026-06-08
+
+### Backfill — document pre-existing `auth_logs` table
+**Type:** Documentation backfill (no schema change)
+**Executed by:** Pre-existing — created in Supabase Studio at an earlier date (exact date unknown)
+
+**Purpose:** `auth_logs` is a Clerk ID resolution diagnostic table created to help
+troubleshoot Clerk ID lookup issues. It is **not** a general audit log and should
+not be confused with `auth_events` (the new append-only auth-event table).
+
+**Columns:**
+- `id` (uuid, PK)
+- `clerk_id_attempted` (text)
+- `matched_table` (text)
+- `matched_column` (text)
+- `user_id` (uuid)
+- `member_id` (uuid)
+- `environment` (text)
+- `created_at` (timestamptz)
+
+**Notes:**
+- No `tenant_id`, `action`, `outcome`, or immutability enforcement
+- Not replaced by `auth_events` — preserved as-is for its diagnostic purpose
+- This entry was added to DB_CHANGELOG.md retroactively in the audit-log sprint
+
+---
+
+### Pending Jeff Studio work — `audit_events` + `auth_events` tables
+**Type:** Schema change (required before audit logging is active)
+**Status:** ⚠️ PENDING — Jeff must run this SQL in Supabase Studio
+
+**See plan file** (`.claude/plans/root-claude-uploads-54e3e89e-e1b3-5253-golden-stallman.md`)
+for the complete SQL (Steps J1–J4). Summary:
+
+**New table: `audit_events`**
+- `id` (bigint generated always as identity)
+- `product_id` (text, nullable)
+- `tenant_id` (uuid, nullable)
+- `actor_id` (uuid, nullable, FK → users)
+- `actor_type` (text default 'user')
+- `actor_email` (text, nullable)
+- `clerk_user_id` (text, nullable)
+- `action` (text NOT NULL)
+- `target_type` (text, nullable)
+- `target_id` (text, nullable)
+- `outcome` (text default 'success')
+- `ip_address` (inet, nullable)
+- `user_agent` (text, nullable)
+- `correlation_id` (uuid, nullable)
+- `changes` (jsonb, nullable)
+- `metadata` (jsonb NOT NULL default '{}')
+- `created_at` (timestamptz NOT NULL default now())
+- Primary key: (id, created_at)
+- Indexes: idx_audit_tenant_time (tenant_id, created_at desc), idx_audit_actor_time (actor_id, created_at desc), idx_audit_action_time (action, created_at desc), idx_audit_target (target_type, target_id), idx_audit_created_brin (brin on created_at)
+
+**New table: `auth_events`**
+- `id` (bigint generated always as identity)
+- `tenant_id` (uuid, nullable)
+- `clerk_user_id` (text, nullable)
+- `actor_id` (uuid, nullable, FK → users)
+- `email` (text, nullable)
+- `event_type` (text NOT NULL)
+- `outcome` (text default 'success')
+- `failure_reason` (text, nullable)
+- `ip_address` (inet, nullable)
+- `user_agent` (text, nullable)
+- `correlation_id` (uuid, nullable)
+- `svix_event_id` (text, unique — idempotency key for Clerk webhooks)
+- `metadata` (jsonb NOT NULL default '{}')
+- `created_at` (timestamptz NOT NULL default now())
+- Primary key: (id, created_at)
+- Indexes: idx_auth_tenant_time (tenant_id, created_at desc), idx_auth_user_time (clerk_user_id, created_at desc), idx_auth_type_time (event_type, created_at desc), idx_auth_created_brin (brin on created_at)
+
+**Immutability (both tables):**
+- `prevent_audit_mutation()` trigger function + BEFORE UPDATE/DELETE triggers
+- `REVOKE UPDATE, DELETE, TRUNCATE ON audit_events, auth_events FROM public, authenticated, anon`
+
+**RLS (both tables):**
+- `audit_events`: tenant admin reads own tenant's rows; platform admin reads all
+- `auth_events`: users read own rows (by clerk_user_id); platform admin reads all
+- See plan Steps J3–J4 for exact policy SQL
+
+**Also required:**
+- Copy the Clerk webhook signing secret from Clerk dashboard → Webhooks → Signing Secret
+- Add as `CLERK_WEBHOOK_SECRET` in Vercel environment variables
+- Register webhook endpoint in Clerk: `https://<domain>/api/webhooks/clerk`
+
+---
+
 ## 2026-05-28
 
 ### Add `user_id` column to `chat_sessions`
