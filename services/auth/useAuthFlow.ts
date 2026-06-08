@@ -4,8 +4,9 @@
 //
 // Client-side authentication flow hook for the email OTP / phone OTP membership
 // workflow. Written for @clerk/nextjs v7 (Core 3 — SignInFutureResource /
-// SignUpFutureResource). All Clerk methods return { error: ClerkError | null };
-// they do not throw.
+// SignUpFutureResource). Core 3 documents { error: ClerkError | null } returns
+// (no throw), but some builds throw ClerkAPIResponseError on HTTP 4xx — both
+// paths are normalised at the sendCode call sites.
 //
 // Sign-in OTP:
 //   signIn.emailCode.sendCode({ emailAddress }) / phoneCode.sendCode({ phoneNumber })
@@ -71,6 +72,21 @@ function extractErrorMessage(err: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
+/**
+ * Extract a Clerk error code from a thrown value.
+ * ClerkAPIResponseError shape: { errors: [{ code, message, longMessage }] }
+ */
+function extractClerkErrorCode(err: unknown): string {
+  if (!err || typeof err !== 'object') return 'unknown_error'
+  const e = err as Record<string, unknown>
+  if (Array.isArray(e.errors) && e.errors.length > 0) {
+    const first = e.errors[0] as Record<string, unknown>
+    if (typeof first.code === 'string') return first.code
+  }
+  if (typeof e.code === 'string') return e.code
+  return 'unknown_error'
+}
+
 /** Hit the server validation + rate-limit gate before calling Clerk. */
 async function callValidationGate(type: AuthContactType, value: string): Promise<void> {
   const res = await fetch('/api/auth/magic-link', {
@@ -130,9 +146,16 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        // Core 3: sendCode with emailAddress handles user lookup internally.
-        // Returns form_identifier_not_found when the email has no account.
-        const { error: signInErr } = await signIn.emailCode.sendCode({ emailAddress: email })
+        // Core 3: sendCode handles user lookup internally, returning
+        // form_identifier_not_found for unknown emails. Normalise: some SDK
+        // builds throw instead of returning { error } on 4xx responses.
+        let signInErr: { code: string; message?: string; longMessage?: string } | null
+        try {
+          const r = await signIn.emailCode.sendCode({ emailAddress: email })
+          signInErr = r.error
+        } catch (e: unknown) {
+          signInErr = { code: extractClerkErrorCode(e), message: extractErrorMessage(e) }
+        }
 
         if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
           // New user — create sign-up and send email OTP.
@@ -180,9 +203,16 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('phone', phone)
 
-        // Core 3: sendCode with phoneNumber handles user lookup internally.
-        // Returns form_identifier_not_found when the phone has no account.
-        const { error: signInErr } = await signIn.phoneCode.sendCode({ phoneNumber: phone })
+        // Core 3: sendCode handles user lookup internally, returning
+        // form_identifier_not_found for unknown numbers. Normalise: some SDK
+        // builds throw instead of returning { error } on 4xx responses.
+        let signInErr: { code: string; message?: string; longMessage?: string } | null
+        try {
+          const r = await signIn.phoneCode.sendCode({ phoneNumber: phone })
+          signInErr = r.error
+        } catch (e: unknown) {
+          signInErr = { code: extractClerkErrorCode(e), message: extractErrorMessage(e) }
+        }
 
         if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
           // New user — create sign-up and send phone OTP.
