@@ -154,7 +154,18 @@ export function useAuthFlow(): UseAuthFlowReturn {
           const r = await signIn.emailCode.sendCode({ emailAddress: email })
           signInErr = r.error
         } catch (e: unknown) {
-          signInErr = { code: extractClerkErrorCode(e), message: extractErrorMessage(e) }
+          const code = extractClerkErrorCode(e)
+          const httpStatus = (e as Record<string, unknown>).status
+          // 422 from Clerk sign-in = identifier not found. Force the expected
+          // code so the NOT_FOUND_CODES check below routes to sign-up regardless
+          // of whether the SDK returned { error } or threw, and regardless of the
+          // exact error code inside the thrown payload.
+          signInErr = {
+            code: NOT_FOUND_CODES.has(code) || httpStatus === 422
+              ? 'form_identifier_not_found'
+              : code,
+            message: extractErrorMessage(e),
+          }
         }
 
         if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
@@ -211,7 +222,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
           const r = await signIn.phoneCode.sendCode({ phoneNumber: phone })
           signInErr = r.error
         } catch (e: unknown) {
-          signInErr = { code: extractClerkErrorCode(e), message: extractErrorMessage(e) }
+          const code = extractClerkErrorCode(e)
+          const httpStatus = (e as Record<string, unknown>).status
+          signInErr = {
+            code: NOT_FOUND_CODES.has(code) || httpStatus === 422
+              ? 'form_identifier_not_found'
+              : code,
+            message: extractErrorMessage(e),
+          }
         }
 
         if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
