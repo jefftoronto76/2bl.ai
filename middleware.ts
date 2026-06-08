@@ -7,6 +7,11 @@ const SBL_HOSTS = new Set(['2bl.ai', 'www.2bl.ai'])
 const HEIRLOOM_HOSTS = new Set(['heirloom.2bl.ai'])
 
 export default clerkMiddleware(async (auth, req) => {
+  // ─── Correlation ID ───
+  // Generated once per request at the edge; propagated on every response path so
+  // API routes and audit log writes can stitch events from the same request together.
+  const correlationId = crypto.randomUUID()
+
   // ─── Domain-based routing (runs above Clerk auth) ───
   // 2bl.ai / www.2bl.ai serve the Second Brain Labs storefront. We rewrite to the
   // /secondbrainlabs segment and tag the request with x-sbl so the root layout drops
@@ -33,6 +38,7 @@ export default clerkMiddleware(async (auth, req) => {
   if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
+    requestHeaders.set('x-correlation-id', correlationId)
 
     if (isSblHost && !isSblPath) {
       const url = req.nextUrl.clone()
@@ -61,6 +67,7 @@ export default clerkMiddleware(async (auth, req) => {
   if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-heirloom', '1')
+    requestHeaders.set('x-correlation-id', correlationId)
 
     if (isHeirloomHost && !isHeirloomPath) {
       const url = req.nextUrl.clone()
@@ -84,8 +91,15 @@ export default clerkMiddleware(async (auth, req) => {
   if (isAdminPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-admin', '1')
+    requestHeaders.set('x-correlation-id', correlationId)
     return NextResponse.next({ request: { headers: requestHeaders } })
   }
+
+  // ─── Fallthrough (jefflougheed.ca, /api/*, public routes) ───
+  // No domain rewrite needed; propagate correlation ID for audit logging.
+  const passthroughHeaders = new Headers(req.headers)
+  passthroughHeaders.set('x-correlation-id', correlationId)
+  return NextResponse.next({ request: { headers: passthroughHeaders } })
 })
 
 export const config = {
