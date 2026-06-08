@@ -3,20 +3,24 @@
 // services/auth/useAuthFlow.ts
 //
 // Client-side authentication flow hook for the email OTP / phone OTP membership
-// workflow. Orchestrates:
-//   - Email OTP  (sign-in: prepareFirstFactor email_code;
-//                 sign-up: prepareEmailAddressVerification email_code)
-//   - Phone OTP  (sign-in: phoneCode.sendCode + phoneCode.verifyCode;
-//                 sign-up: verifications.sendPhoneCode + verifications.verifyPhoneCode)
+// workflow. Written for @clerk/nextjs v7 (Core 3 — SignInFutureResource /
+// SignUpFutureResource). All Clerk methods return { error: ClerkError | null };
+// they do not throw.
 //
-// Written for Clerk v7 stable API. useSignIn/useSignUp return the classic
-// SignInResource / SignUpResource. setActive is used for session activation.
-// Email methods use try/catch; phone methods use { error } destructuring
-// (the phone path predates this file and is left as-is — it is working).
+// Sign-in OTP:
+//   signIn.create({ identifier }) → signIn.emailCode.sendCode() / phoneCode.sendCode()
+//   → signIn.emailCode.verifyCode({ code }) / phoneCode.verifyCode({ code })
+//   → signIn.finalize({ navigate: () => {} })
 //
-// New-vs-existing user: sign-in is attempted first. When Clerk throws with
-// form_identifier_not_found the hook transparently retries via sign-up. The
-// caller never needs to distinguish the two cases.
+// Sign-up OTP:
+//   signUp.create({ emailAddress / phoneNumber })
+//   → signUp.verifications.sendEmailCode() / sendPhoneCode()
+//   → signUp.verifications.verifyEmailCode({ code }) / verifyPhoneCode({ code })
+//   → signUp.finalize({ navigate: () => {} })
+//
+// New-vs-existing user: sign-in is attempted first. When Clerk returns
+// form_identifier_not_found the hook transparently retries via sign-up.
+// The caller never needs to distinguish the two cases.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSignIn, useSignUp } from '@clerk/nextjs'
@@ -83,8 +87,11 @@ async function callValidationGate(type: AuthContactType, value: string): Promise
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAuthFlow(): UseAuthFlowReturn {
-  const { signIn } = useSignIn()
-  const { signUp } = useSignUp()
+  const { signIn, errors: signInErrors, fetchStatus: signInFetchStatus } = useSignIn()
+  const { signUp, errors: signUpErrors, fetchStatus: signUpFetchStatus } = useSignUp()
+
+  // Suppress unused-variable warnings — available for future diagnostic use
+  void signInErrors; void signInFetchStatus; void signUpErrors; void signUpFetchStatus
 
   const [stage, setStage] = useState<AuthFlowStage>('idle')
   const [contactType, setContactType] = useState<AuthContactType | null>(null)
@@ -123,11 +130,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        // Try sign-in first (existing user).
+        // Try sign-in first (existing user). Core 3 returns { error } — never throws.
         const { error: createErr } = await signIn.create({ identifier: email })
 
         if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
-          // New user — create sign-up and send email code.
+          // New user — create sign-up and send email OTP.
           const { error: signUpErr } = await signUp.create({ emailAddress: email })
           if (signUpErr) {
             if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
@@ -148,7 +155,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           return
         }
 
-        // Existing user — send email code.
+        // Existing user — send email OTP via sign-in.
         const { error: sendErr } = await signIn.emailCode.sendCode()
         if (sendErr) {
           if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
@@ -178,11 +185,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('phone', phone)
 
-        // Try sign-in first (existing user).
+        // Try sign-in first (existing user). Core 3 returns { error } — never throws.
         const { error: createErr } = await signIn.create({ identifier: phone })
 
         if (createErr && NOT_FOUND_CODES.has(createErr.code)) {
-          // New user — create sign-up and send OTP.
+          // New user — create sign-up and send phone OTP.
           const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
           if (signUpErr) {
             if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
@@ -203,7 +210,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           return
         }
 
-        // Existing user — send phone OTP.
+        // Existing user — send phone OTP via sign-in.
         const { error: sendErr } = await signIn.phoneCode.sendCode()
         if (sendErr) {
           if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
@@ -238,10 +245,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
               return
             }
             if (signUp.status === 'complete') {
-              const { error: finalizeErr } = await signUp.finalize()
-              if (mountedRef.current) {
-                if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-                else setStage('success')
+              try {
+                await signUp.finalize({ navigate: () => {} })
+                if (mountedRef.current) setStage('success')
+              } catch (finalizeErr: unknown) {
+                if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               }
             } else {
               if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
@@ -253,10 +261,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
               return
             }
             if (signIn.status === 'complete') {
-              const { error: finalizeErr } = await signIn.finalize()
-              if (mountedRef.current) {
-                if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-                else setStage('success')
+              try {
+                await signIn.finalize({ navigate: () => {} })
+                if (mountedRef.current) setStage('success')
+              } catch (finalizeErr: unknown) {
+                if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               }
             } else {
               if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
@@ -268,7 +277,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
         return
       }
 
-      // ── Phone OTP paths (unchanged) ──────────────────────────────────────
+      // ── Phone OTP paths ──────────────────────────────────────────────────
       try {
         if (flowTypeRef.current === 'signup') {
           const { error: verifyErr } = await signUp.verifications.verifyPhoneCode({ code })
@@ -277,10 +286,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
             return
           }
           if (signUp.status === 'complete') {
-            const { error: finalizeErr } = await signUp.finalize()
-            if (mountedRef.current) {
-              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-              else setStage('success')
+            try {
+              await signUp.finalize({ navigate: () => {} })
+              if (mountedRef.current) setStage('success')
+            } catch (finalizeErr: unknown) {
+              if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
             }
           } else {
             if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
@@ -292,10 +302,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
             return
           }
           if (signIn.status === 'complete') {
-            const { error: finalizeErr } = await signIn.finalize()
-            if (mountedRef.current) {
-              if (finalizeErr) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
-              else setStage('success')
+            try {
+              await signIn.finalize({ navigate: () => {} })
+              if (mountedRef.current) setStage('success')
+            } catch (finalizeErr: unknown) {
+              if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
             }
           } else {
             if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }

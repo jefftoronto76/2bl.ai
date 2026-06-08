@@ -102,7 +102,10 @@ starts.
   Companion packages: `@mantine/notifications@7.17.8` (toast notifications,
   wired into `app/admin/layout.tsx` via `<Notifications />`).
 - **Database:** Supabase (Postgres + Row Level Security + Realtime)
-- **Auth:** Clerk
+- **Auth:** Clerk (`@clerk/nextjs` — currently v7, Core 3). AI skills for all Clerk
+  patterns are in `.agents/skills/clerk-custom-ui/` and
+  `.agents/skills/clerk-nextjs-patterns/`. **Before writing any Clerk auth code,
+  read `.agents/skills/clerk-custom-ui/core-3/`.**
 - **AI:** Anthropic API (`claude-sonnet-4-6`) + Vercel AI SDK (streaming + fallback)
 - **Fallback model:** OpenAI via Vercel AI SDK
 - **SMS:** Twilio
@@ -341,7 +344,8 @@ route group / segment and resolved at the edge by `middleware.ts`.
   `page.tsx` is the **product app root**: it mounts `ChatProvider` and renders
   the landing page with a slide-in chat panel layered over it (see "Heirloom
   storefront" under Public Site below).
-- **`app/layout.tsx`** — the shared root layout (`ClerkProvider` + `<html>`).
+- **`app/layout.tsx`** — the shared root layout. `<ClerkProvider afterSignOutUrl="/">` is
+  inside `<body>` (not wrapping `<html>`) — Clerk requires this placement; do not move it.
   It imports the global base layer (`app/globals.css` — reset + shared component
   styles, no brand tokens) and reads the `x-sbl` and `x-heirloom` request headers
   (set by middleware), applying `data-palette="inkwell"` to `<html>` only when the
@@ -573,6 +577,40 @@ intended home for cross-cutting auth/DB plumbing.
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
 | `AdminUserProvider` / `useAdminUserId` | `services/auth/admin-user-context.tsx` | `'use client'` React context exposing the synced Supabase user id to the admin tree. Mounted in `app/admin/layout.tsx`. (Moved from `src/context/admin-user.tsx`.) |
+| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Client-side hook for the Heirloom custom OTP sign-up/sign-in flow. See Core 3 API reference below. |
+
+#### Clerk Core 3 custom OTP (`services/auth/useAuthFlow.ts`)
+
+SDK `@clerk/nextjs@7` (Core 3). All Clerk methods return `{ error: ClerkError | null }` — never throw.
+Authoritative reference: `.agents/skills/clerk-custom-ui/core-3/custom-sign-in.md` and `custom-sign-up.md`.
+
+**Sign-in OTP (existing user)**
+```typescript
+const { signIn } = useSignIn()
+await signIn.create({ identifier: email | phone })
+await signIn.emailCode.sendCode()              // email
+await signIn.phoneCode.sendCode()              // phone
+await signIn.emailCode.verifyCode({ code })    // email
+await signIn.phoneCode.verifyCode({ code })    // phone
+await signIn.finalize({ navigate: () => {} })  // activate session (no-op navigate for embedded)
+```
+
+**Sign-up OTP (new user)** — note `.verifications.` namespace (NOT directly on `signUp`)
+```typescript
+const { signUp } = useSignUp()
+await signUp.create({ emailAddress | phoneNumber })
+await signUp.verifications.sendEmailCode()              // email  ← NOT signUp.sendEmailCode()
+await signUp.verifications.sendPhoneCode()              // phone  ← NOT signUp.sendPhoneCode()
+await signUp.verifications.verifyEmailCode({ code })    // email
+await signUp.verifications.verifyPhoneCode({ code })    // phone
+await signUp.finalize({ navigate: () => {} })           // activate session
+```
+
+**New-vs-existing user detection:** `signIn.create()` returns `{ error: { code: 'form_identifier_not_found' } }` for unknown identifiers — retry via sign-up path.
+
+**Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
+
+**`middleware.ts` must include** `'/__clerk/(.*)'` in its matcher array (verification callback paths).
 
 ### Prompt service (`services/prompt/`)
 
@@ -1001,6 +1039,12 @@ Before writing any code that depends on a third-party SDK or API, read
 stable, documented API for that version. Never use experimental, future,
 beta, or preview API shapes unless explicitly instructed. If a stable and
 unstable path exist for the same thing, always take the stable path.
+
+**Clerk auth code:** Before writing or modifying any Clerk auth code, read
+`.agents/skills/clerk-custom-ui/core-3/` — the Core 3 API shape differs
+substantially from Core 2. The sign-up OTP methods are namespaced under
+`signUp.verifications.*`, not directly on `signUp`. The skills are the
+authoritative reference; do not infer API shapes from training data or autocomplete.
 
 ---
 
