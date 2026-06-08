@@ -1,5 +1,6 @@
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import { listInvites, createInvite } from '@/services/invites'
+import { logEvent, AuditAction } from '@/services/audit'
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -46,5 +47,16 @@ export async function POST(req: Request) {
   }
 
   console.log('[invites] POST created', { id: result.data.id, email: result.data.email })
+
+  void logEvent({
+    action: AuditAction.INVITE_CREATE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'invite',
+    target_id: result.data.id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { has_email: Boolean(email) },
+  })
+
   return Response.json(result.data, { status: 201 })
 }

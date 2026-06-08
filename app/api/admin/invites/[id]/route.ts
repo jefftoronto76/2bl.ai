@@ -1,11 +1,12 @@
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import { deleteInvite } from '@/services/invites'
+import { logEvent, AuditAction } from '@/services/audit'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(req: Request, context: RouteContext) {
   let authCtx: { owner_id: string; tenant_id: string }
   try {
     authCtx = await getAuthContext()
@@ -25,5 +26,16 @@ export async function DELETE(_req: Request, context: RouteContext) {
   }
 
   console.log('[invites] DELETE', { id, tenant_id: authCtx.tenant_id })
+
+  void logEvent({
+    action: AuditAction.INVITE_DELETE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'invite',
+    target_id: id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: {},
+  })
+
   return Response.json({ success: true })
 }

@@ -1,5 +1,6 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { logEvent, AuditAction } from '@/services/audit'
 
 interface TenantSettings {
   chat_in_progress_idle_seconds: number
@@ -140,6 +141,17 @@ export async function PATCH(req: Request) {
     invite_gate_enabled: (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true,
   }
   console.log('[tenant-settings] PATCH', { tenant_id: authCtx.tenant_id, ...settings })
+
+  void logEvent({
+    action: AuditAction.TENANT_SETTINGS_UPDATE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'tenant_settings',
+    target_id: authCtx.tenant_id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    changes: { after: colUpdate },
+    metadata: {},
+  })
 
   return Response.json(settings)
 }

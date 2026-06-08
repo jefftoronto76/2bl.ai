@@ -1,11 +1,12 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { logEvent, AuditAction } from '@/services/audit'
 
 interface RouteContext {
   params: Promise<{ key: string }>
 }
 
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(req: Request, context: RouteContext) {
   let authCtx: { owner_id: string; tenant_id: string }
   try {
     authCtx = await getAuthContext()
@@ -34,6 +35,16 @@ export async function DELETE(_req: Request, context: RouteContext) {
   }
 
   console.log('[sage-parameters] DELETE', { tenant_id: authCtx.tenant_id, key })
+
+  void logEvent({
+    action: AuditAction.SAGE_PARAMETER_DELETE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'sage_parameter',
+    target_id: key,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: {},
+  })
 
   return Response.json({ success: true })
 }
