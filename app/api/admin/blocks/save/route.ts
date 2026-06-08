@@ -1,5 +1,6 @@
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import { createBlock } from '@/services/prompt/blocks'
+import { logEvent, AuditAction } from '@/services/audit'
 
 export async function POST(req: Request) {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -39,6 +40,17 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  const created = result.data as { id?: string; title?: string; type?: string }
+  void logEvent({
+    action: AuditAction.BLOCK_CREATE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'block',
+    target_id: created.id ?? null,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { title: created.title, type: created.type },
+  })
 
   return Response.json(result.data)
 }

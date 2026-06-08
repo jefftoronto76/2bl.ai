@@ -1,8 +1,9 @@
 import { getAuthContext } from '@/services/auth/get-auth-context'
 import { saveMasterPrompt } from '@/services/prompt/save'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { logEvent, AuditAction } from '@/services/audit'
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   let authCtx: { owner_id: string; tenant_id: string }
   try {
     authCtx = await getAuthContext()
@@ -21,6 +22,16 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+
+  void logEvent({
+    action: AuditAction.PROMPT_SAVE,
+    tenant_id: authCtx.tenant_id,
+    actor_id: authCtx.owner_id,
+    target_type: 'master_prompt',
+    target_id: authCtx.tenant_id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { version: result.version },
+  })
 
   return NextResponse.json({ version: result.version })
 }
