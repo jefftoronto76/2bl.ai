@@ -373,6 +373,8 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             label={tab === 'email' ? 'Send magic link' : 'Send code'}
           />
         </form>
+        {/* Required by Clerk bot-protection — must be present before signUp.create() fires */}
+        <div id="clerk-captcha" />
 
         {/* Show inline error when we bounced back to idle after a failure */}
         {stage === 'idle' && error && <FieldError message={error} />}

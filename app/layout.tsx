@@ -18,12 +18,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const isAdmin = headerList.get('x-admin') === '1'
 
   return (
-    <ClerkProvider afterSignOutUrl="/">
-      <html lang="en" data-palette={isSbl || isHeirloom || isAdmin ? undefined : 'inkwell'}>
-        <body>
+    <html lang="en" data-palette={isSbl || isHeirloom || isAdmin ? undefined : 'inkwell'}>
+      <body>
+        <ClerkProvider afterSignOutUrl="/">
           {children}
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkProvider>
+      </body>
+    </html>
   )
 }
