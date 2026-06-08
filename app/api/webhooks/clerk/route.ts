@@ -66,7 +66,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     ((data.email_addresses as Array<{ email_address: string }> | undefined)?.[0]
       ?.email_address) ?? null
 
-  void logAuthEvent({
+  await logAuthEvent({
     event_type: mappedType,
     clerk_user_id: clerkUserId,
     email,
