@@ -312,6 +312,18 @@ export function useAuthFlow(): UseAuthFlowReturn {
               if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
               return
             }
+            if (signUp.status === 'missing_requirements') {
+              const { error: updateErr } = await signUp.update({})
+              if (updateErr) {
+                logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+                  failure_reason: extractErrorMessage(updateErr),
+                  metadata: { step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
+                if (mountedRef.current) { setError(extractErrorMessage(updateErr)); setStage('error') }
+                return
+              }
+              logAuthStep({ event_type: 'sign_up', outcome: 'success',
+                metadata: { step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
+            }
             if (signUp.status === 'complete') {
               try {
                 await signUp.finalize({ navigate: () => {} })
@@ -377,6 +389,18 @@ export function useAuthFlow(): UseAuthFlowReturn {
               metadata: { step: 'verifyPhoneCode', contactType: 'phone', flowType: 'signup' } })
             if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
             return
+          }
+          if (signUp.status === 'missing_requirements') {
+            const { error: updateErr } = await signUp.update({})
+            if (updateErr) {
+              logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+                failure_reason: extractErrorMessage(updateErr),
+                metadata: { step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
+              if (mountedRef.current) { setError(extractErrorMessage(updateErr)); setStage('error') }
+              return
+            }
+            logAuthStep({ event_type: 'sign_up', outcome: 'success',
+              metadata: { step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
           }
           if (signUp.status === 'complete') {
             try {
