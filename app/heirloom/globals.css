@@ -74,7 +74,7 @@
 }
 
 /* Country code selector on the phone number input.
-   !important needed — Clerk's .cl-button rule loads later and wins otherwise. */
+   !important needed — Clerk's .cl-button rule wins on load order otherwise. */
 .cl-selectButton__countryCode {
   color: rgb(var(--hl-text-primary)) !important;
 }

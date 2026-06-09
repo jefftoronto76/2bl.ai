@@ -11,9 +11,11 @@
 // and do not resolve inside Clerk's modal portal (appended to document.body,
 // outside the brand wrapper). The literal DM Sans family string is used instead.
 //
-// colorText alone does not reach Clerk's headerTitle element — Clerk's internal
-// component CSS wins on specificity. The elements block below overrides that
-// directly for header and subtitle nodes.
+// NOTE: The Clerk docs recommend the `simple` theme to strip competing default
+// styles, but it is not present in @clerk/ui@1.15.0 (the current stable release).
+// Until a stable release ships it, targeted .cl-* rules in globals.css handle
+// the remaining specificity gaps, with !important only where Clerk's own rules
+// win (currently: .cl-selectButton__countryCode vs .cl-button).
 export const heirloomClerkAppearance = {
   variables: {
     colorPrimary: 'rgb(var(--color-accent))',
@@ -30,22 +32,12 @@ export const heirloomClerkAppearance = {
     borderRadius: '0.75rem',
   },
   elements: {
-    // Explicit overrides because Clerk's component CSS outspecifics colorText
-    // on these elements in the default stylesheet.
     headerTitle:    { color: 'rgb(var(--hl-text-primary))' },
     headerSubtitle: { color: 'var(--hl-text-muted)' },
-
-    // Form field labels ("Email address", etc.)
     formFieldLabel: { color: 'rgb(var(--hl-text-primary))' },
-
-    // "or" divider — dividerRow confirmed from project codebase
-    dividerRow: { color: 'var(--hl-text-muted)' },
-
-    // "Don't have an account?" — the static text portion of the footer
+    dividerRow:     { color: 'var(--hl-text-muted)' },
     footerActionText: { color: 'var(--hl-text-muted)' },
-
-    // Apple button only: cream background so the black Apple logo is legible
-    // on the dark modal. Google/Facebook are unaffected.
+    // Apple button: cream background so the Apple logo is legible on dark modal
     socialButtonsBlockButton__apple: {
       backgroundColor: 'rgb(var(--hl-text-primary))',
       color: 'rgb(var(--hl-bg))',
