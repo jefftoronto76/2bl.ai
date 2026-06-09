@@ -73,22 +73,8 @@
   color: rgb(var(--hl-text-primary));
 }
 
-/* Country code selector on the phone number input.
-   !important needed — Clerk's .cl-button rule wins on load order otherwise. */
-.cl-selectButton__countryCode {
-  color: rgb(var(--hl-text-primary)) !important;
-}
-
-.cl-selectButtonIcon__countryCode {
-  color: rgb(var(--hl-text-primary));
-}
-
 /* Search input text inside the open country code dropdown */
 .cl-selectSearchInput__countryCode {
   color: rgb(var(--hl-text-primary));
 }
 
-/* Country name and dial code rows in the dropdown list */
-.cl-selectOption__countryCode {
-  color: rgb(var(--hl-text-primary));
-}

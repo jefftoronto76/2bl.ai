@@ -42,5 +42,10 @@ export const heirloomClerkAppearance = {
       backgroundColor: 'rgb(var(--hl-text-primary))',
       color: 'rgb(var(--hl-bg))',
     },
+    // Country code selector — portal-rendered outside modal DOM; elements block
+    // applies globally regardless of portal boundary, globals.css cannot reach these.
+    selectButton__countryCode:     { color: 'rgb(var(--hl-text-primary))' },
+    selectButtonIcon__countryCode: { color: 'rgb(var(--hl-text-primary))' },
+    selectOption__countryCode:     { color: 'rgb(var(--hl-text-primary))' },
   },
 };
