@@ -141,12 +141,16 @@ export function ChatProvider({
   children,
   gateEnabled = true,
   isAuthorized = false,
+  enableExitWarning = false,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: true. */
   gateEnabled?: boolean;
   /** Whether the current visitor is an active member or invite holder. Default: false. */
   isAuthorized?: boolean;
+  /** Register the beforeunload exit warning. Pass true only from the chat widget
+   *  mount point — never from a landing-page-only context. Default: false. */
+  enableExitWarning?: boolean;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -290,7 +294,9 @@ export function ChatProvider({
   // DB recovery yet, so an existing thread is treated as unsaved on leave. Chrome
   // 119+ needs BOTH preventDefault() and returnValue set. Reads the mirror refs
   // so the single mount-time listener always sees current state.
+  // Gated on enableExitWarning so landing-page-only contexts never register it.
   useEffect(() => {
+    if (!enableExitWarning) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isStreamingRef.current || messagesRef.current.length > 0) {
         e.preventDefault();
@@ -299,7 +305,7 @@ export function ChatProvider({
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, []);
+  }, [enableExitWarning]);
 
   // Claim every real session in the localStorage index plus the current in-memory
   // session — WITHOUT touching the members row. Used by the wasSignedIn effect

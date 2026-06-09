@@ -52,7 +52,7 @@ interface HeirloomAppProps {
 
 export default function HeirloomApp({ gateEnabled, isAuthorized }: HeirloomAppProps) {
   return (
-    <ChatProvider gateEnabled={gateEnabled} isAuthorized={isAuthorized}>
+    <ChatProvider gateEnabled={gateEnabled} isAuthorized={isAuthorized} enableExitWarning>
       <HeirloomInner />
     </ChatProvider>
   );
