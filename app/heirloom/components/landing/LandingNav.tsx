@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
+import { useClerk, useUser } from '@clerk/nextjs';
 import { useChatStore } from '@/components/shells/membership/chatStore';
+import { heirloomClerkAppearance } from '@/components/shells/membership/clerkAppearance';
 
 const navLinks: { label: string; targetId: string }[] = [
   { label: 'How It Works', targetId: 'how-it-works' },
@@ -13,6 +15,8 @@ const navLinks: { label: string; targetId: string }[] = [
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const { dispatch } = useChatStore();
+  const { openSignIn } = useClerk();
+  const { isLoaded, isSignedIn } = useUser();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -61,6 +65,15 @@ export function LandingNav() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {isLoaded && !isSignedIn && (
+            <button
+              type="button"
+              onClick={() => openSignIn({ appearance: heirloomClerkAppearance })}
+              className="border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              Sign In
+            </button>
+          )}
           <button
             type="button"
             onClick={() => dispatch({ type: 'OPEN_CHAT' })}

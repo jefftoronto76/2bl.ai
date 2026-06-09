@@ -5,6 +5,7 @@ import { useClerk, useUser } from '@clerk/nextjs';
 import { ChevronDown, CircleUser as UserCircle, LogOut, Settings, X } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { useChatStore } from './chatStore';
+import { heirloomClerkAppearance } from './clerkAppearance';
 
 function getInitials(fullName: string | null | undefined): string {
   if (!fullName) return '';
@@ -14,9 +15,9 @@ function getInitials(fullName: string | null | undefined): string {
 }
 
 export function ChatHeader() {
-  const { dispatch, dispatchSystemSignal } = useChatStore();
+  const { dispatch } = useChatStore();
   const { user, isSignedIn } = useUser();
-  const { signOut, openUserProfile } = useClerk();
+  const { signOut, openSignIn, openUserProfile } = useClerk();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -32,13 +33,13 @@ export function ChatHeader() {
 
   const handleManageAccount = useCallback(() => {
     setDropdownOpen(false);
-    openUserProfile();
+    openUserProfile({ appearance: heirloomClerkAppearance });
   }, [openUserProfile]);
 
   const handleSignIn = useCallback(() => {
     setDropdownOpen(false);
-    dispatchSystemSignal('user initiated account creation');
-  }, [dispatchSystemSignal]);
+    openSignIn({ appearance: heirloomClerkAppearance });
+  }, [openSignIn]);
 
   // Close dropdown on outside click.
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
