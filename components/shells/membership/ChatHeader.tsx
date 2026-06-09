@@ -6,6 +6,7 @@ import { ChevronDown, CircleUser as UserCircle, LogOut, Settings, X } from 'luci
 import { IconButton } from './ui/IconButton';
 import { useChatStore } from './chatStore';
 import { heirloomClerkAppearance } from './clerkAppearance';
+import { logAuthStep } from '@/services/auth/log-auth-step';
 
 function getInitials(fullName: string | null | undefined): string {
   if (!fullName) return '';
@@ -38,6 +39,11 @@ export function ChatHeader() {
 
   const handleSignIn = useCallback(() => {
     setDropdownOpen(false);
+    logAuthStep({
+      event_type: 'sign_in',
+      outcome: 'success',
+      metadata: { auth_surface: 'prebuilt_modal', step: 'modal_opened', component: 'ChatHeader' },
+    });
     openSignIn({ appearance: heirloomClerkAppearance });
   }, [openSignIn]);
 

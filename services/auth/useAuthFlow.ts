@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSignIn, useSignUp } from '@clerk/nextjs'
+import { logAuthStep } from './log-auth-step'
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -79,25 +80,6 @@ function extractClerkErrorCode(err: unknown): string {
   }
   if (typeof e.code === 'string') return e.code
   return 'unknown_error'
-}
-
-/**
- * Fire-and-forget auth step logger. Posts to /api/auth/log and returns
- * immediately — never awaited so it never blocks the auth flow.
- * keepalive: true ensures the request survives page navigation.
- */
-function logAuthStep(params: {
-  event_type: string
-  outcome: 'success' | 'failure'
-  failure_reason?: string
-  metadata: Record<string, unknown>
-}): void {
-  void fetch('/api/auth/log', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-    keepalive: true,
-  }).catch(() => { /* best-effort — never block the auth flow */ })
 }
 
 /** Hit the server validation + rate-limit gate before calling Clerk. */
@@ -169,19 +151,19 @@ export function useAuthFlow(): UseAuthFlowReturn {
           } else {
             logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
               failure_reason: r.error.code,
-              metadata: { step: 'sendCode_returned', contactType: 'email', code: r.error.code } })
+              metadata: { auth_surface: 'custom_otp', step: 'sendCode_returned', contactType: 'email', code: r.error.code } })
           }
         } catch (e: unknown) {
           const code = extractClerkErrorCode(e)
           const httpStatus = (e as Record<string, unknown>).status
           logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
             failure_reason: `sendCode_threw_${httpStatus ?? 'unknown'}`,
-            metadata: { step: 'sendCode_threw', contactType: 'email', code, httpStatus } })
+            metadata: { auth_surface: 'custom_otp', step: 'sendCode_threw', contactType: 'email', code, httpStatus } })
         }
 
         if (signInSucceeded) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-            metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signin' } })
+            metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: 'email', flowType: 'signin' } })
           flowTypeRef.current = 'signin'
           if (mountedRef.current) setStage('otp_input')
           return
@@ -192,7 +174,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
         if (signUpErr) {
           logAuthStep({ event_type: 'sign_up', outcome: 'failure',
             failure_reason: extractErrorMessage(signUpErr),
-            metadata: { step: 'signUp_create', contactType: 'email' } })
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_create', contactType: 'email' } })
           if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
           return
         }
@@ -200,18 +182,18 @@ export function useAuthFlow(): UseAuthFlowReturn {
         if (sendErr) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
             failure_reason: extractErrorMessage(sendErr),
-            metadata: { step: 'signUp_sendEmailCode', contactType: 'email' } })
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_sendEmailCode', contactType: 'email' } })
           if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
           return
         }
         logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-          metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signup' } })
+          metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: 'email', flowType: 'signup' } })
         flowTypeRef.current = 'signup'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
           failure_reason: extractErrorMessage(err),
-          metadata: { step: 'sendEmail_outer_catch', contactType: 'email' } })
+          metadata: { auth_surface: 'custom_otp', step: 'sendEmail_outer_catch', contactType: 'email' } })
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
     },
@@ -242,19 +224,19 @@ export function useAuthFlow(): UseAuthFlowReturn {
           } else {
             logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
               failure_reason: r.error.code,
-              metadata: { step: 'sendCode_returned', contactType: 'phone', code: r.error.code } })
+              metadata: { auth_surface: 'custom_otp', step: 'sendCode_returned', contactType: 'phone', code: r.error.code } })
           }
         } catch (e: unknown) {
           const code = extractClerkErrorCode(e)
           const httpStatus = (e as Record<string, unknown>).status
           logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
             failure_reason: `sendCode_threw_${httpStatus ?? 'unknown'}`,
-            metadata: { step: 'sendCode_threw', contactType: 'phone', code, httpStatus } })
+            metadata: { auth_surface: 'custom_otp', step: 'sendCode_threw', contactType: 'phone', code, httpStatus } })
         }
 
         if (signInSucceeded) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-            metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signin' } })
+            metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: 'phone', flowType: 'signin' } })
           flowTypeRef.current = 'signin'
           if (mountedRef.current) setStage('otp_input')
           return
@@ -265,7 +247,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
         if (signUpErr) {
           logAuthStep({ event_type: 'sign_up', outcome: 'failure',
             failure_reason: extractErrorMessage(signUpErr),
-            metadata: { step: 'signUp_create', contactType: 'phone' } })
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_create', contactType: 'phone' } })
           if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
           return
         }
@@ -273,18 +255,18 @@ export function useAuthFlow(): UseAuthFlowReturn {
         if (sendErr) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
             failure_reason: extractErrorMessage(sendErr),
-            metadata: { step: 'signUp_sendPhoneCode', contactType: 'phone' } })
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_sendPhoneCode', contactType: 'phone' } })
           if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
           return
         }
         logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-          metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signup' } })
+          metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: 'phone', flowType: 'signup' } })
         flowTypeRef.current = 'signup'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
           failure_reason: extractErrorMessage(err),
-          metadata: { step: 'sendPhone_outer_catch', contactType: 'phone' } })
+          metadata: { auth_surface: 'custom_otp', step: 'sendPhone_outer_catch', contactType: 'phone' } })
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('error') }
       }
     },
@@ -308,7 +290,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             if (verifyErr) {
               logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
                 failure_reason: extractErrorMessage(verifyErr),
-                metadata: { step: 'verifyEmailCode', contactType: 'email', flowType: 'signup' } })
+                metadata: { auth_surface: 'custom_otp', step: 'verifyEmailCode', contactType: 'email', flowType: 'signup' } })
               if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
               return
             }
@@ -317,29 +299,29 @@ export function useAuthFlow(): UseAuthFlowReturn {
               if (updateErr) {
                 logAuthStep({ event_type: 'sign_up', outcome: 'failure',
                   failure_reason: extractErrorMessage(updateErr),
-                  metadata: { step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
+                  metadata: { auth_surface: 'custom_otp', step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
                 if (mountedRef.current) { setError(extractErrorMessage(updateErr)); setStage('error') }
                 return
               }
               logAuthStep({ event_type: 'sign_up', outcome: 'success',
-                metadata: { step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
+                metadata: { auth_surface: 'custom_otp', step: 'signUp_update', contactType: 'email', flowType: 'signup' } })
             }
             if (signUp.status === 'complete') {
               try {
                 await signUp.finalize({ navigate: () => {} })
                 logAuthStep({ event_type: 'sign_up', outcome: 'success',
-                  metadata: { step: 'finalize', contactType: 'email', flowType: 'signup' } })
+                  metadata: { auth_surface: 'custom_otp', step: 'finalize', contactType: 'email', flowType: 'signup' } })
                 if (mountedRef.current) setStage('success')
               } catch (finalizeErr: unknown) {
                 logAuthStep({ event_type: 'sign_up', outcome: 'failure',
                   failure_reason: extractErrorMessage(finalizeErr),
-                  metadata: { step: 'finalize_threw', contactType: 'email', flowType: 'signup' } })
+                  metadata: { auth_surface: 'custom_otp', step: 'finalize_threw', contactType: 'email', flowType: 'signup' } })
                 if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               }
             } else {
               logAuthStep({ event_type: 'sign_up', outcome: 'failure',
                 failure_reason: `signUp.status=${signUp.status}`,
-                metadata: { step: 'status_not_complete', contactType: 'email', flowType: 'signup', status: signUp.status } })
+                metadata: { auth_surface: 'custom_otp', step: 'status_not_complete', contactType: 'email', flowType: 'signup', status: signUp.status } })
               if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
             }
           } else {
@@ -347,7 +329,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
             if (verifyErr) {
               logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
                 failure_reason: extractErrorMessage(verifyErr),
-                metadata: { step: 'verifyEmailCode', contactType: 'email', flowType: 'signin' } })
+                metadata: { auth_surface: 'custom_otp', step: 'verifyEmailCode', contactType: 'email', flowType: 'signin' } })
               if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
               return
             }
@@ -355,25 +337,25 @@ export function useAuthFlow(): UseAuthFlowReturn {
               try {
                 await signIn.finalize({ navigate: () => {} })
                 logAuthStep({ event_type: 'sign_in', outcome: 'success',
-                  metadata: { step: 'finalize', contactType: 'email', flowType: 'signin' } })
+                  metadata: { auth_surface: 'custom_otp', step: 'finalize', contactType: 'email', flowType: 'signin' } })
                 if (mountedRef.current) setStage('success')
               } catch (finalizeErr: unknown) {
                 logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
                   failure_reason: extractErrorMessage(finalizeErr),
-                  metadata: { step: 'finalize_threw', contactType: 'email', flowType: 'signin' } })
+                  metadata: { auth_surface: 'custom_otp', step: 'finalize_threw', contactType: 'email', flowType: 'signin' } })
                 if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
               }
             } else {
               logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
                 failure_reason: `signIn.status=${signIn.status}`,
-                metadata: { step: 'status_not_complete', contactType: 'email', flowType: 'signin', status: signIn.status } })
+                metadata: { auth_surface: 'custom_otp', step: 'status_not_complete', contactType: 'email', flowType: 'signin', status: signIn.status } })
               if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
             }
           }
         } catch (err: unknown) {
           logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
             failure_reason: extractErrorMessage(err),
-            metadata: { step: 'verifyOtp_email_catch', contactType: 'email' } })
+            metadata: { auth_surface: 'custom_otp', step: 'verifyOtp_email_catch', contactType: 'email' } })
           if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('otp_input') }
         }
         return
@@ -386,7 +368,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           if (verifyErr) {
             logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
               failure_reason: extractErrorMessage(verifyErr),
-              metadata: { step: 'verifyPhoneCode', contactType: 'phone', flowType: 'signup' } })
+              metadata: { auth_surface: 'custom_otp', step: 'verifyPhoneCode', contactType: 'phone', flowType: 'signup' } })
             if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
             return
           }
@@ -395,29 +377,29 @@ export function useAuthFlow(): UseAuthFlowReturn {
             if (updateErr) {
               logAuthStep({ event_type: 'sign_up', outcome: 'failure',
                 failure_reason: extractErrorMessage(updateErr),
-                metadata: { step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
+                metadata: { auth_surface: 'custom_otp', step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
               if (mountedRef.current) { setError(extractErrorMessage(updateErr)); setStage('error') }
               return
             }
             logAuthStep({ event_type: 'sign_up', outcome: 'success',
-              metadata: { step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
+              metadata: { auth_surface: 'custom_otp', step: 'signUp_update', contactType: 'phone', flowType: 'signup' } })
           }
           if (signUp.status === 'complete') {
             try {
               await signUp.finalize({ navigate: () => {} })
               logAuthStep({ event_type: 'sign_up', outcome: 'success',
-                metadata: { step: 'finalize', contactType: 'phone', flowType: 'signup' } })
+                metadata: { auth_surface: 'custom_otp', step: 'finalize', contactType: 'phone', flowType: 'signup' } })
               if (mountedRef.current) setStage('success')
             } catch (finalizeErr: unknown) {
               logAuthStep({ event_type: 'sign_up', outcome: 'failure',
                 failure_reason: extractErrorMessage(finalizeErr),
-                metadata: { step: 'finalize_threw', contactType: 'phone', flowType: 'signup' } })
+                metadata: { auth_surface: 'custom_otp', step: 'finalize_threw', contactType: 'phone', flowType: 'signup' } })
               if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
             }
           } else {
             logAuthStep({ event_type: 'sign_up', outcome: 'failure',
               failure_reason: `signUp.status=${signUp.status}`,
-              metadata: { step: 'status_not_complete', contactType: 'phone', flowType: 'signup', status: signUp.status } })
+              metadata: { auth_surface: 'custom_otp', step: 'status_not_complete', contactType: 'phone', flowType: 'signup', status: signUp.status } })
             if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
           }
         } else {
@@ -425,7 +407,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
           if (verifyErr) {
             logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
               failure_reason: extractErrorMessage(verifyErr),
-              metadata: { step: 'verifyPhoneCode', contactType: 'phone', flowType: 'signin' } })
+              metadata: { auth_surface: 'custom_otp', step: 'verifyPhoneCode', contactType: 'phone', flowType: 'signin' } })
             if (mountedRef.current) { setError(extractErrorMessage(verifyErr)); setStage('otp_input') }
             return
           }
@@ -433,25 +415,25 @@ export function useAuthFlow(): UseAuthFlowReturn {
             try {
               await signIn.finalize({ navigate: () => {} })
               logAuthStep({ event_type: 'sign_in', outcome: 'success',
-                metadata: { step: 'finalize', contactType: 'phone', flowType: 'signin' } })
+                metadata: { auth_surface: 'custom_otp', step: 'finalize', contactType: 'phone', flowType: 'signin' } })
               if (mountedRef.current) setStage('success')
             } catch (finalizeErr: unknown) {
               logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
                 failure_reason: extractErrorMessage(finalizeErr),
-                metadata: { step: 'finalize_threw', contactType: 'phone', flowType: 'signin' } })
+                metadata: { auth_surface: 'custom_otp', step: 'finalize_threw', contactType: 'phone', flowType: 'signin' } })
               if (mountedRef.current) { setError(extractErrorMessage(finalizeErr)); setStage('error') }
             }
           } else {
             logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
               failure_reason: `signIn.status=${signIn.status}`,
-              metadata: { step: 'status_not_complete', contactType: 'phone', flowType: 'signin', status: signIn.status } })
+              metadata: { auth_surface: 'custom_otp', step: 'status_not_complete', contactType: 'phone', flowType: 'signin', status: signIn.status } })
             if (mountedRef.current) { setError('Verification did not complete. Please try again.'); setStage('otp_input') }
           }
         }
       } catch (err: unknown) {
         logAuthStep({ event_type: 'otp_verified', outcome: 'failure',
           failure_reason: extractErrorMessage(err),
-          metadata: { step: 'verifyOtp_phone_catch', contactType: 'phone' } })
+          metadata: { auth_surface: 'custom_otp', step: 'verifyOtp_phone_catch', contactType: 'phone' } })
         if (mountedRef.current) { setError(extractErrorMessage(err)); setStage('otp_input') }
       }
     },
