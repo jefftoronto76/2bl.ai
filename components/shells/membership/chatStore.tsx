@@ -301,6 +301,33 @@ export function ChatProvider({
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  // Claim every real session in the localStorage index plus the current in-memory
+  // session — WITHOUT touching the members row. Used by the wasSignedIn effect
+  // below so session linking happens on every sign-in regardless of entry point,
+  // while member creation (pending vs active) stays flow-specific: GateView calls
+  // /api/heirloom/members/claim (pending), SaveChatCTA calls claimAllSessions
+  // (active via /api/members/sync). Keeping them separate prevents the "sync to
+  // active" path from bypassing the invite-gate waitlist.
+  const claimSessionsOnly = useCallback(async () => {
+    const realIds = readIndex()
+      .map(e => e.id)
+      .filter(id => id !== DRAFT_ID);
+    const currentId = sessionIdRef.current;
+    if (currentId && !realIds.includes(currentId)) {
+      realIds.push(currentId);
+    }
+    await Promise.allSettled(
+      realIds.map(id =>
+        fetch(`/api/sessions/${id}/claim`, { method: 'POST' })
+          .then(r => {
+            if (!r.ok) console.warn('[heirloom/chat] post-sign-in claim failed:', id, r.status);
+            else console.log('[heirloom/chat] post-sign-in claimed session:', id);
+          })
+          .catch(err => console.error('[heirloom/chat] post-sign-in claim error:', id, err))
+      )
+    );
+  }, []); // reads refs synchronously — no reactive deps needed
+
   // Claim all browser-local sessions on the false→true isSignedIn transition.
   // The first-observation guard (wasSignedInRef.current === null) means this
   // never fires on page load when the user is already signed in — only on an
@@ -373,33 +400,6 @@ export function ChatProvider({
       console.error('[heirloom/chat] session claim error:', err);
     }
   }, []);
-
-  // Claim every real session in the localStorage index plus the current in-memory
-  // session — WITHOUT touching the members row. Used by the wasSignedIn effect
-  // below so session linking happens on every sign-in regardless of entry point,
-  // while member creation (pending vs active) stays flow-specific: GateView calls
-  // /api/heirloom/members/claim (pending), SaveChatCTA calls claimAllSessions
-  // (active via /api/members/sync). Keeping them separate prevents the "sync to
-  // active" path from bypassing the invite-gate waitlist.
-  const claimSessionsOnly = useCallback(async () => {
-    const realIds = readIndex()
-      .map(e => e.id)
-      .filter(id => id !== DRAFT_ID);
-    const currentId = sessionIdRef.current;
-    if (currentId && !realIds.includes(currentId)) {
-      realIds.push(currentId);
-    }
-    await Promise.allSettled(
-      realIds.map(id =>
-        fetch(`/api/sessions/${id}/claim`, { method: 'POST' })
-          .then(r => {
-            if (!r.ok) console.warn('[heirloom/chat] post-sign-in claim failed:', id, r.status);
-            else console.log('[heirloom/chat] post-sign-in claimed session:', id);
-          })
-          .catch(err => console.error('[heirloom/chat] post-sign-in claim error:', id, err))
-      )
-    );
-  }, []); // reads refs synchronously — no reactive deps needed
 
   // Sync the Heirloom members row, then claim every real session in the
   // localStorage index so the full conversation history is linked to the new
