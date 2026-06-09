@@ -32,7 +32,23 @@ export const heirloomClerkAppearance = {
   elements: {
     // Explicit overrides because Clerk's component CSS outspecifics colorText
     // on these elements in the default stylesheet.
-    headerTitle: { color: 'rgb(var(--hl-text-primary))' },
+    headerTitle:    { color: 'rgb(var(--hl-text-primary))' },
     headerSubtitle: { color: 'var(--hl-text-muted)' },
+
+    // Form field labels ("Email address", etc.)
+    formFieldLabel: { color: 'rgb(var(--hl-text-primary))' },
+
+    // "or" divider — dividerRow confirmed from project codebase
+    dividerRow: { color: 'var(--hl-text-muted)' },
+
+    // "Don't have an account?" — the static text portion of the footer
+    footerActionText: { color: 'var(--hl-text-muted)' },
+
+    // Apple button only: cream background so the black Apple logo is legible
+    // on the dark modal. Google/Facebook are unaffected.
+    socialButtonsBlockButton__apple: {
+      backgroundColor: 'rgb(var(--hl-text-primary))',
+      color: 'rgb(var(--hl-bg))',
+    },
   },
 };
