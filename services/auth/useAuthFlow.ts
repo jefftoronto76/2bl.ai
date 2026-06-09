@@ -295,6 +295,9 @@ export function useAuthFlow(): UseAuthFlowReturn {
               return
             }
             if (signUp.status === 'missing_requirements') {
+              console.log('[useAuthFlow] missing_requirements — missingFields:', signUp.missingFields)
+              logAuthStep({ event_type: 'sign_up', outcome: 'success',
+                metadata: { auth_surface: 'custom_otp', step: 'missing_requirements', contactType: 'email', flowType: 'signup', missingFields: signUp.missingFields } })
               const { error: updateErr } = await signUp.update({})
               if (updateErr) {
                 logAuthStep({ event_type: 'sign_up', outcome: 'failure',
@@ -373,6 +376,9 @@ export function useAuthFlow(): UseAuthFlowReturn {
             return
           }
           if (signUp.status === 'missing_requirements') {
+            console.log('[useAuthFlow] missing_requirements — missingFields:', signUp.missingFields)
+            logAuthStep({ event_type: 'sign_up', outcome: 'success',
+              metadata: { auth_surface: 'custom_otp', step: 'missing_requirements', contactType: 'phone', flowType: 'signup', missingFields: signUp.missingFields } })
             const { error: updateErr } = await signUp.update({})
             if (updateErr) {
               logAuthStep({ event_type: 'sign_up', outcome: 'failure',
