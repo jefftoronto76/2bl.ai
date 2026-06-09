@@ -62,3 +62,18 @@
 .cl-formFieldInput::placeholder {
   color: var(--hl-text-muted);
 }
+
+/* Apple provider icon — Clerk exposes --cl-icon-fill for SVG fill on provider icons */
+.cl-providerIcon__apple {
+  --cl-icon-fill: rgb(var(--hl-text-primary));
+}
+
+/* "or" divider text */
+.cl-dividerText {
+  color: rgb(var(--hl-text-primary));
+}
+
+/* Country code selector on the phone number input */
+.cl-selectButton__countryCode {
+  color: rgb(var(--hl-text-primary));
+}
