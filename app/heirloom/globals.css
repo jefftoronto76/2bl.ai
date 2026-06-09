@@ -70,11 +70,6 @@
   color: var(--hl-modal-ink-muted);
 }
 
-/* Apple provider icon — dark button bg on light modal, so the icon needs a light fill */
-.cl-providerIcon__apple {
-  --cl-icon-fill: rgb(var(--hl-modal-bg));
-}
-
 /* "or" divider text */
 .cl-dividerText {
   color: var(--hl-modal-ink-muted);
