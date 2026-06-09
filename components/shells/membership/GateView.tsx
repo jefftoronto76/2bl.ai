@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useClerk, useUser } from '@clerk/nextjs';
 import { heirloomClerkAppearance } from './clerkAppearance';
+import { logAuthStep } from '@/services/auth/log-auth-step';
 
 export function GateView() {
   const { openSignUp } = useClerk();
@@ -21,6 +22,11 @@ export function GateView() {
     }
     if (isSignedIn && !wasSignedInRef.current) {
       wasSignedInRef.current = true;
+      logAuthStep({
+        event_type: 'sign_up',
+        outcome: 'success',
+        metadata: { auth_surface: 'prebuilt_modal', step: 'auth_completed', component: 'GateView' },
+      });
       // Create a pending membership record for this self-service visitor.
       // claimSessionsOnly in ChatProvider handles session linking separately.
       void fetch('/api/heirloom/members/claim', { method: 'POST' }).catch(err =>
@@ -63,7 +69,14 @@ export function GateView() {
       </p>
       <button
         type="button"
-        onClick={() => openSignUp({ appearance: heirloomClerkAppearance })}
+        onClick={() => {
+          logAuthStep({
+            event_type: 'sign_up',
+            outcome: 'success',
+            metadata: { auth_surface: 'prebuilt_modal', step: 'modal_opened', component: 'GateView' },
+          });
+          openSignUp({ appearance: heirloomClerkAppearance });
+        }}
         className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         Claim a free membership
