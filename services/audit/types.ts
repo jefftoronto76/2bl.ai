@@ -29,6 +29,10 @@ export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
 
 export const AuthEventType = {
   SIGN_UP: 'sign_up',
+  SIGN_IN: 'sign_in',
+  SIGN_IN_FAILED: 'sign_in_failed',
+  OTP_SENT: 'otp_sent',
+  OTP_VERIFIED: 'otp_verified',
   SESSION_CREATED: 'session_created',
   SESSION_REVOKED: 'session_revoked',
   USER_DELETED: 'user_deleted',
