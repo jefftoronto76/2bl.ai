@@ -577,7 +577,7 @@ intended home for cross-cutting auth/DB plumbing.
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
 | `AdminUserProvider` / `useAdminUserId` | `services/auth/admin-user-context.tsx` | `'use client'` React context exposing the synced Supabase user id to the admin tree. Mounted in `app/admin/layout.tsx`. (Moved from `src/context/admin-user.tsx`.) |
-| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Client-side hook for the Heirloom custom OTP sign-up/sign-in flow. See Core 3 API reference below. |
+| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Client-side hook for the Heirloom custom OTP sign-up/sign-in flow. Fires step-by-step `keepalive` POSTs to `/api/auth/log` at every outcome (send success/failure, verify success/failure, finalize success/failure, outer catches) so the full flow is visible in `auth_events`. See Core 3 API reference below. |
 
 #### Clerk Core 3 custom OTP (`services/auth/useAuthFlow.ts`)
 
@@ -606,7 +606,7 @@ await signUp.verifications.verifyPhoneCode({ code })    // phone
 await signUp.finalize({ navigate: () => {} })           // activate session
 ```
 
-**New-vs-existing user detection:** `signIn.create()` returns `{ error: { code: 'form_identifier_not_found' } }` for unknown identifiers — retry via sign-up path.
+**New-vs-existing user detection:** `signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` may return `{ error: { code: 'form_identifier_not_found' } }` for unknown identifiers, **or throw** a `ClerkAPIResponseError` with HTTP 422. Both cases are normalised in `useAuthFlow`'s inner catch: if `httpStatus === 422 || NOT_FOUND_CODES.has(code)`, the hook forces `'form_identifier_not_found'` and routes to the sign-up path. Do not rely on `NOT_FOUND_CODES` alone — the 422 check is the reliable signal.
 
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 
@@ -663,14 +663,16 @@ Centralised audit and auth-event logging. Server-only. Imported as
 
 | File | Exports | Purpose |
 |------|---------|---------|
-| `types.ts` | `AuditAction` (const + type), `AuthEventType` (const + type), `AuditEventInput`, `AuthEventInput` | Typed action-name constants (`AuditAction.BLOCK_UPDATE = 'block.update'`, etc.) and input interfaces matching the DB schema. Eliminates magic strings at every call site. |
+| `types.ts` | `AuditAction` (const + type), `AuthEventType` (const + type), `AuditEventInput`, `AuthEventInput` | Typed action-name constants (`AuditAction.BLOCK_UPDATE = 'block.update'`, etc.) and input interfaces matching the DB schema. Eliminates magic strings at every call site. `AuthEventType` covers: `sign_up`, `sign_in`, `sign_in_failed`, `otp_sent`, `otp_verified`, `session_created`, `session_revoked`, `user_deleted`, `admin_access`, `admin_access_failed`. |
 | `audit.ts` | `logEvent(input: AuditEventInput): Promise<void>`, `logAuthEvent(input: AuthEventInput): Promise<void>` | Thin service-role writes to `audit_events` and `auth_events` respectively. **Fire-and-forget** — all errors are caught and `console.error`'d; neither function ever throws, so a logging failure never blocks or fails the originating request. Call with `void logEvent(…)` from API routes. |
 | `index.ts` | barrel | Re-exports `logEvent`, `logAuthEvent`, `AuditAction`, `AuthEventType`, and both input types. |
 
 `logEvent` is called (with `void`) from every mutating admin API route,
 every platform tenant route, every session route, and the Heirloom
 membership-claim route. `logAuthEvent` is called from
-`services/auth/get-auth-context.ts` (unauthorized-access path).
+`services/auth/get-auth-context.ts` (unauthorized-access path) and from
+`app/api/auth/log/route.ts` (client-side step-by-step auth flow events via
+`useAuthFlow`).
 
 The corresponding DB tables (`audit_events`, `auth_events`) must be created by
 Jeff in Supabase Studio before audit rows are written. See DB_CHANGELOG.md and
@@ -829,6 +831,7 @@ response mapping; the data-access and business logic live in the service.
 | `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
 | `/api/sessions/[id]/claim` | POST | Links an anonymous session to the now-signed-in user. Resolves the user **server-side** from the active Clerk session (`ensureClerkUser`, no client-supplied `user_id` → no IDOR) and stamps `chat_sessions.user_id` (`claimSession`, scoped by `id` + host `tenant_id`). 401 when no Clerk session. **Now client-orphaned** — its only caller (the Heirloom `ContactCard` inline phone/OTP sign-up) was removed; the route is retained, reversible, for a future signed-in flow (account creation is deferred). |
 | `/api/heirloom/members/claim` | POST | Creates a `pending` membership record for the signed-in Clerk user (`claimMembership`). Called by `GateView.handleClaimSuccess` after MagicLinkCard sign-up completes. Idempotent — existing rows (any status) are left unchanged. Returns 401 when no Clerk session, 500 on DB error. |
+| `/api/auth/log` | POST | Client-side auth event logger. Accepts `{ event_type, outcome, failure_reason?, metadata? }`, `await`s `logAuthEvent()` (writing to `auth_events` via service-role client), then returns `{ ok: true }`. Called fire-and-forget from `useAuthFlow` with `keepalive: true` so events survive page navigation. Extracts `ip_address`, `user_agent`, and `correlation_id` from request headers. Returns 400 when `event_type` is missing; 500 on DB error (swallowed at the client). |
 | `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
 
 ---
