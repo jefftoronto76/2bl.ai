@@ -1,5 +1,41 @@
 # DB Changelog
 
+## 2026-06-09
+
+### No schema change — auth_surface metadata convention added to auth_events
+**Type:** Note (no schema change)
+
+All new `auth_events` rows written by the application now carry an
+`auth_surface` key in the `metadata` JSONB column, distinguishing which
+UI surface initiated the auth event:
+
+| Value | Origin |
+|-------|--------|
+| `'custom_otp'` | `useAuthFlow` hook — the custom email/phone OTP flow |
+| `'prebuilt_modal'` | Clerk prebuilt modal (`openSignIn` / `openSignUp`) invoked from `GateView` or `ChatHeader` |
+
+**No value set** on rows written before this change, or on Clerk webhook rows
+(`svix_event_id IS NOT NULL`) — Clerk fires webhooks for all surfaces and
+does not expose the originating UI.
+
+**Querying:**
+```sql
+-- custom OTP flow events
+SELECT * FROM auth_events WHERE metadata->>'auth_surface' = 'custom_otp';
+
+-- prebuilt modal events
+SELECT * FROM auth_events WHERE metadata->>'auth_surface' = 'prebuilt_modal';
+
+-- webhook rows (surface unknown — both surfaces trigger Clerk lifecycle hooks)
+SELECT * FROM auth_events WHERE svix_event_id IS NOT NULL;
+```
+
+**Implemented in:** `services/auth/log-auth-step.ts` (new shared utility),
+`services/auth/useAuthFlow.ts`, `components/shells/membership/GateView.tsx`,
+`components/shells/membership/ChatHeader.tsx`.
+
+---
+
 ## 2026-06-08
 
 ### Create `audit_events` table
