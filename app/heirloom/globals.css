@@ -25,6 +25,13 @@
   --hl-accent-hover: #B8935A;
   --hl-border:       rgba(245, 239, 230, 0.12);
 
+  /* Clerk modal light-surface tokens — eggshell card floats over the dark page */
+  --hl-modal-bg:         250 246 238;          /* #FAF6EE — warm eggshell card background */
+  --hl-modal-surface:    236 227 210;          /* #ECE3D2 — input / select field background */
+  --hl-modal-ink:        28 15 6;              /* #1C0F06 — primary text on light modal (same triplet as --hl-bg) */
+  --hl-modal-ink-muted:  rgba(28, 15, 6, 0.55);
+  --hl-modal-border:     rgba(28, 15, 6, 0.12);
+
   background-color: rgb(var(--hl-bg));
   color: rgb(var(--hl-text-primary));
 }
@@ -60,21 +67,16 @@
 /* Clerk modal input placeholder — the elements block uses inline styles which
    cannot target ::placeholder, so this is handled here instead. */
 .cl-formFieldInput::placeholder {
-  color: var(--hl-text-muted);
-}
-
-/* Apple provider icon — Clerk exposes --cl-icon-fill for SVG fill on provider icons */
-.cl-providerIcon__apple {
-  --cl-icon-fill: rgb(var(--hl-text-primary));
+  color: var(--hl-modal-ink-muted);
 }
 
 /* "or" divider text */
 .cl-dividerText {
-  color: rgb(var(--hl-text-primary));
+  color: var(--hl-modal-ink-muted);
 }
 
 /* Search input text inside the open country code dropdown */
 .cl-selectSearchInput__countryCode {
-  color: rgb(var(--hl-text-primary));
+  color: rgb(var(--hl-modal-ink));
 }
 

@@ -36,6 +36,26 @@ SELECT * FROM auth_events WHERE svix_event_id IS NOT NULL;
 
 ---
 
+### No schema change — Heirloom Clerk modal appearance retheme
+**Type:** Note (no schema change)
+
+Updated Clerk prebuilt modal appearance (sign-in, sign-up, account settings)
+to use an eggshell/off-white card surface (`#FAF6EE`) instead of the dark
+Heirloom background. Changes are purely presentational (CSS tokens +
+`clerkAppearance.ts`); no database tables, columns, or RLS policies were
+modified. Logged here so no one searches for a related migration.
+
+**Files changed:**
+- `components/shells/membership/clerkAppearance.ts` — all `variables` and
+  `elements` entries updated to `--hl-modal-*` tokens (light surface, dark ink)
+- `app/heirloom/globals.css` — five new `:root` tokens added
+  (`--hl-modal-bg`, `--hl-modal-surface`, `--hl-modal-ink`,
+  `--hl-modal-ink-muted`, `--hl-modal-border`); social button border added;
+  Apple icon `--cl-icon-fill` override removed so the icon renders at its
+  native color
+
+---
+
 ## 2026-06-08
 
 ### Create `audit_events` table
