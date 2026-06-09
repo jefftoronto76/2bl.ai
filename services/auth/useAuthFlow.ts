@@ -54,12 +54,6 @@ export interface UseAuthFlowReturn {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Error codes Clerk returns when the identifier has no account. */
-const NOT_FOUND_CODES = new Set([
-  'form_identifier_not_found',
-  'strategy_for_user_invalid',
-])
-
 function extractErrorMessage(err: unknown): string {
   if (!err) return 'Something went wrong. Please try again.'
   if (typeof err === 'object' && err !== null) {
@@ -165,17 +159,17 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('email', email)
 
-        // Core 3: sendCode handles user lookup internally, returning
-        // form_identifier_not_found for unknown emails. Normalise: some SDK
-        // builds throw instead of returning { error } on 4xx responses.
-        let signInErr: { code: string; message?: string; longMessage?: string } | null
+        // Try sign-in first. Any failure — returned error or thrown — routes to
+        // sign-up. The only terminal state is when both paths fail.
+        let signInSucceeded = false
         try {
           const r = await signIn.emailCode.sendCode({ emailAddress: email })
-          signInErr = r.error
-          if (signInErr) {
+          if (!r.error) {
+            signInSucceeded = true
+          } else {
             logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
-              failure_reason: signInErr.code,
-              metadata: { step: 'sendCode_returned', contactType: 'email', code: signInErr.code } })
+              failure_reason: r.error.code,
+              metadata: { step: 'sendCode_returned', contactType: 'email', code: r.error.code } })
           }
         } catch (e: unknown) {
           const code = extractClerkErrorCode(e)
@@ -183,52 +177,36 @@ export function useAuthFlow(): UseAuthFlowReturn {
           logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
             failure_reason: `sendCode_threw_${httpStatus ?? 'unknown'}`,
             metadata: { step: 'sendCode_threw', contactType: 'email', code, httpStatus } })
-          // 422 from Clerk sign-in = identifier not found. Force the expected
-          // code so the NOT_FOUND_CODES check below routes to sign-up regardless
-          // of whether the SDK returned { error } or threw, and regardless of the
-          // exact error code inside the thrown payload.
-          signInErr = {
-            code: NOT_FOUND_CODES.has(code) || httpStatus === 422
-              ? 'form_identifier_not_found'
-              : code,
-            message: extractErrorMessage(e),
-          }
         }
 
-        if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
-          // New user — create sign-up and send email OTP.
-          const { error: signUpErr } = await signUp.create({ emailAddress: email })
-          if (signUpErr) {
-            logAuthStep({ event_type: 'sign_up', outcome: 'failure',
-              failure_reason: extractErrorMessage(signUpErr),
-              metadata: { step: 'signUp_create', contactType: 'email' } })
-            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
-            return
-          }
-          const { error: sendErr } = await signUp.verifications.sendEmailCode()
-          if (sendErr) {
-            logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
-              failure_reason: extractErrorMessage(sendErr),
-              metadata: { step: 'signUp_sendEmailCode', contactType: 'email' } })
-            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-            return
-          }
+        if (signInSucceeded) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-            metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signup' } })
-          flowTypeRef.current = 'signup'
+            metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signin' } })
+          flowTypeRef.current = 'signin'
           if (mountedRef.current) setStage('otp_input')
           return
         }
 
-        if (signInErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(signInErr)); setStage('error') }
+        // sendCode failed for any reason — attempt sign-up.
+        const { error: signUpErr } = await signUp.create({ emailAddress: email })
+        if (signUpErr) {
+          logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+            failure_reason: extractErrorMessage(signUpErr),
+            metadata: { step: 'signUp_create', contactType: 'email' } })
+          if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
           return
         }
-
-        // Existing user — OTP sent via sendCode above.
+        const { error: sendErr } = await signUp.verifications.sendEmailCode()
+        if (sendErr) {
+          logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
+            failure_reason: extractErrorMessage(sendErr),
+            metadata: { step: 'signUp_sendEmailCode', contactType: 'email' } })
+          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+          return
+        }
         logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-          metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signin' } })
-        flowTypeRef.current = 'signin'
+          metadata: { step: 'otp_sent', contactType: 'email', flowType: 'signup' } })
+        flowTypeRef.current = 'signup'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
@@ -254,17 +232,17 @@ export function useAuthFlow(): UseAuthFlowReturn {
       try {
         await callValidationGate('phone', phone)
 
-        // Core 3: sendCode handles user lookup internally, returning
-        // form_identifier_not_found for unknown numbers. Normalise: some SDK
-        // builds throw instead of returning { error } on 4xx responses.
-        let signInErr: { code: string; message?: string; longMessage?: string } | null
+        // Try sign-in first. Any failure — returned error or thrown — routes to
+        // sign-up. The only terminal state is when both paths fail.
+        let signInSucceeded = false
         try {
           const r = await signIn.phoneCode.sendCode({ phoneNumber: phone })
-          signInErr = r.error
-          if (signInErr) {
+          if (!r.error) {
+            signInSucceeded = true
+          } else {
             logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
-              failure_reason: signInErr.code,
-              metadata: { step: 'sendCode_returned', contactType: 'phone', code: signInErr.code } })
+              failure_reason: r.error.code,
+              metadata: { step: 'sendCode_returned', contactType: 'phone', code: r.error.code } })
           }
         } catch (e: unknown) {
           const code = extractClerkErrorCode(e)
@@ -272,48 +250,36 @@ export function useAuthFlow(): UseAuthFlowReturn {
           logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
             failure_reason: `sendCode_threw_${httpStatus ?? 'unknown'}`,
             metadata: { step: 'sendCode_threw', contactType: 'phone', code, httpStatus } })
-          signInErr = {
-            code: NOT_FOUND_CODES.has(code) || httpStatus === 422
-              ? 'form_identifier_not_found'
-              : code,
-            message: extractErrorMessage(e),
-          }
         }
 
-        if (signInErr && NOT_FOUND_CODES.has(signInErr.code)) {
-          // New user — create sign-up and send phone OTP.
-          const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
-          if (signUpErr) {
-            logAuthStep({ event_type: 'sign_up', outcome: 'failure',
-              failure_reason: extractErrorMessage(signUpErr),
-              metadata: { step: 'signUp_create', contactType: 'phone' } })
-            if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
-            return
-          }
-          const { error: sendErr } = await signUp.verifications.sendPhoneCode()
-          if (sendErr) {
-            logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
-              failure_reason: extractErrorMessage(sendErr),
-              metadata: { step: 'signUp_sendPhoneCode', contactType: 'phone' } })
-            if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
-            return
-          }
+        if (signInSucceeded) {
           logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-            metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signup' } })
-          flowTypeRef.current = 'signup'
+            metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signin' } })
+          flowTypeRef.current = 'signin'
           if (mountedRef.current) setStage('otp_input')
           return
         }
 
-        if (signInErr) {
-          if (mountedRef.current) { setError(extractErrorMessage(signInErr)); setStage('error') }
+        // sendCode failed for any reason — attempt sign-up.
+        const { error: signUpErr } = await signUp.create({ phoneNumber: phone })
+        if (signUpErr) {
+          logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+            failure_reason: extractErrorMessage(signUpErr),
+            metadata: { step: 'signUp_create', contactType: 'phone' } })
+          if (mountedRef.current) { setError(extractErrorMessage(signUpErr)); setStage('error') }
           return
         }
-
-        // Existing user — OTP sent via sendCode above.
+        const { error: sendErr } = await signUp.verifications.sendPhoneCode()
+        if (sendErr) {
+          logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
+            failure_reason: extractErrorMessage(sendErr),
+            metadata: { step: 'signUp_sendPhoneCode', contactType: 'phone' } })
+          if (mountedRef.current) { setError(extractErrorMessage(sendErr)); setStage('error') }
+          return
+        }
         logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-          metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signin' } })
-        flowTypeRef.current = 'signin'
+          metadata: { step: 'otp_sent', contactType: 'phone', flowType: 'signup' } })
+        flowTypeRef.current = 'signup'
         if (mountedRef.current) setStage('otp_input')
       } catch (err: unknown) {
         logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',

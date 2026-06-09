@@ -606,7 +606,7 @@ await signUp.verifications.verifyPhoneCode({ code })    // phone
 await signUp.finalize({ navigate: () => {} })           // activate session
 ```
 
-**New-vs-existing user detection:** `signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` may return `{ error: { code: 'form_identifier_not_found' } }` for unknown identifiers, **or throw** a `ClerkAPIResponseError` with HTTP 422. Both cases are normalised in `useAuthFlow`'s inner catch: if `httpStatus === 422 || NOT_FOUND_CODES.has(code)`, the hook forces `'form_identifier_not_found'` and routes to the sign-up path. Do not rely on `NOT_FOUND_CODES` alone — the 422 check is the reliable signal.
+**New-vs-existing user detection:** `useAuthFlow` uses a success-check approach — no error-code enumeration. `signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` is attempted first; if it succeeds (`r.error` is null), the sign-in path continues. If it fails for **any** reason (returned error or thrown), `signUp.create()` is attempted instead. The only terminal error state is when both the sign-in sendCode and the sign-up create both fail — at which point the sign-up error is shown to the user.
 
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 
