@@ -15,7 +15,7 @@ const navLinks: { label: string; targetId: string }[] = [
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const { dispatch } = useChatStore();
-  const { openSignIn } = useClerk();
+  const { openSignUp } = useClerk();
   const { isLoaded, isSignedIn } = useUser();
 
   useEffect(() => {
@@ -68,10 +68,10 @@ export function LandingNav() {
           {isLoaded && !isSignedIn && (
             <button
               type="button"
-              onClick={() => openSignIn({ appearance: heirloomClerkAppearance })}
+              onClick={() => openSignUp({ appearance: heirloomClerkAppearance })}
               className="border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
             >
-              Sign In
+              Sign Up
             </button>
           )}
           <button
