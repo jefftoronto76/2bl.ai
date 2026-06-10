@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
 import { useClerk, useUser } from '@clerk/nextjs';
-import { useChatStore } from '@/components/shells/membership/chatStore';
+import { useChatStore, setOAuthInProgress } from '@/components/shells/membership/chatStore';
 import { heirloomClerkAppearance } from '@/components/shells/membership/clerkAppearance';
 
 const navLinks: { label: string; targetId: string }[] = [
@@ -68,7 +68,7 @@ export function LandingNav() {
           {isLoaded && !isSignedIn && (
             <button
               type="button"
-              onClick={() => openSignUp({ appearance: heirloomClerkAppearance })}
+              onClick={() => { setOAuthInProgress(true); openSignUp({ appearance: heirloomClerkAppearance }); }}
               className="border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               Sign Up

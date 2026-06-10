@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useClerk, useUser } from '@clerk/nextjs';
 import { heirloomClerkAppearance } from './clerkAppearance';
 import { logAuthStep } from '@/services/auth/log-auth-step';
+import { setOAuthInProgress } from './chatStore';
 
 export function GateView() {
   const { openSignUp } = useClerk();
@@ -75,6 +76,7 @@ export function GateView() {
             outcome: 'success',
             metadata: { auth_surface: 'prebuilt_modal', step: 'modal_opened', component: 'GateView' },
           });
+          setOAuthInProgress(true);
           openSignUp({ appearance: heirloomClerkAppearance });
         }}
         className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
