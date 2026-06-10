@@ -30,14 +30,15 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useAuthFlow } from '@/services/auth/useAuthFlow';
+import { useChatStore } from './chatStore';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface MagicLinkCardProps {
   /** Free-text from the [AUTH_PROMPT: …] marker, shown as a muted subheading. */
   reason?: string;
-  /** Called when the session is established. Parent should claim and upgrade. */
-  onSuccess: () => void;
+  /** Called when the session is established. Receives the name the visitor entered. */
+  onSuccess: (name: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -95,7 +96,10 @@ function FieldError({ message }: { message: string | null }) {
 export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const { isSignedIn, isLoaded } = useUser();
   const flow = useAuthFlow();
+  const { state } = useChatStore();
+  const { sessionId } = state;
 
+  const [nameValue, setNameValue] = useState('');
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -104,20 +108,31 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const otpRef = useRef<HTMLInputElement>(null);
 
+  // Pre-fill name from the session's captured visitor_name.
+  useEffect(() => {
+    if (!sessionId) return;
+    fetch(`/api/sessions/${sessionId}`)
+      .then((r) => r.json())
+      .then((data: { visitor_name: string | null }) => {
+        if (data.visitor_name) setNameValue(data.visitor_name);
+      })
+      .catch(() => undefined);
+  }, [sessionId]);
+
   // If the user is already signed in on mount (e.g. after clicking the email
   // link and being redirected back to this page), call onSuccess immediately
   // so the parent can upgrade to member state without any further interaction.
   useEffect(() => {
     if (isLoaded && isSignedIn && flow.stage === 'idle') {
-      onSuccess();
+      onSuccess(nameValue.trim());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
   // Propagate flow success (OTP / same-tab email polling) to parent.
   useEffect(() => {
-    if (flow.stage === 'success') onSuccess();
-  }, [flow.stage, onSuccess]);
+    if (flow.stage === 'success') onSuccess(nameValue.trim());
+  }, [flow.stage, onSuccess, nameValue]);
 
   // Start the resend cooldown whenever we enter email_sent stage.
   useEffect(() => {
@@ -328,6 +343,19 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
           <p className="text-text-muted text-xs font-body mb-3">{reason}</p>
         )}
 
+        {/* Name field */}
+        <input
+          type="text"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          placeholder="Your name"
+          aria-label="Your name"
+          autoComplete="given-name"
+          required
+          disabled={isSending}
+          className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50 mb-3"
+        />
+
         {/* Email / Phone tab toggle */}
         <div
           role="tablist"
@@ -368,7 +396,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
           />
           <SendButton
-            disabled={!inputValue.trim() || isSending}
+            disabled={!nameValue.trim() || !inputValue.trim() || isSending}
             loading={isSending}
             label={tab === 'email' ? 'Send magic link' : 'Send code'}
           />

@@ -24,7 +24,7 @@ function Spinner() {
 
 export function SaveChatCTA() {
   const { state, claimAllSessions, injectAssistantMessage } = useChatStore();
-  const { messages, isMember } = state;
+  const { messages, isMember, sessionId } = state;
 
   const flow = useAuthFlow();
 
@@ -37,9 +37,20 @@ export function SaveChatCTA() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Pre-fill name from the session's captured visitor_name when the modal opens.
+  function handleOpen() {
+    setOpen(true);
+    if (!sessionId) return;
+    fetch(`/api/sessions/${sessionId}`)
+      .then((r) => r.json())
+      .then((data: { visitor_name: string | null }) => {
+        if (data.visitor_name && !nameValue) setNameValue(data.visitor_name);
+      })
+      .catch(() => undefined);
+  }
+
   // After Clerk auth completes: pass name through to claimAllSessions, then inject
-  // the confirmation message. nameValue is written to users.name (column exists on
-  // `users`). members table has no name column — name never touches members.
+  // the confirmation message. nameValue is written to both users.name and members.name.
   useEffect(() => {
     if (flow.stage !== 'success') return;
     void (async () => {
@@ -222,7 +233,7 @@ export function SaveChatCTA() {
     const isSending = stage === 'sending';
     return (
       <div>
-        {/* Name — goes to users.name (column exists). members has no name column. */}
+        {/* Name — goes to both users.name and members.name. */}
         <input
           type="text"
           value={nameValue}
@@ -279,7 +290,7 @@ export function SaveChatCTA() {
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isSending}
+            disabled={!nameValue.trim() || !inputValue.trim() || isSending}
             aria-label={tab === 'email' ? 'Send magic link' : 'Send code'}
             className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
           >
@@ -308,7 +319,7 @@ export function SaveChatCTA() {
       <div className="max-w-2xl mx-auto px-4 mt-3">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={handleOpen}
           aria-label="Save this chat to your book"
           className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
           style={{

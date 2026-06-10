@@ -110,9 +110,13 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
 
   // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
   // sync the newly-authenticated user into the members table.
-  const handleAuthSuccess = useCallback(async () => {
+  const handleAuthSuccess = useCallback(async (name: string) => {
     await claimCurrentSession();
-    await fetch('/api/members/sync', { method: 'POST' }).catch((err) =>
+    await fetch('/api/members/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || undefined }),
+    }).catch((err) =>
       console.error('[heirloom/MessageList] members sync failed:', err),
     );
   }, [claimCurrentSession]);
