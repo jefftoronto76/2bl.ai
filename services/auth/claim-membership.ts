@@ -23,7 +23,7 @@ export async function claimMembership(
   const { data: existing, error: fetchErr } = await supabase
     .from('members')
     .select('id, status')
-    .eq('clerk_user_id', clerkUserId)
+    .eq('clerk_id', clerkUserId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
@@ -34,14 +34,14 @@ export async function claimMembership(
 
   if (existing) {
     console.log('[heirloom/claim-membership] row already exists, no-op:', {
-      clerk_user_id: clerkUserId,
+      clerk_id: clerkUserId,
       status: existing.status,
     })
     return { ok: true }
   }
 
   const { error: insertErr } = await supabase.from('members').insert({
-    clerk_user_id: clerkUserId,
+    clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'pending',
     updated_at: new Date().toISOString(),
@@ -53,7 +53,7 @@ export async function claimMembership(
   }
 
   console.log('[heirloom/claim-membership] pending membership created:', {
-    clerk_user_id: clerkUserId,
+    clerk_id: clerkUserId,
     tenant_id: tenantId,
   })
   return { ok: true }

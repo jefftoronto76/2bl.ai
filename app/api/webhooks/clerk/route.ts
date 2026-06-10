@@ -88,7 +88,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         supabase
           .from('members')
           .update({ status: 'deleted' })
-          .eq('clerk_user_id', clerkUserId),
+          .eq('clerk_id', clerkUserId),
       ])
       if (usersResult.error) {
         console.error('[webhook/clerk] users soft-delete failed:', usersResult.error.message)

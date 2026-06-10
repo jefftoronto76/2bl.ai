@@ -19,7 +19,7 @@ export interface SyncMemberInput {
 
 export interface MemberRow {
   id: string
-  clerk_user_id: string
+  clerk_id: string
   tenant_id: string
   email: string | null
   phone: string | null
@@ -33,7 +33,7 @@ export type SyncMemberResult =
   | { ok: false; error: string }
 
 /**
- * Upserts a members row on clerk_user_id. On first auth creates the row with
+ * Upserts a members row on clerk_id. On first auth creates the row with
  * status 'active'; on subsequent auths updates email/phone if supplied.
  * Uses the service-role client — server-only, bypasses RLS.
  */
@@ -44,7 +44,7 @@ export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResu
   // Build the upsert payload. Only include email/phone when the caller
   // supplies them (undefined = caller has no value, don't touch the column).
   const payload: Record<string, unknown> = {
-    clerk_user_id: clerkUserId,
+    clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'active',
     updated_at: new Date().toISOString(),
@@ -54,7 +54,7 @@ export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResu
 
   const { data, error } = await supabase
     .from('members')
-    .upsert(payload, { onConflict: 'clerk_user_id' })
+    .upsert(payload, { onConflict: 'clerk_id' })
     .select()
     .single()
 

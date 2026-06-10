@@ -35,7 +35,7 @@ export default async function HeirloomPage({
     const { data: member } = await supabase
       .from('members')
       .select('id')
-      .eq('clerk_user_id', clerkId)
+      .eq('clerk_id', clerkId)
       .eq('tenant_id', HEIRLOOM_TENANT_ID)
       .eq('status', 'active')
       .maybeSingle();
