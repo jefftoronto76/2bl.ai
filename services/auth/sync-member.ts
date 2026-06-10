@@ -11,6 +11,8 @@ export interface SyncMemberInput {
   clerkUserId: string
   /** Defaults to Heirloom tenant. Pass explicitly for multi-tenant use. */
   tenantId?: string
+  /** From Clerk's firstName + lastName — undefined to skip field. */
+  name?: string | null
   /** From Clerk's emailAddresses[0].emailAddress — undefined to skip field. */
   email?: string | null
   /** From Clerk's phoneNumbers[0].phoneNumber — undefined to skip field. */
@@ -21,6 +23,7 @@ export interface MemberRow {
   id: string
   clerk_id: string
   tenant_id: string
+  name: string | null
   email: string | null
   phone: string | null
   status: string
@@ -38,17 +41,18 @@ export type SyncMemberResult =
  * Uses the service-role client — server-only, bypasses RLS.
  */
 export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResult> {
-  const { clerkUserId, tenantId = HEIRLOOM_TENANT_ID, email, phone } = input
+  const { clerkUserId, tenantId = HEIRLOOM_TENANT_ID, name, email, phone } = input
   const supabase = getAdminClient()
 
-  // Build the upsert payload. Only include email/phone when the caller
-  // supplies them (undefined = caller has no value, don't touch the column).
+  // Build the upsert payload. Only include fields when the caller supplies them
+  // (undefined = caller has no value, don't touch the column).
   const payload: Record<string, unknown> = {
     clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'active',
     updated_at: new Date().toISOString(),
   }
+  if (name !== undefined) payload.name = name
   if (email !== undefined) payload.email = email
   if (phone !== undefined) payload.phone = phone
 
