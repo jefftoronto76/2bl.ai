@@ -5,10 +5,12 @@ import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId } from '@/services/auth/findUserByClerkId'
+import { syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
   'user.created': AuthEventType.SIGN_UP,
+  'user.updated': null,
   'user.deleted': AuthEventType.USER_DELETED,
   'session.created': AuthEventType.SESSION_CREATED,
   'session.revoked': AuthEventType.SESSION_REVOKED,
@@ -49,13 +51,12 @@ export async function POST(req: Request): Promise<NextResponse> {
   const eventType = payload.type as string
   const data = (payload.data ?? {}) as Record<string, unknown>
 
-  const mappedType = EVENT_TYPE_MAP[eventType]
-
   // Acknowledge unmapped event types without logging — stops Clerk from retrying
-  if (!mappedType) {
+  if (!(eventType in EVENT_TYPE_MAP)) {
     return NextResponse.json({ received: true })
   }
 
+  const mappedType = EVENT_TYPE_MAP[eventType]
   const correlationId = headersList.get('x-correlation-id')
 
   // Extract fields from Clerk's payload shape — user vs. session events differ
@@ -68,15 +69,58 @@ export async function POST(req: Request): Promise<NextResponse> {
     ((data.email_addresses as Array<{ email_address: string }> | undefined)?.[0]
       ?.email_address) ?? null
 
-  await logAuthEvent({
-    event_type: mappedType,
-    clerk_user_id: clerkUserId,
-    email,
-    outcome: 'success',
-    correlation_id: correlationId,
-    svix_event_id: svixId,
-    metadata: { clerk_event_type: eventType },
-  })
+  const phone =
+    ((data.phone_numbers as Array<{ phone_number: string }> | undefined)?.[0]
+      ?.phone_number) ?? null
+
+  const name =
+    [data.first_name, data.last_name].filter(Boolean).join(' ') || null
+
+  // Log to auth_events for event types that have a mapped auth event type
+  if (mappedType) {
+    await logAuthEvent({
+      event_type: mappedType,
+      clerk_user_id: clerkUserId,
+      email,
+      outcome: 'success',
+      correlation_id: correlationId,
+      svix_event_id: svixId,
+      metadata: { clerk_event_type: eventType },
+    })
+  }
+
+  if ((eventType === 'user.created' || eventType === 'user.updated') && clerkUserId) {
+    const supabase = getAdminClient()
+
+    // Upsert users row — creates on user.created, updates on user.updated
+    const usersPayload: Record<string, unknown> = {
+      clerk_id: clerkUserId,
+    }
+    if (name != null) usersPayload.name = name
+    if (email != null) usersPayload.email = email
+    if (phone != null) usersPayload.phone = phone
+
+    const { error: usersErr } = await supabase
+      .from('users')
+      .upsert(usersPayload, { onConflict: 'clerk_id' })
+
+    if (usersErr) {
+      console.error('[webhook/clerk] users upsert failed:', usersErr.message)
+    }
+
+    // Upsert members row for Heirloom tenant
+    const membersResult = await syncMember({
+      clerkUserId,
+      tenantId: HEIRLOOM_TENANT_ID,
+      name: name ?? undefined,
+      email: email ?? undefined,
+      phone: phone ?? undefined,
+    })
+
+    if (!membersResult.ok) {
+      console.error('[webhook/clerk] members sync failed:', membersResult.error)
+    }
+  }
 
   if (eventType === 'user.deleted' && clerkUserId) {
     const supabase = getAdminClient()
@@ -88,7 +132,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         supabase
           .from('members')
           .update({ status: 'deleted' })
-          .eq('clerk_user_id', clerkUserId),
+          .eq('clerk_id', clerkUserId),
       ])
       if (usersResult.error) {
         console.error('[webhook/clerk] users soft-delete failed:', usersResult.error.message)

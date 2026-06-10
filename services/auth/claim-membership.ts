@@ -9,13 +9,21 @@ import { HEIRLOOM_TENANT_ID } from './sync-member'
 
 export type ClaimMembershipResult = { ok: true } | { ok: false; error: string }
 
+export interface ClaimMembershipContact {
+  name?: string | null
+  email?: string | null
+  phone?: string | null
+}
+
 /**
  * Inserts a members row with status 'pending' if one does not already exist.
- * Existing rows (any status) are left untouched.
+ * Existing rows (any status) are left untouched. name/email/phone are written
+ * on insert when provided.
  */
 export async function claimMembership(
   clerkUserId: string,
   tenantId: string = HEIRLOOM_TENANT_ID,
+  contact: ClaimMembershipContact = {},
 ): Promise<ClaimMembershipResult> {
   const supabase = getAdminClient()
 
@@ -23,7 +31,7 @@ export async function claimMembership(
   const { data: existing, error: fetchErr } = await supabase
     .from('members')
     .select('id, status')
-    .eq('clerk_user_id', clerkUserId)
+    .eq('clerk_id', clerkUserId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
@@ -34,18 +42,23 @@ export async function claimMembership(
 
   if (existing) {
     console.log('[heirloom/claim-membership] row already exists, no-op:', {
-      clerk_user_id: clerkUserId,
+      clerk_id: clerkUserId,
       status: existing.status,
     })
     return { ok: true }
   }
 
-  const { error: insertErr } = await supabase.from('members').insert({
-    clerk_user_id: clerkUserId,
+  const insertPayload: Record<string, unknown> = {
+    clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'pending',
     updated_at: new Date().toISOString(),
-  })
+  }
+  if (contact.name != null) insertPayload.name = contact.name
+  if (contact.email != null) insertPayload.email = contact.email
+  if (contact.phone != null) insertPayload.phone = contact.phone
+
+  const { error: insertErr } = await supabase.from('members').insert(insertPayload)
 
   if (insertErr) {
     console.error('[heirloom/claim-membership] insert failed:', insertErr.message)
@@ -53,7 +66,7 @@ export async function claimMembership(
   }
 
   console.log('[heirloom/claim-membership] pending membership created:', {
-    clerk_user_id: clerkUserId,
+    clerk_id: clerkUserId,
     tenant_id: tenantId,
   })
   return { ok: true }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@clerk/nextjs/server'
 import { claimMembership } from '@/services/auth/claim-membership'
+import { ensureClerkUser } from '@/services/auth/ensure-clerk-user'
 import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -8,7 +9,8 @@ import { logEvent, AuditAction } from '@/services/audit'
  * POST /api/heirloom/members/claim
  *
  * Creates a pending membership record for a visitor who has just authenticated
- * via Clerk. Called from GateView after MagicLinkCard sign-up completes.
+ * via Clerk. Upserts the users row first (writes name/email/phone), then
+ * inserts the pending members row with the same contact fields.
  * Returns 200 when the claim succeeds or a row already exists (idempotent).
  * Returns 401 when no Clerk session is present.
  */
@@ -18,7 +20,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const result = await claimMembership(clerk.id, HEIRLOOM_TENANT_ID)
+  const email = clerk.emailAddresses[0]?.emailAddress ?? null
+  const phone = clerk.phoneNumbers[0]?.phoneNumber ?? null
+  const name = [clerk.firstName, clerk.lastName].filter(Boolean).join(' ') || null
+
+  // Upsert the users row — writes name, email, phone.
+  await ensureClerkUser()
+
+  const result = await claimMembership(clerk.id, HEIRLOOM_TENANT_ID, { name, email, phone })
 
   if (!result.ok) {
     console.error('[api/heirloom/members/claim] claimMembership failed:', result.error)
