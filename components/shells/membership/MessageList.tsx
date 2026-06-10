@@ -108,11 +108,23 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
     m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
   );
 
+  // Extract the first [NAME: …] marker value from parsed messages — used to
+  // pre-fill the MagicLinkCard name field when the engine has already captured
+  // the visitor's name mid-conversation.
+  const visitorName = parsed
+    .flatMap((r) => r?.markers ?? [])
+    .find((m) => m.type === 'NAME')
+    ?.fields[0] ?? null;
+
   // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
-  // sync the newly-authenticated user into the members table.
-  const handleAuthSuccess = useCallback(async () => {
+  // sync the newly-authenticated user into the members table with their name.
+  const handleAuthSuccess = useCallback(async (name: string) => {
     await claimCurrentSession();
-    await fetch('/api/members/sync', { method: 'POST' }).catch((err) =>
+    await fetch('/api/members/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() || null }),
+    }).catch((err) =>
       console.error('[heirloom/MessageList] members sync failed:', err),
     );
   }, [claimCurrentSession]);
@@ -153,6 +165,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
               {authPrompt && (
                 <MagicLinkCard
                   reason={authPrompt.fields[0] || undefined}
+                  initialName={visitorName}
                   onSuccess={handleAuthSuccess}
                 />
               )}

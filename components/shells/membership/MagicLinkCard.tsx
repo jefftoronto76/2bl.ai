@@ -36,8 +36,10 @@ import { useAuthFlow } from '@/services/auth/useAuthFlow';
 interface MagicLinkCardProps {
   /** Free-text from the [AUTH_PROMPT: …] marker, shown as a muted subheading. */
   reason?: string;
-  /** Called when the session is established. Parent should claim and upgrade. */
-  onSuccess: () => void;
+  /** Visitor name from a [NAME: …] marker — pre-fills the name field. */
+  initialName?: string | null;
+  /** Called when the session is established. Receives the name the visitor typed. */
+  onSuccess: (name: string) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -92,10 +94,11 @@ function FieldError({ message }: { message: string | null }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
+export function MagicLinkCard({ reason, initialName, onSuccess }: MagicLinkCardProps) {
   const { isSignedIn, isLoaded } = useUser();
   const flow = useAuthFlow();
 
+  const [nameValue, setNameValue] = useState(initialName ?? '');
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -109,15 +112,15 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
   // so the parent can upgrade to member state without any further interaction.
   useEffect(() => {
     if (isLoaded && isSignedIn && flow.stage === 'idle') {
-      onSuccess();
+      onSuccess(nameValue);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
   // Propagate flow success (OTP / same-tab email polling) to parent.
   useEffect(() => {
-    if (flow.stage === 'success') onSuccess();
-  }, [flow.stage, onSuccess]);
+    if (flow.stage === 'success') onSuccess(nameValue.trim());
+  }, [flow.stage, onSuccess, nameValue]);
 
   // Start the resend cooldown whenever we enter email_sent stage.
   useEffect(() => {
@@ -148,11 +151,11 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
     (e: React.FormEvent) => {
       e.preventDefault();
       const val = inputValue.trim();
-      if (!val) return;
+      if (!val || !nameValue.trim()) return;
       if (tab === 'email') void flow.sendEmail(val);
       else void flow.sendPhone(val);
     },
-    [inputValue, tab, flow],
+    [inputValue, nameValue, tab, flow],
   );
 
   const handleOtpSubmit = useCallback(
@@ -328,6 +331,18 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
           <p className="text-text-muted text-xs font-body mb-3">{reason}</p>
         )}
 
+        {/* Name — required; pre-filled from [NAME: …] marker if captured */}
+        <input
+          type="text"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          placeholder="Your name"
+          aria-label="Your name"
+          autoComplete="given-name"
+          disabled={isSending}
+          className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50 mb-3"
+        />
+
         {/* Email / Phone tab toggle */}
         <div
           role="tablist"
@@ -368,7 +383,7 @@ export function MagicLinkCard({ reason, onSuccess }: MagicLinkCardProps) {
             className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
           />
           <SendButton
-            disabled={!inputValue.trim() || isSending}
+            disabled={!nameValue.trim() || !inputValue.trim() || isSending}
             loading={isSending}
             label={tab === 'email' ? 'Send magic link' : 'Send code'}
           />

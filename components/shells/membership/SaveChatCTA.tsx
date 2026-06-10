@@ -28,8 +28,16 @@ export function SaveChatCTA() {
 
   const flow = useAuthFlow();
 
+  // Extract visitor name from a [NAME: …] marker in assistant messages, for
+  // pre-fill. Scanned once at component mount — no effect needed.
+  const visitorName =
+    messages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => { const match = /\[NAME:\s*([^\]]+)\]/i.exec(m.content); return match?.[1]?.trim() ?? null; })
+      .find(Boolean) ?? '';
+
   const [open, setOpen] = useState(false);
-  const [nameValue, setNameValue] = useState('');
+  const [nameValue, setNameValue] = useState(visitorName);
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -80,7 +88,7 @@ export function SaveChatCTA() {
   function handleContactSubmit(e: React.FormEvent) {
     e.preventDefault();
     const val = inputValue.trim();
-    if (!val) return;
+    if (!val || !nameValue.trim()) return;
     setResendCooldown(RESEND_COOLDOWN_S);
     if (tab === 'email') void flow.sendEmail(val);
     else void flow.sendPhone(val);
@@ -279,7 +287,7 @@ export function SaveChatCTA() {
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isSending}
+            disabled={!nameValue.trim() || !inputValue.trim() || isSending}
             aria-label={tab === 'email' ? 'Send magic link' : 'Send code'}
             className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
           >
