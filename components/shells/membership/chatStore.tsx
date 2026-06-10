@@ -137,16 +137,29 @@ function serialize(m: Message): PersistedMessage {
   return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
 }
 
+// Set true immediately before calling openSignIn / openSignUp so the beforeunload
+// handler does not fire a false positive when the OAuth popup opens. Reset to
+// false on window focus (popup closed / user returned). Module-level so it is
+// shared across all components that open a Clerk modal.
+let oauthInProgress = false;
+export function setOAuthInProgress(val: boolean): void {
+  oauthInProgress = val;
+}
+
 export function ChatProvider({
   children,
   gateEnabled = true,
   isAuthorized = false,
+  enableExitWarning = false,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: true. */
   gateEnabled?: boolean;
   /** Whether the current visitor is an active member or invite holder. Default: false. */
   isAuthorized?: boolean;
+  /** Register the beforeunload exit warning. Pass true only from the chat widget
+   *  mount point — never from a landing-page-only context. Default: false. */
+  enableExitWarning?: boolean;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -165,9 +178,11 @@ export function ChatProvider({
   const messagesRef = useRef<Message[]>(messages);
   const sessionIdRef = useRef<string | null>(sessionId);
   const isStreamingRef = useRef<boolean>(isStreaming);
+  const isSignedInRef = useRef<boolean>(!!isSignedIn);
   messagesRef.current = messages;
   sessionIdRef.current = sessionId;
   isStreamingRef.current = isStreaming;
+  isSignedInRef.current = !!isSignedIn;
 
   // Tracks the last-observed isSignedIn value so the post-sign-in effect only
   // fires on the false→true transition — not on every page load when the user
@@ -286,20 +301,33 @@ export function ChatProvider({
   }, [isLoaded, isSignedIn, hydrateConversation]);
 
   // Warn before leaving while a turn is in flight or any conversation exists.
-  // The condition is deliberately broad: anonymous visitors have no cross-device
-  // DB recovery yet, so an existing thread is treated as unsaved on leave. Chrome
-  // 119+ needs BOTH preventDefault() and returnValue set. Reads the mirror refs
-  // so the single mount-time listener always sees current state.
+  // Suppressed for signed-in users (DB recovery covers their history) and when
+  // an OAuth popup is opening (the popup triggers beforeunload on the parent
+  // window — a false positive). Chrome 119+ needs BOTH preventDefault() and
+  // returnValue set. Reads mirror refs so the single mount-time listener always
+  // sees current state. Gated on enableExitWarning so landing-page-only contexts
+  // never register it.
   useEffect(() => {
+    if (!enableExitWarning) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isStreamingRef.current || messagesRef.current.length > 0) {
+      if (
+        !isSignedInRef.current &&
+        !oauthInProgress &&
+        (isStreamingRef.current || messagesRef.current.length > 0)
+      ) {
         e.preventDefault();
         e.returnValue = '';
       }
     };
+    // Reset the OAuth flag when the popup closes and the parent window regains focus.
+    const onFocus = () => { oauthInProgress = false; };
     window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, []);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [enableExitWarning]);
 
   // Claim every real session in the localStorage index plus the current in-memory
   // session — WITHOUT touching the members row. Used by the wasSignedIn effect

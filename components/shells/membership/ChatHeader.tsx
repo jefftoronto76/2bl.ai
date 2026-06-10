@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useClerk, useUser } from '@clerk/nextjs';
 import { ChevronDown, CircleUser as UserCircle, LogOut, Settings, X } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
-import { useChatStore } from './chatStore';
+import { useChatStore, setOAuthInProgress } from './chatStore';
 import { heirloomClerkAppearance } from './clerkAppearance';
 import { logAuthStep } from '@/services/auth/log-auth-step';
 
@@ -44,6 +44,7 @@ export function ChatHeader() {
       outcome: 'success',
       metadata: { auth_surface: 'prebuilt_modal', step: 'modal_opened', component: 'ChatHeader' },
     });
+    setOAuthInProgress(true);
     openSignIn({ appearance: heirloomClerkAppearance });
   }, [openSignIn]);
 
