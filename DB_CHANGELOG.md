@@ -1,5 +1,40 @@
 # DB Changelog
 
+## 2026-06-10
+
+### Rename `clerk_user_id` → `clerk_id` on `members` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+ALTER TABLE members RENAME COLUMN clerk_user_id TO clerk_id;
+
+**Purpose:** Normalize column naming — `users` table uses `clerk_id`; `members` now matches. All codebase references updated in the same commit.
+
+---
+
+### Add `phone` column to `users` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+ALTER TABLE users ADD COLUMN phone text;
+
+**Purpose:** Store phone number at the platform (user) level, mirroring the existing `phone` column on `members`. Enables Clerk → users → members sync for phone numbers captured at sign-up.
+
+---
+
+### Add `name` column to `members` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+ALTER TABLE members ADD COLUMN name text;
+
+**Purpose:** Store display name at the tenant-membership level. Mirrors `users.name`. Populated from Clerk `firstName + lastName` on sign-up via the claim route and `user.created` webhook.
+
+---
+
 ## 2026-06-09
 
 ### No schema change — auth_surface metadata convention added to auth_events
