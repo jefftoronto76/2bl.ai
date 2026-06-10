@@ -43,6 +43,10 @@ export interface ChatState {
   /** True when the visitor is signed in via Clerk. Drives feature gates
    *  (voice, uploads, memory persistence) and sidebar activation. */
   isMember: boolean;
+  /** The visitor's first name captured by the [NAME:] marker during the active
+   *  conversation, fetched from chat_sessions.visitor_name after each turn. Null
+   *  until Sage captures the name or the session is recovered from the DB. */
+  visitorName: string | null;
 }
 
 // Re-export the shell action union + Message so existing consumers keep importing
@@ -55,6 +59,7 @@ export interface RecentSession {
   title: string;
   updatedAt: string;
   messages: Message[];
+  visitorName: string | null;
 }
 
 interface ChatContextType {
@@ -125,6 +130,7 @@ function toRecentSession(row: ApiSession): RecentSession {
     updatedAt: row.updated_at,
     messages,
     title: deriveSessionTitle(row.visitor_name, messages),
+    visitorName: row.visitor_name,
   };
 }
 

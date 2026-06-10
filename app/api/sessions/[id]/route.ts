@@ -1,6 +1,31 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { updateSession } from '@/services/crm/sessions'
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const tenantId = await getTenantFromRequest(req)
+  if (!tenantId) {
+    return NextResponse.json({ visitor_name: null })
+  }
+
+  try {
+    const supabase = getAdminClient()
+    const { data } = await supabase
+      .from('chat_sessions')
+      .select('visitor_name')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    return NextResponse.json({ visitor_name: (data as { visitor_name: string | null } | null)?.visitor_name ?? null })
+  } catch {
+    return NextResponse.json({ visitor_name: null })
+  }
+}
 
 export async function PATCH(
   req: Request,
