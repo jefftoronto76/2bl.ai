@@ -3,6 +3,8 @@ import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { findUserByClerkId } from '@/services/auth/findUserByClerkId'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -75,6 +77,27 @@ export async function POST(req: Request): Promise<NextResponse> {
     svix_event_id: svixId,
     metadata: { clerk_event_type: eventType },
   })
+
+  if (eventType === 'user.deleted' && clerkUserId) {
+    const supabase = getAdminClient()
+    const user = await findUserByClerkId(clerkUserId)
+    if (user) {
+      const now = new Date().toISOString()
+      const [usersResult, membersResult] = await Promise.all([
+        supabase.from('users').update({ deleted_at: now }).eq('id', user.id),
+        supabase
+          .from('members')
+          .update({ status: 'deleted' })
+          .eq('clerk_user_id', clerkUserId),
+      ])
+      if (usersResult.error) {
+        console.error('[webhook/clerk] users soft-delete failed:', usersResult.error.message)
+      }
+      if (membersResult.error) {
+        console.error('[webhook/clerk] members status update failed:', membersResult.error.message)
+      }
+    }
+  }
 
   return NextResponse.json({ received: true })
 }
