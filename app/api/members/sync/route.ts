@@ -8,9 +8,8 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
  * POST /api/members/sync
  *
  * Fires once post-authentication. Upserts a members row for the signed-in
- * Clerk user, syncing their email and phone into the members table. Also
- * writes an optional display name to users.name (column exists on `users`).
- * members table has no name column — name never touches members.
+ * Clerk user, syncing their name, email, and phone into the members table.
+ * Also writes name to users.name (column exists on `users`).
  * Protected by Clerk auth — returns 401 when no session exists.
  * Tenant is resolved from the Host header (falls back to Heirloom default).
  */
@@ -25,7 +24,7 @@ export async function POST(req: Request) {
   const email = clerk.emailAddresses[0]?.emailAddress ?? null
   const phone = clerk.phoneNumbers[0]?.phoneNumber ?? null
 
-  // Parse optional name from request body — written to users.name, not members.
+  // Parse optional name from request body — written to both users.name and members.name.
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const suppliedName = typeof body.name === 'string' ? body.name.trim() || null : null
 
@@ -48,6 +47,7 @@ export async function POST(req: Request) {
   const result = await syncMember({
     clerkUserId: clerk.id,
     tenantId,
+    name: suppliedName,
     email,
     phone,
   })
