@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, type AuthUser } from '@/services/auth'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
 import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
@@ -12,20 +12,23 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-// Returns a denial Response when the caller is not a platform admin, else null.
-async function denyUnlessPlatformAdmin(): Promise<Response | null> {
+// Returns a denial Response when the caller is not a platform admin, else the
+// resolved user so handlers can stamp audit attribution (clerk_user_id).
+async function denyUnlessPlatformAdmin(): Promise<
+  { denied: Response; user: null } | { denied: null; user: AuthUser }
+> {
   const user = await getCurrentUser()
   if (!user) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    return { denied: Response.json({ error: 'Unauthorized' }, { status: 401 }), user: null }
   }
   if (!user.isPlatformAdmin) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 })
+    return { denied: Response.json({ error: 'Forbidden' }, { status: 403 }), user: null }
   }
-  return null
+  return { denied: null, user }
 }
 
 export async function PATCH(req: Request, context: RouteContext) {
-  const denied = await denyUnlessPlatformAdmin()
+  const { denied, user } = await denyUnlessPlatformAdmin()
   if (denied) return denied
 
   const { id } = await context.params
@@ -50,6 +53,9 @@ export async function PATCH(req: Request, context: RouteContext) {
     // Host-resolved attribution per 2026-06-11 directive; stays null when the
     // platform host doesn't map to a tenants.domain row (platform-level event).
     tenant_id: await getTenantFromRequest(req),
+    actor_id: null,
+    actor_type: 'user',
+    clerk_user_id: user.providerUserId,
     target_type: 'tenant',
     target_id: id,
     correlation_id: req.headers.get('x-correlation-id'),
@@ -61,7 +67,7 @@ export async function PATCH(req: Request, context: RouteContext) {
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
-  const denied = await denyUnlessPlatformAdmin()
+  const { denied, user } = await denyUnlessPlatformAdmin()
   if (denied) return denied
 
   const { id } = await context.params
@@ -79,6 +85,9 @@ export async function DELETE(req: Request, context: RouteContext) {
     // Host-resolved attribution per 2026-06-11 directive; stays null when the
     // platform host doesn't map to a tenants.domain row (platform-level event).
     tenant_id: await getTenantFromRequest(req),
+    actor_id: null,
+    actor_type: 'user',
+    clerk_user_id: user.providerUserId,
     target_type: 'tenant',
     target_id: id,
     correlation_id: req.headers.get('x-correlation-id'),
