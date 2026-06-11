@@ -654,20 +654,28 @@ await signUp.verifications.verifyPhoneCode({ code })    // phone
 await signUp.finalize({ navigate: () => {} })           // activate session
 ```
 
-**New-vs-existing user detection:** uses Clerk's documented **transferable**
-pattern (implemented in `useAuthFlowAdapter`, `services/auth/providers/clerk/client.ts`).
+**New-vs-existing user detection:** **error-code driven** (implemented in
+`useAuthFlowAdapter`, `services/auth/providers/clerk/client.ts`).
 `signUp.create({ emailAddress | phoneNumber })` is attempted first. If it
 succeeds → genuine sign-up (`signUp.verifications.send*Code()`). If it fails
-and `signUp.isTransferable` is true (matching user exists) → the attempt is
-transferred to a sign-in via `signIn.create({ transfer: true })`, then
-`signIn.emailCode.sendCode()` / `phoneCode.sendCode()` **called bare** (the
-transferred signIn already carries the identifier). If create fails and the
-attempt is NOT transferable (rate limit, invalid identifier, network), the
-error is surfaced to the user — a transient failure is never misread as "new
-user" (the failure mode of the old signIn-first heuristic, replaced 2026-06-11).
-Because `signUp.create()` now runs for every attempt, the `#clerk-captcha` div
-must be present for sign-ins as well — `CaptchaSlot` renders unconditionally in
-the MagicLinkCard form.
+with `form_identifier_exists` (from EITHER error channel — "That email
+address / phone number is taken") → existing user → sign in **directly** via
+`signIn.emailCode.sendCode({ emailAddress })` / `phoneCode.sendCode({ phoneNumber })`.
+
+**⚠️ Do NOT use Clerk's documented `signUp.isTransferable` /
+`signIn.create({ transfer: true })` mechanism as the primary path.** Observed
+in production 2026-06-11 (both email and phone): `isTransferable` stayed
+`false` on the create-error path for existing identifiers, so transfer-based
+detection showed existing users "That email address is taken" instead of
+signing them in. The error code is the dependable signal; `isTransferable` is
+honored only as a secondary belt in case Clerk starts setting it.
+
+If create fails with any other code (rate limit, invalid identifier, network),
+the error is surfaced to the user — a transient failure is never misread as
+"new user" (the failure mode of the old signIn-first heuristic, replaced
+2026-06-11). Because `signUp.create()` runs for every attempt, the
+`#clerk-captcha` div must be present for sign-ins as well — `CaptchaSlot`
+renders unconditionally in the MagicLinkCard form.
 
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 

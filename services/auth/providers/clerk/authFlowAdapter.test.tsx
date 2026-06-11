@@ -1,9 +1,13 @@
 // Tests for useAuthFlowAdapter — the Clerk OTP flow encapsulation.
-// Mocks @clerk/nextjs resources to drive: the documented transferable
-// new-vs-existing detection (signUp.create → isTransferable →
-// signIn.create({ transfer: true })) across BOTH error channels (returned
-// { error } and the undocumented HTTP-4xx throw), terminal-vs-retryable
-// verify mapping, and log parity of the step strings.
+// Mocks @clerk/nextjs resources to drive the error-code-driven
+// new-vs-existing detection (signUp.create → form_identifier_exists →
+// direct signIn sendCode with the identifier) across BOTH error channels
+// (returned { error } and the undocumented HTTP-4xx throw),
+// terminal-vs-retryable verify mapping, and log parity of step strings.
+// NOTE (production, 2026-06-11): signUp.isTransferable did NOT flip on the
+// create-error path despite Clerk's docs — the error code is primary and
+// the tests model that (isTransferable stays false in the existing-user
+// cases; one belt test keeps the flag honored if Clerk ever sets it).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
@@ -58,67 +62,96 @@ beforeEach(() => {
   logAuthStep.mockClear()
 })
 
-describe('useAuthFlowAdapter.sendCode — transferable detection (signUp-first)', () => {
+describe('useAuthFlowAdapter.sendCode — error-code-driven detection (signUp-first)', () => {
   it('new user: signUp.create succeeds → signup flow', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     const r = await result.current.sendCode({ type: 'email', value: 'new@b.com' })
     expect(r).toEqual({ ok: true, flow: 'signup' })
     expect(mocks.current.signUp.create).toHaveBeenCalledWith({ emailAddress: 'new@b.com' })
-    expect(mocks.current.signIn.create).not.toHaveBeenCalled()
+    expect(mocks.current.signIn.emailCode.sendCode).not.toHaveBeenCalled()
     expect(steps()).toEqual(['otp_sent'])
   })
 
-  it('existing user: create error + isTransferable → signIn.create({ transfer: true }) → signin flow', async () => {
-    ;(mocks.current.signUp.create as AnyFn).mockImplementation(async () => {
-      mocks.current.signUp.isTransferable = true
-      return { error: { code: 'form_identifier_exists', message: 'Identifier exists' } }
+  it('existing email: form_identifier_exists (isTransferable false, as in production) → direct sign-in', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That email address is taken. Please try another.' },
     })
     const { result } = renderHook(() => useAuthFlowAdapter())
     const r = await result.current.sendCode({ type: 'email', value: 'existing@b.com' })
     expect(r).toEqual({ ok: true, flow: 'signin' })
-    expect(mocks.current.signIn.create).toHaveBeenCalledWith({ transfer: true })
-    // Transferred signIn carries the identifier — sendCode is called bare.
-    expect(mocks.current.signIn.emailCode.sendCode).toHaveBeenCalledWith()
+    // Direct identifier sign-in — the transfer mechanism is deliberately unused.
+    expect(mocks.current.signIn.create).not.toHaveBeenCalled()
+    expect(mocks.current.signIn.emailCode.sendCode).toHaveBeenCalledWith({ emailAddress: 'existing@b.com' })
     expect(steps()).toEqual(['signUp_create_transferable', 'otp_sent'])
   })
 
-  it('existing user via the thrown create channel (undocumented HTTP 4xx) still transfers', async () => {
-    const thrown = Object.assign(new Error('422'), { status: 422, errors: [{ code: 'form_identifier_exists' }] })
-    ;(mocks.current.signUp.create as AnyFn).mockImplementation(async () => {
-      mocks.current.signUp.isTransferable = true
-      throw thrown
+  it('existing phone: form_identifier_exists (isTransferable false) → direct sign-in', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That phone number is taken. Please try another.' },
     })
     const { result } = renderHook(() => useAuthFlowAdapter())
     const r = await result.current.sendCode({ type: 'phone', value: '+15551234567' })
     expect(r).toEqual({ ok: true, flow: 'signin' })
-    expect(mocks.current.signIn.phoneCode.sendCode).toHaveBeenCalledWith()
+    expect(mocks.current.signIn.phoneCode.sendCode).toHaveBeenCalledWith({ phoneNumber: '+15551234567' })
+    expect(steps()).toEqual(['signUp_create_transferable', 'otp_sent'])
+  })
+
+  it('existing user via the thrown create channel (undocumented HTTP 4xx) still routes to sign-in', async () => {
+    const thrown = Object.assign(new Error('422'), { status: 422, errors: [{ code: 'form_identifier_exists' }] })
+    ;(mocks.current.signUp.create as AnyFn).mockRejectedValue(thrown)
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({ type: 'phone', value: '+15551234567' })
+    expect(r).toEqual({ ok: true, flow: 'signin' })
+    expect(mocks.current.signIn.phoneCode.sendCode).toHaveBeenCalledWith({ phoneNumber: '+15551234567' })
     expect(steps()).toEqual(['signUp_create_threw', 'signUp_create_transferable', 'otp_sent'])
     const threwLog = logAuthStep.mock.calls[0][0] as { failure_reason: string; metadata: { code: string } }
     expect(threwLog.failure_reason).toBe('signUp_create_threw_422')
     expect(threwLog.metadata.code).toBe('form_identifier_exists')
   })
 
-  it('non-transferable create failure (rate limit / transient) is a surfaced error, NOT a misrouted signup', async () => {
-    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: { message: 'Too many attempts' } })
+  it('belt: isTransferable true with a different error code still routes to sign-in', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockImplementation(async () => {
+      mocks.current.signUp.isTransferable = true
+      return { error: { code: 'some_other_code', message: 'whatever' } }
+    })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({ type: 'email', value: 'existing@b.com' })
+    expect(r).toEqual({ ok: true, flow: 'signin' })
+    expect(steps()).toEqual(['signUp_create_transferable', 'otp_sent'])
+  })
+
+  it('non-existing create failure (rate limit / transient) is a surfaced error, NOT a misrouted signup', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: { code: 'rate_limited', message: 'Too many attempts' } })
     const { result } = renderHook(() => useAuthFlowAdapter())
     const r = await result.current.sendCode({ type: 'email', value: 'a@b.com' })
     expect(r).toEqual({ ok: false, message: 'Too many attempts' })
-    expect(mocks.current.signIn.create).not.toHaveBeenCalled()
+    expect(mocks.current.signIn.emailCode.sendCode).not.toHaveBeenCalled()
     expect(mocks.current.signUp.verifications.sendEmailCode).not.toHaveBeenCalled()
     expect(steps()).toEqual(['signUp_create'])
   })
 
-  it('transfer create failure is surfaced', async () => {
-    ;(mocks.current.signUp.create as AnyFn).mockImplementation(async () => {
-      mocks.current.signUp.isTransferable = true
-      return { error: { code: 'form_identifier_exists' } }
+  it('existing user whose sign-in sendCode fails gets the error surfaced (returned channel)', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That email address is taken. Please try another.' },
     })
-    ;(mocks.current.signIn.create as AnyFn).mockResolvedValue({ error: { message: 'Transfer failed' } })
+    ;(mocks.current.signIn.emailCode.sendCode as AnyFn).mockResolvedValue({ error: { code: 'boom', message: 'Send failed' } })
     const { result } = renderHook(() => useAuthFlowAdapter())
-    const r = await result.current.sendCode({ type: 'email', value: 'a@b.com' })
-    expect(r).toEqual({ ok: false, message: 'Transfer failed' })
-    expect(steps()).toEqual(['signUp_create_transferable', 'signIn_transfer'])
+    const r = await result.current.sendCode({ type: 'email', value: 'existing@b.com' })
+    expect(r).toEqual({ ok: false, message: 'Send failed' })
+    expect(steps()).toEqual(['signUp_create_transferable', 'signIn_sendCode_existing'])
+  })
+
+  it('existing user whose sign-in sendCode throws gets the error surfaced (thrown channel)', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That phone number is taken. Please try another.' },
+    })
+    const thrown = Object.assign(new Error('Send blew up'), { status: 422, errors: [{ code: 'kaboom' }] })
+    ;(mocks.current.signIn.phoneCode.sendCode as AnyFn).mockRejectedValue(thrown)
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({ type: 'phone', value: '+15551234567' })
+    expect(r).toEqual({ ok: false, message: 'Send blew up' })
+    expect(steps()).toEqual(['signUp_create_transferable', 'signIn_sendCode_threw'])
   })
 })
 
@@ -130,10 +163,8 @@ describe('useAuthFlowAdapter.verifyCode — terminal vs retryable', () => {
   }
 
   async function startSigninFlow(result: { current: ReturnType<typeof useAuthFlowAdapter> }, type: 'email' | 'phone', value: string) {
-    ;(mocks.current.signUp.create as AnyFn).mockImplementation(async () => {
-      mocks.current.signUp.isTransferable = true
-      return { error: { code: 'form_identifier_exists' } }
-    })
+    // Production-realistic: error code present, isTransferable stays false.
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: { code: 'form_identifier_exists' } })
     await result.current.sendCode({ type, value })
     logAuthStep.mockClear()
   }

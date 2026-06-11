@@ -434,6 +434,30 @@ was already a first-class column on both input types.
    you want the old pure-null convention back for platform events, say so —
    one-line revert per call site.
 
+## §17 — HOTFIX: error-code-driven existing-user detection (post-merge)
+
+Production bug confirmed 2026-06-11 after PR #100: existing users on the
+MagicLinkCard got "That email address / phone number is taken" — Clerk did
+NOT set `signUp.isTransferable` on the create-error path (docs say it
+flips; production says otherwise), so the transfer branch never fired.
+
+Fix (branch `06-11-26_transferable-detection-hotfix`): detection keys on the
+`form_identifier_exists` error code (both error channels), `isTransferable`
+demoted to secondary belt, and existing users sign in via direct
+`sendCode({ identifier })` — the pre-refactor production-proven shape.
+`signIn.create({ transfer: true })` removed from the path. New/changed steps:
+`signIn_sendCode_existing`, `signIn_sendCode_threw`;
+`signUp_create_transferable` now logs `code` + `isTransferable` metadata.
+
+Verify on production after merge (MagicLinkCard surface, both contact types):
+
+1. Existing email → enters sign-in code screen (NOT "taken" error) → code →
+   signed in. auth_events: `signUp_create_transferable` (with
+   `code: form_identifier_exists`) → `otp_sent/flow: signin` → `finalize/flow: signin`.
+2. Existing phone → same.
+3. New email + new phone → signup flow unchanged (`otp_sent/flow: signup`).
+4. Wrong-code retry + resend still work on both flows.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
