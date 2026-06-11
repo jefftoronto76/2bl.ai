@@ -6,6 +6,7 @@ import {
   NAME_MARKER,
   EMAIL_MARKER,
   PHONE_MARKER,
+  ACCOUNT_CREATE_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -120,10 +121,24 @@ describe('PHONE_MARKER definition', () => {
   })
 })
 
+describe('ACCOUNT_CREATE_MARKER definition', () => {
+  it('is a single-field client-dispatch marker', () => {
+    expect(ACCOUNT_CREATE_MARKER.type).toBe('ACCOUNT_CREATE')
+    expect(ACCOUNT_CREATE_MARKER.fieldCount).toBe(1)
+    expect(ACCOUNT_CREATE_MARKER.dispatch).toBe('client')
+  })
+})
+
 describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, EMAIL, and PHONE', () => {
+  it('registers BOOKING, NAME, EMAIL, PHONE, and ACCOUNT_CREATE', () => {
     const defs = createDefaultRegistry().getDefinitions()
-    expect(defs.map(d => d.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME', 'PHONE'])
+    expect(defs.map(d => d.type).sort()).toEqual([
+      'ACCOUNT_CREATE',
+      'BOOKING',
+      'EMAIL',
+      'NAME',
+      'PHONE',
+    ])
   })
 
   it('strips a [NAME: x] marker from prose and extracts the field', () => {
