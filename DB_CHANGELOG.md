@@ -1,5 +1,18 @@
 # DB Changelog
 
+## 2026-06-11
+
+### Add `tenant_id` column to `auth_events` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+ALTER TABLE auth_events ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id);
+
+**Purpose:** Tenant attribution on every auth event. All `logAuthEvent` call sites now stamp `tenant_id` resolved from request context — `/api/auth/log` and the Clerk webhook via `getTenantFromRequest`, the `get-auth-context` admin_access_failed path via the same host resolution (branch `06-10-26_auth0-migration`, commit `0910abc`). Nullable — rows written before this change, and requests whose host doesn't resolve to a tenant, carry null.
+
+---
+
 ## 2026-06-10
 
 ### Rename `clerk_user_id` → `clerk_id` on `members` table
