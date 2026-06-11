@@ -90,6 +90,26 @@ the provider's `<SignIn />`, props unchanged).
    renders with SBL theming (terracotta primary button, white card), and a
    full sign-in from this page redirects to `/platform/admin`.
 
+## §6 — Server presence checks → getSession() [regression-only]
+
+Change: `app/api/transcribe/route.ts` and `app/heirloom/page.tsx` use the
+boundary's `getSession()` (JWT-only — same cost as the old bare `auth()`).
+
+1. **Transcribe 401:** signed out,
+   `curl -X POST https://<preview>/api/transcribe` → `401 {"error":"Unauthorized"}`.
+2. **Transcribe happy path:** signed in on the SBL admin, use any
+   voice-input surface that hits `/api/transcribe` → transcription still
+   returns text (or, with DevTools, replay a signed-in POST → 200).
+3. **Heirloom invite gate, signed out:** private window →
+   `https://<preview>/heirloom` → chat shows the "By invitation only." gate.
+4. **Heirloom invite gate, member:** sign in as an **active** member →
+   gate is bypassed, chat usable. DB cross-check in Studio:
+   `SELECT id, status FROM members WHERE clerk_id = '<your user_... id>' AND tenant_id = '20767f1d-1148-4e43-ab73-f6da88f0ac56';`
+   → `status = 'active'` for the account you tested with.
+5. **Invite token path:** `https://<preview>/heirloom?invite=<unused token>`
+   (mint one at `https://<preview>/admin` → Invites) → gate bypassed without
+   signing in.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in

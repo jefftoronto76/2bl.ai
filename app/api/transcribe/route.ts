@@ -1,9 +1,10 @@
-import { auth } from '@clerk/nextjs/server';
+import { getSession } from '@/services/auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
+  // Presence check only — getSession() is the boundary's cheap JWT check.
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
