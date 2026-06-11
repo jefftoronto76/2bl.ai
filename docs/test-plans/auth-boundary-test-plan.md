@@ -297,6 +297,16 @@ import site in the codebase.
    (getCurrentUserId via GET /api/sessions).
 3. One sign-in to `/admin` → no `[get-auth-context]` errors in Vercel logs.
 
+## §14 — Lint flip to error + docs [static-only]
+
+Change: the Golden Rule is now an ESLint **error**; the override narrowed to
+`services/auth/providers/clerk/**`. CLAUDE.md documents the boundary (Stack
+entry + Auth service section).
+
+1. `npm run lint` → zero `no-restricted-imports` findings.
+2. Sanity: add `import { auth } from '@clerk/nextjs/server'` to any app file
+   → lint fails with the Golden Rule message → revert.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in

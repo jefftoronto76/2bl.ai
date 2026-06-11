@@ -102,7 +102,13 @@ starts.
   Companion packages: `@mantine/notifications@7.17.8` (toast notifications,
   wired into `app/admin/layout.tsx` via `<Notifications />`).
 - **Database:** Supabase (Postgres + Row Level Security + Realtime)
-- **Auth:** Clerk (`@clerk/nextjs` — currently v7, Core 3). AI skills for all Clerk
+- **Auth:** Clerk (`@clerk/nextjs` — currently v7, Core 3), consumed ONLY
+  through the provider-agnostic boundary at `services/auth/` (the Golden Rule —
+  see `docs/auth-service-rebuild.md`). `@clerk/*` may be imported only inside
+  `services/auth/providers/clerk/**`; everywhere else is an ESLint **error**
+  (`no-restricted-imports`). Product code imports `@/services/auth` (server),
+  `@/services/auth/client` (hooks), `@/services/auth/ui` (prebuilt UI
+  re-exports), or `@/services/auth/middleware` (edge). AI skills for all Clerk
   patterns are in `.agents/skills/clerk-custom-ui/` and
   `.agents/skills/clerk-nextjs-patterns/`. **Before writing any Clerk auth code,
   read `.agents/skills/clerk-custom-ui/core-3/`.**
@@ -564,6 +570,33 @@ factories live in the shared `services/auth/` layer (imported as
 `@/services/auth/*`). Both `app/` and `src/` may depend on this layer; it is the
 intended home for cross-cutting auth/DB plumbing.
 
+**The provider boundary (2026-06-11).** `services/auth/` is also the
+provider-agnostic auth boundary (Golden Rule, `docs/auth-service-rebuild.md`):
+no file outside it imports `@clerk/*` — enforced as an ESLint `error`
+(`no-restricted-imports`, override only for `services/auth/providers/clerk/**`).
+Caveat: the repo-root `middleware.ts` sits outside `next lint`'s default
+directories, so keep it provider-free by review. The provider is swappable by
+re-pointing the entry-point re-exports at a new `providers/<name>/` folder.
+
+Entry points (four, one per runtime context — the server barrel never exports
+`'use client'` modules, same convention as `services/chat/ui/v1`):
+
+| Entry point | Exports | Consumed by |
+|-------------|---------|-------------|
+| `services/auth/index.ts` (server) | `getSession()` (cheap JWT presence — `AppSession { providerUserId }`), `getCurrentUser()` (one provider backend call — normalized `AuthUser { providerUserId, email?, phone?, name?, imageUrl?, isPlatformAdmin }`), `requirePlatformAdmin()` (null unless signed-in admin), types, errors, + re-exports of the existing helpers below | API routes, server components/layouts |
+| `services/auth/client.ts` (`'use client'`) | `useAuthUser()` (mirrors the provider tri-state — `isSignedIn` stays `undefined` until `isLoaded`; **never coerce while loading**, chatStore's recovery gates depend on it), `useAuthActions()` (`signOut`, `openSignIn`, `openSignUp`, `openUserProfile` — appearance passed as opaque `AuthAppearance`) | Client components (chatStore, ChatHeader, GateView, LandingNav, MessageList, MagicLinkCard, prompt-builder) |
+| `services/auth/ui.tsx` (no directive — pure re-exports preserve the provider's SSR boundary markers) | `AuthProvider` (root-layout mount, stays inside `<body>`), `UserButton`, `SignInPanel`, `CaptchaSlot` (`<div id="clerk-captcha">`) | `app/layout.tsx`, admin shells, SBL sign-in page, MagicLinkCard |
+| `services/auth/middleware.ts` (edge-safe leaf — never imports the index barrel) | `createAuthMiddleware` (typed passthrough; provider middleware stays outermost), `createRouteMatcher` | repo-root `middleware.ts` (whose `config.matcher` must stay a **literal** array — Next.js static analysis) |
+
+The Clerk adapter (`services/auth/providers/clerk/`): `server.ts` (the
+session/user API + `clerkAuth`/`clerkCurrentUser` re-exports for in-boundary
+helpers), `client.ts` (`useAuthUser`/`useAuthActions`/`useAuthFlowAdapter`),
+`ui.tsx`, `middleware.ts`, `errors.ts` (dual-channel normalization), and
+`map.ts` — `mapClerkUser` + **`resolveIsPlatformAdmin()`, the single
+authorization swap point** (reads Clerk `publicMetadata.role` today; flips to
+the Supabase `users.role` column when confirmed in Studio, without touching
+product code). Unit tests: `map.test.ts`, `authFlowAdapter.test.tsx`.
+
 | Helper | File | Purpose |
 |--------|------|---------|
 | `getAuthContext` | `services/auth/get-auth-context.ts` | Resolves the current Clerk user to their Supabase `owner_id` and `tenant_id` via the `users.clerk_id` → `tenant_users.user_id` lookup. Multi-tenant users resolve the active tenant by request Host (falls back to `DEFAULT_ADMIN_TENANT_ID`, then the first membership). Throws `Unauthorized` / `User not found` / `Tenant not found` on failure. Used by every authenticated admin API route for tenant scoping. |
@@ -577,7 +610,7 @@ intended home for cross-cutting auth/DB plumbing.
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
 | `AdminUserProvider` / `useAdminUserId` | `services/auth/admin-user-context.tsx` | `'use client'` React context exposing the synced Supabase user id to the admin tree. Mounted in `app/admin/layout.tsx`. (Moved from `src/context/admin-user.tsx`.) |
-| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Client-side hook for the Heirloom custom OTP sign-up/sign-in flow. Fires step-by-step `keepalive` POSTs to `/api/auth/log` at every outcome (send success/failure, verify success/failure, finalize success/failure, outer catches) so the full flow is visible in `auth_events`. See Core 3 API reference below. |
+| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Provider-agnostic **stage machine** for the Heirloom custom OTP sign-up/sign-in flow (refactored 2026-06-11): owns stages (`idle → sending → otp_input → verifying → success/error`), contact state, the `mountedRef` guard, the `/api/auth/magic-link` validation gate (always ordered BEFORE any provider call), resend, and reset. All provider mechanics + step-by-step `auth_events` telemetry live in `useAuthFlowAdapter` (`providers/clerk/client.ts`); failure routing follows the adapter's `terminal` flag (terminal → `error`, retryable → `otp_input`). Public `UseAuthFlowReturn` unchanged — `MagicLinkCard` is the consumer. See Core 3 API reference below. |
 
 #### Clerk Core 3 custom OTP (`services/auth/useAuthFlow.ts`)
 

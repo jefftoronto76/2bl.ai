@@ -40,12 +40,12 @@
     "react/no-unescaped-entities": "warn",
     "@next/next/no-html-link-for-pages": "warn",
     "no-restricted-imports": [
-      "warn",
+      "error",
       {
         "patterns": [
           {
             "group": ["@clerk/*", "@clerk/*/*"],
-            "message": "Golden Rule (docs/auth-service-rebuild.md): no product code imports an auth provider directly. Import via @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), or @/services/auth/middleware (edge). [boundary migration: warn until all consumers are rewired, then error]"
+            "message": "Golden Rule (docs/auth-service-rebuild.md): no product code imports an auth provider directly. Import via @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), or @/services/auth/middleware (edge)."
           }
         ]
       }
@@ -53,7 +53,7 @@
   },
   "overrides": [
     {
-      "files": ["services/auth/**"],
+      "files": ["services/auth/providers/clerk/**"],
       "rules": { "no-restricted-imports": "off" }
     }
   ]
