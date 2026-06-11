@@ -426,7 +426,10 @@ export function BlockCard({
                 <IconCopy size={18} />
               </ActionIcon>
             </Popover.Target>
-            <Popover.Dropdown>
+            {/* React portals re-bubble synthetic events through the component
+                tree, so without stop() a click on Confirm/Cancel would also
+                fire the card's handleTapBody and open the edit drawer. */}
+            <Popover.Dropdown onClick={stop}>
               <CardDupConfirmContent
                 onConfirm={confirmDuplicate}
                 onCancel={() => setDupPopoverOpen(false)}

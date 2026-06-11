@@ -24,6 +24,7 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof BlockCard>> =
       onToggleSelect={vi.fn()}
       onToggleStatus={vi.fn()}
       onOpenEdit={vi.fn()}
+      onRename={vi.fn()}
       onDuplicate={vi.fn()}
       onDelete={vi.fn()}
       {...overrides}
@@ -74,14 +75,30 @@ describe('BlockCard', () => {
     expect(onOpenEdit).not.toHaveBeenCalled()
   })
 
-  it('tapping the Duplicate icon does NOT bubble to onOpenEdit', async () => {
+  it('tapping the Duplicate icon opens the confirm popover without bubbling to onOpenEdit; confirming duplicates', async () => {
     const user = userEvent.setup()
     const onOpenEdit = vi.fn()
     const onDuplicate = vi.fn()
     renderCard({ onOpenEdit, onDuplicate })
     await user.click(screen.getByRole('button', { name: /duplicate block/i }))
+    // First click opens the confirmation popover — no duplicate yet.
+    expect(onDuplicate).not.toHaveBeenCalled()
+    await user.click(await screen.findByRole('button', { name: /^duplicate$/i }))
     expect(onDuplicate).toHaveBeenCalledWith('b-1')
     expect(onOpenEdit).not.toHaveBeenCalled()
+  })
+
+  it('duplicates immediately when skip-confirm is persisted in localStorage', async () => {
+    localStorage.setItem('block-admin:skip-dup-confirm', 'true')
+    try {
+      const user = userEvent.setup()
+      const onDuplicate = vi.fn()
+      renderCard({ onDuplicate })
+      await user.click(screen.getByRole('button', { name: /duplicate block/i }))
+      expect(onDuplicate).toHaveBeenCalledWith('b-1')
+    } finally {
+      localStorage.removeItem('block-admin:skip-dup-confirm')
+    }
   })
 
   it('highlights matching substring in title when highlight prop is set (Step 18)', () => {
