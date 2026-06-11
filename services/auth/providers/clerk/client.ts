@@ -58,8 +58,11 @@ export function useAuthActions(): AuthActions {
 // owns UI state; this owns every Clerk API call, both error channels (the
 // documented { error } return AND the undocumented HTTP-4xx throw — see
 // providers/clerk/errors.ts), and the step-by-step auth_events telemetry.
-// All event_type / step / auth_surface strings are byte-identical to the
-// pre-refactor useAuthFlow so the auth_events log stream is unchanged.
+// event_type / auth_surface strings match the pre-refactor useAuthFlow; the
+// verify-path step strings are byte-identical. Detection-path steps changed
+// when the signIn-first heuristic was replaced with the documented
+// transferable pattern (signUp_create_transferable / signIn_transfer /
+// signIn_sendCode_after_transfer / signUp_create_threw).
 
 export interface AuthFlowContact {
   type: 'email' | 'phone'
@@ -106,61 +109,80 @@ export function useAuthFlowAdapter(): {
     if (!signIn || !signUp) return { ok: false, message: 'Something went wrong. Please try again.' }
     const { type, value } = contact
 
-    // Try sign-in first. Any failure — returned error or thrown — routes to
-    // sign-up. The only terminal state is when both paths fail.
-    let signInSucceeded = false
+    // New-vs-existing detection uses Clerk's documented transferable pattern:
+    // attempt signUp.create() first; when the identifier matches an existing
+    // user, signUp.isTransferable flips true and the attempt is transferred to
+    // a sign-in via signIn.create({ transfer: true }) (SignInFutureCreateParams
+    // in @clerk/types). Unlike the old signIn-first fallback heuristic, a
+    // transient failure (rate limit, network) is now a surfaced, retryable
+    // error instead of being misread as "new user". Both error channels are
+    // still handled (create can throw on HTTP 4xx — see ./errors.ts).
+    let createErr: unknown = null
     try {
-      const r =
+      const { error } =
         type === 'email'
-          ? await signIn.emailCode.sendCode({ emailAddress: value })
-          : await signIn.phoneCode.sendCode({ phoneNumber: value })
-      if (!r.error) {
-        signInSucceeded = true
-      } else {
-        logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
-          failure_reason: r.error.code,
-          metadata: { auth_surface: 'custom_otp', step: 'sendCode_returned', contactType: type, code: r.error.code } })
-      }
+          ? await signUp.create({ emailAddress: value })
+          : await signUp.create({ phoneNumber: value })
+      createErr = error
     } catch (e: unknown) {
       const code = extractClerkErrorCode(e)
       const httpStatus = (e as Record<string, unknown>).status
-      logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
-        failure_reason: `sendCode_threw_${httpStatus ?? 'unknown'}`,
-        metadata: { auth_surface: 'custom_otp', step: 'sendCode_threw', contactType: type, code, httpStatus } })
+      logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+        failure_reason: `signUp_create_threw_${httpStatus ?? 'unknown'}`,
+        metadata: { auth_surface: 'custom_otp', step: 'signUp_create_threw', contactType: type, code, httpStatus } })
+      createErr = e
     }
 
-    if (signInSucceeded) {
+    if (!createErr) {
+      // No matching user — genuine sign-up.
+      const { error: sendErr } =
+        type === 'email'
+          ? await signUp.verifications.sendEmailCode()
+          : await signUp.verifications.sendPhoneCode()
+      if (sendErr) {
+        logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
+          failure_reason: extractErrorMessage(sendErr),
+          metadata: { auth_surface: 'custom_otp', step: type === 'email' ? 'signUp_sendEmailCode' : 'signUp_sendPhoneCode', contactType: type } })
+        return { ok: false, message: extractErrorMessage(sendErr) }
+      }
+      logAuthStep({ event_type: 'otp_sent', outcome: 'success',
+        metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: type, flowType: 'signup' } })
+      flowRef.current = 'signup'
+      return { ok: true, flow: 'signup' }
+    }
+
+    if (signUp.isTransferable) {
+      // Matching user exists — transfer the attempt to a sign-in.
+      logAuthStep({ event_type: 'sign_in', outcome: 'success',
+        metadata: { auth_surface: 'custom_otp', step: 'signUp_create_transferable', contactType: type } })
+      const { error: transferErr } = await signIn.create({ transfer: true })
+      if (transferErr) {
+        logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
+          failure_reason: extractErrorMessage(transferErr),
+          metadata: { auth_surface: 'custom_otp', step: 'signIn_transfer', contactType: type } })
+        return { ok: false, message: extractErrorMessage(transferErr) }
+      }
+      // The transferred signIn already carries the identifier — send bare.
+      const { error: sendErr } =
+        type === 'email' ? await signIn.emailCode.sendCode() : await signIn.phoneCode.sendCode()
+      if (sendErr) {
+        logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
+          failure_reason: extractErrorMessage(sendErr),
+          metadata: { auth_surface: 'custom_otp', step: 'signIn_sendCode_after_transfer', contactType: type } })
+        return { ok: false, message: extractErrorMessage(sendErr) }
+      }
       logAuthStep({ event_type: 'otp_sent', outcome: 'success',
         metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: type, flowType: 'signin' } })
       flowRef.current = 'signin'
       return { ok: true, flow: 'signin' }
     }
 
-    // sendCode failed for any reason — attempt sign-up.
-    const { error: signUpErr } =
-      type === 'email'
-        ? await signUp.create({ emailAddress: value })
-        : await signUp.create({ phoneNumber: value })
-    if (signUpErr) {
-      logAuthStep({ event_type: 'sign_up', outcome: 'failure',
-        failure_reason: extractErrorMessage(signUpErr),
-        metadata: { auth_surface: 'custom_otp', step: 'signUp_create', contactType: type } })
-      return { ok: false, message: extractErrorMessage(signUpErr) }
-    }
-    const { error: sendErr } =
-      type === 'email'
-        ? await signUp.verifications.sendEmailCode()
-        : await signUp.verifications.sendPhoneCode()
-    if (sendErr) {
-      logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
-        failure_reason: extractErrorMessage(sendErr),
-        metadata: { auth_surface: 'custom_otp', step: type === 'email' ? 'signUp_sendEmailCode' : 'signUp_sendPhoneCode', contactType: type } })
-      return { ok: false, message: extractErrorMessage(sendErr) }
-    }
-    logAuthStep({ event_type: 'otp_sent', outcome: 'success',
-      metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: type, flowType: 'signup' } })
-    flowRef.current = 'signup'
-    return { ok: true, flow: 'signup' }
+    // Create failed and the attempt is not transferable — surfaced as a
+    // retryable-by-resubmit error (rate limit, invalid identifier, network).
+    logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+      failure_reason: extractErrorMessage(createErr),
+      metadata: { auth_surface: 'custom_otp', step: 'signUp_create', contactType: type } })
+    return { ok: false, message: extractErrorMessage(createErr) }
   }, [signIn, signUp])
 
   const verifyCode = useCallback(async (contact: AuthFlowContact, code: string): Promise<VerifyCodeResult> => {

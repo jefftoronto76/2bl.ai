@@ -614,7 +614,20 @@ await signUp.verifications.verifyPhoneCode({ code })    // phone
 await signUp.finalize({ navigate: () => {} })           // activate session
 ```
 
-**New-vs-existing user detection:** `useAuthFlow` uses a success-check approach — no error-code enumeration. `signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` is attempted first; if it succeeds (`r.error` is null), the sign-in path continues. If it fails for **any** reason (returned error or thrown), `signUp.create()` is attempted instead. The only terminal error state is when both the sign-in sendCode and the sign-up create both fail — at which point the sign-up error is shown to the user.
+**New-vs-existing user detection:** uses Clerk's documented **transferable**
+pattern (implemented in `useAuthFlowAdapter`, `services/auth/providers/clerk/client.ts`).
+`signUp.create({ emailAddress | phoneNumber })` is attempted first. If it
+succeeds → genuine sign-up (`signUp.verifications.send*Code()`). If it fails
+and `signUp.isTransferable` is true (matching user exists) → the attempt is
+transferred to a sign-in via `signIn.create({ transfer: true })`, then
+`signIn.emailCode.sendCode()` / `phoneCode.sendCode()` **called bare** (the
+transferred signIn already carries the identifier). If create fails and the
+attempt is NOT transferable (rate limit, invalid identifier, network), the
+error is surfaced to the user — a transient failure is never misread as "new
+user" (the failure mode of the old signIn-first heuristic, replaced 2026-06-11).
+Because `signUp.create()` now runs for every attempt, the `#clerk-captcha` div
+must be present for sign-ins as well — `CaptchaSlot` renders unconditionally in
+the MagicLinkCard form.
 
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 

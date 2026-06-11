@@ -251,6 +251,38 @@ card surfaces — e.g. SaveChatCTA / claim flows that mount it):
    `sendPhone_outer_catch` row in auth_events) — gate still runs BEFORE any
    provider call.
 
+## §12 — Detection fix: transferable pattern (BEHAVIOR CHANGE — HIGH ATTENTION)
+
+Change: new-vs-existing detection now follows Clerk's documented pattern —
+`signUp.create()` first; existing user ⇒ `signUp.isTransferable` ⇒
+`signIn.create({ transfer: true })` ⇒ bare `sendCode()`. Transient failures
+(rate limits, network) surface as errors instead of misrouting to "new user".
+Verified against the installed SDK's types (`SignInFutureCreateParams.transfer`,
+`signUp.isTransferable` in @clerk/shared).
+
+Re-run §11 checks 1–4 in full (new email, existing email, new phone, existing
+phone). Then additionally:
+
+1. **auth_events show the new detection steps.** Same query as §11 — for an
+   EXISTING-user sign-in expect (oldest-first): `signUp_create_transferable`
+   (event_type `sign_in`, outcome `success`), then `otp_sent` with
+   `flowType: signin`, then `finalize`. The old `sendCode_returned` /
+   `sendCode_threw` detection rows no longer appear for new attempts.
+2. **New user unchanged:** `otp_sent` `flowType: signup` with NO
+   transferable row before it.
+3. **Captcha now applies to sign-ins too** (signUp.create runs for every
+   attempt): existing user signs in via the card → no captcha-related
+   console errors, flow completes. If Clerk's bot challenge appears
+   (visible widget), it renders inside the card, not broken.
+4. **Transient failure behavior (the fix itself):** trip the rate limit
+   (6+ rapid sends) or kill the network mid-send → inline error shown, and
+   in auth_events a `signUp_create` failure row — crucially NO
+   `otp_sent/flowType: signup` row for an existing user (the old heuristic's
+   misroute). Retry after a minute → correct signin flow.
+5. **Sign-up modal surfaces unaffected:** GateView/LandingNav use the
+   provider's prebuilt modal, not this flow — confirm one modal sign-up
+   still works end-to-end.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
