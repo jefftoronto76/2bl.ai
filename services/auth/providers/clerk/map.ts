@@ -21,13 +21,14 @@ export interface ClerkUserLike {
 }
 
 /**
- * AUTHORIZATION SWAP POINT — the single place `isPlatformAdmin` is resolved.
+ * Provider-metadata admin resolution — CLIENT-SIDE and fallback only.
  *
- * Today this reads Clerk `publicMetadata.role` (behavior-identical to the
- * pre-boundary gates in the platform layout/routes and the admin Composer).
- * The destination is the Supabase `users.role` column — owned by us, not the
- * provider — once Jeff confirms the column exists in Studio (plan commit 15).
- * Flipping it here re-points every gate without touching product code.
+ * As of 2026-06-11 the authoritative server-side resolution is the Supabase
+ * `users.role` column (resolveIsPlatformAdminFromDb in ./server.ts — every
+ * privileged gate goes through it). This publicMetadata read remains for:
+ * (1) the client mapping in useAuthUser — the browser has no service-role DB
+ * path, and client isPlatformAdmin gates display-only surfaces; (2) the loud
+ * server fallback when the users.role lookup itself fails.
  */
 export function resolveIsPlatformAdmin(user: ClerkUserLike): boolean {
   return (user.publicMetadata as Record<string, unknown> | null | undefined)?.role === 'platform_admin'

@@ -6,7 +6,48 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 
 import type { AppSession, AuthUser } from '../../types'
+import { getAdminClient } from '../../supabase-admin'
 import { mapClerkUser } from './map'
+
+/**
+ * AUTHORIZATION IS OURS — server-side isPlatformAdmin comes from the Supabase
+ * `users.role` column, not the provider (flipped 2026-06-11). The provider
+ * authenticates; our database authorizes.
+ *
+ * Resolution: users.role = 'platform_admin' → true; any other role, or no
+ * users row yet → false. If the LOOKUP ITSELF fails (e.g. the column doesn't
+ * exist yet — Studio prerequisite), falls back LOUDLY to the provider
+ * publicMetadata mapping so an admin is never locked out by a missing
+ * migration. The fallback log line is the §15 test-plan check: it must NOT
+ * appear once users.role is confirmed.
+ *
+ * Client-side (`useAuthUser`) still maps from publicMetadata — the browser has
+ * no service-role DB path. Client isPlatformAdmin gates display-only surfaces
+ * (debug pills, greeting); every privileged action is server-gated through
+ * this function.
+ */
+async function resolveIsPlatformAdminFromDb(
+  providerUserId: string,
+  metadataFallback: boolean,
+): Promise<boolean> {
+  try {
+    const supabase = getAdminClient()
+    const { data, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('clerk_id', providerUserId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) return false
+    return (data as { role?: string }).role === 'platform_admin'
+  } catch (err) {
+    console.error(
+      '[auth] users.role lookup failed — falling back to publicMetadata:',
+      err instanceof Error ? err.message : err,
+    )
+    return metadataFallback
+  }
+}
 
 /**
  * Cheap session presence — JWT check only, no Clerk backend call. Use for
@@ -26,7 +67,11 @@ export async function getSession(): Promise<AppSession | null> {
 export async function getCurrentUser(): Promise<AuthUser | null> {
   const user = await currentUser()
   if (!user) return null
-  return mapClerkUser(user)
+  const mapped = mapClerkUser(user)
+  return {
+    ...mapped,
+    isPlatformAdmin: await resolveIsPlatformAdminFromDb(user.id, mapped.isPlatformAdmin),
+  }
 }
 
 /**

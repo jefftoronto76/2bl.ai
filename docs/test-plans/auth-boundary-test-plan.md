@@ -307,6 +307,36 @@ entry + Auth service section).
 2. Sanity: add `import { auth } from '@clerk/nextjs/server'` to any app file
    → lint fails with the Golden Rule message → revert.
 
+## §15 — isPlatformAdmin from users.role (BEHAVIOR CHANGE — gated on Studio)
+
+Change: server-side admin authorization now reads the Supabase `users.role`
+column (`resolveIsPlatformAdminFromDb`); Clerk publicMetadata is only the
+loud fallback (and the client-side display mapping). **Do the Studio
+verification in the Blocking Items section at the top of this file FIRST.**
+
+1. **Column + backfill confirmed** (blocking item) — then redeploy/re-test.
+2. **Admin in via DB role:** `https://<preview>/platform/admin` as your
+   account → tenant list renders, AND Vercel function logs show **no**
+   `[auth] users.role lookup failed` line for the request. Both conditions
+   required — access via the fallback is a missing-migration signal, not a
+   pass.
+3. **Member blocked via DB role:** with a test member account
+   (`SELECT role FROM users WHERE clerk_id = '<test user_... id>';` →
+   `'member'`) → `https://<preview>/platform/admin` redirects to `/admin`;
+   `POST /api/platform/tenants` returns 403.
+4. **DB is authoritative:** flip your test member's row —
+   `UPDATE users SET role = 'platform_admin' WHERE clerk_id = '<test id>';`
+   → that account now passes the platform gates WITHOUT touching Clerk
+   publicMetadata. Flip it back after
+   (`UPDATE users SET role = 'member' WHERE clerk_id = '<test id>';`).
+5. **Client display gates** (admin debug pills in chat, prompt-builder
+   greeting) still key off Clerk publicMetadata — unchanged. Known
+   limitation, documented in CLAUDE.md: they are display-only; privileged
+   actions are all server-gated.
+6. **Member routes unaffected:** one fresh sign-up → members/claim flow
+   still completes (these routes call getCurrentUser, which now does one
+   extra single-row DB read; no behavioral change expected).
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in

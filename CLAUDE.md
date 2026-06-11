@@ -592,10 +592,17 @@ The Clerk adapter (`services/auth/providers/clerk/`): `server.ts` (the
 session/user API + `clerkAuth`/`clerkCurrentUser` re-exports for in-boundary
 helpers), `client.ts` (`useAuthUser`/`useAuthActions`/`useAuthFlowAdapter`),
 `ui.tsx`, `middleware.ts`, `errors.ts` (dual-channel normalization), and
-`map.ts` — `mapClerkUser` + **`resolveIsPlatformAdmin()`, the single
-authorization swap point** (reads Clerk `publicMetadata.role` today; flips to
-the Supabase `users.role` column when confirmed in Studio, without touching
-product code). Unit tests: `map.test.ts`, `authFlowAdapter.test.tsx`.
+`map.ts` (`mapClerkUser` + the publicMetadata `resolveIsPlatformAdmin`).
+**Authorization is ours:** server-side `isPlatformAdmin` is resolved from the
+Supabase `users.role` column (`resolveIsPlatformAdminFromDb` in `server.ts` —
+`'platform_admin'` → true, any other role or no row → false), with a LOUD
+fallback to publicMetadata if the lookup itself fails (e.g. column missing),
+logging `[auth] users.role lookup failed — falling back to publicMetadata`.
+Client-side `useAuthUser().user.isPlatformAdmin` still maps from
+publicMetadata (browser has no service-role DB path) and gates display-only
+surfaces; every privileged action is server-gated. Requires `users.role`
+(text NOT NULL default `'member'`) to exist + the admin row backfilled —
+Jeff's Studio work. Unit tests: `map.test.ts`, `authFlowAdapter.test.tsx`.
 
 | Helper | File | Purpose |
 |--------|------|---------|
