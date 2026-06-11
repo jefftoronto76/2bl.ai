@@ -10,7 +10,7 @@ import React, {
   useState,
   ReactNode,
 } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useAuthUser } from '@/services/auth/client';
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
@@ -165,7 +165,11 @@ export function ChatProvider({
   // shared session below. The reducer's conversation actions remain defined but
   // are no longer dispatched from here (removed in a follow-up commit).
   const [shellState, dispatch] = useReducer(chatReducer, initialState);
-  const { isLoaded, isSignedIn } = useUser();
+  // Boundary hook — passes the provider's isLoaded/isSignedIn tri-state
+  // through verbatim. The recovery effect, wasSignedInRef first-observation
+  // guard, and isMember below all depend on isSignedIn staying undefined
+  // until isLoaded is true.
+  const { isLoaded, isSignedIn } = useAuthUser();
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
   // The conversation engine + state, isolated to this provider (no instanceKey).

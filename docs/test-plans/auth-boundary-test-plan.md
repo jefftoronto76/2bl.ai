@@ -21,6 +21,18 @@ the check on the path-equivalent (e.g. `/heirloom` instead of
 
 (Items land here if a commit hits a problem or needs a decision. Empty = none.)
 
+- **Pre-existing failures inherited from main (NOT caused by this branch —
+  verified on the clean tree):**
+  1. `npx tsc --noEmit` → 1 error in `components/admin/content/BlockCard.test.tsx`
+     (optional `onRename` prop passed to a required prop type).
+  2. `npm test` → 2 failures: `services/chat/ui/v1/registry.test.ts` (an
+     `ACCOUNT_CREATE` marker is registered in `createDefaultRegistry()` but the
+     test still expects only BOOKING/EMAIL/NAME/PHONE — the marker landed on
+     main without a test update) and
+     `components/admin/content/BlockCard.test.tsx` (duplicate-icon click
+     assertion).
+  Decide: fix on main separately, or fold into this branch before merge.
+
 - **§15 — `users.role` column must be confirmed in Supabase Studio before the
   DB-role flip is trusted.** Run in Studio SQL editor:
   `SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'role';`
@@ -176,6 +188,34 @@ greeting render from mapped fields — eyeball them.
    under the assistant reply. As a non-admin member → no pills, ever.
 5. **Prompt-builder greeting:** `https://<preview>/admin/prompt-builder` as
    admin → "Welcome back, <first name>." renders with your first name.
+
+## §10 — chatStore → useAuthUser (HIGH ATTENTION)
+
+Change: the Heirloom conversation store's signed-in gates consume the
+boundary hook. Only `isLoaded`/`isSignedIn` are read; the tri-state passes
+through verbatim. Everything below is existing behavior that must still work
+exactly:
+
+1. **Signed-in DB recovery:** as a signed-in member with at least one saved
+   conversation, open `https://<preview>/heirloom`, open the chat → your most
+   recent conversation hydrates (when its DB `updated_at` is newer than any
+   local buffer). The "Recent" sidebar section lists your sessions; clicking
+   one loads it; the active one is highlighted.
+2. **Anonymous unaffected:** private window → chat works, localStorage-only,
+   no Recent section.
+3. **Sign-in transition claims sessions:** start a conversation anonymously
+   (≥1 full turn), then sign in from the chat (gate or header) → after
+   sign-in, in Studio:
+   `SELECT id, user_id, updated_at FROM chat_sessions ORDER BY updated_at DESC LIMIT 3;`
+   → the anonymous session you just created now has your `user_id` (non-null).
+4. **First-observation guard (no spurious claim):** hard-refresh while
+   ALREADY signed in → no duplicate claim calls in the network tab
+   (`/api/sessions/<id>/claim` should NOT fire on a plain reload).
+5. **Exit warning:** mid-stream (while Sage is typing), try closing the tab →
+   browser "leave site?" dialog appears. After the turn completes and with no
+   conversation, no dialog.
+6. **isMember gates:** signed in → member-only UI (e.g. SaveChatCTA absence /
+   presence rules) behaves as before sign-in vs after.
 
 ## Static checks (every commit)
 
