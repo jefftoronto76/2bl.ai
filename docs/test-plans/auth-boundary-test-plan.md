@@ -110,6 +110,28 @@ boundary's `getSession()` (JWT-only — same cost as the old bare `auth()`).
    (mint one at `https://<preview>/admin` → Invites) → gate bypassed without
    signing in.
 
+## §7 — Member sync + claim → getCurrentUser() [regression-only]
+
+Change: `app/api/members/sync` and `app/api/heirloom/members/claim` read
+identity from the boundary's `getCurrentUser()` (normalized AuthUser) instead
+of raw `currentUser()`. Same fields, same writes.
+
+1. **Fresh sign-up sync:** in a private window on `https://<preview>/heirloom`,
+   complete a brand-new sign-up (email or phone OTP) **with a name**. Then in
+   Studio:
+   `SELECT clerk_id, name, email, phone FROM users ORDER BY created_at DESC LIMIT 1;`
+   → the new row has the contact you signed up with and the name you typed.
+   `SELECT clerk_id, name, email, phone, status FROM members ORDER BY created_at DESC LIMIT 1;`
+   → matching members row, `status = 'pending'` (claim path) with the same
+   name/email/phone.
+2. **Idempotency:** sign out and back in with the same account → repeat the
+   queries → still exactly one members row for that `clerk_id`
+   (`SELECT count(*) FROM members WHERE clerk_id = '<user_id>';` → 1) and its
+   `status` did NOT change.
+3. **Audit row:** `SELECT action, clerk_user_id, outcome FROM audit_events
+   WHERE action = 'member.claim' ORDER BY created_at DESC LIMIT 1;` → row
+   exists for the new sign-up's `user_...` id.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
