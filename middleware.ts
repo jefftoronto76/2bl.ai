@@ -1,4 +1,8 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+// Auth Golden Rule: middleware consumes the boundary's edge-safe entry point
+// (@/services/auth/middleware), never the provider directly. NOTE: this file
+// sits outside next lint's default directories, so the no-restricted-imports
+// rule does not police it — keep it provider-free by review.
+import { createAuthMiddleware, createRouteMatcher } from '@/services/auth/middleware'
 import { NextResponse } from 'next/server'
 
 const isAdminRoute = createRouteMatcher(['/admin(.*)'])
@@ -6,7 +10,7 @@ const isAdminRoute = createRouteMatcher(['/admin(.*)'])
 const SBL_HOSTS = new Set(['2bl.ai', 'www.2bl.ai'])
 const HEIRLOOM_HOSTS = new Set(['heirloom.2bl.ai'])
 
-export default clerkMiddleware(async (auth, req) => {
+export default createAuthMiddleware(async (auth, req) => {
   // ─── Correlation ID ───
   // Generated once per request at the edge; propagated on every response path so
   // API routes and audit log writes can stitch events from the same request together.
@@ -78,7 +82,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
-  // ─── Clerk auth (unchanged) ───
+  // ─── Auth protection (provider-backed via the boundary; unchanged) ───
   if (isAdminRoute(req)) {
     await auth.protect()
   }
@@ -102,6 +106,8 @@ export default clerkMiddleware(async (auth, req) => {
   return NextResponse.next({ request: { headers: passthroughHeaders } })
 })
 
+// The matcher MUST stay a literal array in this file — Next.js statically
+// analyzes middleware config and cannot evaluate an imported constant.
 export const config = {
   matcher: [
     // Skip Next.js internals and static files

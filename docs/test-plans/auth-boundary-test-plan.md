@@ -53,6 +53,27 @@ Change: `app/layout.tsx` imports `AuthProvider` from `@/services/auth/ui`
    (SSR session hydration — proves the provider re-export kept SSR auth state).
 4. `https://<preview>/admin` → loads for your admin account.
 
+## §4 — Middleware via the boundary [regression-only]
+
+Change: `middleware.ts` imports `createAuthMiddleware`/`createRouteMatcher`
+from `@/services/auth/middleware` (passthrough wrapper — the provider's
+middleware still runs outermost). Handler body and matcher unchanged.
+
+1. **Admin protection:** open `https://<preview>/admin` in a private window
+   (signed out) → redirected to sign-in, NOT a 500/404.
+2. **Domain rewrites:** `https://<preview>/secondbrainlabs` renders the SBL
+   storefront; `https://<preview>/heirloom` renders Heirloom. (On production
+   domains post-merge: `2bl.ai` and `heirloom.2bl.ai` roots.)
+3. **Admin palette:** `https://<preview>/admin` (signed in) shows the light
+   Mantine admin, not dark inkwell text-on-white.
+4. **Correlation IDs:** in Vercel function logs, confirm any API request row
+   still carries a `correlation_id` (or check a fresh `auth_events` /
+   `audit_events` row in Studio:
+   `SELECT correlation_id FROM auth_events ORDER BY created_at DESC LIMIT 5;`
+   — non-null values prove header propagation survived the wrapper).
+5. **Handshake:** complete one full sign-in — no redirect loop (proves the
+   provider handshake routes still work under the wrapper).
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
