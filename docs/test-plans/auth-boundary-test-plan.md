@@ -337,6 +337,51 @@ verification in the Blocking Items section at the top of this file FIRST.**
    still completes (these routes call getCurrentUser, which now does one
    extra single-row DB read; no behavioral change expected).
 
+## E2E — Full pre-merge suite (run LAST, after all sections pass)
+
+Adapted from the spec's §6 checklist. One uninterrupted pass on the preview:
+
+1. Private window → `https://<preview>/heirloom` → chat → gate → sign up as a
+   brand-new user (email OTP, with name) → success.
+2. Studio: new `users` row (name/email correct) + new `members` row
+   (`status='pending'`, same contact) + the anonymous chat session claimed
+   (`chat_sessions.user_id` set) + `auth_events` rows for the full flow with
+   `auth_surface='custom_otp'`.
+3. Sign out (ChatHeader) → sign back in with the same email → signin flow
+   (transferable path) → conversation recovers from DB.
+4. **Hard refresh** with the active session → still signed in (SSR
+   hydration).
+5. Repeat 1–4 once with a phone number (SMS OTP).
+6. Your admin account: `https://<preview>/admin` (tenant admin, host-derived
+   name) and `https://<preview>/platform/admin` (platform admin via
+   users.role — no fallback log line).
+7. jefflougheed.ca surfaces unaffected: `https://<preview>/` renders, Sage
+   chat streams, booking cards render.
+8. `npm run lint` clean · `npm test` (only the 2 pre-existing main failures)
+   · `npx tsc --noEmit` (only the 1 pre-existing main error) · build green.
+
+## Commit map (this branch)
+
+| Commit | § | Change |
+|---|---|---|
+| `ab4e957` | — | docs: auth-service-rebuild spec (markdown conversion) |
+| `c2895c8` | — | docs: dual error channel + known limitations (CLAUDE.md + skills) |
+| `cee02b6` | — | boundary scaffold (types, errors, providers/clerk, entry points) |
+| `3387a74` | — | ESLint Golden Rule at warn |
+| `31dc45e` | §3 | root layout → AuthProvider |
+| `9cd9a32` | §4 | middleware → boundary edge entry point |
+| `44ef8c9` | §5 | UserButton ×2 + SBL sign-in → boundary UI |
+| `d84df3d` | §6 | transcribe + heirloom gate → getSession() |
+| `5f0a072` | §7 | members sync/claim → getCurrentUser() |
+| `b4bf782` | §8 | platform gates → isPlatformAdmin |
+| `3032fc0` | §9 | five client components → boundary hooks |
+| `a0b7791` | §10 | chatStore → useAuthUser |
+| `196d94b` | §11 | useAuthFlow → stage machine over adapter |
+| `8145110` | §12 | transferable detection fix |
+| `5164e49` | §13 | in-boundary rewire |
+| `81f7d15` | §14 | lint → error; CLAUDE.md boundary docs |
+| `841b897` | §15 | isPlatformAdmin from users.role |
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
