@@ -17,6 +17,7 @@ export interface ClerkUserLike {
   phoneNumbers?: Array<{ phoneNumber: string }> | null
   firstName?: string | null
   lastName?: string | null
+  imageUrl?: string | null
 }
 
 /**
@@ -40,6 +41,7 @@ export function mapClerkUser(user: ClerkUserLike): AuthUser {
     email: user.emailAddresses?.[0]?.emailAddress ?? undefined,
     phone: user.phoneNumbers?.[0]?.phoneNumber ?? undefined,
     name: name || undefined,
+    imageUrl: user.imageUrl ?? undefined,
     isPlatformAdmin: resolveIsPlatformAdmin(user),
   }
 }

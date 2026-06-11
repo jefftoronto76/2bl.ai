@@ -30,6 +30,8 @@ export interface AuthUser {
   email?: string
   phone?: string
   name?: string
+  /** Provider-hosted avatar URL, when the provider supplies one. */
+  imageUrl?: string
   isPlatformAdmin: boolean
 }
 
@@ -51,7 +53,7 @@ export interface AuthActions {
   signOut: () => Promise<void>
   openSignIn: (opts?: { appearance?: AuthAppearance }) => void
   openSignUp: (opts?: { appearance?: AuthAppearance }) => void
-  openUserProfile: () => void
+  openUserProfile: (opts?: { appearance?: AuthAppearance }) => void
 }
 
 /**

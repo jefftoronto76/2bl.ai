@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Bot } from 'lucide-react';
-import { useUser } from '@clerk/nextjs';
+import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
@@ -94,10 +94,11 @@ function TypingIndicator() {
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { claimCurrentSession } = useChatStore();
-  const { user } = useUser();
+  const { user } = useAuthUser();
 
-  // Gate strictly on Clerk publicMetadata — never expose debug view to members.
-  const isAdmin = user?.publicMetadata?.role === 'platform_admin';
+  // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
+  // services/auth) — never expose debug view to members.
+  const isAdmin = user?.isPlatformAdmin === true;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

@@ -13,7 +13,7 @@ import {
   IconCheck,
   IconPencil,
 } from '@tabler/icons-react'
-import { useUser } from '@clerk/nextjs'
+import { useAuthUser } from '@/services/auth/client'
 import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
 import { Text } from '@/components/admin/primitives/Text'
@@ -95,8 +95,8 @@ function formatTime(ts: number): string {
 
 export default function PromptBuilderPage() {
   const ownerId = useAdminUserId()
-  const { user: clerkUser } = useUser()
-  const isPlatformAdmin = (clerkUser?.publicMetadata as Record<string, unknown>)?.role === 'platform_admin'
+  const { user: authUser } = useAuthUser()
+  const isPlatformAdmin = authUser?.isPlatformAdmin === true
 
   // Topics from Supabase
   const [allTopics, setAllTopics] = useState<Topic[]>([])
@@ -987,7 +987,7 @@ export default function PromptBuilderPage() {
                   marginBottom: '20px',
                 }}
               >
-                Welcome back{clerkUser?.firstName ? `, ${clerkUser.firstName}` : ''}.
+                Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
               </p>
               <Stack gap="xs" style={{ width: '100%', maxWidth: 400, marginBottom: 24 }}>
                 <Tooltip

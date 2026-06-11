@@ -42,6 +42,7 @@ export function useAuthActions(): AuthActions {
       clerk.openSignIn({ appearance: opts?.appearance } as Parameters<typeof clerk.openSignIn>[0]),
     openSignUp: (opts?: { appearance?: AuthAppearance }) =>
       clerk.openSignUp({ appearance: opts?.appearance } as Parameters<typeof clerk.openSignUp>[0]),
-    openUserProfile: () => clerk.openUserProfile(),
+    openUserProfile: (opts?: { appearance?: AuthAppearance }) =>
+      clerk.openUserProfile({ appearance: opts?.appearance } as Parameters<typeof clerk.openUserProfile>[0]),
   }
 }

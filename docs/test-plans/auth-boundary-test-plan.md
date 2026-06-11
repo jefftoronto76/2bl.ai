@@ -153,6 +153,30 @@ Change: `(platform)/layout.tsx`, `platform/admin/page.tsx`, and both
    `SELECT action, clerk_user_id, outcome FROM audit_events WHERE action IN ('tenant.create','tenant.delete') ORDER BY created_at DESC LIMIT 2;`
    → both rows carry your `user_...` id.
 
+## §9 — Client components → useAuthUser / useAuthActions
+
+Change: `MessageList`, `prompt-builder`, `LandingNav`, `GateView`,
+`ChatHeader` consume the boundary hooks. `AuthUser` gained `imageUrl`;
+ChatHeader's display fields map `fullName→name`,
+`primaryEmailAddress→email`. Mostly regression, but the account menu and
+greeting render from mapped fields — eyeball them.
+
+1. **Landing nav Sign Up:** signed out on `https://<preview>/heirloom` →
+   "Sign Up" button visible → click → provider modal opens **with Heirloom
+   theming** (dark card, gold accent — not default white).
+2. **Gate sign-up:** open chat while gated → "Claim a free membership" →
+   same themed modal; complete a sign-up → gate clears.
+3. **ChatHeader account menu (signed in):** open the chat → avatar/initials
+   button → dropdown shows your **name** and **email** correctly (these now
+   come from the mapped AuthUser — wrong/blank values here mean a mapping
+   bug). "Manage account" opens the themed profile modal. "Sign out" works,
+   chat returns to signed-out state.
+4. **Admin debug pills:** as platform_admin, in Heirloom chat send a message
+   that triggers a marker (e.g. tell Sage your email) → grey `debug` pill
+   under the assistant reply. As a non-admin member → no pills, ever.
+5. **Prompt-builder greeting:** `https://<preview>/admin/prompt-builder` as
+   admin → "Welcome back, <first name>." renders with your first name.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
