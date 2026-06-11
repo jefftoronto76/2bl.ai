@@ -217,6 +217,40 @@ exactly:
 6. **isMember gates:** signed in → member-only UI (e.g. SaveChatCTA absence /
    presence rules) behaves as before sign-in vs after.
 
+## §11 — useAuthFlow refactor onto the adapter (HIGHEST ATTENTION)
+
+Change: all Clerk OTP mechanics moved into `useAuthFlowAdapter`
+(providers/clerk/client.ts); `useAuthFlow` is now a provider-agnostic stage
+machine with an unchanged public API; MagicLinkCard renders `CaptchaSlot`
+(same `#clerk-captcha` div). Detection heuristic UNCHANGED in this commit.
+9 new unit tests cover both error channels and terminal/retryable mapping.
+
+Run each of these end-to-end on `https://<preview>/heirloom` (the MagicLink
+card surfaces — e.g. SaveChatCTA / claim flows that mount it):
+
+1. **New user, email OTP:** enter a never-used email + name → code arrives →
+   enter code → success stage → signed in. Studio:
+   `SELECT event_type, outcome, failure_reason, metadata->>'step' AS step, metadata->>'flowType' AS flow FROM auth_events WHERE metadata->>'auth_surface' = 'custom_otp' ORDER BY created_at DESC LIMIT 6;`
+   → expect (newest-first) `finalize/signup`, `otp_sent/signup`, and a
+   `sendCode_returned` or `sendCode_threw` failure row for the sign-in
+   attempt — **identical step strings to pre-refactor rows.**
+2. **Existing user, email OTP:** repeat with the same email → flow goes
+   `otp_sent/signin` → `finalize/signin` (no signUp_create row).
+3. **New user, phone OTP:** same as (1) with a fresh phone number → SMS
+   code → success. Check the same query shows `contactType: phone` rows.
+4. **Existing user, phone OTP:** repeat → signin path.
+5. **Wrong code:** enter a wrong 6-digit code → inline error, input stays on
+   the code screen (retryable — NOT the terminal error state) → correct code
+   then succeeds.
+6. **Resend:** on the code screen, request a new code → second `otp_sent`
+   row → new code works.
+7. **Captcha present:** view-source/inspect on the card's idle stage →
+   `<div id="clerk-captcha">` exists (sign-up silently fails without it).
+8. **Rate-limit gate:** submit the send form 6+ times rapidly → the
+   validation gate's error shows inline (`sendEmail_outer_catch` /
+   `sendPhone_outer_catch` row in auth_events) — gate still runs BEFORE any
+   provider call.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
