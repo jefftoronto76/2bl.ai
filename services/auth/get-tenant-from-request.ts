@@ -54,6 +54,26 @@ function extractRootDomain(host: string | null): string | null {
  * Returns null if the host cannot be mapped — the caller should handle the
  * fallback (e.g. DEFAULT_SYSTEM_PROMPT).
  */
+/**
+ * Preview/dev tenant fallback. Vercel preview hosts (*.vercel.app) and local
+ * dev hosts never match tenants.domain, which made every tenant-resolved
+ * surface (session create, tenant-scoped chat) untestable on preview — the
+ * §11/§12 blocker in docs/test-plans/auth-boundary-test-plan.md.
+ *
+ * Honored ONLY when both hold:
+ *  - PREVIEW_TENANT_ID is set (configure it in Vercel's Preview environment
+ *    ONLY — never in Production), and
+ *  - VERCEL_ENV !== 'production' (belt-and-braces: even a misconfigured
+ *    Production env var is ignored).
+ * A real tenants.domain match always wins over the fallback.
+ */
+function previewTenantFallback(): string | null {
+  const id = process.env.PREVIEW_TENANT_ID
+  if (!id) return null
+  if (process.env.VERCEL_ENV === 'production') return null
+  return id
+}
+
 export async function getTenantFromRequest(req: Request): Promise<string | null> {
   const host = req.headers.get('host')
   const fullHost = normalizeHost(host)
@@ -67,6 +87,11 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
     new Set([fullHost, rootDomain].filter((d): d is string => Boolean(d))),
   )
   if (candidates.length === 0) {
+    const fallback = previewTenantFallback()
+    if (fallback) {
+      console.log('[getTenantFromRequest] no resolvable host — using PREVIEW_TENANT_ID fallback:', fallback)
+      return fallback
+    }
     console.log('[getTenantFromRequest] no resolvable host — returning null')
     return null
   }
@@ -84,6 +109,11 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
   }
 
   if (!data || data.length === 0) {
+    const fallback = previewTenantFallback()
+    if (fallback) {
+      console.log('[getTenantFromRequest] no tenant matched candidates:', candidates, '— using PREVIEW_TENANT_ID fallback:', fallback)
+      return fallback
+    }
     console.log('[getTenantFromRequest] no tenant matched candidates:', candidates)
     return null
   }
@@ -95,6 +125,11 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
     null
 
   if (!matched) {
+    const fallback = previewTenantFallback()
+    if (fallback) {
+      console.log('[getTenantFromRequest] no tenant matched candidates:', candidates, '— using PREVIEW_TENANT_ID fallback:', fallback)
+      return fallback
+    }
     console.log('[getTenantFromRequest] no tenant matched candidates:', candidates)
     return null
   }

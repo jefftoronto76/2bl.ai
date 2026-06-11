@@ -21,6 +21,30 @@ the check on the path-equivalent (e.g. `/heirloom` instead of
 
 (Items land here if a commit hits a problem or needs a decision. Empty = none.)
 
+- **DO NOT run the §11/§12 verification on production (heirloom.2bl.ai) before
+  merge.** Production runs main, which still has the OLD signIn-first
+  detection — `signUp_create_transferable` cannot appear there, and old-style
+  `sendCode_returned` / signup-flow rows on production are main's heuristic,
+  NOT a bug in this branch. The §12 query is only meaningful against the
+  preview deployment of this branch.
+- **§11/§12 preview blocker FIXED — one Vercel env var needed (Jeff).**
+  Preview hosts (`*.vercel.app`) never match `tenants.domain`, so
+  `POST /api/sessions` 400'd ("Unable to resolve tenant for this domain") and
+  the OTP E2E was untestable. `getTenantFromRequest` now supports a
+  `PREVIEW_TENANT_ID` fallback — honored only outside production
+  (`VERCEL_ENV !== 'production'` guard; a real domain match always wins;
+  unit-tested in `services/auth/get-tenant-from-request.test.ts`). To arm it:
+  Vercel → Project → Settings → Environment Variables → add
+  `PREVIEW_TENANT_ID` = `20767f1d-1148-4e43-ab73-f6da88f0ac56` (Heirloom),
+  **Preview environment ONLY**, then redeploy this branch. After that, run
+  §11 + §12 on `https://<preview>/heirloom` exactly as written — including the
+  existing-user sign-in check: the auth_events query must show
+  `signUp_create_transferable` + `otp_sent/flowType: signin` for the existing
+  user; an `otp_sent/flowType: signup` row for an existing user = detection
+  bug, stop before PR.
+- **PR is NOT drafted yet** — gated on the §11/§12 preview E2E passing
+  (Jeff's call after the env var + manual flow above).
+
 - **Pre-existing failures inherited from main (NOT caused by this branch —
   verified on the clean tree):**
   1. `npx tsc --noEmit` → 1 error in `components/admin/content/BlockCard.test.tsx`
