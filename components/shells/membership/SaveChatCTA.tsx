@@ -28,16 +28,8 @@ export function SaveChatCTA() {
 
   const flow = useAuthFlow();
 
-  // Extract visitor name from a [NAME: …] marker in assistant messages, for
-  // pre-fill. Scanned once at component mount — no effect needed.
-  const visitorName =
-    messages
-      .filter((m) => m.role === 'assistant')
-      .map((m) => { const match = /\[NAME:\s*([^\]]+)\]/i.exec(m.content); return match?.[1]?.trim() ?? null; })
-      .find(Boolean) ?? '';
-
   const [open, setOpen] = useState(false);
-  const [nameValue, setNameValue] = useState(visitorName);
+  const [nameValue, setNameValue] = useState('');
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   const [inputValue, setInputValue] = useState('');
   const [otpValue, setOtpValue] = useState('');
@@ -75,6 +67,22 @@ export function SaveChatCTA() {
   if (messages.length < 4 || isMember) return null;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
+
+  function handleOpen() {
+    // Scan assistant messages for the first [NAME: …] marker at the moment the
+    // modal opens — same source as MessageList, correct at click time regardless
+    // of when in the conversation the name was captured.
+    for (const msg of messages) {
+      if (msg.role !== 'assistant') continue;
+      const start = msg.content.indexOf('[NAME:');
+      if (start === -1) continue;
+      const end = msg.content.indexOf(']', start + 6);
+      if (end === -1) continue;
+      const name = msg.content.slice(start + 6, end).trim();
+      if (name) { setNameValue(name); break; }
+    }
+    setOpen(true);
+  }
 
   function handleClose() {
     setOpen(false);
@@ -316,7 +324,7 @@ export function SaveChatCTA() {
       <div className="max-w-2xl mx-auto px-4 mt-3">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={handleOpen}
           aria-label="Save this chat to your book"
           className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
           style={{
