@@ -283,6 +283,20 @@ phone). Then additionally:
    provider's prebuilt modal, not this flow — confirm one modal sign-up
    still works end-to-end.
 
+## §13 — In-boundary rewire [regression-only]
+
+Change: `get-auth-context`, `get-current-user-id`, `sync-user`,
+`ensure-clerk-user` import `clerkAuth`/`clerkCurrentUser` from
+`providers/clerk/server` instead of `@clerk/nextjs/server` (pure aliasing —
+identical runtime). `services/auth/providers/clerk/**` is now the only Clerk
+import site in the codebase.
+
+1. `https://<preview>/admin` (signed in) → loads with correct tenant name in
+   the sidebar (getAuthContext path).
+2. Heirloom Recent sidebar still lists sessions when signed in
+   (getCurrentUserId via GET /api/sessions).
+3. One sign-in to `/admin` → no `[get-auth-context]` errors in Vercel logs.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in

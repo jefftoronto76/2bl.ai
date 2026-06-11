@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server'
+import { clerkAuth as auth } from './providers/clerk/server'
 import { getAdminClient } from './supabase-admin'
 
 /**
