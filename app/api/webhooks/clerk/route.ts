@@ -5,6 +5,7 @@ import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId } from '@/services/auth/findUserByClerkId'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 import { syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
 
 // Clerk event types we care about → auth_events rows
@@ -76,10 +77,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   const name =
     [data.first_name, data.last_name].filter(Boolean).join(' ') || null
 
-  // Log to auth_events for event types that have a mapped auth event type
+  // Log to auth_events for event types that have a mapped auth event type.
+  // Tenant attribution resolves from the webhook endpoint's host (the domain
+  // the endpoint is registered under in the Clerk dashboard); null when the
+  // host doesn't map to a tenants.domain row.
   if (mappedType) {
     await logAuthEvent({
       event_type: mappedType,
+      tenant_id: await getTenantFromRequest(req),
       clerk_user_id: clerkUserId,
       email,
       outcome: 'success',

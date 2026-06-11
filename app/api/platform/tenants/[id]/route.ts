@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/services/auth'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 // PATCH/DELETE for a single tenant. Same gate as POST /api/platform/tenants —
 // platform_admin only, re-checked here so these privileged service-role writes
@@ -46,6 +47,9 @@ export async function PATCH(req: Request, context: RouteContext) {
 
   void logEvent({
     action: AuditAction.TENANT_UPDATE,
+    // Host-resolved attribution per 2026-06-11 directive; stays null when the
+    // platform host doesn't map to a tenants.domain row (platform-level event).
+    tenant_id: await getTenantFromRequest(req),
     target_type: 'tenant',
     target_id: id,
     correlation_id: req.headers.get('x-correlation-id'),
@@ -72,6 +76,9 @@ export async function DELETE(req: Request, context: RouteContext) {
 
   void logEvent({
     action: AuditAction.TENANT_DELETE,
+    // Host-resolved attribution per 2026-06-11 directive; stays null when the
+    // platform host doesn't map to a tenants.domain row (platform-level event).
+    tenant_id: await getTenantFromRequest(req),
     target_type: 'tenant',
     target_id: id,
     correlation_id: req.headers.get('x-correlation-id'),

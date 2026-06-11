@@ -406,6 +406,34 @@ Adapted from the spec's §6 checklist. One uninterrupted pass on the preview:
 | `81f7d15` | §14 | lint → error; CLAUDE.md boundary docs |
 | `841b897` | §15 | isPlatformAdmin from users.role |
 
+## §16 — tenant_id on every auth/audit log write
+
+Change (Jeff directive, 2026-06-11; requires the `auth_events.tenant_id`
+column Jeff added in Studio — log it to DB_CHANGELOG.md per convention):
+every `logAuthEvent` write now stamps `tenant_id` — `/api/auth/log` and the
+Clerk webhook via `getTenantFromRequest(req)`, the `get-auth-context`
+admin_access_failed path via the same host resolution — and the platform
+tenants routes' `logEvent` calls now stamp the host-resolved id too (null
+still possible = platform-level). No function signatures changed; `tenant_id`
+was already a first-class column on both input types.
+
+1. Run one OTP attempt on the Heirloom preview, then:
+   `SELECT created_at, tenant_id, event_type, metadata->>'step' AS step FROM auth_events WHERE metadata->>'auth_surface' = 'custom_otp' ORDER BY created_at DESC LIMIT 5;`
+   → fresh rows carry `tenant_id = '20767f1d-1148-4e43-ab73-f6da88f0ac56'`
+   (on preview, via the PREVIEW_TENANT_ID fallback; on production post-merge,
+   via the heirloom.2bl.ai domain match).
+2. One Clerk webhook delivery (e.g. a sign-up's `user.created`):
+   `SELECT tenant_id, event_type FROM auth_events WHERE svix_event_id IS NOT NULL ORDER BY created_at DESC LIMIT 3;`
+   → `tenant_id` reflects the webhook endpoint's registered domain (may be
+   null if that domain isn't in `tenants.domain` — expected, not a bug).
+3. Hit `/admin` signed out → newest `admin_access_failed` row carries the
+   host-resolved `tenant_id`.
+4. **Flagged for veto:** the platform tenants routes previously wrote
+   `tenant_id = null` BY DESIGN ("null = platform-level event"). They now
+   stamp the host-resolved id when 2bl.ai maps to a tenants.domain row. If
+   you want the old pure-null convention back for platform events, say so —
+   one-line revert per call site.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in

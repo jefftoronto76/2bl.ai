@@ -742,7 +742,12 @@ Centralised audit and auth-event logging. Server-only. Imported as
 
 `logEvent` is called (with `void`) from every mutating admin API route,
 every platform tenant route, every session route, and the Heirloom
-membership-claim route. `logAuthEvent` is called from
+membership-claim route. **Every `logEvent` / `logAuthEvent` call site passes
+`tenant_id` (2026-06-11):** admin routes from `authCtx.tenant_id`, public/
+anonymous surfaces (including `/api/auth/log`, the Clerk webhook, and the
+`get-auth-context` admin_access_failed path) via host-based
+`getTenantFromRequest` resolution; the platform tenant routes also stamp the
+host-resolved id (null remains possible and still reads as platform-level). `logAuthEvent` is called from
 `services/auth/get-auth-context.ts` (unauthorized-access path) and from
 `app/api/auth/log/route.ts` (client-side step-by-step auth flow events via
 `useAuthFlow`).
@@ -904,8 +909,8 @@ response mapping; the data-access and business logic live in the service.
 | `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
 | `/api/sessions/[id]/claim` | POST | Links an anonymous session to the now-signed-in user. Resolves the user **server-side** from the active Clerk session (`ensureClerkUser`, no client-supplied `user_id` → no IDOR) and stamps `chat_sessions.user_id` (`claimSession`, scoped by `id` + host `tenant_id`). 401 when no Clerk session. **Now client-orphaned** — its only caller (the Heirloom `ContactCard` inline phone/OTP sign-up) was removed; the route is retained, reversible, for a future signed-in flow (account creation is deferred). |
 | `/api/heirloom/members/claim` | POST | Creates a `pending` membership record for the signed-in Clerk user (`claimMembership`). Called by `GateView.handleClaimSuccess` after MagicLinkCard sign-up completes. Idempotent — existing rows (any status) are left unchanged. Returns 401 when no Clerk session, 500 on DB error. |
-| `/api/auth/log` | POST | Client-side auth event logger. Accepts `{ event_type, outcome, failure_reason?, metadata? }`, `await`s `logAuthEvent()` (writing to `auth_events` via service-role client), then returns `{ ok: true }`. Called fire-and-forget from `useAuthFlow` with `keepalive: true` so events survive page navigation. Extracts `ip_address`, `user_agent`, and `correlation_id` from request headers. Returns 400 when `event_type` is missing; 500 on DB error (swallowed at the client). |
-| `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
+| `/api/auth/log` | POST | Client-side auth event logger. Accepts `{ event_type, outcome, failure_reason?, metadata? }`, `await`s `logAuthEvent()` (writing to `auth_events` via service-role client), then returns `{ ok: true }`. Called fire-and-forget from `useAuthFlow` with `keepalive: true` so events survive page navigation. Extracts `ip_address`, `user_agent`, and `correlation_id` from request headers, and stamps `tenant_id` via `getTenantFromRequest(req)` (host-resolved, nullable — 2026-06-11). Returns 400 when `event_type` is missing; 500 on DB error (swallowed at the client). |
+| `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Stamps `tenant_id` via `getTenantFromRequest(req)` — resolves from the domain the webhook endpoint is registered under; nullable (2026-06-11). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
 
 ---
 

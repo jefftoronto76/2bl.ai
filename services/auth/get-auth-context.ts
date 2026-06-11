@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import { getAdminClient } from './supabase-admin'
 import { resolveTenantIdFromHost } from './resolve-tenant-from-host'
 import { logAuthEvent } from '@/services/audit'
+import { getTenantFromRequest } from './get-tenant-from-request'
 import { AuthEventType } from '@/services/audit/types'
 
 export interface AuthContext {
@@ -27,8 +28,13 @@ export async function getAuthContext(): Promise<AuthContext> {
   console.log('[getAuthContext] clerk userId:', clerkId)
   if (!clerkId) {
     const hdrs = await headers()
+    // Host-based tenant attribution — getTenantFromRequest only reads
+    // headers.get('host'), so the next/headers store satisfies its Request
+    // dependency. Nullable when the host doesn't resolve.
+    const failedTenantId = await getTenantFromRequest({ headers: hdrs } as unknown as Request)
     void logAuthEvent({
       event_type: AuthEventType.ADMIN_ACCESS_FAILED,
+      tenant_id: failedTenantId,
       outcome: 'failure',
       failure_reason: 'no_clerk_session',
       correlation_id: hdrs.get('x-correlation-id'),
