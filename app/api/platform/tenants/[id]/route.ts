@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs/server'
+import { getCurrentUser } from '@/services/auth'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -13,12 +13,11 @@ interface RouteContext {
 
 // Returns a denial Response when the caller is not a platform admin, else null.
 async function denyUnlessPlatformAdmin(): Promise<Response | null> {
-  const user = await currentUser()
+  const user = await getCurrentUser()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const role = (user.publicMetadata as Record<string, unknown>)?.role
-  if (role !== 'platform_admin') {
+  if (!user.isPlatformAdmin) {
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
   return null

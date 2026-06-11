@@ -1,6 +1,6 @@
 import { MantineProvider, ColorSchemeScript } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { currentUser } from '@clerk/nextjs/server';
+import { getCurrentUser } from '@/services/auth';
 import { redirect } from 'next/navigation';
 
 import '@mantine/core/styles.css';
@@ -18,15 +18,14 @@ import { PlatformShell } from '@/components/admin/layout/PlatformShell';
 // branded /secondbrainlabs/sign-in page. Redirecting from here lets us route
 // unauthenticated users to that branded page (which also resolves on Vercel
 // preview hosts, where the bare /sign-in alias does not). Role is read from
-// Clerk publicMetadata.role — the same signal the admin Composer already uses.
+// the boundary's AuthUser.isPlatformAdmin (resolved inside services/auth).
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const user = await currentUser();
+  const user = await getCurrentUser();
   if (!user) {
     redirect('/secondbrainlabs/sign-in');
   }
 
-  const role = (user.publicMetadata as Record<string, unknown>)?.role;
-  if (role !== 'platform_admin') {
+  if (!user.isPlatformAdmin) {
     redirect('/admin');
   }
 

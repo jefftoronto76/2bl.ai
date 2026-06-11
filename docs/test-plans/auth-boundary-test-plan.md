@@ -132,6 +132,27 @@ of raw `currentUser()`. Same fields, same writes.
    WHERE action = 'member.claim' ORDER BY created_at DESC LIMIT 1;` → row
    exists for the new sign-up's `user_...` id.
 
+## §8 — Platform-admin gates → AuthUser.isPlatformAdmin [regression-only]
+
+Change: `(platform)/layout.tsx`, `platform/admin/page.tsx`, and both
+`/api/platform/tenants` routes gate on the boundary's
+`user.isPlatformAdmin` (still resolved from Clerk publicMetadata until §15).
+
+1. **Admin in:** as your platform_admin account, open
+   `https://<preview>/platform/admin` → tenant list renders.
+2. **Signed out:** private window → `https://<preview>/platform/admin` →
+   redirected to `/secondbrainlabs/sign-in`.
+3. **Non-admin (if you have a member test account):** sign in with it →
+   `https://<preview>/platform/admin` → redirected to `/admin`.
+4. **API 401:** signed out,
+   `curl -X POST https://<preview>/api/platform/tenants -H 'Content-Type: application/json' -d '{}'`
+   → `401 {"error":"Unauthorized"}`.
+5. **API as admin:** from a signed-in admin browser session (DevTools →
+   copy a request as fetch, or use the platform admin UI) create a throwaway
+   tenant → 201; then delete it via the UI → audit rows:
+   `SELECT action, clerk_user_id, outcome FROM audit_events WHERE action IN ('tenant.create','tenant.delete') ORDER BY created_at DESC LIMIT 2;`
+   → both rows carry your `user_...` id.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
