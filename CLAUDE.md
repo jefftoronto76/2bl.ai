@@ -581,18 +581,26 @@ intended home for cross-cutting auth/DB plumbing.
 
 #### Clerk Core 3 custom OTP (`services/auth/useAuthFlow.ts`)
 
-SDK `@clerk/nextjs@7` (Core 3). All Clerk methods return `{ error: ClerkError | null }` — never throw.
+SDK `@clerk/nextjs@7` (Core 3). All Clerk methods return `{ error: ClerkError | null }`.
+
+**⚠️ Dual error channel (undocumented by Clerk; observed in production, PR #86):**
+`signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` can ALSO **throw**
+on HTTP 4xx responses (e.g. `ClerkAPIResponseError`) in addition to the
+documented `{ error }` return. Every sendCode call site must handle **both**
+channels — wrap in try/catch and normalize the thrown shape alongside the
+returned one. Do not "clean up" the defensive try/catch to match Clerk's docs;
+the docs do not describe the throw path.
+
 Authoritative reference: `.agents/skills/clerk-custom-ui/core-3/custom-sign-in.md` and `custom-sign-up.md`.
 
-**Sign-in OTP (existing user)**
+**Sign-in OTP (existing user)** — no `signIn.create()`; the identifier is passed to `sendCode` (PR #85)
 ```typescript
 const { signIn } = useSignIn()
-await signIn.create({ identifier: email | phone })
-await signIn.emailCode.sendCode()              // email
-await signIn.phoneCode.sendCode()              // phone
-await signIn.emailCode.verifyCode({ code })    // email
-await signIn.phoneCode.verifyCode({ code })    // phone
-await signIn.finalize({ navigate: () => {} })  // activate session (no-op navigate for embedded)
+await signIn.emailCode.sendCode({ emailAddress })   // email
+await signIn.phoneCode.sendCode({ phoneNumber })    // phone
+await signIn.emailCode.verifyCode({ code })         // email
+await signIn.phoneCode.verifyCode({ code })         // phone
+await signIn.finalize({ navigate: () => {} })       // activate session (no-op navigate for embedded)
 ```
 
 **Sign-up OTP (new user)** — note `.verifications.` namespace (NOT directly on `signUp`)
@@ -611,6 +619,18 @@ await signUp.finalize({ navigate: () => {} })           // activate session
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 
 **`middleware.ts` must include** `'/__clerk/(.*)'` in its matcher array (verification callback paths).
+
+**Known limitations (deliberate; revisit triggers noted):**
+- `finalize({ navigate: () => {} })` no-op skips two documented `navigate`
+  responsibilities: session-task handling (`session.currentTask`) and Safari ITP
+  URL decoration (`decorateUrl`). Not an issue while MFA and session tasks are
+  disabled in the Clerk dashboard — revisit if either is enabled (verified users
+  would otherwise appear signed-out when a session task is pending).
+- `needs_client_trust` / `needs_second_factor` sign-in statuses are unhandled
+  (they fall into the generic `status_not_complete` error path). Not triggerable
+  by pure OTP flows — revisit if MFA is ever enabled.
+- Next.js 16 renames `middleware.ts` → `proxy.ts`. Not relevant on Next.js 15;
+  the auth boundary isolates the rename to two files when the upgrade happens.
 
 ### Prompt service (`services/prompt/`)
 
