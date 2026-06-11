@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs/server'
+import { clerkCurrentUser as currentUser } from './providers/clerk/server'
 import { getAdminClient } from './supabase-admin'
 
 /**

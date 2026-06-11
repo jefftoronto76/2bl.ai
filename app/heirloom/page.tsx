@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server';
+import { getSession } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
 import { validateInvite } from '@/services/invites';
@@ -11,7 +11,7 @@ export default async function HeirloomPage({
 }: {
   searchParams: Promise<{ invite?: string }>;
 }) {
-  const { userId: clerkId } = await auth();
+  const session = await getSession();
   const params = await searchParams;
   const inviteToken = params.invite;
 
@@ -29,13 +29,15 @@ export default async function HeirloomPage({
   const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
   const gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
 
-  // Check if the signed-in user is an active member.
+  // Check if the signed-in user is an active member. members.clerk_id stores
+  // the provider subject id — providerUserId maps to it 1:1 today. Moving this
+  // query behind a service helper (isActiveMember) is a flagged follow-up.
   let isAuthorized = false;
-  if (clerkId) {
+  if (session) {
     const { data: member } = await supabase
       .from('members')
       .select('id')
-      .eq('clerk_id', clerkId)
+      .eq('clerk_id', session.providerUserId)
       .eq('tenant_id', HEIRLOOM_TENANT_ID)
       .eq('status', 'active')
       .maybeSingle();

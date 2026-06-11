@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { useClerk, useUser } from '@clerk/nextjs';
+import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import { ChevronDown, CircleUser as UserCircle, LogOut, Settings, X } from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { useChatStore, setOAuthInProgress } from './chatStore';
@@ -17,8 +17,8 @@ function getInitials(fullName: string | null | undefined): string {
 
 export function ChatHeader() {
   const { dispatch } = useChatStore();
-  const { user, isSignedIn } = useUser();
-  const { signOut, openSignIn, openUserProfile } = useClerk();
+  const { user, isSignedIn } = useAuthUser();
+  const { signOut, openSignIn, openUserProfile } = useAuthActions();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -55,7 +55,7 @@ export function ChatHeader() {
     }
   }, []);
 
-  const initials = getInitials(user?.fullName);
+  const initials = getInitials(user?.name ?? null);
 
   return (
     <header className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
@@ -80,7 +80,7 @@ export function ChatHeader() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={user.imageUrl}
-                alt={user.fullName ?? 'Profile'}
+                alt={user.name ?? 'Profile'}
                 className="w-6 h-6 rounded-full object-cover"
               />
             ) : isSignedIn && initials ? (
@@ -101,7 +101,7 @@ export function ChatHeader() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={user.imageUrl}
-                        alt={user.fullName ?? 'Profile'}
+                        alt={user.name ?? 'Profile'}
                         className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                       />
                     ) : initials ? (
@@ -114,14 +114,14 @@ export function ChatHeader() {
                       </div>
                     )}
                     <div className="min-w-0">
-                      {user?.fullName && (
+                      {user?.name && (
                         <p className="text-text-primary text-sm font-body font-semibold truncate">
-                          {user.fullName}
+                          {user.name}
                         </p>
                       )}
-                      {user?.primaryEmailAddress?.emailAddress && (
+                      {user?.email && (
                         <p className="text-text-muted text-xs font-body truncate">
-                          {user.primaryEmailAddress.emailAddress}
+                          {user.email}
                         </p>
                       )}
                     </div>

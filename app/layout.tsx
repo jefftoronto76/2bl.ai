@@ -1,4 +1,4 @@
-import { ClerkProvider } from '@clerk/nextjs'
+import { AuthProvider } from '@/services/auth/ui'
 import type { Viewport } from 'next'
 import { headers } from 'next/headers'
 import './globals.css'
@@ -20,9 +20,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" data-palette={isSbl || isHeirloom || isAdmin ? undefined : 'inkwell'}>
       <body>
-        <ClerkProvider afterSignOutUrl="/">
+        {/* Auth provider mount point — must stay inside <body>, not wrapping
+            <html> (provider requirement). AuthProvider is the boundary's
+            re-export of the active provider's SSR-aware provider component. */}
+        <AuthProvider afterSignOutUrl="/">
           {children}
-        </ClerkProvider>
+        </AuthProvider>
       </body>
     </html>
   )

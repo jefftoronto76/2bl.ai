@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useClerk, useUser } from '@clerk/nextjs';
+import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import { heirloomClerkAppearance } from './clerkAppearance';
 import { logAuthStep } from '@/services/auth/log-auth-step';
 import { setOAuthInProgress } from './chatStore';
 
 export function GateView() {
-  const { openSignUp } = useClerk();
-  const { isSignedIn, isLoaded } = useUser();
+  const { openSignUp } = useAuthActions();
+  const { isSignedIn, isLoaded } = useAuthUser();
 
   // Track the false→true sign-in transition so we call /api/heirloom/members/claim
   // only once per sign-up event — not on every page load for a pending member

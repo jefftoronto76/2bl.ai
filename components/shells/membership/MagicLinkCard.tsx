@@ -19,7 +19,8 @@
 //   success         → "You're in." (onSuccess fires; parent upgrades state)
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useAuthUser } from '@/services/auth/client';
+import { CaptchaSlot } from '@/services/auth/ui';
 import {
   AlertCircle,
   ArrowRight,
@@ -95,7 +96,7 @@ function FieldError({ message }: { message: string | null }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function MagicLinkCard({ reason, initialName, onSuccess }: MagicLinkCardProps) {
-  const { isSignedIn, isLoaded } = useUser();
+  const { isSignedIn, isLoaded } = useAuthUser();
   const flow = useAuthFlow();
 
   const [nameValue, setNameValue] = useState(initialName ?? '');
@@ -388,8 +389,9 @@ export function MagicLinkCard({ reason, initialName, onSuccess }: MagicLinkCardP
             label={tab === 'email' ? 'Send magic link' : 'Send code'}
           />
         </form>
-        {/* Required by Clerk bot-protection — must be present before signUp.create() fires */}
-        <div id="clerk-captcha" />
+        {/* Required by the provider's bot-protection — must be in the DOM
+            before the sign-up create call fires (boundary-rendered slot). */}
+        <CaptchaSlot />
 
         {/* Show inline error when we bounced back to idle after a failure */}
         {stage === 'idle' && error && <FieldError message={error} />}

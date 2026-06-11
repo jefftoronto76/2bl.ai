@@ -102,7 +102,13 @@ starts.
   Companion packages: `@mantine/notifications@7.17.8` (toast notifications,
   wired into `app/admin/layout.tsx` via `<Notifications />`).
 - **Database:** Supabase (Postgres + Row Level Security + Realtime)
-- **Auth:** Clerk (`@clerk/nextjs` — currently v7, Core 3). AI skills for all Clerk
+- **Auth:** Clerk (`@clerk/nextjs` — currently v7, Core 3), consumed ONLY
+  through the provider-agnostic boundary at `services/auth/` (the Golden Rule —
+  see `docs/auth-service-rebuild.md`). `@clerk/*` may be imported only inside
+  `services/auth/providers/clerk/**`; everywhere else is an ESLint **error**
+  (`no-restricted-imports`). Product code imports `@/services/auth` (server),
+  `@/services/auth/client` (hooks), `@/services/auth/ui` (prebuilt UI
+  re-exports), or `@/services/auth/middleware` (edge). AI skills for all Clerk
   patterns are in `.agents/skills/clerk-custom-ui/` and
   `.agents/skills/clerk-nextjs-patterns/`. **Before writing any Clerk auth code,
   read `.agents/skills/clerk-custom-ui/core-3/`.**
@@ -564,10 +570,44 @@ factories live in the shared `services/auth/` layer (imported as
 `@/services/auth/*`). Both `app/` and `src/` may depend on this layer; it is the
 intended home for cross-cutting auth/DB plumbing.
 
+**The provider boundary (2026-06-11).** `services/auth/` is also the
+provider-agnostic auth boundary (Golden Rule, `docs/auth-service-rebuild.md`):
+no file outside it imports `@clerk/*` — enforced as an ESLint `error`
+(`no-restricted-imports`, override only for `services/auth/providers/clerk/**`).
+Caveat: the repo-root `middleware.ts` sits outside `next lint`'s default
+directories, so keep it provider-free by review. The provider is swappable by
+re-pointing the entry-point re-exports at a new `providers/<name>/` folder.
+
+Entry points (four, one per runtime context — the server barrel never exports
+`'use client'` modules, same convention as `services/chat/ui/v1`):
+
+| Entry point | Exports | Consumed by |
+|-------------|---------|-------------|
+| `services/auth/index.ts` (server) | `getSession()` (cheap JWT presence — `AppSession { providerUserId }`), `getCurrentUser()` (one provider backend call — normalized `AuthUser { providerUserId, email?, phone?, name?, imageUrl?, isPlatformAdmin }`), `requirePlatformAdmin()` (null unless signed-in admin), types, errors, + re-exports of the existing helpers below | API routes, server components/layouts |
+| `services/auth/client.ts` (`'use client'`) | `useAuthUser()` (mirrors the provider tri-state — `isSignedIn` stays `undefined` until `isLoaded`; **never coerce while loading**, chatStore's recovery gates depend on it), `useAuthActions()` (`signOut`, `openSignIn`, `openSignUp`, `openUserProfile` — appearance passed as opaque `AuthAppearance`) | Client components (chatStore, ChatHeader, GateView, LandingNav, MessageList, MagicLinkCard, prompt-builder) |
+| `services/auth/ui.tsx` (no directive — pure re-exports preserve the provider's SSR boundary markers) | `AuthProvider` (root-layout mount, stays inside `<body>`), `UserButton`, `SignInPanel`, `CaptchaSlot` (`<div id="clerk-captcha">`) | `app/layout.tsx`, admin shells, SBL sign-in page, MagicLinkCard |
+| `services/auth/middleware.ts` (edge-safe leaf — never imports the index barrel) | `createAuthMiddleware` (typed passthrough; provider middleware stays outermost), `createRouteMatcher` | repo-root `middleware.ts` (whose `config.matcher` must stay a **literal** array — Next.js static analysis) |
+
+The Clerk adapter (`services/auth/providers/clerk/`): `server.ts` (the
+session/user API + `clerkAuth`/`clerkCurrentUser` re-exports for in-boundary
+helpers), `client.ts` (`useAuthUser`/`useAuthActions`/`useAuthFlowAdapter`),
+`ui.tsx`, `middleware.ts`, `errors.ts` (dual-channel normalization), and
+`map.ts` (`mapClerkUser` + the publicMetadata `resolveIsPlatformAdmin`).
+**Authorization is ours:** server-side `isPlatformAdmin` is resolved from the
+Supabase `users.role` column (`resolveIsPlatformAdminFromDb` in `server.ts` —
+`'platform_admin'` → true, any other role or no row → false), with a LOUD
+fallback to publicMetadata if the lookup itself fails (e.g. column missing),
+logging `[auth] users.role lookup failed — falling back to publicMetadata`.
+Client-side `useAuthUser().user.isPlatformAdmin` still maps from
+publicMetadata (browser has no service-role DB path) and gates display-only
+surfaces; every privileged action is server-gated. Requires `users.role`
+(text NOT NULL default `'member'`) to exist + the admin row backfilled —
+Jeff's Studio work. Unit tests: `map.test.ts`, `authFlowAdapter.test.tsx`.
+
 | Helper | File | Purpose |
 |--------|------|---------|
 | `getAuthContext` | `services/auth/get-auth-context.ts` | Resolves the current Clerk user to their Supabase `owner_id` and `tenant_id` via the `users.clerk_id` → `tenant_users.user_id` lookup. Multi-tenant users resolve the active tenant by request Host (falls back to `DEFAULT_ADMIN_TENANT_ID`, then the first membership). Throws `Unauthorized` / `User not found` / `Tenant not found` on failure. Used by every authenticated admin API route for tenant scoping. |
-| `getTenantFromRequest` | `services/auth/get-tenant-from-request.ts` | Resolves `tenant_id` from the `Host` header of an anonymous public request. Prefers the exact host (so product subdomains like `heirloom.2bl.ai` resolve to their own tenant), then the registrable root (e.g. `app.jefflougheed.ca` → `jefflougheed.ca`), filters dev hosts (localhost, `*.local`, `127.0.0.1`), queries `tenants.domain` for a match. Returns `tenant_id` string or `null`. Used by `/api/sage/route.ts` for anonymous visitor chat — falls back to `DEFAULT_SYSTEM_PROMPT` on null. |
+| `getTenantFromRequest` | `services/auth/get-tenant-from-request.ts` | Resolves `tenant_id` from the `Host` header of an anonymous public request. Prefers the exact host (so product subdomains like `heirloom.2bl.ai` resolve to their own tenant), then the registrable root (e.g. `app.jefflougheed.ca` → `jefflougheed.ca`), filters dev hosts (localhost, `*.local`, `127.0.0.1`), queries `tenants.domain` for a match. Returns `tenant_id` string or `null`. **Preview/dev fallback (2026-06-11):** when resolution fails AND `PREVIEW_TENANT_ID` is set AND `VERCEL_ENV !== 'production'`, returns that id instead of null — set the var in Vercel's Preview environment ONLY (it is hard-ignored in production; a real `tenants.domain` match always wins). Exists so tenant-resolved surfaces (session create, OTP E2E) are testable on `*.vercel.app` preview hosts. Unit-tested in `get-tenant-from-request.test.ts`. Used by `/api/sage/route.ts` for anonymous visitor chat — falls back to `DEFAULT_SYSTEM_PROMPT` on null. |
 | `resolveTenantIdFromHost` / `normalizeHost` | `services/auth/resolve-tenant-from-host.ts` | Pure full-host exact-match helper (does NOT collapse subdomains) used by `getAuthContext` for multi-tenant host resolution. Unit-tested in `services/auth/resolve-tenant-from-host.test.ts`. |
 | `syncUser` | `services/auth/sync-user.ts` | Upserts the current Clerk user into the Supabase `users` table on `clerk_id` conflict; returns the Supabase UUID or null. Called from `app/admin/layout.tsx` and from `POST /api/sessions` (to link a Heirloom session to its signed-in user). |
 | `getCurrentUserId` | `services/auth/get-current-user-id.ts` | Read-only resolution of the current Clerk session to `users.id` via the `clerk_id` lookup. Unlike `getAuthContext`, requires NO `tenant_users` membership (for end-customers like Heirloom visitors, who are not admins); unlike `syncUser`, never writes. Returns null when there is no Clerk session or no matching `users` row. Used by `GET /api/sessions`. |
@@ -577,22 +617,30 @@ intended home for cross-cutting auth/DB plumbing.
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
 | `createClient` | `services/auth/supabase.ts` (browser) / `services/auth/supabase-server.ts` (SSR cookie-aware) | Anon-key Supabase client factories. |
 | `AdminUserProvider` / `useAdminUserId` | `services/auth/admin-user-context.tsx` | `'use client'` React context exposing the synced Supabase user id to the admin tree. Mounted in `app/admin/layout.tsx`. (Moved from `src/context/admin-user.tsx`.) |
-| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Client-side hook for the Heirloom custom OTP sign-up/sign-in flow. Fires step-by-step `keepalive` POSTs to `/api/auth/log` at every outcome (send success/failure, verify success/failure, finalize success/failure, outer catches) so the full flow is visible in `auth_events`. See Core 3 API reference below. |
+| `useAuthFlow` | `services/auth/useAuthFlow.ts` | Provider-agnostic **stage machine** for the Heirloom custom OTP sign-up/sign-in flow (refactored 2026-06-11): owns stages (`idle → sending → otp_input → verifying → success/error`), contact state, the `mountedRef` guard, the `/api/auth/magic-link` validation gate (always ordered BEFORE any provider call), resend, and reset. All provider mechanics + step-by-step `auth_events` telemetry live in `useAuthFlowAdapter` (`providers/clerk/client.ts`); failure routing follows the adapter's `terminal` flag (terminal → `error`, retryable → `otp_input`). Public `UseAuthFlowReturn` unchanged — `MagicLinkCard` is the consumer. See Core 3 API reference below. |
 
 #### Clerk Core 3 custom OTP (`services/auth/useAuthFlow.ts`)
 
-SDK `@clerk/nextjs@7` (Core 3). All Clerk methods return `{ error: ClerkError | null }` — never throw.
+SDK `@clerk/nextjs@7` (Core 3). All Clerk methods return `{ error: ClerkError | null }`.
+
+**⚠️ Dual error channel (undocumented by Clerk; observed in production, PR #86):**
+`signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` can ALSO **throw**
+on HTTP 4xx responses (e.g. `ClerkAPIResponseError`) in addition to the
+documented `{ error }` return. Every sendCode call site must handle **both**
+channels — wrap in try/catch and normalize the thrown shape alongside the
+returned one. Do not "clean up" the defensive try/catch to match Clerk's docs;
+the docs do not describe the throw path.
+
 Authoritative reference: `.agents/skills/clerk-custom-ui/core-3/custom-sign-in.md` and `custom-sign-up.md`.
 
-**Sign-in OTP (existing user)**
+**Sign-in OTP (existing user)** — no `signIn.create()`; the identifier is passed to `sendCode` (PR #85)
 ```typescript
 const { signIn } = useSignIn()
-await signIn.create({ identifier: email | phone })
-await signIn.emailCode.sendCode()              // email
-await signIn.phoneCode.sendCode()              // phone
-await signIn.emailCode.verifyCode({ code })    // email
-await signIn.phoneCode.verifyCode({ code })    // phone
-await signIn.finalize({ navigate: () => {} })  // activate session (no-op navigate for embedded)
+await signIn.emailCode.sendCode({ emailAddress })   // email
+await signIn.phoneCode.sendCode({ phoneNumber })    // phone
+await signIn.emailCode.verifyCode({ code })         // email
+await signIn.phoneCode.verifyCode({ code })         // phone
+await signIn.finalize({ navigate: () => {} })       // activate session (no-op navigate for embedded)
 ```
 
 **Sign-up OTP (new user)** — note `.verifications.` namespace (NOT directly on `signUp`)
@@ -606,11 +654,36 @@ await signUp.verifications.verifyPhoneCode({ code })    // phone
 await signUp.finalize({ navigate: () => {} })           // activate session
 ```
 
-**New-vs-existing user detection:** `useAuthFlow` uses a success-check approach — no error-code enumeration. `signIn.emailCode.sendCode()` / `signIn.phoneCode.sendCode()` is attempted first; if it succeeds (`r.error` is null), the sign-in path continues. If it fails for **any** reason (returned error or thrown), `signUp.create()` is attempted instead. The only terminal error state is when both the sign-in sendCode and the sign-up create both fail — at which point the sign-up error is shown to the user.
+**New-vs-existing user detection:** uses Clerk's documented **transferable**
+pattern (implemented in `useAuthFlowAdapter`, `services/auth/providers/clerk/client.ts`).
+`signUp.create({ emailAddress | phoneNumber })` is attempted first. If it
+succeeds → genuine sign-up (`signUp.verifications.send*Code()`). If it fails
+and `signUp.isTransferable` is true (matching user exists) → the attempt is
+transferred to a sign-in via `signIn.create({ transfer: true })`, then
+`signIn.emailCode.sendCode()` / `phoneCode.sendCode()` **called bare** (the
+transferred signIn already carries the identifier). If create fails and the
+attempt is NOT transferable (rate limit, invalid identifier, network), the
+error is surfaced to the user — a transient failure is never misread as "new
+user" (the failure mode of the old signIn-first heuristic, replaced 2026-06-11).
+Because `signUp.create()` now runs for every attempt, the `#clerk-captcha` div
+must be present for sign-ins as well — `CaptchaSlot` renders unconditionally in
+the MagicLinkCard form.
 
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 
 **`middleware.ts` must include** `'/__clerk/(.*)'` in its matcher array (verification callback paths).
+
+**Known limitations (deliberate; revisit triggers noted):**
+- `finalize({ navigate: () => {} })` no-op skips two documented `navigate`
+  responsibilities: session-task handling (`session.currentTask`) and Safari ITP
+  URL decoration (`decorateUrl`). Not an issue while MFA and session tasks are
+  disabled in the Clerk dashboard — revisit if either is enabled (verified users
+  would otherwise appear signed-out when a session task is pending).
+- `needs_client_trust` / `needs_second_factor` sign-in statuses are unhandled
+  (they fall into the generic `status_not_complete` error path). Not triggerable
+  by pure OTP flows — revisit if MFA is ever enabled.
+- Next.js 16 renames `middleware.ts` → `proxy.ts`. Not relevant on Next.js 15;
+  the auth boundary isolates the rename to two files when the upgrade happens.
 
 ### Prompt service (`services/prompt/`)
 
@@ -669,7 +742,12 @@ Centralised audit and auth-event logging. Server-only. Imported as
 
 `logEvent` is called (with `void`) from every mutating admin API route,
 every platform tenant route, every session route, and the Heirloom
-membership-claim route. `logAuthEvent` is called from
+membership-claim route. **Every `logEvent` / `logAuthEvent` call site passes
+`tenant_id` (2026-06-11):** admin routes from `authCtx.tenant_id`, public/
+anonymous surfaces (including `/api/auth/log`, the Clerk webhook, and the
+`get-auth-context` admin_access_failed path) via host-based
+`getTenantFromRequest` resolution; the platform tenant routes also stamp the
+host-resolved id (null remains possible and still reads as platform-level). `logAuthEvent` is called from
 `services/auth/get-auth-context.ts` (unauthorized-access path) and from
 `app/api/auth/log/route.ts` (client-side step-by-step auth flow events via
 `useAuthFlow`).
@@ -831,8 +909,8 @@ response mapping; the data-access and business logic live in the service.
 | `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
 | `/api/sessions/[id]/claim` | POST | Links an anonymous session to the now-signed-in user. Resolves the user **server-side** from the active Clerk session (`ensureClerkUser`, no client-supplied `user_id` → no IDOR) and stamps `chat_sessions.user_id` (`claimSession`, scoped by `id` + host `tenant_id`). 401 when no Clerk session. **Now client-orphaned** — its only caller (the Heirloom `ContactCard` inline phone/OTP sign-up) was removed; the route is retained, reversible, for a future signed-in flow (account creation is deferred). |
 | `/api/heirloom/members/claim` | POST | Creates a `pending` membership record for the signed-in Clerk user (`claimMembership`). Called by `GateView.handleClaimSuccess` after MagicLinkCard sign-up completes. Idempotent — existing rows (any status) are left unchanged. Returns 401 when no Clerk session, 500 on DB error. |
-| `/api/auth/log` | POST | Client-side auth event logger. Accepts `{ event_type, outcome, failure_reason?, metadata? }`, `await`s `logAuthEvent()` (writing to `auth_events` via service-role client), then returns `{ ok: true }`. Called fire-and-forget from `useAuthFlow` with `keepalive: true` so events survive page navigation. Extracts `ip_address`, `user_agent`, and `correlation_id` from request headers. Returns 400 when `event_type` is missing; 500 on DB error (swallowed at the client). |
-| `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
+| `/api/auth/log` | POST | Client-side auth event logger. Accepts `{ event_type, outcome, failure_reason?, metadata? }`, `await`s `logAuthEvent()` (writing to `auth_events` via service-role client), then returns `{ ok: true }`. Called fire-and-forget from `useAuthFlow` with `keepalive: true` so events survive page navigation. Extracts `ip_address`, `user_agent`, and `correlation_id` from request headers, and stamps `tenant_id` via `getTenantFromRequest(req)` (host-resolved, nullable — 2026-06-11). Returns 400 when `event_type` is missing; 500 on DB error (swallowed at the client). |
+| `/api/webhooks/clerk` | POST | Clerk webhook receiver. Verifies the Svix signature (`CLERK_WEBHOOK_SECRET` env var, registered in Clerk dashboard → Webhooks). Maps Clerk event types to `auth_events` rows via `logAuthEvent`: `user.created` → `sign_up`, `user.deleted` → `user_deleted`, `session.created` → `session_created`, `session.revoked` → `session_revoked`. Uses the `svix-id` header as the idempotency key (`svix_event_id` unique constraint on `auth_events` silently absorbs duplicate deliveries). Stamps `tenant_id` via `getTenantFromRequest(req)` — resolves from the domain the webhook endpoint is registered under; nullable (2026-06-11). Unmapped event types return 200 without logging. Returns 400 on signature verification failure. |
 
 ---
 

@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { logAuthEvent } from '@/services/audit/audit'
 import type { AuthEventInput } from '@/services/audit/types'
+import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -15,8 +16,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'event_type required' }, { status: 400 })
     }
 
+    // Tenant attribution from request context — same host-based resolution
+    // every public surface uses (PREVIEW_TENANT_ID fallback included). Null
+    // when the host doesn't resolve; the column is nullable.
+    const tenantId = await getTenantFromRequest(req)
+
     await logAuthEvent({
       event_type: body.event_type as AuthEventInput['event_type'],
+      tenant_id: tenantId,
       outcome: body.outcome ?? 'success',
       failure_reason: body.failure_reason ?? null,
       ip_address: req.headers.get('x-forwarded-for') ?? null,

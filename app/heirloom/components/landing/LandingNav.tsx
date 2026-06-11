@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { BookOpen } from 'lucide-react';
-import { useClerk, useUser } from '@clerk/nextjs';
+import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import { useChatStore, setOAuthInProgress } from '@/components/shells/membership/chatStore';
 import { heirloomClerkAppearance } from '@/components/shells/membership/clerkAppearance';
 
@@ -15,8 +15,8 @@ const navLinks: { label: string; targetId: string }[] = [
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const { dispatch } = useChatStore();
-  const { openSignUp } = useClerk();
-  const { isLoaded, isSignedIn } = useUser();
+  const { openSignUp } = useAuthActions();
+  const { isLoaded, isSignedIn } = useAuthUser();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
