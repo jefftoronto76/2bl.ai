@@ -68,6 +68,22 @@ export function SaveChatCTA() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  function handleOpen() {
+    // Scan assistant messages for the first [NAME: …] marker at the moment the
+    // modal opens — same source as MessageList, correct at click time regardless
+    // of when in the conversation the name was captured.
+    for (const msg of messages) {
+      if (msg.role !== 'assistant') continue;
+      const start = msg.content.indexOf('[NAME:');
+      if (start === -1) continue;
+      const end = msg.content.indexOf(']', start + 6);
+      if (end === -1) continue;
+      const name = msg.content.slice(start + 6, end).trim();
+      if (name) { setNameValue(name); break; }
+    }
+    setOpen(true);
+  }
+
   function handleClose() {
     setOpen(false);
     setNameValue('');
@@ -80,7 +96,7 @@ export function SaveChatCTA() {
   function handleContactSubmit(e: React.FormEvent) {
     e.preventDefault();
     const val = inputValue.trim();
-    if (!val) return;
+    if (!val || !nameValue.trim()) return;
     setResendCooldown(RESEND_COOLDOWN_S);
     if (tab === 'email') void flow.sendEmail(val);
     else void flow.sendPhone(val);
@@ -279,7 +295,7 @@ export function SaveChatCTA() {
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isSending}
+            disabled={!nameValue.trim() || !inputValue.trim() || isSending}
             aria-label={tab === 'email' ? 'Send magic link' : 'Send code'}
             className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-background/40"
           >
@@ -308,7 +324,7 @@ export function SaveChatCTA() {
       <div className="max-w-2xl mx-auto px-4 mt-3">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={handleOpen}
           aria-label="Save this chat to your book"
           className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
           style={{
