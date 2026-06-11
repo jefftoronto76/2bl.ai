@@ -1,4 +1,5 @@
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
+import type { ParsedMarker } from '@/services/chat/ui/v1/types'
 
 export type OpenAs = 'new_tab' | 'popup'
 
@@ -23,10 +24,16 @@ export interface SageParameterPublic {
 // The registry (services/chat/ui/v1) is the canonical parser; this wrapper
 // preserves the existing { prose, cards } API so Chat, Hero, SageReply, and the
 // admin transcript renderer are unchanged. Non-BOOKING markers (e.g. NAME) are
-// stripped from prose but never surfaced as cards.
+// stripped from prose but never surfaced as cards. The full parsed marker list
+// is also returned (additive) for surfaces that need it — e.g. the admin
+// transcript's platform_admin debug pills.
 const registry = createDefaultRegistry()
 
-export function parseBookingCards(content: string): { prose: string; cards: BookingCardData[] } {
+export function parseBookingCards(content: string): {
+  prose: string
+  cards: BookingCardData[]
+  markers: ParsedMarker[]
+} {
   const { prose, markers } = registry.parse(content)
   const cards: BookingCardData[] = markers
     .filter(m => m.type === 'BOOKING')
@@ -36,5 +43,5 @@ export function parseBookingCards(content: string): { prose: string; cards: Book
       ctaLabel: m.fields[2] ?? '',
       url: m.fields[3] ?? '',
     }))
-  return { prose, cards }
+  return { prose, cards, markers }
 }

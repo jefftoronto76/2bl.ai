@@ -1,6 +1,7 @@
 import { Anchor, Card, Stack, Text } from '@mantine/core'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getCurrentUser } from '@/services/auth'
 import {
   deriveSessionStatus,
   type SessionStatusThresholds,
@@ -25,6 +26,49 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+}
+
+// Shown to platform_admin users only — never to tenant admins. Renders the raw
+// marker bracket text the registry stripped from displayed prose (same idea as
+// the Heirloom MessageList DebugPill, restyled for the admin palette).
+function DebugPill({ raw }: { raw: string }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '4px 10px',
+        borderRadius: '4px',
+        background: '#1a1917',
+        border: '1px solid rgba(255,255,255,0.1)',
+        width: 'fit-content',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '9px',
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.45)',
+          userSelect: 'none',
+        }}
+      >
+        debug
+      </span>
+      <span
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '12px',
+          color: 'rgba(255,255,255,0.75)',
+          wordBreak: 'break-all',
+        }}
+      >
+        {raw}
+      </span>
+    </div>
+  )
 }
 
 function formatDate(iso: string) {
@@ -69,6 +113,12 @@ export default async function SessionPage({
     console.error('[admin/sessions/[id]] auth failed:', err instanceof Error ? err.message : err)
     notFound()
   }
+
+  // Debug pills are platform_admin-only (resolved server-side from users.role
+  // via the auth boundary). The page itself stays accessible to tenant admins —
+  // only the marker debug view is gated.
+  const currentUser = await getCurrentUser()
+  const showDebugMarkers = currentUser?.isPlatformAdmin === true
 
   const supabase = getAdminClient()
 
@@ -221,6 +271,9 @@ export default async function SessionPage({
             const parsed = msg.role === 'assistant' ? parseBookingCards(msg.content) : null
             const proseText = parsed ? parsed.prose : msg.content
             const cards: BookingCardData[] = parsed?.cards ?? []
+            // Every marker the registry stripped from prose (NAME, EMAIL,
+            // PHONE, BOOKING, ACCOUNT_CREATE) — debug view is purely additive.
+            const debugMarkers = showDebugMarkers ? (parsed?.markers ?? []) : []
 
             return (
               <div
@@ -300,6 +353,21 @@ export default async function SessionPage({
                         </Card>
                       ))}
                     </Stack>
+                  )}
+
+                  {debugMarkers.length > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                        marginTop: proseText || cards.length > 0 ? '8px' : 0,
+                      }}
+                    >
+                      {debugMarkers.map((m, idx) => (
+                        <DebugPill key={`${msg.id}-marker-${idx}`} raw={m.raw} />
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
