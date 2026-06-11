@@ -1,10 +1,10 @@
-import { SignIn } from '@clerk/nextjs'
+import { SignInPanel } from '@/services/auth/ui'
 
 // Reached at 2bl.ai/sign-in (middleware rewrites the SBL host's /sign-in path
 // into this /secondbrainlabs segment, so the address bar keeps showing
-// 2bl.ai/sign-in). The catch-all [[...sign-in]] absorbs Clerk's internal
-// sub-routes (factor-one, sso-callback, reset-password). Inherits the SBL
-// design tokens + fonts from app/secondbrainlabs/layout.tsx.
+// 2bl.ai/sign-in). The catch-all [[...sign-in]] absorbs the auth provider's
+// internal sub-routes (factor-one, sso-callback, reset-password). Inherits the
+// SBL design tokens + fonts from app/secondbrainlabs/layout.tsx.
 export default function PlatformSignInPage() {
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-paper px-5 py-12 font-sans text-ink">
@@ -25,7 +25,7 @@ export default function PlatformSignInPage() {
           </div>
         </div>
 
-        <SignIn
+        <SignInPanel
           forceRedirectUrl="/platform/admin"
           appearance={{
             variables: {

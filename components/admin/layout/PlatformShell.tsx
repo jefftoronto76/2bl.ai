@@ -3,7 +3,7 @@
 import { Suspense, type ReactNode } from 'react';
 import { AppShell, Burger, Drawer, Group, Text, Stack } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton } from '@/services/auth/ui';
 import { PlatformSidebarNav } from '@/components/admin/navigation/PlatformSidebarNav';
 
 export interface PlatformShellProps {

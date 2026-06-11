@@ -74,6 +74,22 @@ middleware still runs outermost). Handler body and matcher unchanged.
 5. **Handshake:** complete one full sign-in — no redirect loop (proves the
    provider handshake routes still work under the wrapper).
 
+## §5 — Prebuilt UI via the boundary [regression-only]
+
+Change: `AdminShell.tsx` / `PlatformShell.tsx` import `UserButton` from
+`@/services/auth/ui`; the SBL sign-in page uses `SignInPanel` (re-export of
+the provider's `<SignIn />`, props unchanged).
+
+1. `https://<preview>/admin` (signed in) → avatar button renders in the
+   sidebar footer (desktop) AND in the mobile drawer (narrow the window
+   below the Mantine breakpoint). Click → menu opens → **Sign out** works
+   and lands on `/`.
+2. `https://<preview>/platform/admin` (as platform admin) → same UserButton
+   checks in PlatformShell.
+3. `https://<preview>/secondbrainlabs/sign-in` → branded sign-in card
+   renders with SBL theming (terracotta primary button, white card), and a
+   full sign-in from this page redirects to `/platform/admin`.
+
 ## Static checks (every commit)
 
 Run locally or trust CI: `npx tsc --noEmit` (one pre-existing error in
