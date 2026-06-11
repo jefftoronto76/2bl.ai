@@ -61,8 +61,9 @@ export function useAuthActions(): AuthActions {
 // event_type / auth_surface strings match the pre-refactor useAuthFlow; the
 // verify-path step strings are byte-identical. Detection-path steps changed
 // when the signIn-first heuristic was replaced with the documented
-// transferable pattern (signUp_create_transferable / signIn_transfer /
-// signIn_sendCode_after_transfer / signUp_create_threw).
+// transferable pattern (signUp_create_transferable / signIn_sendCode_existing
+// / signIn_sendCode_threw / signUp_create_threw). Detection is error-code
+// driven (form_identifier_exists) — see the note inside sendCode.
 
 export interface AuthFlowContact {
   type: 'email' | 'phone'
@@ -109,14 +110,14 @@ export function useAuthFlowAdapter(): {
     if (!signIn || !signUp) return { ok: false, message: 'Something went wrong. Please try again.' }
     const { type, value } = contact
 
-    // New-vs-existing detection uses Clerk's documented transferable pattern:
-    // attempt signUp.create() first; when the identifier matches an existing
-    // user, signUp.isTransferable flips true and the attempt is transferred to
-    // a sign-in via signIn.create({ transfer: true }) (SignInFutureCreateParams
-    // in @clerk/types). Unlike the old signIn-first fallback heuristic, a
-    // transient failure (rate limit, network) is now a surfaced, retryable
-    // error instead of being misread as "new user". Both error channels are
-    // still handled (create can throw on HTTP 4xx — see ./errors.ts).
+    // New-vs-existing detection: attempt signUp.create() first; an existing
+    // identifier comes back as a form_identifier_exists error and routes to
+    // sign-in (see the existing-user block below for why the error code, not
+    // signUp.isTransferable, is the primary signal). Unlike the old
+    // signIn-first fallback heuristic, a transient failure (rate limit,
+    // network) is a surfaced, retryable error instead of being misread as
+    // "new user". Both error channels are handled (create can throw on
+    // HTTP 4xx — see ./errors.ts).
     let createErr: unknown = null
     try {
       const { error } =
@@ -151,25 +152,40 @@ export function useAuthFlowAdapter(): {
       return { ok: true, flow: 'signup' }
     }
 
-    if (signUp.isTransferable) {
-      // Matching user exists — transfer the attempt to a sign-in.
+    // Existing-user detection. Clerk's docs say signUp.isTransferable flips
+    // when the identifier matches an existing user, but in production
+    // (2026-06-11, both email and phone) the flag stayed false on the
+    // create-error path — existing users got "That email address / phone
+    // number is taken" instead of a sign-in. The dependable signal is the
+    // error code form_identifier_exists, from EITHER error channel; the flag
+    // is kept as a secondary signal in case Clerk starts setting it.
+    const createErrCode = extractClerkErrorCode(createErr)
+    if (createErrCode === 'form_identifier_exists' || signUp.isTransferable) {
       logAuthStep({ event_type: 'sign_in', outcome: 'success',
-        metadata: { auth_surface: 'custom_otp', step: 'signUp_create_transferable', contactType: type } })
-      const { error: transferErr } = await signIn.create({ transfer: true })
-      if (transferErr) {
-        logAuthStep({ event_type: 'sign_in_failed', outcome: 'failure',
-          failure_reason: extractErrorMessage(transferErr),
-          metadata: { auth_surface: 'custom_otp', step: 'signIn_transfer', contactType: type } })
-        return { ok: false, message: extractErrorMessage(transferErr) }
-      }
-      // The transferred signIn already carries the identifier — send bare.
-      const { error: sendErr } =
-        type === 'email' ? await signIn.emailCode.sendCode() : await signIn.phoneCode.sendCode()
-      if (sendErr) {
+        metadata: { auth_surface: 'custom_otp', step: 'signUp_create_transferable', contactType: type, code: createErrCode, isTransferable: signUp.isTransferable } })
+      // Sign in DIRECTLY with the identifier — the pre-refactor production-
+      // proven shape. signIn.create({ transfer: true }) is deliberately not
+      // used: the documented transfer depends on the same isTransferable
+      // mechanics that failed to fire. Both error channels handled, as with
+      // every sendCode call (see ./errors.ts).
+      try {
+        const { error: sendErr } =
+          type === 'email'
+            ? await signIn.emailCode.sendCode({ emailAddress: value })
+            : await signIn.phoneCode.sendCode({ phoneNumber: value })
+        if (sendErr) {
+          logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
+            failure_reason: extractErrorMessage(sendErr),
+            metadata: { auth_surface: 'custom_otp', step: 'signIn_sendCode_existing', contactType: type, code: sendErr.code } })
+          return { ok: false, message: extractErrorMessage(sendErr) }
+        }
+      } catch (e: unknown) {
+        const code = extractClerkErrorCode(e)
+        const httpStatus = (e as Record<string, unknown>).status
         logAuthStep({ event_type: 'otp_sent', outcome: 'failure',
-          failure_reason: extractErrorMessage(sendErr),
-          metadata: { auth_surface: 'custom_otp', step: 'signIn_sendCode_after_transfer', contactType: type } })
-        return { ok: false, message: extractErrorMessage(sendErr) }
+          failure_reason: `signIn_sendCode_threw_${httpStatus ?? 'unknown'}`,
+          metadata: { auth_surface: 'custom_otp', step: 'signIn_sendCode_threw', contactType: type, code, httpStatus } })
+        return { ok: false, message: extractErrorMessage(e) }
       }
       logAuthStep({ event_type: 'otp_sent', outcome: 'success',
         metadata: { auth_surface: 'custom_otp', step: 'otp_sent', contactType: type, flowType: 'signin' } })
