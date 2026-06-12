@@ -9,10 +9,11 @@
 //   description optional — surfaced as the hover tooltip on the story row in
 //               the sidebar's Stories section (see SidebarV2 `title={…}`)
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Plus, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
+import { useModalA11y } from './useModalA11y';
 
 export interface BeginStoryModalProps {
   /** Whether the modal is mounted/visible. */
@@ -27,25 +28,18 @@ export function BeginStoryModal({ open, onClose, onCreate }: BeginStoryModalProp
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Reset fields each time the modal opens, and focus the name field.
+  // Reset fields each time the modal opens.
   useEffect(() => {
     if (!open) return;
     setName('');
     setDescription('');
-    const id = requestAnimationFrame(() => nameRef.current?.focus());
-    return () => cancelAnimationFrame(id);
   }, [open]);
 
-  // Close on Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Escape (capture — never reaches the panel's handler), initial focus on the
+  // name field, focus restore on close, Tab trap.
+  useModalA11y(open, dialogRef, onClose, nameRef);
 
   const canCreate = name.trim().length > 0;
 
@@ -70,11 +64,13 @@ export function BeginStoryModal({ open, onClose, onCreate }: BeginStoryModalProp
       role="presentation"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Begin a new story"
-        className="relative w-[min(462px,100%)] bg-surface border border-border rounded-2xl shadow-2xl p-7"
+        className="relative w-[min(462px,100%)] max-h-[92%] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl p-7 focus:outline-none"
       >
         <div className="absolute top-3.5 right-3.5">
           <IconButton label="Close" onClick={onClose}>

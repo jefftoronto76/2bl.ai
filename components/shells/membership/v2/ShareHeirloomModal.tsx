@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Heart, Link as LinkIcon, Mail, X } from 'lucide-react';
 import { IconButton } from '../ui/IconButton';
+import { useModalA11y } from './useModalA11y';
 
 export interface ShareChannel {
   key: string;
@@ -80,15 +81,11 @@ export function ShareHeirloomModal({
 }: ShareHeirloomModalProps) {
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Escape (capture — never reaches the panel's handler), initial focus on the
+  // dialog container, focus restore on close, Tab trap.
+  useModalA11y(open, dialogRef, onClose);
 
   useEffect(() => () => {
     if (copyTimer.current) clearTimeout(copyTimer.current);
@@ -130,11 +127,13 @@ export function ShareHeirloomModal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Share Heirloom"
-        className="relative w-[min(440px,100%)] max-h-[92%] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl p-7 text-center"
+        className="relative w-[min(440px,100%)] max-h-[92%] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl p-7 text-center focus:outline-none"
       >
         <div className="absolute top-3.5 right-3.5">
           <IconButton label="Close" onClick={onClose}>

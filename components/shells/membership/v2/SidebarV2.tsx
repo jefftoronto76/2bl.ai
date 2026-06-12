@@ -11,18 +11,21 @@
 //   • Search        — subtle until recentSessions.length >= searchThreshold
 //   • New Chat · Uploads · Share Heirloom
 //   • Conversations — collapsible; lists store recentSessions (kebab per row)
-//   • Stories       — Create action, Invite action, then the story list
+//   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
+//   • Stories       — Create action, Invite action, then the story list;
+//                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BookOpen,
-  ChevronDown,
   ChevronRight,
   Clock,
   FolderInput,
   FolderMinus,
   Feather,
+  LogIn,
   MessageCircle,
   MessageSquare,
   MoreVertical,
@@ -53,6 +56,9 @@ export interface SidebarV2Props {
   conversationsDefaultOpen?: boolean;
   /** IDs of starred conversations (drives the Star/Unstar menu label). */
   starredConversationIds?: string[];
+  /** Render the Stories section inert: actions disabled, "soon" tag on the
+   *  header. The section stays visible. Default false. */
+  storiesDisabled?: boolean;
 
   // Nav actions (New Chat + the conversation list come from the store)
   onUploads?: () => void;
@@ -76,9 +82,12 @@ export interface SidebarV2Props {
 
 function SectionLabel({
   icon: Icon,
+  trailing,
   children,
 }: {
   icon: typeof Clock;
+  /** Optional right-aligned adornment (e.g. the "soon" tag). */
+  trailing?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -87,6 +96,7 @@ function SectionLabel({
       <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-text-muted">
         {children}
       </span>
+      {trailing && <span className="ml-auto">{trailing}</span>}
     </div>
   );
 }
@@ -102,13 +112,19 @@ const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: b
   { key: 'delete', icon: Trash2, label: 'Delete', danger: true },
 ];
 
+const MENU_WIDTH = 208; // w-52
+const MENU_EST_HEIGHT = 272; // 6 items + separator + padding — flip threshold
+
 function RowMenu({
   open,
+  anchorRect,
   starred,
   onAction,
   onClose,
 }: {
   open: boolean;
+  /** Kebab button rect captured at click time — positions the fixed menu. */
+  anchorRect: DOMRect | null;
   starred?: boolean;
   onAction: (action: RowAction) => void;
   onClose: () => void;
@@ -116,28 +132,58 @@ function RowMenu({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    // 'click' (not mousedown) so toggling the kebab button doesn't close-then-
+    // reopen: the button's own click handler and this listener see the same
+    // event, and both resolve to "close".
+    const onDocClick = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
+    // Capture-phase Escape with stopPropagation so the chat panel's own
+    // window-level Escape handler doesn't also fire (one press, one layer).
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
     };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
+    // The menu is position: fixed — anchored to a rect captured at open. Any
+    // scroll or resize detaches it from its row, so just close.
+    const onScrollOrResize = () => onClose();
+    window.addEventListener('click', onDocClick);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
     return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('click', onDocClick);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
     };
   }, [open, onClose]);
 
-  if (!open) return null;
-  return (
+  if (!open || !anchorRect) return null;
+
+  // Rendered through a portal: the sidebar is overflow-hidden and the section
+  // list overflow-y-auto, so an in-tree absolute menu gets clipped. Fixed
+  // positioning from the captured rect, flipped above the anchor when there
+  // is no room below.
+  const top =
+    anchorRect.bottom + 4 + MENU_EST_HEIGHT > window.innerHeight
+      ? Math.max(8, anchorRect.top - MENU_EST_HEIGHT - 4)
+      : anchorRect.bottom + 4;
+  const left = Math.max(
+    8,
+    Math.min(anchorRect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+  );
+
+  return createPortal(
     <div
       ref={ref}
       role="menu"
-      className="absolute right-1 top-full mt-1 z-50 w-52 rounded-xl bg-surface border border-border shadow-lg p-1.5"
+      style={{ top, left }}
+      className="fixed z-[90] w-52 rounded-xl bg-surface border border-border shadow-lg p-1.5"
     >
-      {MENU_ITEMS.map((it, i) => (
+      {MENU_ITEMS.map((it) => (
         <div key={it.key}>
           {it.danger && <div className="h-px bg-border my-1.5 mx-2" />}
           <button
@@ -147,7 +193,7 @@ function RowMenu({
               onAction(it.key);
               onClose();
             }}
-            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none ${
+            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               it.danger
                 ? 'text-amber-400 hover:bg-amber-400/10'
                 : 'text-text-primary hover:bg-text-primary/[0.08]'
@@ -161,7 +207,8 @@ function RowMenu({
           </button>
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -236,6 +283,7 @@ export function SidebarV2({
   searchThreshold = 8,
   conversationsDefaultOpen = true,
   starredConversationIds = [],
+  storiesDisabled = false,
   onUploads,
   onShareHeirloom,
   onSearch,
@@ -248,10 +296,23 @@ export function SidebarV2({
 }: SidebarV2Props) {
   const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
   const expanded = state.isSidebarExpanded;
+  const { isMember } = state;
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`
+  // The open menu's kebab-button rect, captured at click time (the menu portals
+  // to <body> with fixed positioning — see RowMenu).
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const searchRevealed = recentSessions.length >= searchThreshold;
+
+  const toggleMenu = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (menuId === id) {
+      setMenuId(null);
+    } else {
+      setMenuRect(e.currentTarget.getBoundingClientRect());
+      setMenuId(id);
+    }
+  };
 
   const navBtn =
     'flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
@@ -360,7 +421,8 @@ export function SidebarV2({
                         <button
                           type="button"
                           aria-label="Conversation options"
-                          onClick={() => setMenuId(isMenuOpen ? null : id)}
+                          aria-expanded={isMenuOpen}
+                          onClick={(e) => toggleMenu(id, e)}
                           className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                           }`}
@@ -370,6 +432,7 @@ export function SidebarV2({
                       )}
                       <RowMenu
                         open={isMenuOpen}
+                        anchorRect={menuRect}
                         starred={starredConversationIds.includes(session.id)}
                         onAction={(action) =>
                           onRowAction?.('conversation', session.id, action)
@@ -385,18 +448,42 @@ export function SidebarV2({
         </div>
       </nav>
 
+      {/* Sign-in nudge — anonymous visitors only (v1 Sidebar parity). */}
+      {expanded && !isMember && (
+        <div className="mt-4 px-3">
+          <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5">
+            <LogIn size={13} className="flex-shrink-0 text-text-muted" />
+            <p className="font-body text-xs text-text-muted leading-snug">
+              Sign in to save your story across sessions.
+            </p>
+          </div>
+        </div>
+      )}
+
       {expanded && (
         <div className="flex flex-col gap-6 mt-5 px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
           {/* Stories */}
           <div>
-            <SectionLabel icon={BookOpen}>Stories</SectionLabel>
+            <SectionLabel
+              icon={BookOpen}
+              trailing={
+                storiesDisabled ? (
+                  <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-muted/60">
+                    soon
+                  </span>
+                ) : undefined
+              }
+            >
+              Stories
+            </SectionLabel>
 
             {/* Create + Invite — directly under the header */}
             <div className="flex flex-col gap-px mb-2 pb-2 border-b border-border">
               <button
                 type="button"
                 onClick={onCreateStory}
-                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                disabled={storiesDisabled}
+                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <Plus size={15} className="flex-shrink-0" />
                 <span className="font-body text-sm font-semibold">Create</span>
@@ -404,7 +491,8 @@ export function SidebarV2({
               <button
                 type="button"
                 onClick={onInviteToStories}
-                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                disabled={storiesDisabled}
+                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
               >
                 <UserPlus size={15} className="flex-shrink-0" />
                 <span className="font-body text-sm font-medium">Invite</span>
@@ -422,14 +510,15 @@ export function SidebarV2({
                       type="button"
                       title={story.description ?? story.name}
                       onClick={() => onSelectStory?.(story.id)}
-                      className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      disabled={storiesDisabled}
+                      className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
                     >
                       <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
                       <span className="flex-1 min-w-0 font-display text-base truncate">
                         {story.name}
                       </span>
                     </button>
-                    {onStartStoryChat && (
+                    {onStartStoryChat && !storiesDisabled && (
                       <button
                         type="button"
                         aria-label={`Start a chat in ${story.name}`}
@@ -442,11 +531,12 @@ export function SidebarV2({
                         <MessageCircle size={14} />
                       </button>
                     )}
-                    {onRowAction && (
+                    {onRowAction && !storiesDisabled && (
                       <button
                         type="button"
                         aria-label="Story options"
-                        onClick={() => setMenuId(isMenuOpen ? null : id)}
+                        aria-expanded={isMenuOpen}
+                        onClick={(e) => toggleMenu(id, e)}
                         className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                           isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}
@@ -456,6 +546,7 @@ export function SidebarV2({
                     )}
                     <RowMenu
                       open={isMenuOpen}
+                      anchorRect={menuRect}
                       onAction={(action) => onRowAction?.('story', story.id, action)}
                       onClose={() => setMenuId(null)}
                     />

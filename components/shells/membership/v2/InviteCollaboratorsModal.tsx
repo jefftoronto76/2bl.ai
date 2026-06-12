@@ -11,6 +11,7 @@ import {
   Check, Clock, Copy, Link as LinkIcon, RefreshCw, Shield, UserPlus, X,
 } from 'lucide-react';
 import { IconButton } from '../ui/IconButton';
+import { useModalA11y } from './useModalA11y';
 import type { Collaborator } from './types';
 
 export interface InviteCollaboratorsModalProps {
@@ -52,15 +53,11 @@ export function InviteCollaboratorsModal({
 }: InviteCollaboratorsModalProps) {
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Escape (capture — never reaches the panel's handler), initial focus on the
+  // dialog container, focus restore on close, Tab trap.
+  useModalA11y(open, dialogRef, onClose);
 
   useEffect(() => () => {
     if (copyTimer.current) clearTimeout(copyTimer.current);
@@ -91,11 +88,13 @@ export function InviteCollaboratorsModal({
       role="presentation"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Invite collaborators"
-        className="relative w-[min(462px,100%)] max-h-[92%] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl p-7"
+        className="relative w-[min(462px,100%)] max-h-[92%] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl p-7 focus:outline-none"
       >
         <div className="absolute top-3.5 right-3.5">
           <IconButton label="Close" onClick={onClose}>
