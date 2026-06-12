@@ -1,7 +1,7 @@
 import { getSession } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
-import { validateInvite } from '@/services/invites';
+import { validateMemberToken } from '@/services/members';
 import HeirloomApp from './HeirloomApp';
 
 export const dynamic = 'force-dynamic';
@@ -44,11 +44,24 @@ export default async function HeirloomPage({
     isAuthorized = !!member;
   }
 
-  // A valid unused invite token also grants full access.
+  // A valid unused members.token also grants full access.
+  let invitedName: string | null = null;
   if (!isAuthorized && inviteToken) {
-    const row = await validateInvite(inviteToken);
-    if (row !== null) isAuthorized = true;
+    const row = await validateMemberToken(inviteToken);
+    if (row !== null) {
+      isAuthorized = true;
+      invitedName = row.invited_name ?? null;
+    }
   }
 
-  return <HeirloomApp gateEnabled={gateEnabled} isAuthorized={isAuthorized} />;
+  const hasInviteToken = !!inviteToken;
+
+  return (
+    <HeirloomApp
+      gateEnabled={gateEnabled}
+      isAuthorized={isAuthorized}
+      invitedName={invitedName}
+      hasInviteToken={hasInviteToken}
+    />
+  );
 }
