@@ -2,6 +2,25 @@
 
 ## 2026-06-11
 
+### Add `status` column to `users` table
+**Type:** Schema change + data backfill
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+UPDATE users SET status = 'deleted' WHERE deleted_at IS NOT NULL;
+```
+
+**Purpose:** Lifecycle flag on platform users, mirroring `members.status`.
+Values: `'active'` (default, set on every new row) | `'deleted'`. The backfill
+marks rows already soft-deleted (`deleted_at IS NOT NULL`) as `'deleted'`.
+Maintained in code by the Clerk webhook (`/api/webhooks/clerk`): the
+`user.deleted` handler sets `status = 'deleted'` alongside the existing
+`deleted_at` stamp (wired on this branch, same PR as this entry).
+
+---
+
 ### Add `tenant_id` column to `auth_events` table
 **Type:** Schema change
 **Executed by:** Jeff in Supabase Studio

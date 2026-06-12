@@ -153,8 +153,8 @@ export function MagicLinkCard({ reason, initialName, onSuccess }: MagicLinkCardP
       e.preventDefault();
       const val = inputValue.trim();
       if (!val || !nameValue.trim()) return;
-      if (tab === 'email') void flow.sendEmail(val);
-      else void flow.sendPhone(val);
+      if (tab === 'email') void flow.sendEmail(val, nameValue);
+      else void flow.sendPhone(val, nameValue);
     },
     [inputValue, nameValue, tab, flow],
   );

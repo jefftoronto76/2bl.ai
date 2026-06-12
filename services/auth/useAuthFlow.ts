@@ -33,19 +33,38 @@ export type AuthFlowStage =
 
 export type AuthContactType = 'email' | 'phone'
 
+/** Which provider flow the current attempt resolved to — 'signin' for an
+ *  existing user, 'signup' for a new one. Set when the OTP send succeeds;
+ *  null before that and after reset(). Lets consumers branch success copy
+ *  ("Welcome back" vs "You're now a member"). */
+export type AuthFlowType = 'signin' | 'signup'
+
 export interface UseAuthFlowReturn {
   stage: AuthFlowStage
   contactType: AuthContactType | null
   contactValue: string
+  flowType: AuthFlowType | null
   error: string | null
-  sendEmail: (email: string) => Promise<void>
-  sendPhone: (phone: string) => Promise<void>
+  /** Optional name is attached to the Clerk profile on the sign-up path
+   *  (first whitespace token → firstName, remainder → lastName). */
+  sendEmail: (email: string, name?: string) => Promise<void>
+  sendPhone: (phone: string, name?: string) => Promise<void>
   verifyOtp: (code: string) => Promise<void>
   resend: () => Promise<void>
   reset: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Split a free-text name into Clerk's firstName/lastName: first whitespace
+ *  token → firstName, remainder → lastName (mapClerkUser rejoins them). */
+function splitFullName(name?: string): { firstName?: string; lastName?: string } {
+  const trimmed = name?.trim()
+  if (!trimmed) return {}
+  const idx = trimmed.search(/\s/)
+  if (idx === -1) return { firstName: trimmed }
+  return { firstName: trimmed.slice(0, idx), lastName: trimmed.slice(idx + 1).trim() }
+}
 
 /** Hit the server validation + rate-limit gate before calling the provider. */
 async function callValidationGate(type: AuthContactType, value: string): Promise<void> {
@@ -68,7 +87,11 @@ export function useAuthFlow(): UseAuthFlowReturn {
   const [stage, setStage] = useState<AuthFlowStage>('idle')
   const [contactType, setContactType] = useState<AuthContactType | null>(null)
   const [contactValue, setContactValue] = useState('')
+  const [flowType, setFlowType] = useState<AuthFlowType | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Name supplied with the active attempt, kept so resend() re-sends it.
+  const nameRef = useRef<string | undefined>(undefined)
 
   // Guards setState calls after unmount.
   const mountedRef = useRef(true)
@@ -82,30 +105,36 @@ export function useAuthFlow(): UseAuthFlowReturn {
     setError(null)
     setContactType(null)
     setContactValue('')
+    setFlowType(null)
   }, [])
 
   // ── Send (shared by email + phone) ─────────────────────────────────────────
 
   const send = useCallback(
-    async (type: AuthContactType, value: string) => {
+    async (type: AuthContactType, value: string, name?: string) => {
       if (!adapter.isReady) return
 
       setStage('sending')
       setError(null)
       setContactType(type)
       setContactValue(value)
+      setFlowType(null)
+      nameRef.current = name?.trim() || undefined
 
       try {
         // Validation gate runs BEFORE any provider call — ordering is
         // load-bearing (server-side rate limiting fronts the provider).
         await callValidationGate(type, value)
 
-        const result = await adapter.sendCode({ type, value })
+        const result = await adapter.sendCode({ type, value, ...splitFullName(nameRef.current) })
         if (!result.ok) {
           if (mountedRef.current) { setError(result.message); setStage('error') }
           return
         }
-        if (mountedRef.current) setStage('otp_input')
+        if (mountedRef.current) {
+          setFlowType(result.flow)
+          setStage('otp_input')
+        }
       } catch (err: unknown) {
         // Validation-gate failures and unexpected throws land here — the
         // adapter logs its own provider steps; this preserves the outer-catch
@@ -119,8 +148,8 @@ export function useAuthFlow(): UseAuthFlowReturn {
     [adapter],
   )
 
-  const sendEmail = useCallback((email: string) => send('email', email), [send])
-  const sendPhone = useCallback((phone: string) => send('phone', phone), [send])
+  const sendEmail = useCallback((email: string, name?: string) => send('email', email, name), [send])
+  const sendPhone = useCallback((phone: string, name?: string) => send('phone', phone, name), [send])
 
   // ── OTP verification ───────────────────────────────────────────────────────
 
@@ -148,13 +177,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
   const resend = useCallback(async () => {
     if (!contactType || !contactValue) return
-    await send(contactType, contactValue)
+    await send(contactType, contactValue, nameRef.current)
   }, [contactType, contactValue, send])
 
   return {
     stage,
     contactType,
     contactValue,
+    flowType,
     error,
     sendEmail,
     sendPhone,

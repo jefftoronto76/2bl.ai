@@ -155,6 +155,73 @@ describe('useAuthFlowAdapter.sendCode — error-code-driven detection (signUp-fi
   })
 })
 
+describe('useAuthFlowAdapter.sendCode — name attachment (sign-up path only)', () => {
+  it('sign-up with a name calls signUp.update({ firstName, lastName }) before the OTP send', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({
+      type: 'phone', value: '+15551234567', firstName: 'Jane', lastName: 'Doe',
+    })
+    expect(r).toEqual({ ok: true, flow: 'signup' })
+    expect(mocks.current.signUp.update).toHaveBeenCalledWith({ firstName: 'Jane', lastName: 'Doe' })
+    // create stays identifier-only — detection is untouched.
+    expect(mocks.current.signUp.create).toHaveBeenCalledWith({ phoneNumber: '+15551234567' })
+    const updateOrder = (mocks.current.signUp.update as AnyFn).mock.invocationCallOrder[0]
+    const sendOrder = (mocks.current.signUp.verifications.sendPhoneCode as AnyFn).mock.invocationCallOrder[0]
+    expect(updateOrder).toBeLessThan(sendOrder)
+  })
+
+  it('firstName-only name omits lastName from the update payload', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({ type: 'email', value: 'new@b.com', firstName: 'Jane' })
+    expect(mocks.current.signUp.update).toHaveBeenCalledWith({ firstName: 'Jane' })
+  })
+
+  it('a name-update failure is logged but never blocks the sign-up (returned channel)', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    ;(mocks.current.signUp.update as AnyFn).mockResolvedValue({
+      error: { code: 'form_param_unknown', message: 'first_name is not a valid parameter' },
+    })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({ type: 'phone', value: '+15551234567', firstName: 'Jane' })
+    expect(r).toEqual({ ok: true, flow: 'signup' })
+    expect(mocks.current.signUp.verifications.sendPhoneCode).toHaveBeenCalled()
+    expect(steps()).toEqual(['signUp_update_name', 'otp_sent'])
+  })
+
+  it('a thrown name-update failure is logged but never blocks the sign-up (thrown channel)', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    ;(mocks.current.signUp.update as AnyFn).mockRejectedValue(
+      Object.assign(new Error('422'), { status: 422, errors: [{ code: 'form_param_unknown' }] }),
+    )
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({ type: 'email', value: 'new@b.com', firstName: 'Jane' })
+    expect(r).toEqual({ ok: true, flow: 'signup' })
+    expect(mocks.current.signUp.verifications.sendEmailCode).toHaveBeenCalled()
+    expect(steps()).toEqual(['signUp_update_name_threw', 'otp_sent'])
+  })
+
+  it('sign-in path NEVER attaches the name — existing profiles are not overwritten', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That phone number is taken. Please try another.' },
+    })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    const r = await result.current.sendCode({
+      type: 'phone', value: '+15551234567', firstName: 'Jane', lastName: 'Doe',
+    })
+    expect(r).toEqual({ ok: true, flow: 'signin' })
+    expect(mocks.current.signUp.update).not.toHaveBeenCalled()
+  })
+
+  it('no name supplied → update is not called at all', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({ type: 'email', value: 'new@b.com' })
+    expect(mocks.current.signUp.update).not.toHaveBeenCalled()
+  })
+})
+
 describe('useAuthFlowAdapter.verifyCode — terminal vs retryable', () => {
   async function startSignupFlow(result: { current: ReturnType<typeof useAuthFlowAdapter> }) {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
