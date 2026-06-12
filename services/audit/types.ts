@@ -23,6 +23,7 @@ export const AuditAction = {
   SESSION_CLAIM: 'session.claim',
   // Members
   MEMBER_CLAIM: 'member.claim',
+  MEMBER_PROMOTE: 'member.promote',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
