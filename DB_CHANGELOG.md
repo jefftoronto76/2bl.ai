@@ -1,5 +1,49 @@
 # DB Changelog
 
+## 2026-06-12
+
+### Backfill — document `users.role` column
+**Type:** Documentation backfill (column pre-existing; no new schema change)
+**Executed by:** Jeff in Supabase Studio, on or before 2026-06-11 (exact date
+unknown — Studio SQL Editor history unavailable)
+
+**SQL run:** Confirmed against Studio 2026-06-12 — matches the originally
+inferred SQL (from `docs/auth-service-rebuild.md` §7) exactly:
+```sql
+ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'member';
+UPDATE users SET role = 'platform_admin' WHERE clerk_id = '<admin_clerk_id>';
+```
+
+**Purpose:** Authorization lives in our DB, not the auth provider.
+`'platform_admin'` drives server-side `isPlatformAdmin`
+(`resolveIsPlatformAdminFromDb` in `services/auth/providers/clerk/server.ts`,
+commit `841b897`); any other value or no row resolves to false, with a loud
+fallback to Clerk publicMetadata only when the lookup itself fails. The admin
+backfill UPDATE is required for Jeff's row — without it every privileged
+server-side gate denies.
+
+---
+
+### Backfill — document `users.deleted_at` column
+**Type:** Documentation backfill (column pre-existing; no new schema change)
+**Executed by:** Jeff in Supabase Studio (exact date unknown — Studio SQL
+Editor history unavailable)
+
+**SQL run:** Confirmed against Studio 2026-06-12 — matches the originally
+inferred SQL (nullable timestamptz, no default) exactly:
+```sql
+ALTER TABLE users ADD COLUMN deleted_at timestamptz;
+```
+
+**Purpose:** Soft-delete stamp on platform users. Set by the Clerk webhook
+(`/api/webhooks/clerk`) on `user.deleted`, alongside `members.status =
+'deleted'` and — since 2026-06-11 — `users.status = 'deleted'` (see that
+entry). Nullable; null = live user. The 2026-06-11 `users.status` backfill
+keyed off this column (`UPDATE users SET status = 'deleted' WHERE deleted_at
+IS NOT NULL`).
+
+---
+
 ## 2026-06-11
 
 ### Add `status` column to `users` table
