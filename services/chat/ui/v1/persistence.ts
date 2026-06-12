@@ -1,10 +1,14 @@
 // services/chat/ui/v1/persistence.ts
 //
 // Client-side localStorage buffering for the Heirloom chat. Best-effort
-// durability: every turn is written here as it completes so a refresh or an
-// interrupted turn can be recovered without waiting on the DB sync (which only
-// lands on turn completion). The DB remains the source of truth — this layer
-// is the recovery buffer in front of it.
+// durability: every turn is written here as it completes. For SIGNED-IN
+// visitors the buffer is a recovery layer in front of the DB sync (which only
+// lands on turn completion) — reload rehydrates from here, most-recent-wins
+// against the DB. For ANONYMOUS visitors the buffer is NOT rehydrated on
+// reload (a signed-out refresh starts a fresh conversation by design); its
+// role is the claim index — the post-sign-in flow claims every buffered
+// session to the new account, then clears the entries. The DB remains the
+// source of truth throughout.
 //
 // Multi-thread by design: each thread is stored under its own session key, with
 // a lightweight index (id + updatedAt + title) that the (currently empty)

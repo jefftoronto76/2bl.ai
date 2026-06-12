@@ -245,16 +245,26 @@ export function ChatProvider({
     }
   }, [sessionId, persistCurrent]);
 
-  // Rehydrate the most recently buffered thread on mount so a refresh restores
-  // the conversation. hydrateConversation is stable → runs once.
+  // Rehydrate the most recently buffered thread once the auth provider has
+  // loaded — SIGNED-IN ONLY. A signed-out reload starts fresh by design: the
+  // buffers stay on disk so the post-sign-in claim flow can still link those
+  // sessions (they are cleared after a successful claim), but the
+  // conversation is not restored. Signed-in users get the local buffer
+  // immediately; the DB-recovery effect below may override it with a strictly
+  // newer DB thread (most-recent-wins). Runs once per page load — a
+  // mid-session sign-in does not retro-hydrate over a live conversation.
+  const hasHydratedRef = useRef(false);
   useEffect(() => {
+    if (!isLoaded || hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+    if (!isSignedIn) return;
     const thread = findMostRecentThread();
     if (!thread || thread.messages.length === 0) return;
     hydrateConversation({
       messages: reviveUIMessages(thread.messages),
       sessionId: thread.sessionId,
     });
-  }, [hydrateConversation]);
+  }, [isLoaded, isSignedIn, hydrateConversation]);
 
   // Flush the live transcript when the page is hidden or unloaded, so a turn
   // still streaming (never reached the DB) survives a tab close / app switch.
