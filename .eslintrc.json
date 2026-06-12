@@ -46,6 +46,26 @@
           {
             "group": ["@clerk/*", "@clerk/*/*"],
             "message": "Golden Rule (docs/auth-service-rebuild.md): no product code imports an auth provider directly. Import via @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), or @/services/auth/middleware (edge)."
+          },
+          {
+            "group": [
+              "@/services/auth/get-auth-context",
+              "@/services/auth/get-tenant-from-request",
+              "@/services/auth/get-tenant-name",
+              "@/services/auth/get-current-user-id",
+              "@/services/auth/sync-user",
+              "@/services/auth/sync-member",
+              "@/services/auth/ensure-clerk-user",
+              "@/services/auth/claim-membership",
+              "@/services/auth/findUserByClerkId",
+              "@/services/auth/magic-link",
+              "@/services/auth/types",
+              "@/services/auth/errors",
+              "@/services/auth/resolve-tenant-from-host",
+              "@/services/auth/providers",
+              "@/services/auth/providers/**"
+            ],
+            "message": "Auth barrel rule: import from @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), @/services/auth/middleware (edge). Blessed exceptions: supabase-admin, admin-user-context, useAuthFlow, log-auth-step. See docs/auth-service-rebuild.md."
           }
         ]
       }
