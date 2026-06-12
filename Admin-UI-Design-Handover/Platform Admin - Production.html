@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Platform · Tenants — Second Brain Labs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ── Mantine token bridge (from adminTheme + default Mantine palettes) ── */
+  :root {
+    --dark-9:#101113; --dark-8:#141517; --dark-7:#1A1B1E; --dark-6:#2C2E33; --dark-5:#373A40;
+    --gray-0:#f8f9fa; --gray-1:#f1f3f5; --gray-2:#e9ecef; --gray-3:#dee2e6; --gray-4:#ced4da;
+    --gray-5:#adb5bd; --gray-6:#868e96; --gray-7:#495057; --gray-8:#343a40; --gray-9:#212529;
+    --green-5:#4fa574; --green-6:#2d6a4f; --green-7:#245741; --green-8:#1b4433;
+    --red-6:#e03131; --red-5:#fa5252; --red-light:#fff5f5; --red-light-fg:#c92a2a;
+
+    --text:#1a1917; --muted:rgba(26,25,23,0.55); --body-bg:#f9f8f5;
+
+    --font: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+    --head: "Playfair Display", serif;
+    --mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    --r-xs:2px; --r-sm:4px; --r-md:8px; --r-lg:12px;
+    --sp-xs:4px; --sp-sm:8px; --sp-md:16px; --sp-lg:24px; --sp-xl:32px;
+    --shadow-md:0 4px 6px rgba(0,0,0,0.06);
+    --shadow-lg:0 10px 15px rgba(0,0,0,0.06);
+    --shadow-xl:0 20px 25px rgba(0,0,0,0.06), 0 8px 10px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; }
+  body {
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--body-bg);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  ::selection { background: rgba(45,106,79,0.18); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-3); border-radius: 8px; border:2px solid #fff; }
+  .nav-scroll::-webkit-scrollbar-thumb { background: var(--dark-5); border-color: var(--dark-9); }
+
+  #boot {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    background: var(--body-bg); color: var(--gray-5);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  }
+</style>
+<link rel="stylesheet" href="platform-production/styles.css" />
+</head>
+<body>
+  <div id="boot">Loading platform · Second Brain Labs</div>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="platform-production/data.jsx"></script>
+  <script type="text/babel" src="platform-production/icons.jsx"></script>
+  <script type="text/babel" src="platform-production/members.jsx"></script>
+  <script type="text/babel" src="platform-production/app.jsx"></script>
+</body>
+</html>
