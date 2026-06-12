@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { saveMasterPrompt } from '@/services/prompt/save'
 import { NextRequest, NextResponse } from 'next/server'
 import { logEvent, AuditAction } from '@/services/audit'

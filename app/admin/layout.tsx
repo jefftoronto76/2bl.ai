@@ -10,8 +10,7 @@ import '../(jefflougheed)/globals.css';
 import { adminTheme } from '@/components/admin/theme/mantine-theme';
 import { AdminShell } from '@/components/admin/layout/AdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
-import { syncUser } from '@/services/auth/sync-user';
-import { getTenantName } from '@/services/auth/get-tenant-name';
+import { syncUser, getTenantName } from '@/services/auth';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabaseUserId = await syncUser()

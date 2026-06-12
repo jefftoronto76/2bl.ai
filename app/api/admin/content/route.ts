@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { createContent } from '@/services/content'
 
 export async function POST(req: Request) {

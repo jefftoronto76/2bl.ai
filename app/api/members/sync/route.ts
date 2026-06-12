@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/services/auth'
-import { syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
+import { getCurrentUser, syncMember, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 /**

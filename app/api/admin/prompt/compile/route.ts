@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { compilePrompt } from '@/services/prompt/compile'
 import { logEvent, AuditAction } from '@/services/audit'
 

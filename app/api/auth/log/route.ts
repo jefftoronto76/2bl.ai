@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { logAuthEvent } from '@/services/audit/audit'
 import type { AuthEventInput } from '@/services/audit/types'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth'
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {

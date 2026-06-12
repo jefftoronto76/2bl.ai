@@ -1,5 +1,5 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { logEvent, AuditAction } from '@/services/audit'
 
 interface RouteContext {

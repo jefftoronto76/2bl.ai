@@ -1,7 +1,6 @@
-import { getCurrentUser, type AuthUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest, type AuthUser } from '@/services/auth'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 // PATCH/DELETE for a single tenant. Same gate as POST /api/platform/tenants —
 // platform_admin only, re-checked here so these privileged service-role writes

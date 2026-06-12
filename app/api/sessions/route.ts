@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
-import { getCurrentUserId } from '@/services/auth/get-current-user-id'
-import { syncUser } from '@/services/auth/sync-user'
+import { getTenantFromRequest, getCurrentUserId, syncUser } from '@/services/auth'
 import { createSession, listSessions } from '@/services/crm/sessions'
 import { logEvent, AuditAction } from '@/services/audit'
 

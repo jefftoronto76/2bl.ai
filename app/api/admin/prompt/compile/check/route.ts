@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { reviewBlockBody } from '@/services/prompt/safety'
 
 export async function POST(req: Request) {

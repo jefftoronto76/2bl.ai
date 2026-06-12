@@ -1,7 +1,6 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { createTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 // Tenant creation is a privileged, cross-tenant write. Gate it on the same
 // signal the (platform) layout/page use — AuthUser.isPlatformAdmin, resolved

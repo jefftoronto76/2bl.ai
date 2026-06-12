@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { listInvites, createInvite } from '@/services/invites'
 import { logEvent, AuditAction } from '@/services/audit'
 

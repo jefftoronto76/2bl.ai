@@ -1,6 +1,5 @@
-import { getSession } from '@/services/auth';
+import { getSession, HEIRLOOM_TENANT_ID } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
-import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member';
 import { validateInvite } from '@/services/invites';
 import HeirloomApp from './HeirloomApp';
 

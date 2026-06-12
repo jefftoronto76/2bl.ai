@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import {
   ACCEPTED_TYPES,
   MAX_FILE_SIZE,
