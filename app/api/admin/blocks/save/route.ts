@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { createBlock } from '@/services/prompt/blocks'
 import { logEvent, AuditAction } from '@/services/audit'
 

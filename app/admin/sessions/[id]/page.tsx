@@ -1,6 +1,6 @@
 import { Anchor, Card, Stack, Text } from '@mantine/core'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { getCurrentUser } from '@/services/auth'
 import {
   deriveSessionStatus,
