@@ -45,6 +45,11 @@
   --font-display: var(--font-heirloom-serif);
   --font-serif:   var(--font-heirloom-serif);
   --font-body:    var(--font-heirloom-sans);
+  /* No next/font mono is loaded for Heirloom; without this the Tailwind
+     `font-mono` utility resolves an undefined var and silently inherits the
+     body font. The system mono stack matches the V2 design preview (Tailwind
+     CDN default) at zero download cost. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
 /* Heirloom gradient + pattern utilities. */
