@@ -20,7 +20,13 @@ function EmptyState() {
   );
 }
 
-export function ChatHero() {
+export interface ChatHeroProps {
+  /** Drawer width state — passed through to ChatHeader's expand toggle. */
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
+}
+
+export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const { state, isError, isGated } = useChatStore();
 
   // iOS keyboard handling. While the chat panel is open it's a modal overlay,
@@ -38,11 +44,11 @@ export function ChatHero() {
     keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
   return (
-    <section style={surfaceStyle} className="h-full flex bg-background overflow-hidden">
+    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
       <Sidebar />
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
-        <ChatHeader />
+        <ChatHeader isFullScreen={isFullScreen} onToggleFullScreen={onToggleFullScreen} />
 
         <div className="flex flex-col flex-1 min-h-0">
           {isGated ? (
