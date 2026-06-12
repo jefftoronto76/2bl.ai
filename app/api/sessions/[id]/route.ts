@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth'
 import { updateSession } from '@/services/crm/sessions'
 
 export async function PATCH(

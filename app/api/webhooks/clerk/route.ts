@@ -4,9 +4,7 @@ import { NextResponse } from 'next/server'
 import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { findUserByClerkId } from '@/services/auth/findUserByClerkId'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
-import { syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
+import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {

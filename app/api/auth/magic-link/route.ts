@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { validateMagicLinkInput } from '@/services/auth/magic-link'
+import { validateMagicLinkInput } from '@/services/auth'
 
 /**
  * POST /api/auth/magic-link

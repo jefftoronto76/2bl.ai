@@ -1,5 +1,5 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
+import { getTenantFromRequest } from '@/services/auth'
 
 type OpenAs = 'new_tab' | 'popup'
 
