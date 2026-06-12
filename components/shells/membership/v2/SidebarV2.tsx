@@ -353,7 +353,7 @@ export function SidebarV2({
           type="button"
           aria-label="Uploads"
           onClick={onUploads}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
+          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
         >
           <Upload size={16} className="flex-shrink-0" />
           {expanded && <span className="font-body text-base font-medium truncate">Uploads</span>}
@@ -362,7 +362,7 @@ export function SidebarV2({
           type="button"
           aria-label="Share Heirloom"
           onClick={onShareHeirloom}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
+          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
         >
           <Share2 size={16} className="flex-shrink-0" />
           {expanded && (
@@ -483,7 +483,7 @@ export function SidebarV2({
                 type="button"
                 onClick={onCreateStory}
                 disabled={storiesDisabled || !onCreateStory}
-                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent opacity-40 pointer-events-none"
               >
                 <Plus size={15} className="flex-shrink-0" />
                 <span className="font-body text-sm font-semibold">Create</span>
@@ -557,7 +557,7 @@ export function SidebarV2({
           </div>
 
           {/* Writing Prompts — bottom */}
-          <div>
+          <div className="opacity-40 pointer-events-none">
             <SectionLabel icon={Feather}>Writing Prompts</SectionLabel>
             <div className="flex flex-col gap-2">
               {writingPrompts.map((prompt) => (
