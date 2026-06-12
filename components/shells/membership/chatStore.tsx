@@ -324,6 +324,37 @@ export function ChatProvider({
     };
   }, [isLoaded, isSignedIn, hydrateConversation]);
 
+  // Reactive Recent list: when a turn finishes (isStreaming true→false) while
+  // signed in, upsert the live thread into recentSessions so the sidebar
+  // reflects the new/updated session without a reload. Local upsert only — no
+  // GET /api/sessions refetch here: the engine fires the transcript PATCH
+  // fire-and-forget AFTER setStreaming(false), so an immediate refetch would
+  // race the write. The DB fetch on the next load reconciles (titles gain
+  // visitor_name there when the server captured one).
+  const prevIsStreamingRef = useRef(false);
+  useEffect(() => {
+    const finished = prevIsStreamingRef.current && !isStreaming;
+    prevIsStreamingRef.current = isStreaming;
+    if (!finished || !isSignedInRef.current) return;
+    const id = sessionIdRef.current;
+    if (!id) return;
+    // Mirror persistCurrent: never store the empty streaming placeholder (or
+    // the error-cleared assistant message) into the Recent entry.
+    const msgs = messagesRef.current.filter(
+      m => !(m.role === 'assistant' && m.content === ''),
+    );
+    if (msgs.length === 0) return;
+    setRecentSessions(prev => [
+      {
+        id,
+        title: deriveSessionTitle(null, msgs),
+        updatedAt: new Date().toISOString(),
+        messages: msgs,
+      },
+      ...prev.filter(s => s.id !== id),
+    ]);
+  }, [isStreaming]);
+
   // Warn before leaving while a turn is in flight or any conversation exists.
   // Suppressed for signed-in users (DB recovery covers their history) and when
   // an OAuth popup is opening (the popup triggers beforeunload on the parent
