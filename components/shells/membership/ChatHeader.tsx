@@ -119,9 +119,9 @@ export function ChatHeader() {
                           {user.name}
                         </p>
                       )}
-                      {user?.email && (
+                      {(user?.email ?? user?.phone) && (
                         <p className="text-text-muted text-xs font-body truncate">
-                          {user.email}
+                          {user?.email ?? user?.phone}
                         </p>
                       )}
                     </div>
