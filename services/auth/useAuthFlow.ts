@@ -33,10 +33,17 @@ export type AuthFlowStage =
 
 export type AuthContactType = 'email' | 'phone'
 
+/** Which provider flow the current attempt resolved to — 'signin' for an
+ *  existing user, 'signup' for a new one. Set when the OTP send succeeds;
+ *  null before that and after reset(). Lets consumers branch success copy
+ *  ("Welcome back" vs "You're now a member"). */
+export type AuthFlowType = 'signin' | 'signup'
+
 export interface UseAuthFlowReturn {
   stage: AuthFlowStage
   contactType: AuthContactType | null
   contactValue: string
+  flowType: AuthFlowType | null
   error: string | null
   sendEmail: (email: string) => Promise<void>
   sendPhone: (phone: string) => Promise<void>
@@ -68,6 +75,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
   const [stage, setStage] = useState<AuthFlowStage>('idle')
   const [contactType, setContactType] = useState<AuthContactType | null>(null)
   const [contactValue, setContactValue] = useState('')
+  const [flowType, setFlowType] = useState<AuthFlowType | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Guards setState calls after unmount.
@@ -82,6 +90,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
     setError(null)
     setContactType(null)
     setContactValue('')
+    setFlowType(null)
   }, [])
 
   // ── Send (shared by email + phone) ─────────────────────────────────────────
@@ -94,6 +103,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
       setError(null)
       setContactType(type)
       setContactValue(value)
+      setFlowType(null)
 
       try {
         // Validation gate runs BEFORE any provider call — ordering is
@@ -105,7 +115,10 @@ export function useAuthFlow(): UseAuthFlowReturn {
           if (mountedRef.current) { setError(result.message); setStage('error') }
           return
         }
-        if (mountedRef.current) setStage('otp_input')
+        if (mountedRef.current) {
+          setFlowType(result.flow)
+          setStage('otp_input')
+        }
       } catch (err: unknown) {
         // Validation-gate failures and unexpected throws land here — the
         // adapter logs its own provider steps; this preserves the outer-catch
@@ -155,6 +168,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
     stage,
     contactType,
     contactValue,
+    flowType,
     error,
     sendEmail,
     sendPhone,

@@ -38,16 +38,22 @@ export function SaveChatCTA() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // After Clerk auth completes: pass name through to claimAllSessions, then inject
-  // the confirmation message. nameValue is written to users.name (column exists on
-  // `users`). members table has no name column — name never touches members.
+  // the confirmation message — "Welcome back" for a returning user (flowType
+  // 'signin'), the membership copy for a genuine sign-up. nameValue is written to
+  // users.name (column exists on `users`). members table has no name column —
+  // name never touches members.
   useEffect(() => {
     if (flow.stage !== 'success') return;
     void (async () => {
       await claimAllSessions(nameValue.trim() || undefined);
-      injectAssistantMessage("You're now a member — your story is saved.");
+      injectAssistantMessage(
+        flow.flowType === 'signin'
+          ? 'Welcome back — your story is saved.'
+          : "You're now a member — your story is saved.",
+      );
       setOpen(false);
     })();
-  }, [flow.stage, claimAllSessions, injectAssistantMessage]);
+  }, [flow.stage, flow.flowType, claimAllSessions, injectAssistantMessage]);
 
   // Resend countdown.
   useEffect(() => {
