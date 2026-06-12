@@ -133,7 +133,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (user) {
       const now = new Date().toISOString()
       const [usersResult, membersResult] = await Promise.all([
-        supabase.from('users').update({ deleted_at: now }).eq('id', user.id),
+        supabase.from('users').update({ deleted_at: now, status: 'deleted' }).eq('id', user.id),
         supabase
           .from('members')
           .update({ status: 'deleted' })
