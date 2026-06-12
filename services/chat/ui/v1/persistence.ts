@@ -163,6 +163,23 @@ export function clearSession(sessionId: string): void {
   removeIndexEntry(sessionId);
 }
 
+/**
+ * Drop every buffered transcript while KEEPING the session index. Called on
+ * page exit for signed-out visitors: a signed-out reload starts fresh (the
+ * rehydration gate), so the transcripts are dead weight — but the index ids
+ * must survive so a later sign-in can still claim those sessions to the new
+ * account (the DB holds the actual content). The draft slot is dropped
+ * entirely (transcript + index entry): it has no server session, so it is
+ * not claimable.
+ */
+export function clearTranscripts(): void {
+  for (const entry of readIndex()) {
+    if (entry.id === DRAFT_ID) continue;
+    safeRemove(sessionKey(entry.id));
+  }
+  clearDraft();
+}
+
 /** Load one buffered thread by id (DRAFT_ID resolves to the draft slot). */
 export function readThread(id: string): PersistedThread | null {
   const key = id === DRAFT_ID ? DRAFT_KEY : sessionKey(id);

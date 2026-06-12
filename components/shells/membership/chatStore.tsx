@@ -17,6 +17,7 @@ import {
   bufferThread,
   clearDraft,
   clearSession,
+  clearTranscripts,
   findMostRecentThread,
   readIndex,
   DRAFT_ID,
@@ -266,12 +267,21 @@ export function ChatProvider({
     });
   }, [isLoaded, isSignedIn, hydrateConversation]);
 
-  // Flush the live transcript when the page is hidden or unloaded, so a turn
-  // still streaming (never reached the DB) survives a tab close / app switch.
+  // On page hide/exit: flush the live transcript, then — signed-out only —
+  // scrub the buffered transcripts. The flush keeps the index entry for the
+  // current session up to date; the scrub drops the transcript payloads
+  // (signed-out reloads start fresh, so they are never read back) while
+  // KEEPING the index so a later sign-in can still claim those sessions.
+  // Signed-in visitors keep their transcripts: the buffer is their recovery
+  // layer in front of the DB (most-recent-wins on the next load).
   useEffect(() => {
-    const onPageHide = () => persistCurrent();
+    const flushAndScrub = () => {
+      persistCurrent();
+      if (!isSignedInRef.current) clearTranscripts();
+    };
+    const onPageHide = () => flushAndScrub();
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') persistCurrent();
+      if (document.visibilityState === 'hidden') flushAndScrub();
     };
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -362,12 +372,21 @@ export function ChatProvider({
       realIds.map(id =>
         fetch(`/api/sessions/${id}/claim`, { method: 'POST' })
           .then(r => {
-            if (!r.ok) console.warn('[heirloom/chat] post-sign-in claim failed:', id, r.status);
-            else console.log('[heirloom/chat] post-sign-in claimed session:', id);
+            if (!r.ok) {
+              console.warn('[heirloom/chat] post-sign-in claim failed:', id, r.status);
+            } else {
+              console.log('[heirloom/chat] post-sign-in claimed session:', id);
+              // Claimed → the DB owns it (recovery + Recent sidebar); drop the
+              // local buffer entry so localStorage is clean after sign-in. A
+              // failed claim keeps its entry for the next attempt.
+              clearSession(id);
+            }
           })
           .catch(err => console.error('[heirloom/chat] post-sign-in claim error:', id, err))
       )
     );
+    // The draft slot has no server session — nothing to claim; drop it too.
+    clearDraft();
   }, []); // reads refs synchronously — no reactive deps needed
 
   // Claim all browser-local sessions on the false→true isSignedIn transition.
@@ -473,13 +492,20 @@ export function ChatProvider({
       realIds.map(id =>
         fetch(`/api/sessions/${id}/claim`, { method: 'POST' })
           .then(r => {
-            if (!r.ok) console.warn('[heirloom/chat] claim failed:', id, r.status);
-            else console.log('[heirloom/chat] claimed session:', id);
+            if (!r.ok) {
+              console.warn('[heirloom/chat] claim failed:', id, r.status);
+            } else {
+              console.log('[heirloom/chat] claimed session:', id);
+              // Claimed → DB-owned; drop the local buffer entry (see
+              // claimSessionsOnly). Failed claims keep theirs.
+              clearSession(id);
+            }
           })
           .catch(err => console.error('[heirloom/chat] claim error:', id, err))
       )
     );
-
+    // The draft slot has no server session — nothing to claim; drop it too.
+    clearDraft();
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses

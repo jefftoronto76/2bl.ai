@@ -3,6 +3,7 @@ import {
   bufferThread,
   clearDraft,
   clearSession,
+  clearTranscripts,
   readThread,
   readIndex,
   findMostRecentThread,
@@ -111,6 +112,43 @@ describe('clearSession', () => {
     bufferThread([msg('user', 'only thread')], 'sess-only');
     clearSession('sess-only');
     expect(findMostRecentThread()).toBeNull();
+  });
+});
+
+describe('clearTranscripts', () => {
+  it('drops session transcripts but keeps their index entries (the claim index)', () => {
+    bufferThread([msg('user', 'thread one')], 'sess-1');
+    bufferThread([msg('user', 'thread two')], 'sess-2');
+
+    clearTranscripts();
+
+    expect(window.localStorage.getItem(sessionKey('sess-1'))).toBeNull();
+    expect(window.localStorage.getItem(sessionKey('sess-2'))).toBeNull();
+    const ids = readIndex().map(e => e.id);
+    expect(ids).toContain('sess-1');
+    expect(ids).toContain('sess-2');
+  });
+
+  it('drops the draft slot entirely — transcript AND index entry (not claimable)', () => {
+    bufferThread([msg('user', 'pre-session draft')], null);
+    bufferThread([msg('user', 'real session')], 'sess-1');
+
+    clearTranscripts();
+
+    expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+    expect(readIndex().some(e => e.id === DRAFT_ID)).toBe(false);
+    expect(readIndex().some(e => e.id === 'sess-1')).toBe(true);
+  });
+
+  it('leaves findMostRecentThread with nothing to rehydrate', () => {
+    bufferThread([msg('user', 'only thread')], 'sess-only');
+    clearTranscripts();
+    expect(findMostRecentThread()).toBeNull();
+  });
+
+  it('no-ops safely on an empty store', () => {
+    expect(() => clearTranscripts()).not.toThrow();
+    expect(readIndex()).toHaveLength(0);
   });
 });
 
