@@ -68,6 +68,12 @@ export function useAuthActions(): AuthActions {
 export interface AuthFlowContact {
   type: 'email' | 'phone'
   value: string
+  /** Optional profile name, attached to the attempt on the SIGN-UP path only
+   *  (via signUp.update — create stays identifier-only so the new-vs-existing
+   *  detection is untouched). Ignored for sign-ins: an existing user's
+   *  profile is never overwritten from this flow. */
+  firstName?: string
+  lastName?: string
 }
 
 export type SendCodeResult =
@@ -135,7 +141,28 @@ export function useAuthFlowAdapter(): {
     }
 
     if (!createErr) {
-      // No matching user — genuine sign-up.
+      // No matching user — genuine sign-up. Attach the visitor's name to the
+      // attempt before the OTP send — signUp.update() is the documented Core 3
+      // mechanism for adding optional fields (name) to an existing sign-up.
+      // Non-fatal by design: a name failure (e.g. name attribute disabled in
+      // the dashboard) is logged but never blocks the sign-up itself.
+      if (contact.firstName || contact.lastName) {
+        try {
+          const { error: nameErr } = await signUp.update({
+            ...(contact.firstName && { firstName: contact.firstName }),
+            ...(contact.lastName && { lastName: contact.lastName }),
+          })
+          if (nameErr) {
+            logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+              failure_reason: extractErrorMessage(nameErr),
+              metadata: { auth_surface: 'custom_otp', step: 'signUp_update_name', contactType: type, code: extractClerkErrorCode(nameErr) } })
+          }
+        } catch (e: unknown) {
+          logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+            failure_reason: extractErrorMessage(e),
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_update_name_threw', contactType: type, code: extractClerkErrorCode(e) } })
+        }
+      }
       const { error: sendErr } =
         type === 'email'
           ? await signUp.verifications.sendEmailCode()

@@ -83,6 +83,47 @@ describe('useAuthFlow flowType', () => {
     expect(result.current.flowType).toBeNull()
   })
 
+  it('splits a full name into firstName/lastName for the adapter', async () => {
+    const { result } = renderHook(() => useAuthFlow())
+    await act(async () => {
+      await result.current.sendPhone('+15550001111', 'Jane van der Berg')
+    })
+    expect(adapter.sendCode).toHaveBeenCalledWith({
+      type: 'phone', value: '+15550001111', firstName: 'Jane', lastName: 'van der Berg',
+    })
+  })
+
+  it('passes a single-token name as firstName only', async () => {
+    const { result } = renderHook(() => useAuthFlow())
+    await act(async () => {
+      await result.current.sendEmail('new@example.com', '  Jane  ')
+    })
+    expect(adapter.sendCode).toHaveBeenCalledWith({
+      type: 'email', value: 'new@example.com', firstName: 'Jane',
+    })
+  })
+
+  it('omits name fields entirely when none is supplied', async () => {
+    const { result } = renderHook(() => useAuthFlow())
+    await act(async () => {
+      await result.current.sendEmail('new@example.com')
+    })
+    expect(adapter.sendCode).toHaveBeenCalledWith({ type: 'email', value: 'new@example.com' })
+  })
+
+  it('resend re-sends the name from the original attempt', async () => {
+    const { result } = renderHook(() => useAuthFlow())
+    await act(async () => {
+      await result.current.sendPhone('+15550001111', 'Jane Doe')
+    })
+    await act(async () => {
+      await result.current.resend()
+    })
+    expect(adapter.sendCode).toHaveBeenLastCalledWith({
+      type: 'phone', value: '+15550001111', firstName: 'Jane', lastName: 'Doe',
+    })
+  })
+
   it('clears on reset()', async () => {
     const { result } = renderHook(() => useAuthFlow())
     await act(async () => {

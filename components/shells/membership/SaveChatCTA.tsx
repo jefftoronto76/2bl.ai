@@ -104,8 +104,8 @@ export function SaveChatCTA() {
     const val = inputValue.trim();
     if (!val || !nameValue.trim()) return;
     setResendCooldown(RESEND_COOLDOWN_S);
-    if (tab === 'email') void flow.sendEmail(val);
-    else void flow.sendPhone(val);
+    if (tab === 'email') void flow.sendEmail(val, nameValue);
+    else void flow.sendPhone(val, nameValue);
   }
 
   function handleOtpSubmit(e: React.FormEvent) {
