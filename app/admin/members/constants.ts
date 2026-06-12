@@ -22,6 +22,7 @@ export const ROLE_COLOR: Record<Role, string> = {
 export const STATUS_COLOR: Record<MemberStatus, string> = {
   active: 'green',
   invited: 'blue',
+  waitlist: 'yellow',
   suspended: 'orange',
   deleted: 'gray',
 };
@@ -40,6 +41,7 @@ export const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'invited', label: 'Invited' },
+  { value: 'waitlist', label: 'Waitlist' },
   { value: 'suspended', label: 'Suspended' },
   { value: 'deleted', label: 'Deleted' },
 ];

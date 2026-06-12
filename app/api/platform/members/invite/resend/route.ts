@@ -27,11 +27,12 @@ export async function POST(req: Request) {
   const supabase = getAdminClient()
   const newToken = randomBytes(24).toString('base64url')
 
+  // Allow 'waitlist' as well — sending an invite to a waitlist member promotes them to 'invited'.
   const { data, error } = await supabase
     .from('members')
-    .update({ token: newToken, used_at: null, updated_at: new Date().toISOString() })
+    .update({ token: newToken, status: 'invited', used_at: null, updated_at: new Date().toISOString() })
     .eq('id', member_id)
-    .eq('status', 'invited')
+    .in('status', ['invited', 'waitlist'])
     .select('id, token')
     .maybeSingle()
 
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     return Response.json({ error: error.message }, { status: 500 })
   }
   if (!data) {
-    return Response.json({ error: 'Invited member not found' }, { status: 404 })
+    return Response.json({ error: 'Member not found (must be invited or waitlist)' }, { status: 404 })
   }
 
   return Response.json({ token: (data as { id: string; token: string }).token })

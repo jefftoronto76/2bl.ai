@@ -1,35 +1,36 @@
-// app/admin/members/InviteMemberModal.tsx
 'use client';
+// app/admin/members/InviteMemberModal.tsx
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Group, Modal, Select, Stack, TextInput } from '@mantine/core';
-import { IconUserPlus } from '@tabler/icons-react';
+import { Button, CopyButton, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { IconCheck, IconCopy, IconUserPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import type { Role, TenantOption } from './types';
-import { ROLE_OPTIONS } from './constants';
+import type { TenantOption } from './types';
 
 /**
- * "Invite member" button (top-right of the list) + its modal.
+ * "Invite member" button + its modal.
  *
- * NOTE: the invite flow itself was not part of the approved design. Fields below are a
- * reasonable default (email + tenant + role); confirm with product before shipping.
- * See handover §Open decisions.
+ * Form: optional invited_name + required tenant. No email field — the invite token
+ * is the gate; the invitee supplies their email when signing up.
+ *
+ * After a successful POST the modal switches to a success view showing the invite URL
+ * with a copy button. The admin copies the link and shares it manually.
  */
 export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
   const router = useRouter();
   const [opened, setOpened] = useState(false);
-  const [email, setEmail] = useState('');
+  const [invitedName, setInvitedName] = useState('');
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>('member');
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; tenant?: string }>({});
+  const [errors, setErrors] = useState<{ tenant?: string }>({});
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   function reset() {
-    setEmail('');
+    setInvitedName('');
     setTenantId(null);
-    setRole('member');
     setErrors({});
+    setInviteUrl(null);
   }
 
   function close() {
@@ -40,7 +41,6 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
 
   function validate() {
     const next: typeof errors = {};
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = 'Enter a valid email';
     if (!tenantId) next.tenant = 'Select a tenant';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -50,23 +50,26 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const payload: Record<string, string> = { tenant_id: tenantId! };
+      const name = invitedName.trim();
+      if (name) payload.invited_name = name;
+
       const res = await fetch('/api/platform/members/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), tenant_id: tenantId, role }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? 'Could not send invite.');
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Could not create invite.');
       }
-      notifications.show({ color: 'green', title: 'Invite sent', message: `Invitation sent to ${email.trim()}.` });
-      reset();
-      setOpened(false);
+      const data = (await res.json()) as { token: string; member_id: string };
+      setInviteUrl(`${window.location.origin}?invite=${data.token}`);
       router.refresh();
     } catch (err) {
       notifications.show({
         color: 'red',
-        title: 'Could not send invite',
+        title: 'Could not create invite',
         message: err instanceof Error ? err.message : 'Network error',
       });
     } finally {
@@ -81,44 +84,67 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
       </Button>
 
       <Modal opened={opened} onClose={close} title="Invite member" centered size="md">
-        <Stack gap="md">
-          <TextInput
-            label="Email"
-            placeholder="person@company.com"
-            required
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
-            error={errors.email}
-            data-autofocus
-          />
-          <Select
-            label="Tenant"
-            placeholder="Select a tenant"
-            required
-            data={tenants.map((t) => ({ value: t.id, label: t.name }))}
-            value={tenantId}
-            onChange={setTenantId}
-            error={errors.tenant}
-            searchable
-            nothingFoundMessage="No tenants"
-          />
-          <Select
-            label="Role"
-            data={ROLE_OPTIONS}
-            value={role}
-            onChange={(v) => v && setRole(v as Role)}
-            allowDeselect={false}
-          />
-          <Group justify="flex-end" mt="xs">
-            <Button variant="subtle" color="gray" onClick={close} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} loading={submitting}>
-              Send invite
-            </Button>
-          </Group>
-        </Stack>
+        {inviteUrl ? (
+          /* Success — show the generated invite URL */
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              Invite link created. Copy it and share it with your member — it grants access on sign-up.
+            </Text>
+            <TextInput
+              readOnly
+              label="Invite link"
+              value={inviteUrl}
+              styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 11 } }}
+            />
+            <Group justify="flex-end" mt="xs">
+              <CopyButton value={inviteUrl} timeout={2000}>
+                {({ copied, copy }) => (
+                  <Button
+                    leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                    color={copied ? 'green' : undefined}
+                    onClick={copy}
+                  >
+                    {copied ? 'Copied!' : 'Copy link'}
+                  </Button>
+                )}
+              </CopyButton>
+              <Button variant="subtle" color="gray" onClick={close}>
+                Done
+              </Button>
+            </Group>
+          </Stack>
+        ) : (
+          /* Form */
+          <Stack gap="md">
+            <TextInput
+              label="Name (optional)"
+              description="For your records — shown in the member list before they sign up."
+              placeholder="First Last"
+              value={invitedName}
+              onChange={(e) => setInvitedName(e.currentTarget.value)}
+              data-autofocus
+            />
+            <Select
+              label="Tenant"
+              placeholder="Select a tenant"
+              required
+              data={tenants.map((t) => ({ value: t.id, label: t.name }))}
+              value={tenantId}
+              onChange={setTenantId}
+              error={errors.tenant}
+              searchable
+              nothingFoundMessage="No tenants"
+            />
+            <Group justify="flex-end" mt="xs">
+              <Button variant="subtle" color="gray" onClick={close} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleSubmit} loading={submitting}>
+                Create invite
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
     </>
   );

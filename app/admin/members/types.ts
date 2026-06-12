@@ -4,12 +4,14 @@
 // each carrying one or more tenant memberships.
 
 export type Role = 'owner' | 'admin' | 'member' | 'viewer';
-export type MemberStatus = 'active' | 'invited' | 'suspended' | 'deleted';
+export type MemberStatus = 'active' | 'invited' | 'waitlist' | 'suspended' | 'deleted';
 
 // Display-only. Source is TBD (billing) — see handover §Open decisions.
 export type Plan = 'free' | 'pro' | 'team';
 
 export interface Membership {
+  /** members.id — used for invite resend, token operations. */
+  memberId: string;
   tenantId: string;
   tenantName: string;
   role: Role;
@@ -19,6 +21,10 @@ export interface Membership {
   joined: string | null;
   /** ISO timestamp — last activity on this tenant. Source TBD (see handover). */
   lastActive: string | null;
+  /** Optional name the admin set at invite creation. */
+  invitedName: string | null;
+  /** Invite token — present when status = 'invited' and not yet used. */
+  token: string | null;
 }
 
 export interface UserRow {
@@ -27,6 +33,8 @@ export interface UserRow {
   email: string;
   /** Sorted; memberships[0] is treated as the "primary" for collapsed list columns. */
   memberships: Membership[];
+  /** True when this row represents an invited-only member with no users row yet. */
+  isInviteOnly?: boolean;
 }
 
 export interface TenantOption {

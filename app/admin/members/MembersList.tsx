@@ -1,5 +1,5 @@
-// app/admin/members/MembersList.tsx
 'use client';
+// app/admin/members/MembersList.tsx
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,6 +22,7 @@ import {
 } from '@mantine/core';
 import {
   IconDots,
+  IconLink,
   IconPlayerPause,
   IconPlayerPlay,
   IconRotateClockwise,
@@ -53,10 +54,17 @@ export function MembersList({ users, tenants }: MembersListProps) {
 
   // Status filter counts: a user is counted under a status if ANY membership has it.
   const counts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { all: users.length, active: 0, invited: 0, suspended: 0, deleted: 0 };
+    const c: Record<StatusFilter, number> = {
+      all: users.length,
+      active: 0,
+      invited: 0,
+      waitlist: 0,
+      suspended: 0,
+      deleted: 0,
+    };
     for (const u of users) {
       const seen = new Set(u.memberships.map((m) => m.status));
-      (['active', 'invited', 'suspended', 'deleted'] as MemberStatus[]).forEach((s) => {
+      (['active', 'invited', 'waitlist', 'suspended', 'deleted'] as MemberStatus[]).forEach((s) => {
         if (seen.has(s)) c[s] += 1;
       });
     }
@@ -73,9 +81,11 @@ export function MembersList({ users, tenants }: MembersListProps) {
     });
   }, [users, query, filter]);
 
-  const visibleIds = visible.map((u) => u.id);
-  const selectedVisible = visibleIds.filter((id) => selected.has(id));
-  const allChecked = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+  // Invited-only rows (isInviteOnly=true) have no real user_id and cannot participate
+  // in the bulk status API — exclude them from checkbox selection.
+  const selectableIds = visible.filter((u) => !u.isInviteOnly).map((u) => u.id);
+  const selectedVisible = selectableIds.filter((id) => selected.has(id));
+  const allChecked = selectableIds.length > 0 && selectedVisible.length === selectableIds.length;
   const someChecked = selectedVisible.length > 0 && !allChecked;
 
   function toggleOne(id: string) {
@@ -88,15 +98,14 @@ export function MembersList({ users, tenants }: MembersListProps) {
   function toggleAll() {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (allChecked) visibleIds.forEach((id) => next.delete(id));
-      else visibleIds.forEach((id) => next.add(id));
+      if (allChecked) selectableIds.forEach((id) => next.delete(id));
+      else selectableIds.forEach((id) => next.add(id));
       return next;
     });
   }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  // Status changes apply across ALL of a user's memberships (matching the approved
-  // prototype). The API should resolve eligibility server-side.
+
   async function setStatus(userIds: string[], status: MemberStatus, verb: string) {
     try {
       const res = await fetch('/api/platform/members/status', {
@@ -116,7 +125,11 @@ export function MembersList({ users, tenants }: MembersListProps) {
       setSelected(new Set());
       router.refresh();
     } catch (err) {
-      notifications.show({ color: 'red', title: 'Action failed', message: err instanceof Error ? err.message : 'Network error' });
+      notifications.show({
+        color: 'red',
+        title: 'Action failed',
+        message: err instanceof Error ? err.message : 'Network error',
+      });
     }
   }
 
@@ -130,27 +143,112 @@ export function MembersList({ users, tenants }: MembersListProps) {
       notifications.show({ color: 'green', title: 'Member deleted', message: `${name} was permanently removed.` });
       router.refresh();
     } catch (err) {
-      notifications.show({ color: 'red', title: 'Could not delete', message: err instanceof Error ? err.message : 'Network error' });
+      notifications.show({
+        color: 'red',
+        title: 'Could not delete',
+        message: err instanceof Error ? err.message : 'Network error',
+      });
     }
   }
 
-  async function resendInvite(email: string) {
+  // For invited-only / waitlist members (no users row) — deletes the members row directly.
+  async function deleteInviteMember(memberId: string, name: string) {
+    try {
+      const res = await fetch(`/api/platform/members/invite/${memberId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Could not remove member.');
+      }
+      notifications.show({ color: 'green', title: 'Removed', message: `${name} was removed.` });
+      router.refresh();
+    } catch (err) {
+      notifications.show({
+        color: 'red',
+        title: 'Could not remove',
+        message: err instanceof Error ? err.message : 'Network error',
+      });
+    }
+  }
+
+  // Regenerates the invite token (also promotes waitlist → invited).
+  async function resendInvite(memberId: string) {
     try {
       const res = await fetch('/api/platform/members/invite/resend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ member_id: memberId }),
       });
-      if (!res.ok) throw new Error('Could not resend invite.');
-      notifications.show({ color: 'green', title: 'Invite resent', message: `Sent to ${email}.` });
+      if (!res.ok) throw new Error('Could not regenerate invite link.');
+      notifications.show({
+        color: 'green',
+        title: 'Invite link regenerated',
+        message: 'Open the member details to copy the new link.',
+      });
+      router.refresh();
     } catch (err) {
-      notifications.show({ color: 'red', title: 'Could not resend', message: err instanceof Error ? err.message : 'Network error' });
+      notifications.show({
+        color: 'red',
+        title: 'Could not resend',
+        message: err instanceof Error ? err.message : 'Network error',
+      });
     }
   }
 
-  // ── Per-row action menu (depends on the user's aggregate status) ─────────────
+  function copyInviteLink(token: string) {
+    const url = `${window.location.origin}?invite=${token}`;
+    void navigator.clipboard.writeText(url);
+    notifications.show({ color: 'green', title: 'Copied', message: 'Invite link copied to clipboard.' });
+  }
+
+  // ── Per-row action menu ──────────────────────────────────────────────────────
   function RowMenu({ user }: { user: UserRow }) {
     const st = primaryStatus(user);
+    const m0 = user.memberships[0];
+
+    if (user.isInviteOnly) {
+      return (
+        <Menu position="bottom-end" withinPortal shadow="md" width={200}>
+          <Menu.Target>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              aria-label={`Actions for ${user.name}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <IconDots size={18} />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
+            <Menu.Label>Actions</Menu.Label>
+            {m0?.token && (
+              <Menu.Item
+                leftSection={<IconLink size={16} />}
+                onClick={() => copyInviteLink(m0.token!)}
+              >
+                Copy invite link
+              </Menu.Item>
+            )}
+            {m0 && (
+              <Menu.Item
+                leftSection={<IconSend size={16} />}
+                onClick={() => resendInvite(m0.memberId)}
+              >
+                {st === 'waitlist' ? 'Send invite' : 'Resend invite'}
+              </Menu.Item>
+            )}
+            <Menu.Divider />
+            <Menu.Item
+              color="red"
+              leftSection={<IconX size={16} />}
+              onClick={() => m0 && deleteInviteMember(m0.memberId, user.name)}
+            >
+              {st === 'waitlist' ? 'Remove from waitlist' : 'Revoke invite'}
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      );
+    }
+
     return (
       <Menu position="bottom-end" withinPortal shadow="md" width={200}>
         <Menu.Target>
@@ -166,40 +264,72 @@ export function MembersList({ users, tenants }: MembersListProps) {
         <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
           <Menu.Label>Actions</Menu.Label>
           {st === 'active' && (
-            <Menu.Item leftSection={<IconPlayerPause size={16} />} onClick={() => setStatus([user.id], 'suspended', 'suspended')}>
+            <Menu.Item
+              leftSection={<IconPlayerPause size={16} />}
+              onClick={() => setStatus([user.id], 'suspended', 'suspended')}
+            >
               Suspend
             </Menu.Item>
           )}
           {st === 'suspended' && (
-            <Menu.Item leftSection={<IconPlayerPlay size={16} />} onClick={() => setStatus([user.id], 'active', 'reactivated')}>
+            <Menu.Item
+              leftSection={<IconPlayerPlay size={16} />}
+              onClick={() => setStatus([user.id], 'active', 'reactivated')}
+            >
               Reactivate
             </Menu.Item>
           )}
           {st === 'invited' && (
             <>
-              <Menu.Item leftSection={<IconSend size={16} />} onClick={() => resendInvite(user.email)}>
+              {m0?.token && (
+                <Menu.Item
+                  leftSection={<IconLink size={16} />}
+                  onClick={() => copyInviteLink(m0.token!)}
+                >
+                  Copy invite link
+                </Menu.Item>
+              )}
+              <Menu.Item
+                leftSection={<IconSend size={16} />}
+                onClick={() => m0 && resendInvite(m0.memberId)}
+              >
                 Resend invite
               </Menu.Item>
               <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconX size={16} />} onClick={() => deletePermanently(user.id, user.name)}>
+              <Menu.Item
+                color="red"
+                leftSection={<IconX size={16} />}
+                onClick={() => deletePermanently(user.id, user.name)}
+              >
                 Revoke invite
               </Menu.Item>
             </>
           )}
           {st === 'deleted' ? (
             <>
-              <Menu.Item leftSection={<IconRotateClockwise size={16} />} onClick={() => setStatus([user.id], 'active', 'restored')}>
+              <Menu.Item
+                leftSection={<IconRotateClockwise size={16} />}
+                onClick={() => setStatus([user.id], 'active', 'restored')}
+              >
                 Restore
               </Menu.Item>
               <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => deletePermanently(user.id, user.name)}>
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={() => deletePermanently(user.id, user.name)}
+              >
                 Delete permanently
               </Menu.Item>
             </>
           ) : st !== 'invited' ? (
             <>
               <Menu.Divider />
-              <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => setStatus([user.id], 'deleted', 'deleted')}>
+              <Menu.Item
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={() => setStatus([user.id], 'deleted', 'deleted')}
+              >
                 Delete
               </Menu.Item>
             </>
@@ -238,7 +368,9 @@ export function MembersList({ users, tenants }: MembersListProps) {
               label: (
                 <Group gap={6} wrap="nowrap">
                   <span>{s.label}</span>
-                  <Text span size="xs" c="dimmed">{counts[s.value]}</Text>
+                  <Text span size="xs" c="dimmed">
+                    {counts[s.value]}
+                  </Text>
                 </Group>
               ),
             }))}
@@ -262,16 +394,37 @@ export function MembersList({ users, tenants }: MembersListProps) {
             {selectedVisible.length} selected
           </Text>
           <Group gap="xs">
-            <Button size="xs" variant="default" leftSection={<IconPlayerPause size={15} />} onClick={() => setStatus(selectedVisible, 'suspended', 'suspended')}>
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<IconPlayerPause size={15} />}
+              onClick={() => setStatus(selectedVisible, 'suspended', 'suspended')}
+            >
               Suspend
             </Button>
-            <Button size="xs" variant="default" leftSection={<IconPlayerPlay size={15} />} onClick={() => setStatus(selectedVisible, 'active', 'reactivated')}>
+            <Button
+              size="xs"
+              variant="default"
+              leftSection={<IconPlayerPlay size={15} />}
+              onClick={() => setStatus(selectedVisible, 'active', 'reactivated')}
+            >
               Reactivate
             </Button>
-            <Button size="xs" variant="default" color="red" leftSection={<IconTrash size={15} />} onClick={() => setStatus(selectedVisible, 'deleted', 'deleted')}>
+            <Button
+              size="xs"
+              variant="default"
+              color="red"
+              leftSection={<IconTrash size={15} />}
+              onClick={() => setStatus(selectedVisible, 'deleted', 'deleted')}
+            >
               Delete
             </Button>
-            <ActionIcon variant="subtle" color="gray" aria-label="Clear selection" onClick={() => setSelected(new Set())}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              aria-label="Clear selection"
+              onClick={() => setSelected(new Set())}
+            >
               <IconX size={16} />
             </ActionIcon>
           </Group>
@@ -281,9 +434,11 @@ export function MembersList({ users, tenants }: MembersListProps) {
       {visible.length === 0 ? (
         <Center mih={160}>
           <Stack gap={4} align="center">
-            <Text fw={600} c="dimmed">No members found</Text>
+            <Text fw={600} c="dimmed">
+              No members found
+            </Text>
             <Text size="sm" c="dimmed">
-              {query ? `Nothing matches “${query}”.` : 'No members in this view.'}
+              {query ? `Nothing matches "${query}".` : 'No members in this view.'}
             </Text>
           </Stack>
         </Center>
@@ -320,31 +475,58 @@ export function MembersList({ users, tenants }: MembersListProps) {
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           aria-label={`Select ${u.name}`}
-                          checked={selected.has(u.id)}
-                          onChange={() => toggleOne(u.id)}
+                          checked={!u.isInviteOnly && selected.has(u.id)}
+                          onChange={() => !u.isInviteOnly && toggleOne(u.id)}
+                          disabled={u.isInviteOnly}
                         />
                       </Table.Td>
                       <Table.Td>
                         <Group gap="sm" wrap="nowrap">
                           <Avatar name={u.name} color="initials" radius="xl" size={32} />
                           <div style={{ minWidth: 0 }}>
-                            <Text fw={500} lh={1.25} truncate>{u.name}</Text>
-                            <Text size="xs" c="dimmed" truncate>{u.email}</Text>
+                            <Text fw={500} lh={1.25} truncate>
+                              {u.name}
+                            </Text>
+                            {u.email ? (
+                              <Text size="xs" c="dimmed" truncate>
+                                {u.email}
+                              </Text>
+                            ) : (
+                              <Text size="xs" c="dimmed" fs="italic">
+                                Invite pending
+                              </Text>
+                            )}
                           </div>
                         </Group>
                       </Table.Td>
-                      <Table.Td><TenantPills memberships={u.memberships} /></Table.Td>
                       <Table.Td>
-                        {p && <Badge color={ROLE_COLOR[p.role]} variant="light" tt="none" size="sm">{cap(p.role)}</Badge>}
+                        <TenantPills memberships={u.memberships} />
                       </Table.Td>
                       <Table.Td>
-                        {p && <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">{PLAN_LABEL[p.plan]}</Badge>}
+                        {p && (
+                          <Badge color={ROLE_COLOR[p.role]} variant="light" tt="none" size="sm">
+                            {cap(p.role)}
+                          </Badge>
+                        )}
                       </Table.Td>
                       <Table.Td>
-                        {p && <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">{cap(p.status)}</Badge>}
+                        {p && !u.isInviteOnly && (
+                          <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">
+                            {PLAN_LABEL[p.plan]}
+                          </Badge>
+                        )}
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm" c="dimmed">{formatRelative(p?.lastActive ?? null)}</Text>
+                        {p && (
+                          <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">
+                            {cap(p.status)}
+                          </Badge>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">
+                          {u.isInviteOnly ? '—' : formatRelative(p?.lastActive ?? null)}
+                        </Text>
                       </Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <RowMenu user={u} />
@@ -375,16 +557,28 @@ export function MembersList({ users, tenants }: MembersListProps) {
                 >
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
                     <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-                      <Checkbox
-                        aria-label={`Select ${u.name}`}
-                        checked={selected.has(u.id)}
-                        onChange={() => toggleOne(u.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      {!u.isInviteOnly && (
+                        <Checkbox
+                          aria-label={`Select ${u.name}`}
+                          checked={selected.has(u.id)}
+                          onChange={() => toggleOne(u.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
                       <Avatar name={u.name} color="initials" radius="xl" size={32} />
                       <div style={{ minWidth: 0 }}>
-                        <Text fw={600} truncate>{u.name}</Text>
-                        <Text size="xs" c="dimmed" truncate>{u.email}</Text>
+                        <Text fw={600} truncate>
+                          {u.name}
+                        </Text>
+                        {u.email ? (
+                          <Text size="xs" c="dimmed" truncate>
+                            {u.email}
+                          </Text>
+                        ) : (
+                          <Text size="xs" c="dimmed" fs="italic">
+                            Invite pending
+                          </Text>
+                        )}
                       </div>
                     </Group>
                     <Box onClick={(e) => e.stopPropagation()}>
@@ -394,18 +588,34 @@ export function MembersList({ users, tenants }: MembersListProps) {
 
                   {p && (
                     <Group gap={6} mt="sm">
-                      <Badge color={ROLE_COLOR[p.role]} variant="light" tt="none" size="sm">{cap(p.role)}</Badge>
-                      <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">{PLAN_LABEL[p.plan]}</Badge>
-                      <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">{cap(p.status)}</Badge>
+                      <Badge color={ROLE_COLOR[p.role]} variant="light" tt="none" size="sm">
+                        {cap(p.role)}
+                      </Badge>
+                      {!u.isInviteOnly && (
+                        <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">
+                          {PLAN_LABEL[p.plan]}
+                        </Badge>
+                      )}
+                      <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">
+                        {cap(p.status)}
+                      </Badge>
                     </Group>
                   )}
 
-                  <Box mt="xs"><TenantPills memberships={u.memberships} /></Box>
+                  <Box mt="xs">
+                    <TenantPills memberships={u.memberships} />
+                  </Box>
 
-                  <Group justify="space-between" mt="xs">
-                    <Text size="xs" c="dimmed">Last active</Text>
-                    <Text size="xs" c="dimmed">{formatRelative(p?.lastActive ?? null)}</Text>
-                  </Group>
+                  {!u.isInviteOnly && (
+                    <Group justify="space-between" mt="xs">
+                      <Text size="xs" c="dimmed">
+                        Last active
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {formatRelative(p?.lastActive ?? null)}
+                      </Text>
+                    </Group>
+                  )}
                 </Card>
               );
             })}
@@ -413,7 +623,11 @@ export function MembersList({ users, tenants }: MembersListProps) {
         </>
       )}
 
-      <MemberDrawer user={detailUser} opened={detailUser !== null} onClose={() => setDetailUser(null)} />
+      <MemberDrawer
+        user={detailUser}
+        opened={detailUser !== null}
+        onClose={() => setDetailUser(null)}
+      />
     </Stack>
   );
 }
