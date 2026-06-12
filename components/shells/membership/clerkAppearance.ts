@@ -41,6 +41,7 @@ export const heirloomClerkAppearance = {
     formFieldLabel: { color: 'rgb(var(--hl-modal-ink))' },
     dividerRow:     { color: 'var(--hl-modal-ink-muted)' },
     footerActionText: { color: 'var(--hl-modal-ink-muted)' },
+    footerActionLink: { color: 'rgb(var(--hl-modal-ink))', fontWeight: '600' },
     // All social buttons get a visible border against the eggshell card background
     socialButtonsBlockButton: {
       border: '1px solid var(--hl-modal-border)',
