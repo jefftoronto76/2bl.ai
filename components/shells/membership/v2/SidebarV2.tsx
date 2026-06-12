@@ -482,7 +482,7 @@ export function SidebarV2({
               <button
                 type="button"
                 onClick={onCreateStory}
-                disabled={storiesDisabled}
+                disabled={storiesDisabled || !onCreateStory}
                 className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <Plus size={15} className="flex-shrink-0" />
@@ -491,7 +491,7 @@ export function SidebarV2({
               <button
                 type="button"
                 onClick={onInviteToStories}
-                disabled={storiesDisabled}
+                disabled={storiesDisabled || !onInviteToStories}
                 className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
               >
                 <UserPlus size={15} className="flex-shrink-0" />
