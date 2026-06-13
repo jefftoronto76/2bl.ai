@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser } from '@/services/auth'
-import { claimMembership } from '@/services/auth/claim-membership'
-import { ensureClerkUser } from '@/services/auth/ensure-clerk-user'
-import { HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
+import { getCurrentUser, claimMembership, ensureClerkUser, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { logEvent, AuditAction } from '@/services/audit'
 
 /**

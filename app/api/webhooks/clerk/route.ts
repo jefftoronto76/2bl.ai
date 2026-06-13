@@ -4,9 +4,7 @@ import { NextResponse } from 'next/server'
 import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { findUserByClerkId } from '@/services/auth/findUserByClerkId'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
-import { syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth/sync-member'
+import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { linkInvitedMember } from '@/services/members'
 
 // Clerk event types we care about → auth_events rows
@@ -78,6 +76,27 @@ export async function POST(req: Request): Promise<NextResponse> {
   const name =
     [data.first_name, data.last_name].filter(Boolean).join(' ') || null
 
+  // Ghost-row guard: a user.created / user.updated payload carrying neither
+  // an email nor a phone cannot produce a usable users/members row — creating
+  // one leaves an identifier-less ghost (observed from failed sign-up
+  // attempts). Skip creation when no users row exists yet; a later
+  // user.updated that does carry an identifier passes the guard and
+  // self-heals. Existing rows still update (a name-only update is legitimate).
+  let ghostGuardSkipped = false
+  if (
+    (eventType === 'user.created' || eventType === 'user.updated') &&
+    clerkUserId &&
+    email == null &&
+    phone == null
+  ) {
+    ghostGuardSkipped = (await findUserByClerkId(clerkUserId)) == null
+    if (ghostGuardSkipped) {
+      console.error(
+        `[webhook/clerk] ghost-row guard: skipping users/members upsert for ${eventType} — payload has no email or phone (clerk_user_id: ${clerkUserId})`,
+      )
+    }
+  }
+
   // Log to auth_events for event types that have a mapped auth event type.
   // Tenant attribution resolves from the webhook endpoint's host (the domain
   // the endpoint is registered under in the Clerk dashboard); null when the
@@ -91,11 +110,18 @@ export async function POST(req: Request): Promise<NextResponse> {
       outcome: 'success',
       correlation_id: correlationId,
       svix_event_id: svixId,
-      metadata: { clerk_event_type: eventType },
+      metadata: {
+        clerk_event_type: eventType,
+        ...(ghostGuardSkipped && { ghost_guard_skipped: true }),
+      },
     })
   }
 
-  if ((eventType === 'user.created' || eventType === 'user.updated') && clerkUserId) {
+  if (
+    !ghostGuardSkipped &&
+    (eventType === 'user.created' || eventType === 'user.updated') &&
+    clerkUserId
+  ) {
     const supabase = getAdminClient()
 
     // Upsert users row — creates on user.created, updates on user.updated
@@ -141,7 +167,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (user) {
       const now = new Date().toISOString()
       const [usersResult, membersResult] = await Promise.all([
-        supabase.from('users').update({ deleted_at: now }).eq('id', user.id),
+        supabase.from('users').update({ deleted_at: now, status: 'deleted' }).eq('id', user.id),
         supabase
           .from('members')
           .update({ status: 'deleted' })

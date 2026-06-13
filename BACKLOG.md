@@ -3,6 +3,42 @@
 Captured during Steps 6–18. Do not address inside per-step commits.
 Each item is either polish, deferred refactor, or doc debt.
 
+## Heirloom — auth & chat flow (2026-06-12 pre-merge test session, branch `claude/wonderful-mendel-59lgnj`)
+
+- [ ] **Name field design.** Chat prompt captures first name only; full
+      name wasn't designed for. Decide on approach: separate first/last
+      fields in MagicLinkCard/SaveChatCTA, or accept full name and split
+      on the backend. (The current implementation splits client-side on
+      first whitespace — first token → firstName, remainder → lastName.)
+
+- [ ] **Returning user name update.** If a returning user provides a name
+      they didn't give at original sign-up, it should update their Clerk
+      profile. Currently it doesn't — the sign-in path deliberately never
+      writes the name (`useAuthFlowAdapter.sendCode` attaches it on the
+      sign-up path only). Needs an "update if empty" rule or a post-auth
+      profile write.
+
+- [ ] **Returning user flow — name prompt.** Returning users shouldn't be
+      asked for their name again. Suppress the name field for known users
+      (detection happens at OTP send via `form_identifier_exists`, after
+      the form is already filled — may need a UX rethink, e.g. drop the
+      field once `flowType === 'signin'` is known, or never require it).
+
+- [ ] **Confirmation copy inconsistency.** "You're in." (MagicLinkCard
+      success stage) vs "You're now a member — your story is saved." /
+      "Welcome back — your story is saved." (SaveChatCTA injected
+      message) depends on which entry point triggered the flow. Needs one
+      consistent copy set across both paths.
+
+- [ ] **Booking cards not firing on preview.** Cards rendering as inline
+      text on jefflougheed.ca preview. Likely tenant/environment issue
+      (preview host tenant resolution → no `sage_parameters` → no marker
+      match). Confirm on production post-merge.
+
+- [ ] **Improved CTA modal switching.** Scoped to a separate branch;
+      address post-merge. Confirm the branch exists and carries this
+      scope before closing the item.
+
 ## Refactors
 
 - [ ] **AppShell refactor for admin layout.** Hoist Mantine primitives

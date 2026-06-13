@@ -1,13 +1,21 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChatProvider, useChatStore } from '@/components/shells/membership/chatStore';
+import { ChatDrawerV2 } from '@/components/shells/membership/v2/ChatDrawerV2';
 import { LandingPage } from './components/landing/LandingPage';
 import { ChatHero } from '@/components/shells/membership/ChatHero';
 
 function HeirloomInner() {
   const { state, dispatch } = useChatStore();
+  // Drawer width state (default ↔ full screen). Deliberately local — shell
+  // chrome the reducer doesn't need to know about. Toggled from ChatHeader.
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const toggleFullScreen = useCallback(() => setIsFullScreen((v) => !v), []);
 
+  // Escape closes the chat panel. The V2 modals and row menus register their
+  // own capture-phase Escape handlers with stopPropagation, so when one of
+  // them is open this handler never fires — one press closes one layer.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && state.isChatOpen) {
@@ -30,17 +38,19 @@ function HeirloomInner() {
         />
       )}
 
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Heirloom chat"
-        aria-hidden={!state.isChatOpen}
-        className={`fixed top-0 right-0 h-full z-50 w-full max-w-2xl transform transition-transform duration-500 ease-in-out ${
-          state.isChatOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
+      {/* Headerless drawer — ChatHero renders the v1 ChatHeader (account
+          dropdown + auth telemetry), which carries the fullscreen toggle. */}
+      <ChatDrawerV2
+        isOpen={state.isChatOpen}
+        isFullScreen={isFullScreen}
+        onToggleFullScreen={toggleFullScreen}
+        onClose={() => dispatch({ type: 'CLOSE_CHAT' })}
+        showHeader={false}
+        title="Heirloom chat"
+        defaultWidthClassName="w-full max-w-2xl"
       >
-        <ChatHero />
-      </div>
+        <ChatHero isFullScreen={isFullScreen} onToggleFullScreen={toggleFullScreen} />
+      </ChatDrawerV2>
     </div>
   );
 }

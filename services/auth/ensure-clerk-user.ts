@@ -24,6 +24,16 @@ export async function ensureClerkUser(): Promise<string | null> {
   if (name) row.name = name
   if (phone) row.phone = phone
 
+  // A live authenticated session with no identifiers is unexpected — still
+  // upsert (the session is real and the caller needs users.id to link it),
+  // but surface it loudly: identifier-less rows are how ghost users appear.
+  if (!email && !phone) {
+    console.warn(
+      '[ensure-clerk-user] upserting users row with no email or phone — Clerk user has no identifiers:',
+      clerk.id,
+    )
+  }
+
   const supabase = getAdminClient()
   const { data, error } = await supabase
     .from('users')

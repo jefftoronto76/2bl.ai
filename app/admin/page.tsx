@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { getInboundChats, type ChatSession } from '@/services/crm/inbound'
 import { InboundChatsTable } from './InboundChatsTable'
 

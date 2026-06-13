@@ -1,4 +1,4 @@
-import { getSession } from '@/services/auth';
+import { getSession, HEIRLOOM_TENANT_ID } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { headers } from 'next/headers';
 import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request';

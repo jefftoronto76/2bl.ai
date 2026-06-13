@@ -2,7 +2,16 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
-import { ChevronDown, CircleUser as UserCircle, LogOut, Settings, X } from 'lucide-react';
+import {
+  ChevronDown,
+  CircleUser as UserCircle,
+  LogOut,
+  Maximize2,
+  Minimize2,
+  Settings,
+  Share2,
+  X,
+} from 'lucide-react';
 import { IconButton } from './ui/IconButton';
 import { useChatStore, setOAuthInProgress } from './chatStore';
 import { heirloomClerkAppearance } from './clerkAppearance';
@@ -15,7 +24,14 @@ function getInitials(fullName: string | null | undefined): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
-export function ChatHeader() {
+export interface ChatHeaderProps {
+  /** Drawer width state; the expand toggle renders only when the handler is
+   *  provided (keeps the header usable outside the V2 drawer). */
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
+}
+
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen }: ChatHeaderProps) {
   const { dispatch } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -68,6 +84,21 @@ export function ChatHeader() {
       </button>
 
       <div className="flex items-center gap-1">
+        {/* Share Heirloom — deliberately inert in this pass (decision: item
+            visible, action stubbed; no share backend/modal mounted yet). */}
+        <IconButton label="Share Heirloom" aria-disabled="true">
+          <Share2 size={16} />
+        </IconButton>
+
+        {onToggleFullScreen && (
+          <IconButton
+            label={isFullScreen ? 'Exit full screen' : 'Expand to full screen'}
+            onClick={onToggleFullScreen}
+          >
+            {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </IconButton>
+        )}
+
         <div ref={dropdownRef} className="relative" onBlur={handleBlur}>
           <button
             type="button"
@@ -119,9 +150,9 @@ export function ChatHeader() {
                           {user.name}
                         </p>
                       )}
-                      {user?.email && (
+                      {(user?.email ?? user?.phone) && (
                         <p className="text-text-muted text-xs font-body truncate">
-                          {user.email}
+                          {user?.email ?? user?.phone}
                         </p>
                       )}
                     </div>

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
-import { ensureClerkUser } from '@/services/auth/ensure-clerk-user'
+import { getTenantFromRequest, ensureClerkUser } from '@/services/auth'
 import { claimSession } from '@/services/crm/sessions'
 import { logEvent, AuditAction } from '@/services/audit'
 

@@ -295,7 +295,12 @@ remaps must resolve there rather than at `:root`.
 (body) are loaded via `next/font/google` in `app/heirloom/layout.tsx` and
 exposed as `--font-heirloom-serif` / `--font-heirloom-sans`, which
 `app/heirloom/globals.css` remaps onto `--font-display` / `--font-serif` /
-`--font-body` **on the Heirloom layout wrapper only**.
+`--font-body` **on the Heirloom layout wrapper only**. The same wrapper block
+also defines `--font-mono` as the system mono stack (`ui-monospace,
+SFMono-Regular, Menlo, …` — no downloaded mono font; matches the V2 design
+preview), so Tailwind `font-mono` resolves on Heirloom routes instead of
+silently inheriting the body font (added 2026-06-12 for the chat-widget V2
+sidebar/modal section labels).
 
 ---
 
@@ -529,7 +534,13 @@ transport via the shared `readDataStream` (`services/chat/server/stream-utils.ts
 | `ChatHeader` | `components/shells/membership/ChatHeader.tsx` | "Your Story" dropdown + Account / Close `IconButton`s (Close dispatches `CLOSE_CHAT`). |
 | `ChatInput` | `components/shells/membership/ChatInput.tsx` | Auto-growing textarea, Enter-to-send (Shift+Enter newline), `ArrowUp` send button (disabled when empty or loading). Calls `sendMessage`. No AI disclaimer. |
 | `MessageList` | `components/shells/membership/MessageList.tsx` | Renders messages (assistant = `Bot`-icon avatar + left bubble, user = right bubble, no avatar) and a bouncing-dots typing indicator while `isLoading`; auto-scrolls to bottom. Assistant prose runs through the marker registry (`createDefaultRegistry()`), so `[BOOKING:]` / `[NAME:]` / `[EMAIL:]` markers are stripped rather than shown as raw text (Heirloom has no booking-card UI, so BOOKING cards are dropped — only prose shows). Empty assistant bubbles (marker-only or cleared on error) are skipped, and the engine's `isError` renders an on-brand error bubble. **Admin debug view**: when `useAuthUser().user.isPlatformAdmin` is true (the client-side boundary signal, mapped from Clerk publicMetadata — display-only gating), all parsed markers extracted by the registry (`result.markers`) render as `DebugPill` components below each assistant message — dark `bg-black/60` monospace pill with a `debug` eyebrow label and the raw bracket text. Display-only: zero changes to the parser, registry, or store. `[SYSTEM: ...]` user-message detection is also wired but won't fire in practice since `sendHidden` never adds hidden turns to the store. Non-admin members: zero behavioral or visual change. |
-| `Sidebar` | `components/shells/membership/Sidebar.tsx` | Collapsible nav (`w-12` ↔ `w-64`, toggled via `TOGGLE_SIDEBAR`). Nav items (New Chat / Search / Conversations / Dashboard); **New Chat** calls `newChat()` from the store to clear the active conversation and return to the empty greeting (history preserved). Plus a "Recent" section rendering `recentSessions` from the store (a signed-in user's DB sessions via `GET /api/sessions`); each row calls `loadSession(id)` to load that thread and the active session is highlighted. The block hides when empty, so anonymous visitors (no sessions) see no Recent list. No user-profile footer. |
+| `Sidebar` (v1 — **superseded, unmounted**) | `components/shells/membership/Sidebar.tsx` | The pre-V2 sidebar, replaced by `SidebarV2` in ChatHero. Kept on disk pending preview verification of the V2 pass; delete in the cleanup commit. |
+| `SidebarV2` | `components/shells/membership/v2/SidebarV2.tsx` | V2 sidebar (collapsible `w-12` ↔ `w-64` via `TOGGLE_SIDEBAR`). Top → bottom: collapse toggle · threshold-gated Search (faint until `recentSessions.length >= searchThreshold` (8); fires `onSearch` per keystroke — **stubbed at mount**, no filtering) · New Chat (store `newChat()`) · Uploads · Share Heirloom (both stub props) · collapsible Conversations (store `recentSessions` + `loadSession`, active session highlighted, "No conversations yet" empty state) · **anonymous sign-in nudge** (v1 parity, `state.isMember` gate) · Stories (Create / Invite actions — disabled when `storiesDisabled` **or** their handler is absent; story rows with hover tooltip from `description`, optional per-row chat icon + kebab) · Writing Prompts. Per-row kebab `RowMenu` **portals to `document.body`** with fixed positioning captured from the kebab rect (the `overflow-hidden` aside clipped in-tree menus), flips above when out of room below, closes on outside click / scroll / resize / capture-phase Escape; renders only when `onRowAction` is provided (not provided at mount — no menus in pass 1). |
+| `ChatDrawerV2` | `components/shells/membership/v2/ChatDrawerV2.tsx` | Right-anchored drawer wrapper: fixed, `z-50`, slide-in via translate-x, two width states (`defaultWidthClassName` ↔ `w-screen` when `isFullScreen`). `inert` + `aria-hidden` + `pointer-events-none` while closed (off-screen content leaves the tab order). Optional built-in minimal header (`showHeader`, default true) — Heirloom passes `false` and keeps `ChatHeader`. Body is `position: relative`, the containing block for the V2 modals' `absolute inset-0` overlays. |
+| `BeginStoryModal` | `components/shells/membership/v2/BeginStoryModal.tsx` | "Begin a new story" modal (props only: `open` / `onClose` / `onCreate(name, description)`). Name required (Enter submits), description optional (becomes the story row tooltip). Mounted by ChatHero; `onCreate` appends to the ephemeral stories state. Uses `useModalA11y`. |
+| `InviteCollaboratorsModal` / `ShareHeirloomModal` | `components/shells/membership/v2/` | **Landed but not mounted** (deferred / stubbed by decision — no member-facing invite API, no share backend). Props-only; both use `useModalA11y`. ShareHeirloomModal's default `shareUrl` (`heirloom.life`) is a placeholder — pass the real URL when mounting. |
+| `useModalA11y` | `components/shells/membership/v2/useModalA11y.ts` | Shared modal behavior: capture-phase Escape with `stopPropagation` (one press closes one layer — the panel's window-level Escape handler never fires while a modal is open), initial focus into the dialog (`initialFocusRef` or the `tabIndex={-1}` container), focus restore on close, Tab/Shift+Tab focus trap. Unit-tested in `useModalA11y.test.tsx` (6 tests). |
+| `types` (V2 domain) | `components/shells/membership/v2/types.ts` | `Story`, `Collaborator`, `WritingPrompt`, `RowTarget`, `RowAction` — extracted from `SidebarV2.tsx` at landing (see `v2/HANDOVER.md`). |
 | `Avatar` / `IconButton` / `Button` | `components/shells/membership/ui/` | Tailwind UI primitives ported from the legacy repo, styled with the Heirloom tokens. |
 
 Persistence note: `services/chat/ui/v1/persistence.ts` is the pure (no React,
@@ -611,7 +622,7 @@ Jeff's Studio work. Unit tests: `map.test.ts`, `authFlowAdapter.test.tsx`.
 | `resolveTenantIdFromHost` / `normalizeHost` | `services/auth/resolve-tenant-from-host.ts` | Pure full-host exact-match helper (does NOT collapse subdomains) used by `getAuthContext` for multi-tenant host resolution. Unit-tested in `services/auth/resolve-tenant-from-host.test.ts`. |
 | `syncUser` | `services/auth/sync-user.ts` | Upserts the current Clerk user into the Supabase `users` table on `clerk_id` conflict; returns the Supabase UUID or null. Called from `app/admin/layout.tsx` and from `POST /api/sessions` (to link a Heirloom session to its signed-in user). |
 | `getCurrentUserId` | `services/auth/get-current-user-id.ts` | Read-only resolution of the current Clerk session to `users.id` via the `clerk_id` lookup. Unlike `getAuthContext`, requires NO `tenant_users` membership (for end-customers like Heirloom visitors, who are not admins); unlike `syncUser`, never writes. Returns null when there is no Clerk session or no matching `users` row. Used by `GET /api/sessions`. |
-| `ensureClerkUser` | `services/auth/ensure-clerk-user.ts` | Upserts the current Clerk user into `users` by `clerk_id` and returns `users.id`. Unlike `syncUser`, does **not** require an email — supports phone-only Heirloom sign-ups (phone stays on the Clerk user; `users` has no phone column), so it relies on `users.email` being nullable. Email/name written only when present. Leaves `syncUser`'s admin path untouched. Used by `POST /api/sessions/[id]/claim`. |
+| `ensureClerkUser` | `services/auth/ensure-clerk-user.ts` | Upserts the current Clerk user into `users` by `clerk_id` and returns `users.id`. Unlike `syncUser`, does **not** require an email — supports phone-only Heirloom sign-ups, relying on `users.email` being nullable. Email/name/phone written only when present (`users.phone` added 2026-06-10). Leaves `syncUser`'s admin path untouched. Used by `POST /api/sessions/[id]/claim`. |
 | `syncMember` | `services/auth/sync-member.ts` | Upserts a `members` row for a newly-authenticated Clerk user, syncing their email/phone from Clerk. Called once post-authentication; idempotent on re-auth. Upserts on `clerk_id` conflict with `status: 'active'`; updates `email`/`phone` only when the caller passes them (undefined = skip column). Returns `SyncMemberResult` (`{ ok: true; data: MemberRow } \| { ok: false; error: string }`). Exports `HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'`. Uses service-role client (server-only, bypasses RLS). |
 | `claimMembership` | `services/auth/claim-membership.ts` | Creates a `pending` members row for a self-service visitor who has just authenticated via Clerk. **Never downgrades an existing row** — if a row already exists with any status, returns ok without writing. If no row exists, inserts with `status: 'pending'`. Called by `POST /api/heirloom/members/claim` after GateView sign-up. Service-role client, server-only. |
 | `getAdminClient` | `services/auth/supabase-admin.ts` | Service-role Supabase client (server-only, bypasses RLS). The most widely imported factory — used by every admin route, the public Sage routes, and `services/chat/server/*`. |
@@ -1094,7 +1105,7 @@ Row Level Security is enforced at the Supabase layer.
 |-------|-------------|
 | `tenants` | id, parent_id, name, slug, type, settings, domain (text), chat_in_progress_idle_seconds (integer NOT NULL default 300 — idle threshold in seconds before an `in_progress` chat flips to `active`), chat_active_idle_seconds (integer NOT NULL default 86400 — idle threshold in seconds before an `active` chat flips to `abandoned`) |
 | `tenant_users` | tenant_id, user_id, role |
-| `users` | id, clerk_id, email, name |
+| `users` | id, clerk_id, email (text, nullable — phone-only sign-ups have no email), name (text, nullable), phone (text, nullable — added 2026-06-10; synced from Clerk by the webhook + `ensureClerkUser`), role (text NOT NULL default 'member' — `'platform_admin'` drives server-side `isPlatformAdmin`; see Auth service), deleted_at (timestamptz, nullable — soft-delete stamp set by the Clerk webhook on `user.deleted`), status (text NOT NULL default 'active': 'active' \| 'deleted' — added 2026-06-11; set to 'deleted' by the Clerk webhook on `user.deleted` alongside `deleted_at`) |
 | `blocks` | id, topic_id, owner_id, tenant_id, type, title, body, active, status (text default 'active': 'active' \| 'disabled' \| 'deleted'), order (integer, nullable — actively used: within each type, blocks with `order > 0` sort ascending by order, blocks with `order` = 0 or null sort last by title ascending; consumed by `/api/admin/prompt/compile` and the Blocks page inline Order input), is_default (bool default false), default_edited_at (timestamptz), default_edited_by (uuid references users(id)), default_action (text: 'edited' \| 'deleted'), default_acknowledged (bool default false), default_acknowledged_at (timestamptz), created_at (timestamptz), updated_at (timestamptz NOT NULL default now() — auto-set on every UPDATE via the `blocks_updated_at_trigger` Postgres trigger; do not write client-side), updated_by (uuid references users(id), nullable — application-managed; PATCH `/api/admin/blocks/[id]` stamps it from `authCtx.owner_id` on every write; null for legacy rows) |
 | `topics` | id, tenant_id, type, name |
 | `content` | id, owner_id, tenant_id, block_id, type, name, raw, storage_path |
@@ -1181,6 +1192,22 @@ A task is complete when all of the following are true:
 
 Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
 `SERVICEMIGRATION.md` for the full picture.
+
+- **Heirloom chat-widget V2 is UI-first; its backends do not exist yet.**
+  The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped the
+  presentation layer only. Outstanding, in dependency order: a `stories`
+  schema (Jeff, Studio — created stories are currently **ephemeral client
+  state** in ChatHero, lost on refresh) + story CRUD; per-story collaborator
+  invites (member-facing magic-link API — the existing `invites` table is the
+  admin-created access gate, not this); conversation search (the sidebar field
+  is a visible stub); Uploads; Share Heirloom (sidebar item + ChatHeader icon
+  are inert; `ShareHeirloomModal` is landed but unmounted — pass the real
+  `heirloom.2bl.ai` URL when mounting, its default is a placeholder); per-row
+  kebab actions (star/rename/move/delete need session endpoints that don't
+  exist; `onRowAction` is not passed, so menus don't render); Writing Prompts
+  copy review (the 4 static prompts in ChatHero are placeholder-grade). The
+  v1 `Sidebar.tsx` is superseded and unmounted — delete after preview
+  verification.
 
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).

@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { duplicateBlock } from '@/services/prompt/blocks'
 
 /**

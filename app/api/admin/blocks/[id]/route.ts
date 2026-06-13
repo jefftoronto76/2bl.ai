@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getAuthContext } from '@/services/auth/get-auth-context'
+import { getAuthContext } from '@/services/auth'
 import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
 import { logEvent, AuditAction } from '@/services/audit'
 
