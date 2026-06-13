@@ -1,10 +1,11 @@
 // app/admin/members/page.tsx
 //
-// Server component. Gates platform admins, loads the user → membership → tenant graph
-// (signed-up users) plus invited-only rows (members with no users row yet), shapes both
-// into UserRow[], and renders the client list.
+// Server component. Resolves the current admin's tenant via getAuthContext(),
+// loads members for that tenant only (signed-up + invited-only), and renders
+// the client list. Does NOT load members across all tenants — that view lives
+// in app/(platform)/platform/members/.
 
-import { getCurrentUser } from '@/services/auth';
+import { getAuthContext } from '@/services/auth';
 import { redirect } from 'next/navigation';
 import { Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
@@ -15,65 +16,64 @@ import type { Membership, TenantOption, UserRow } from './types';
 export const dynamic = 'force-dynamic';
 
 export default async function MembersPage() {
-  // Defense in depth — re-verify here even though the admin layout already gates,
-  // because this runs a privileged service-role read across ALL tenants.
-  const user = await getCurrentUser();
-  if (!user) redirect('/secondbrainlabs/sign-in');
-  if (!user.isPlatformAdmin) redirect('/admin');
+  let authCtx: { owner_id: string; tenant_id: string };
+  try {
+    authCtx = await getAuthContext();
+  } catch {
+    redirect('/admin');
+  }
 
   const supabase = getAdminClient();
 
-  // Signed-up users with their memberships and tenant names.
+  // Signed-up members of this tenant, with their user details.
   const { data, error } = await supabase
-    .from('users')
+    .from('members')
     .select(
       `
-      id, name, email,
-      members:members (
-        id, tenant_id, role, status, created_at, invited_name, token,
-        tenant:tenants ( id, name )
-      )
+      id, tenant_id, role, status, created_at, invited_name, token,
+      user:users!inner ( id, name, email ),
+      tenant:tenants ( id, name )
     `
     )
-    .order('name', { ascending: true });
+    .eq('tenant_id', authCtx.tenant_id)
+    .not('user_id', 'is', null)
+    .order('created_at', { ascending: false });
 
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
     .select('id, tenant_id, role, status, created_at, invited_name, token, tenant:tenants ( id, name )')
+    .eq('tenant_id', authCtx.tenant_id)
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
     .order('created_at', { ascending: false });
 
+  // All tenants list for the InviteMemberModal tenant selector.
   const { data: tenantData } = await supabase
     .from('tenants')
     .select('id, name')
     .order('name', { ascending: true });
 
-  const users: UserRow[] = (data ?? []).map((u: any) => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    memberships: (u.members ?? []).map(
-      (m: any): Membership => ({
+  const users: UserRow[] = (data ?? []).map((m: any) => ({
+    id: m.user.id,
+    name: m.user.name ?? '',
+    email: m.user.email ?? '',
+    memberships: [
+      {
         memberId: m.id,
         tenantId: m.tenant_id,
         tenantName: m.tenant?.name ?? 'Unknown tenant',
         role: m.role,
         status: m.status,
-        // TODO(plan): source from billing/subscription — see handover §Open decisions.
         plan: 'free',
         joined: m.created_at ?? null,
-        // TODO(lastActive): source from sessions/last_seen — see handover §Open decisions.
         lastActive: null,
         invitedName: m.invited_name ?? null,
         token: m.token ?? null,
-      })
-    ),
+      } satisfies Membership,
+    ],
   }));
 
-  // Invited-only rows: synthetic id prefixed with 'invite:' so they never collide
-  // with real users.id UUIDs. isInviteOnly=true gates UI differences in MembersList.
   const invitedRows: UserRow[] = (inviteOnlyData ?? []).map((m: any) => ({
     id: `invite:${m.id}`,
     name: m.invited_name ?? 'Unnamed invitee',
@@ -91,7 +91,7 @@ export default async function MembersPage() {
         lastActive: null,
         invitedName: m.invited_name ?? null,
         token: m.token ?? null,
-      },
+      } satisfies Membership,
     ],
   }));
 
@@ -104,7 +104,7 @@ export default async function MembersPage() {
         <Title order={1} fz="lg" fw={600}>
           Members
         </Title>
-        <Text variant="muted">Everyone with access across all tenants.</Text>
+        <Text variant="muted">Everyone with access to this workspace.</Text>
       </Stack>
 
       {error ? (
