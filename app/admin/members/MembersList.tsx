@@ -43,9 +43,10 @@ import { InviteMemberModal } from './InviteMemberModal';
 interface MembersListProps {
   users: UserRow[];
   tenants: TenantOption[];
+  currentTenantId?: string;
 }
 
-export function MembersList({ users, tenants }: MembersListProps) {
+export function MembersList({ users, tenants, currentTenantId }: MembersListProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -379,7 +380,7 @@ export function MembersList({ users, tenants }: MembersListProps) {
             }))}
           />
         </Group>
-        <InviteMemberModal tenants={tenants} />
+        <InviteMemberModal tenants={tenants} currentTenantId={currentTenantId} />
       </Group>
 
       {/* Bulk action bar */}
