@@ -37,12 +37,16 @@ function generateToken(): string {
 /**
  * Creates a members row with status = 'invited'. The invitee has no Clerk
  * account yet — user_id and clerk_id are null until they sign up and the
- * Clerk webhook fires (see linkInvitedMember).
+ * Clerk webhook fires (see linkInvitedMember). Optional email and phone lock
+ * the invite to a specific contact (used by linkInvitedMember for email-match
+ * activation via the webhook path).
  */
 export async function createMemberInvite(
   tenantId: string,
   actorId: string | null,
   invitedName?: string | null,
+  email?: string | null,
+  phone?: string | null,
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
   const supabase = getAdminClient()
   const token = generateToken()
@@ -56,6 +60,12 @@ export async function createMemberInvite(
   }
   if (invitedName != null && invitedName.trim().length > 0) {
     payload.invited_name = invitedName.trim()
+  }
+  if (email != null && email.trim().length > 0) {
+    payload.email = email.trim().toLowerCase()
+  }
+  if (phone != null && phone.trim().length > 0) {
+    payload.phone = phone.trim()
   }
 
   const { data, error } = await supabase
@@ -76,7 +86,11 @@ export async function createMemberInvite(
     actor_type: 'user',
     target_type: 'member',
     target_id: (data as { id: string }).id,
-    metadata: { has_invited_name: invitedName != null && invitedName.trim().length > 0 },
+    metadata: {
+      has_invited_name: invitedName != null && invitedName.trim().length > 0,
+      has_email: email != null && email.trim().length > 0,
+      has_phone: phone != null && phone.trim().length > 0,
+    },
   })
 
   return { ok: true, data: { token: (data as { token: string }).token, memberId: (data as { id: string }).id } }
@@ -157,6 +171,7 @@ export async function linkInvitedMember(
       clerk_id: clerkId,
       user_id: userId,
       status: 'active',
+      source: 'invite',
       used_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -171,6 +186,92 @@ export async function linkInvitedMember(
     clerk_id: clerkId,
     member_id: (invitedRow as { id: string }).id,
   })
+}
+
+/**
+ * Accepts an invite by token after the user has signed up via Clerk.
+ *
+ * Sequence:
+ * 1. Find the invited members row by token (must be unused).
+ * 2. Guard against cross-tenant acceptance.
+ * 3. Delete the orphan active row that syncMember may have inserted (the
+ *    Clerk webhook upserts on clerk_id conflict; the invited row has
+ *    clerk_id=null so no conflict fires and a second row is created).
+ * 4. Stamp the original invited row with clerk_id, user_id, status='active',
+ *    source='invite', used_at.
+ */
+export async function acceptInvite(
+  token: string,
+  clerkUserId: string,
+  supabaseUserId: string,
+): Promise<MembersResult<{ memberId: string }>> {
+  if (!token || !clerkUserId || !supabaseUserId) {
+    return { ok: false, status: 400, error: 'Missing required parameters' }
+  }
+
+  const supabase = getAdminClient()
+
+  // Step 1: find the invited row.
+  const { data: invitedRow, error: findErr } = await supabase
+    .from('members')
+    .select('id, tenant_id')
+    .eq('token', token)
+    .is('used_at', null)
+    .maybeSingle()
+
+  if (findErr) {
+    console.error('[members] acceptInvite — find failed:', findErr.message)
+    return { ok: false, status: 500, error: findErr.message }
+  }
+
+  if (!invitedRow) {
+    return { ok: false, status: 404, error: 'Invalid or already used token' }
+  }
+
+  const row = invitedRow as { id: string; tenant_id: string }
+
+  // Step 2: cross-tenant guard.
+  if (row.tenant_id !== HEIRLOOM_TENANT_ID) {
+    console.error('[members] acceptInvite — cross-tenant attempt rejected')
+    return { ok: false, status: 403, error: 'Forbidden' }
+  }
+
+  // Step 3: delete any orphan row syncMember inserted for this clerk_id
+  // (clerk_id was null on the invited row → no conflict → new active row).
+  const { error: orphanErr } = await supabase
+    .from('members')
+    .delete()
+    .eq('clerk_id', clerkUserId)
+    .eq('tenant_id', row.tenant_id)
+    .neq('id', row.id)
+
+  if (orphanErr) {
+    console.error('[members] acceptInvite — orphan delete failed:', orphanErr.message)
+    // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
+    // on clerk_id will surface a real error if the orphan remains.
+  }
+
+  // Step 4: stamp the original invited row.
+  const now = new Date().toISOString()
+  const { error: updateErr } = await supabase
+    .from('members')
+    .update({
+      clerk_id: clerkUserId,
+      user_id: supabaseUserId,
+      status: 'active',
+      source: 'invite',
+      used_at: now,
+      updated_at: now,
+    })
+    .eq('id', row.id)
+
+  if (updateErr) {
+    console.error('[members] acceptInvite — update failed:', updateErr.message)
+    return { ok: false, status: 500, error: updateErr.message }
+  }
+
+  console.log('[members] acceptInvite — accepted:', { member_id: row.id, clerk_id: clerkUserId })
+  return { ok: true, data: { memberId: row.id } }
 }
 
 /**

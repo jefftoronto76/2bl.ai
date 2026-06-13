@@ -5,6 +5,7 @@ import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
   ChevronDown,
   CircleUser as UserCircle,
+  LayoutDashboard,
   LogOut,
   Maximize2,
   Minimize2,
@@ -32,7 +33,7 @@ export interface ChatHeaderProps {
 }
 
 export function ChatHeader({ isFullScreen = false, onToggleFullScreen }: ChatHeaderProps) {
-  const { dispatch } = useChatStore();
+  const { dispatch, isAdmin } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
 
@@ -166,6 +167,17 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen }: ChatHea
                     <Settings size={14} />
                     Manage account
                   </button>
+
+                  {isAdmin && (
+                    <a
+                      href="/admin"
+                      onClick={() => setDropdownOpen(false)}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-body text-text-muted hover:text-text-primary hover:bg-text-primary/5 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                    >
+                      <LayoutDashboard size={14} />
+                      Admin
+                    </a>
+                  )}
 
                   <button
                     type="button"

@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { label: 'Inbound Chats', href: '/admin' },
   { label: 'Prompt',   href: '/admin/prompt' },
   { label: 'Settings', href: '/admin/settings' },
-  { label: 'Invites',  href: '/admin/invites' },
   { label: 'Members',  href: '/admin/members' },
 ] as const;
 

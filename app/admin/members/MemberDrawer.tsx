@@ -141,8 +141,9 @@ function DrawerBody({ user, onDone }: { user: UserRow; onDone: () => void }) {
     }
   }
 
-  function copyLink(token: string) {
-    const url = `${window.location.origin}?invite=${token}`;
+  function copyLink(token: string, tenantDomain: string | null) {
+    const base = tenantDomain ? `https://${tenantDomain}` : window.location.origin;
+    const url = `${base}?invite=${token}`;
     void navigator.clipboard.writeText(url);
     notifications.show({ color: 'green', title: 'Copied', message: 'Invite link copied to clipboard.' });
   }
@@ -196,7 +197,8 @@ function DrawerBody({ user, onDone }: { user: UserRow; onDone: () => void }) {
           {(() => {
             const token = tokenMap[m.memberId];
             if (!token) return null;
-            const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}?invite=${token}`;
+            const base = m.tenantDomain ? `https://${m.tenantDomain}` : (typeof window !== 'undefined' ? window.location.origin : '');
+            const inviteUrl = `${base}?invite=${token}`;
             return (
               <Stack gap={6} mt={4}>
                 <Text
@@ -220,7 +222,7 @@ function DrawerBody({ user, onDone }: { user: UserRow; onDone: () => void }) {
                     variant="default"
                     size="lg"
                     aria-label="Copy invite link"
-                    onClick={() => copyLink(token)}
+                    onClick={() => copyLink(token, m.tenantDomain)}
                   >
                     <IconCopy size={15} />
                   </ActionIcon>

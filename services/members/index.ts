@@ -2,6 +2,7 @@ export {
   createMemberInvite,
   validateMemberToken,
   linkInvitedMember,
+  acceptInvite,
   hardDeleteMember,
   HEIRLOOM_TENANT_ID,
 } from './members'

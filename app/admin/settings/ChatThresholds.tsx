@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Group, NumberInput, Skeleton, Stack } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Text } from '@/components/admin/primitives/Text'
 
 interface TenantSettings {
   chat_in_progress_idle_seconds: number
@@ -152,21 +151,6 @@ export function ChatThresholds() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-        <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
-          <Text
-            id="thresholds-heading"
-            variant="title"
-            style={{ fontSize: 'var(--mantine-font-size-md)' }}
-          >
-            Chat Thresholds
-          </Text>
-          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-            How long Sage waits before moving a session from In-progress &rarr; Active &rarr; Abandoned.
-          </Text>
-        </Stack>
-      </Group>
-
       {loading ? (
         <Skeleton height={200} radius="md" />
       ) : (

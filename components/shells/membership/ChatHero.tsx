@@ -23,11 +23,24 @@ const WRITING_PROMPTS: WritingPrompt[] = [
 ];
 
 function EmptyState() {
+  const { invitedName, hasInviteToken } = useChatStore();
+  const personalized = hasInviteToken && invitedName;
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 select-none">
-      <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-8 text-center">
-        What&apos;s a story worth keeping?
-      </h1>
+      {personalized ? (
+        <>
+          <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-3 text-center">
+            Welcome, {invitedName}.
+          </h1>
+          <p className="text-text-muted text-base md:text-lg text-center">
+            What&apos;s a story worth keeping?
+          </p>
+        </>
+      ) : (
+        <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-8 text-center">
+          What&apos;s a story worth keeping?
+        </h1>
+      )}
     </div>
   );
 }
