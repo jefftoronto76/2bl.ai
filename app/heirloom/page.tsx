@@ -50,8 +50,10 @@ export default async function HeirloomPage({
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
         .maybeSingle();
+      console.log('[heirloom/page] member row:', member);
       isAuthorized = !!member;
       isAdmin = member?.role === 'admin' || member?.role === 'owner';
+      console.log('[heirloom/page] isAdmin:', isAdmin, '| isAuthorized:', isAuthorized, '| tenantId:', tenantId);
     }
   }
 
@@ -72,6 +74,8 @@ export default async function HeirloomPage({
   // token path didn't fire, so there is nothing to accept.
   const validatedInviteToken =
     isAuthorized && inviteToken && !session ? inviteToken : undefined;
+
+  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken });
 
   return (
     <HeirloomApp
