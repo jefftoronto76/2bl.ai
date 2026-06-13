@@ -82,18 +82,27 @@ export interface SidebarV2Props {
 
 function SectionLabel({
   icon: Icon,
+  large,
   trailing,
   children,
 }: {
   icon: typeof Clock;
+  /** When true, renders a slightly larger icon (14px) and text-sm label. */
+  large?: boolean;
   /** Optional right-aligned adornment (e.g. the "soon" tag). */
   trailing?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <Icon size={12} className="text-text-muted" />
-      <span className="font-mono text-[11px] tracking-[0.2em] uppercase text-text-muted">
+      <Icon size={large ? 14 : 12} className="text-text-muted" />
+      <span
+        className={
+          large
+            ? 'font-mono text-sm tracking-[0.2em] uppercase text-text-muted'
+            : 'font-mono text-[11px] tracking-[0.2em] uppercase text-text-muted'
+        }
+      >
         {children}
       </span>
       {trailing && <span className="ml-auto">{trailing}</span>}
@@ -347,7 +356,7 @@ export function SidebarV2({
           className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-base font-medium truncate">New Chat</span>}
+          {expanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
         </button>
         <button
           type="button"
@@ -356,7 +365,7 @@ export function SidebarV2({
           className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
         >
           <Upload size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-base font-medium truncate">Uploads</span>}
+          {expanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
         </button>
         <button
           type="button"
@@ -366,7 +375,7 @@ export function SidebarV2({
         >
           <Share2 size={16} className="flex-shrink-0" />
           {expanded && (
-            <span className="font-body text-base font-medium truncate">Share Heirloom</span>
+            <span className="font-body text-sm font-normal truncate">Share Heirloom</span>
           )}
         </button>
 
@@ -374,7 +383,7 @@ export function SidebarV2({
         <div>
           <button
             type="button"
-            aria-label="Conversations"
+            aria-label="Memories"
             aria-expanded={convosOpen}
             onClick={() => setConvosOpen((o) => !o)}
             className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
@@ -382,8 +391,8 @@ export function SidebarV2({
             <MessageSquare size={16} className="flex-shrink-0" />
             {expanded && (
               <>
-                <span className="font-body text-base font-medium truncate flex-1 text-left">
-                  Conversations
+                <span className="font-body text-sm font-normal truncate flex-1 text-left">
+                  Memories
                 </span>
                 <ChevronRight
                   size={14}
@@ -397,7 +406,7 @@ export function SidebarV2({
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5">
               {recentSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
-                  No conversations yet
+                  No memories yet
                 </span>
               ) : (
                 recentSessions.map((session) => {
@@ -466,6 +475,7 @@ export function SidebarV2({
           <div>
             <SectionLabel
               icon={BookOpen}
+              large
               trailing={
                 storiesDisabled ? (
                   <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-muted/60">
