@@ -17,13 +17,13 @@ import type { TenantOption } from './types';
  * After a successful POST the modal switches to a success view showing the invite URL
  * with a copy button. The admin copies the link and shares it manually.
  */
-export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
+export function InviteMemberModal({ tenants, currentTenantId }: { tenants: TenantOption[]; currentTenantId?: string }) {
   const router = useRouter();
   const [opened, setOpened] = useState(false);
   const [invitedName, setInvitedName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(currentTenantId ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ tenant?: string }>({});
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
     setInvitedName('');
     setEmail('');
     setPhone('');
-    setTenantId(null);
+    setTenantId(currentTenantId ?? null);
     setErrors({});
     setInviteUrl(null);
   }
@@ -151,17 +151,26 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
               value={phone}
               onChange={(e) => setPhone(e.currentTarget.value)}
             />
-            <Select
-              label="Tenant"
-              placeholder="Select a tenant"
-              required
-              data={tenants.map((t) => ({ value: t.id, label: t.name }))}
-              value={tenantId}
-              onChange={setTenantId}
-              error={errors.tenant}
-              searchable
-              nothingFoundMessage="No tenants"
-            />
+            {currentTenantId ? (
+              <div>
+                <Text size="sm" fw={500} mb={4}>Tenant</Text>
+                <Text size="sm" c="dimmed">
+                  {tenants.find((t) => t.id === currentTenantId)?.name ?? currentTenantId}
+                </Text>
+              </div>
+            ) : (
+              <Select
+                label="Tenant"
+                placeholder="Select a tenant"
+                required
+                data={tenants.map((t) => ({ value: t.id, label: t.name }))}
+                value={tenantId}
+                onChange={setTenantId}
+                error={errors.tenant}
+                searchable
+                nothingFoundMessage="No tenants"
+              />
+            )}
             <Group justify="flex-end" mt="xs">
               <Button variant="subtle" color="gray" onClick={close} disabled={submitting}>
                 Cancel
