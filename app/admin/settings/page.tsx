@@ -1,3 +1,5 @@
+'use client'
+
 import { Accordion } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
