@@ -26,6 +26,7 @@ export default async function HeirloomPage({
   // (e.g. Vercel preview without PREVIEW_TENANT_ID set).
   let gateEnabled = true;
   let isAuthorized = false;
+  let isAdmin = false;
 
   if (tenantId) {
     // Read the invite gate toggle from tenants.settings JSONB.
@@ -44,12 +45,13 @@ export default async function HeirloomPage({
     if (session) {
       const { data: member } = await supabase
         .from('members')
-        .select('id')
+        .select('id, role')
         .eq('clerk_id', session.providerUserId)
         .eq('tenant_id', tenantId)
         .eq('status', 'active')
         .maybeSingle();
       isAuthorized = !!member;
+      isAdmin = member?.role === 'admin' || member?.role === 'owner';
     }
   }
 
@@ -75,6 +77,7 @@ export default async function HeirloomPage({
     <HeirloomApp
       gateEnabled={gateEnabled}
       isAuthorized={isAuthorized}
+      isAdmin={isAdmin}
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
       inviteToken={validatedInviteToken}

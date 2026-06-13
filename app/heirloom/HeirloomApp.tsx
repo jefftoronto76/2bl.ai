@@ -58,6 +58,7 @@ function HeirloomInner() {
 interface HeirloomAppProps {
   gateEnabled: boolean;
   isAuthorized: boolean;
+  isAdmin?: boolean;
   invitedName?: string | null;
   hasInviteToken?: boolean;
   /** Raw invite token string — present only when the visitor was authorized via
@@ -70,6 +71,7 @@ interface HeirloomAppProps {
 export default function HeirloomApp({
   gateEnabled,
   isAuthorized,
+  isAdmin,
   invitedName,
   hasInviteToken,
   inviteToken,
@@ -78,6 +80,7 @@ export default function HeirloomApp({
     <ChatProvider
       gateEnabled={gateEnabled}
       isAuthorized={isAuthorized}
+      isAdmin={isAdmin}
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
       inviteToken={inviteToken}

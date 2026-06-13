@@ -103,6 +103,8 @@ interface ChatContextType {
   invitedName: string | null;
   /** True when the visitor arrived with an invite token in the URL. */
   hasInviteToken: boolean;
+  /** True when the signed-in member has role 'admin' or 'owner' on this tenant. */
+  isAdmin: boolean;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -155,6 +157,7 @@ export function ChatProvider({
   children,
   gateEnabled = true,
   isAuthorized = false,
+  isAdmin = false,
   enableExitWarning = false,
   invitedName = null,
   hasInviteToken = false,
@@ -165,6 +168,8 @@ export function ChatProvider({
   gateEnabled?: boolean;
   /** Whether the current visitor is an active member or invite holder. Default: false. */
   isAuthorized?: boolean;
+  /** True when the signed-in member has role 'admin' or 'owner' on this tenant. Default: false. */
+  isAdmin?: boolean;
   /** Register the beforeunload exit warning. Pass true only from the chat widget
    *  mount point — never from a landing-page-only context. Default: false. */
   enableExitWarning?: boolean;
@@ -594,7 +599,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin }}
     >
       {children}
     </ChatContext.Provider>
