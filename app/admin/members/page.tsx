@@ -32,7 +32,7 @@ export default async function MembersPage() {
       `
       id, tenant_id, role, status, created_at, invited_name, token,
       user:users!inner ( id, name, email ),
-      tenant:tenants ( id, name )
+      tenant:tenants ( id, name, domain )
     `
     )
     .eq('tenant_id', authCtx.tenant_id)
@@ -42,7 +42,7 @@ export default async function MembersPage() {
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
-    .select('id, tenant_id, role, status, created_at, invited_name, token, tenant:tenants ( id, name )')
+    .select('id, tenant_id, role, status, created_at, invited_name, token, tenant:tenants ( id, name, domain )')
     .eq('tenant_id', authCtx.tenant_id)
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
@@ -51,7 +51,7 @@ export default async function MembersPage() {
   // All tenants list for the InviteMemberModal tenant selector.
   const { data: tenantData } = await supabase
     .from('tenants')
-    .select('id, name')
+    .select('id, name, domain')
     .order('name', { ascending: true });
 
   const users: UserRow[] = (data ?? []).map((m: any) => ({
@@ -63,6 +63,7 @@ export default async function MembersPage() {
         memberId: m.id,
         tenantId: m.tenant_id,
         tenantName: m.tenant?.name ?? 'Unknown tenant',
+        tenantDomain: m.tenant?.domain ?? null,
         role: m.role,
         status: m.status,
         plan: 'free',
@@ -84,6 +85,7 @@ export default async function MembersPage() {
         memberId: m.id,
         tenantId: m.tenant_id,
         tenantName: m.tenant?.name ?? 'Unknown tenant',
+        tenantDomain: m.tenant?.domain ?? null,
         role: m.role,
         status: m.status,
         plan: 'free',
@@ -95,7 +97,7 @@ export default async function MembersPage() {
     ],
   }));
 
-  const tenants: TenantOption[] = (tenantData ?? []).map((t) => ({ id: t.id, name: t.name }));
+  const tenants: TenantOption[] = (tenantData ?? []).map((t: any) => ({ id: t.id, name: t.name, domain: t.domain ?? null }));
   const allUsers = [...users, ...invitedRows];
 
   return (

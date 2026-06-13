@@ -21,6 +21,8 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
   const router = useRouter();
   const [opened, setOpened] = useState(false);
   const [invitedName, setInvitedName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ tenant?: string }>({});
@@ -28,6 +30,8 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
 
   function reset() {
     setInvitedName('');
+    setEmail('');
+    setPhone('');
     setTenantId(null);
     setErrors({});
     setInviteUrl(null);
@@ -53,6 +57,10 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
       const payload: Record<string, string> = { tenant_id: tenantId! };
       const name = invitedName.trim();
       if (name) payload.invited_name = name;
+      const emailTrimmed = email.trim();
+      if (emailTrimmed) payload.email = emailTrimmed;
+      const phoneTrimmed = phone.trim();
+      if (phoneTrimmed) payload.phone = phoneTrimmed;
 
       const res = await fetch('/api/platform/members/invite', {
         method: 'POST',
@@ -63,8 +71,11 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(data?.error ?? 'Could not create invite.');
       }
-      const data = (await res.json()) as { token: string; member_id: string };
-      setInviteUrl(`${window.location.origin}?invite=${data.token}`);
+      const data = (await res.json()) as { token: string; member_id: string; invite_url: string | null };
+      // Use the server-constructed invite_url (built from tenant domain) when available;
+      // fall back to the current origin only when the tenant has no domain configured.
+      const url = data.invite_url ?? `${window.location.origin}?invite=${data.token}`;
+      setInviteUrl(url);
       router.refresh();
     } catch (err) {
       notifications.show({
@@ -123,6 +134,22 @@ export function InviteMemberModal({ tenants }: { tenants: TenantOption[] }) {
               value={invitedName}
               onChange={(e) => setInvitedName(e.currentTarget.value)}
               data-autofocus
+            />
+            <TextInput
+              label="Email (optional)"
+              description="Locks this invite to a specific email address."
+              placeholder="member@example.com"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+            />
+            <TextInput
+              label="Phone (optional)"
+              description="Locks this invite to a specific phone number."
+              placeholder="+1 555 000 0000"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.currentTarget.value)}
             />
             <Select
               label="Tenant"

@@ -14,6 +14,8 @@ export interface Membership {
   memberId: string;
   tenantId: string;
   tenantName: string;
+  /** tenants.domain — used to build correct invite URLs for each product host. */
+  tenantDomain: string | null;
   role: Role;
   status: MemberStatus;
   plan: Plan;
@@ -40,6 +42,7 @@ export interface UserRow {
 export interface TenantOption {
   id: string;
   name: string;
+  domain?: string | null;
 }
 
 /** Payload for the single "save all role changes" write. */
