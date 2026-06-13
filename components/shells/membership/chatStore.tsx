@@ -99,6 +99,10 @@ interface ChatContextType {
    * member. Chat UI renders GateView instead of the conversation when true.
    */
   isGated: boolean;
+  /** Name set by the admin at invite creation time. Null when not set. */
+  invitedName: string | null;
+  /** True when the visitor arrived with an invite token in the URL. */
+  hasInviteToken: boolean;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -152,6 +156,8 @@ export function ChatProvider({
   gateEnabled = true,
   isAuthorized = false,
   enableExitWarning = false,
+  invitedName = null,
+  hasInviteToken = false,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: true. */
@@ -161,6 +167,10 @@ export function ChatProvider({
   /** Register the beforeunload exit warning. Pass true only from the chat widget
    *  mount point — never from a landing-page-only context. Default: false. */
   enableExitWarning?: boolean;
+  /** Name set by the admin at invite creation. Null when not set. */
+  invitedName?: string | null;
+  /** True when the visitor arrived with an invite token in the URL. */
+  hasInviteToken?: boolean;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -568,7 +578,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken }}
     >
       {children}
     </ChatContext.Provider>

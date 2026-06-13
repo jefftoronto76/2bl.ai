@@ -1,61 +1,65 @@
-// app/(platform)/platform/members/page.tsx
+// app/admin/members/page.tsx
 //
-// Platform-admin cross-tenant members view. Mirrors the data-fetching pattern in
-// app/admin/members/page.tsx but renders inside PlatformShell instead of AdminShell.
-// Reuses the shared MembersList client component and its associated types.
+// Server component. Resolves the current admin's tenant via getAuthContext(),
+// loads members for that tenant only (signed-up + invited-only), and renders
+// the client list. Does NOT load members across all tenants — that view lives
+// in app/(platform)/platform/members/.
 
-import { getCurrentUser } from '@/services/auth';
+import { getAuthContext } from '@/services/auth';
 import { redirect } from 'next/navigation';
 import { Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { Text } from '@/components/admin/primitives/Text';
-import { MembersList } from '@/app/admin/members/MembersList';
-import type { Membership, TenantOption, UserRow } from '@/app/admin/members/types';
+import { MembersList } from './MembersList';
+import type { Membership, TenantOption, UserRow } from './types';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PlatformMembersPage() {
-  // Defense in depth — the (platform) layout already gates platform_admin, but
-  // this page runs a privileged service-role read across ALL tenants.
-  const user = await getCurrentUser();
-  if (!user) redirect('/secondbrainlabs/sign-in');
-  if (!user.isPlatformAdmin) redirect('/admin');
+export default async function MembersPage() {
+  let authCtx: { owner_id: string; tenant_id: string };
+  try {
+    authCtx = await getAuthContext();
+  } catch {
+    redirect('/admin');
+  }
 
   const supabase = getAdminClient();
 
-  // Signed-up users with their memberships and tenant names.
+  // Signed-up members of this tenant, with their user details.
   const { data, error } = await supabase
-    .from('users')
+    .from('members')
     .select(
       `
-      id, name, email,
-      members:members (
-        id, tenant_id, role, status, created_at, invited_name, token,
-        tenant:tenants ( id, name )
-      )
+      id, tenant_id, role, status, created_at, invited_name, token,
+      user:users!inner ( id, name, email ),
+      tenant:tenants ( id, name )
     `
     )
-    .order('name', { ascending: true });
+    .eq('tenant_id', authCtx.tenant_id)
+    .not('user_id', 'is', null)
+    .order('created_at', { ascending: false });
 
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
     .select('id, tenant_id, role, status, created_at, invited_name, token, tenant:tenants ( id, name )')
+    .eq('tenant_id', authCtx.tenant_id)
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
     .order('created_at', { ascending: false });
 
+  // All tenants list for the InviteMemberModal tenant selector.
   const { data: tenantData } = await supabase
     .from('tenants')
     .select('id, name')
     .order('name', { ascending: true });
 
-  const users: UserRow[] = (data ?? []).map((u: any) => ({
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    memberships: (u.members ?? []).map(
-      (m: any): Membership => ({
+  const users: UserRow[] = (data ?? []).map((m: any) => ({
+    id: m.user.id,
+    name: m.user.name ?? '',
+    email: m.user.email ?? '',
+    memberships: [
+      {
         memberId: m.id,
         tenantId: m.tenant_id,
         tenantName: m.tenant?.name ?? 'Unknown tenant',
@@ -66,8 +70,8 @@ export default async function PlatformMembersPage() {
         lastActive: null,
         invitedName: m.invited_name ?? null,
         token: m.token ?? null,
-      })
-    ),
+      } satisfies Membership,
+    ],
   }));
 
   const invitedRows: UserRow[] = (inviteOnlyData ?? []).map((m: any) => ({
@@ -87,7 +91,7 @@ export default async function PlatformMembersPage() {
         lastActive: null,
         invitedName: m.invited_name ?? null,
         token: m.token ?? null,
-      },
+      } satisfies Membership,
     ],
   }));
 
@@ -100,7 +104,7 @@ export default async function PlatformMembersPage() {
         <Title order={1} fz="lg" fw={600}>
           Members
         </Title>
-        <Text variant="muted">Everyone with access across all tenants.</Text>
+        <Text variant="muted">Everyone with access to this workspace.</Text>
       </Stack>
 
       {error ? (

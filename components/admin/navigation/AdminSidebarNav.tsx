@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { label: 'Prompt',   href: '/admin/prompt' },
   { label: 'Settings', href: '/admin/settings' },
   { label: 'Invites',  href: '/admin/invites' },
+  { label: 'Members',  href: '/admin/members' },
 ] as const;
 
 const PROMPT_STUDIO_ITEMS = [

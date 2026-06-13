@@ -5,6 +5,7 @@ import { logAuthEvent } from '@/services/audit'
 import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
+import { linkInvitedMember } from '@/services/members'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -137,6 +138,13 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     if (usersErr) {
       console.error('[webhook/clerk] users upsert failed:', usersErr.message)
+    }
+
+    // Link any pending invited members row to this Clerk user (email match).
+    // Must run before syncMember so the clerk_id is set on the existing row —
+    // syncMember's upsert then updates it rather than inserting a duplicate.
+    if (email) {
+      await linkInvitedMember(clerkUserId, email)
     }
 
     // Upsert members row for Heirloom tenant

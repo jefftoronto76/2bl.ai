@@ -1,6 +1,7 @@
-import { getSession, HEIRLOOM_TENANT_ID } from '@/services/auth';
+import { getSession, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
-import { validateInvite } from '@/services/invites';
+import { headers } from 'next/headers';
+import { validateMemberToken } from '@/services/members';
 import HeirloomApp from './HeirloomApp';
 
 export const dynamic = 'force-dynamic';
@@ -14,40 +15,62 @@ export default async function HeirloomPage({
   const params = await searchParams;
   const inviteToken = params.invite;
 
+  // Resolve the tenant from the request Host header — same pattern as every
+  // other public route. No hardcoded tenant ID.
+  const hdrs = await headers();
+  const tenantId = await getTenantFromRequest({ headers: hdrs } as unknown as Request);
+
   const supabase = getAdminClient();
 
-  // Read the invite gate toggle from tenants.settings JSONB.
-  // Default to true (gate on) when the key is absent — preserves safe behavior
-  // until the admin explicitly disables it.
-  const { data: tenantRow } = await supabase
-    .from('tenants')
-    .select('settings')
-    .eq('id', HEIRLOOM_TENANT_ID)
-    .maybeSingle();
-
-  const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
-  const gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
-
-  // Check if the signed-in user is an active member. members.clerk_id stores
-  // the provider subject id — providerUserId maps to it 1:1 today. Moving this
-  // query behind a service helper (isActiveMember) is a flagged follow-up.
+  // Gate and auth default to safe values when the tenant cannot be resolved
+  // (e.g. Vercel preview without PREVIEW_TENANT_ID set).
+  let gateEnabled = true;
   let isAuthorized = false;
-  if (session) {
-    const { data: member } = await supabase
-      .from('members')
-      .select('id')
-      .eq('clerk_id', session.providerUserId)
-      .eq('tenant_id', HEIRLOOM_TENANT_ID)
-      .eq('status', 'active')
+
+  if (tenantId) {
+    // Read the invite gate toggle from tenants.settings JSONB.
+    // Default to true (gate on) when the key is absent — preserves safe behavior
+    // until the admin explicitly disables it.
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('settings')
+      .eq('id', tenantId)
       .maybeSingle();
-    isAuthorized = !!member;
+
+    const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
+    gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
+
+    // Check if the signed-in user is an active member of this tenant.
+    if (session) {
+      const { data: member } = await supabase
+        .from('members')
+        .select('id')
+        .eq('clerk_id', session.providerUserId)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .maybeSingle();
+      isAuthorized = !!member;
+    }
   }
 
-  // A valid unused invite token also grants full access.
+  // A valid unused members.token also grants full access.
+  let invitedName: string | null = null;
   if (!isAuthorized && inviteToken) {
-    const row = await validateInvite(inviteToken);
-    if (row !== null) isAuthorized = true;
+    const row = await validateMemberToken(inviteToken);
+    if (row !== null) {
+      isAuthorized = true;
+      invitedName = row.invited_name ?? null;
+    }
   }
 
-  return <HeirloomApp gateEnabled={gateEnabled} isAuthorized={isAuthorized} />;
+  const hasInviteToken = !!inviteToken;
+
+  return (
+    <HeirloomApp
+      gateEnabled={gateEnabled}
+      isAuthorized={isAuthorized}
+      invitedName={invitedName}
+      hasInviteToken={hasInviteToken}
+    />
+  );
 }
