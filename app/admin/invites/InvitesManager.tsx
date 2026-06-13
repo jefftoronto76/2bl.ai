@@ -42,17 +42,21 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function buildInviteUrl(token: string): string {
-  // Works on the Heirloom domain (heirloom.2bl.ai/?invite=…), on Vercel
-  // previews, and on localhost (/heirloom?invite=…).
-  return `${window.location.origin}/heirloom?invite=${token}`
+function buildInviteUrl(token: string, tenantDomain: string | null): string {
+  const origin = tenantDomain ? `https://${tenantDomain}` : window.location.origin
+  return `${origin}?invite=${token}`
 }
 
 function truncateToken(token: string): string {
   return token.length > 14 ? `${token.slice(0, 12)}…` : token
 }
 
-export function InvitesManager() {
+interface InvitesManagerProps {
+  tenantName: string
+  tenantDomain: string | null
+}
+
+export function InvitesManager({ tenantName, tenantDomain }: InvitesManagerProps) {
   const [invites, setInvites] = useState<InviteRow[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
@@ -174,7 +178,7 @@ export function InvitesManager() {
       const invite: InviteRow = await res.json()
       setInvites(prev => [invite, ...prev])
       setEmailInput('')
-      setModalUrl(buildInviteUrl(invite.token))
+      setModalUrl(buildInviteUrl(invite.token, tenantDomain))
       setModalEmail(invite.email ?? '')
       setModalCopied(false)
       setModalOpen(true)
@@ -220,7 +224,7 @@ export function InvitesManager() {
   }
 
   function handleRowCopy(invite: InviteRow) {
-    copyToClipboard(buildInviteUrl(invite.token), () => {
+    copyToClipboard(buildInviteUrl(invite.token, tenantDomain), () => {
       setCopiedId(invite.id)
       setTimeout(() => setCopiedId(null), 2000)
     })
@@ -247,7 +251,7 @@ export function InvitesManager() {
               Invite Gate
             </Text>
             <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-              Control whether Heirloom chat requires membership or an invite to access.
+              Control whether {tenantName} chat requires membership or an invite to access.
             </Text>
           </Stack>
         </Group>
@@ -257,7 +261,7 @@ export function InvitesManager() {
           <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
             <Stack gap="sm">
               <Switch
-                label="Require an invite to access Heirloom chat"
+                label={`Require an invite to access ${tenantName} chat`}
                 description="When enabled, visitors must present an invite link or be an active member to open the chat."
                 checked={gateEnabled}
                 onChange={(e) => setGateEnabled(e.currentTarget.checked)}
@@ -288,7 +292,7 @@ export function InvitesManager() {
             Invites
           </Text>
           <Text variant="muted">
-            Invite-only access links for Heirloom. Each token can be used once.
+            Invite-only access links for {tenantName}. Each token can be used once.
           </Text>
         </div>
         <Button
