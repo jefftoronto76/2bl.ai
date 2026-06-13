@@ -1,4 +1,4 @@
-import { Accordion } from '@mantine/core'
+import { Accordion, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
 import { ChatThresholds } from './ChatThresholds'
@@ -15,8 +15,11 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         <Accordion multiple variant="separated" defaultValue={[]}>
           <Accordion.Item value="parameters">
-            <Accordion.Control description="Values Sage uses in conversation, such as booking links.">
-              Parameters
+            <Accordion.Control>
+              <Stack gap={2}>
+                <Text variant="title" style={{ fontSize: 'var(--mantine-font-size-md)' }}>Parameters</Text>
+                <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>Values Sage uses in conversation, such as booking links.</Text>
+              </Stack>
             </Accordion.Control>
             <Accordion.Panel>
               <SageParameters />
@@ -24,8 +27,11 @@ export default function SettingsPage() {
           </Accordion.Item>
 
           <Accordion.Item value="thresholds">
-            <Accordion.Control description="How long Sage waits before moving a session from In-progress → Active → Abandoned.">
-              Chat Thresholds
+            <Accordion.Control>
+              <Stack gap={2}>
+                <Text variant="title" style={{ fontSize: 'var(--mantine-font-size-md)' }}>Chat Thresholds</Text>
+                <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>How long Sage waits before moving a session from In-progress → Active → Abandoned.</Text>
+              </Stack>
             </Accordion.Control>
             <Accordion.Panel>
               <ChatThresholds />
@@ -33,8 +39,11 @@ export default function SettingsPage() {
           </Accordion.Item>
 
           <Accordion.Item value="invite-gate">
-            <Accordion.Control description="Control whether this chat requires membership or an invite to access.">
-              Invite Gate
+            <Accordion.Control>
+              <Stack gap={2}>
+                <Text variant="title" style={{ fontSize: 'var(--mantine-font-size-md)' }}>Invite Gate</Text>
+                <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>Control whether this chat requires membership or an invite to access.</Text>
+              </Stack>
             </Accordion.Control>
             <Accordion.Panel>
               <InviteGate />
