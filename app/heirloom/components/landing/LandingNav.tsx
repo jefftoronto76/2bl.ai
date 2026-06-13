@@ -69,7 +69,7 @@ export function LandingNav() {
             <button
               type="button"
               onClick={() => { setOAuthInProgress(true); openSignUp({ appearance: heirloomClerkAppearance }); }}
-              className="border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="hidden md:inline-flex border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               Sign Up
             </button>
