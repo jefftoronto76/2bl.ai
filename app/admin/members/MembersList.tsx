@@ -287,7 +287,7 @@ export function MembersList({ users, tenants }: MembersListProps) {
               {m0?.token && (
                 <Menu.Item
                   leftSection={<IconLink size={16} />}
-                  onClick={() => copyInviteLink(m0.token!)}
+                  onClick={() => copyInviteLink(user)}
                 >
                   Copy invite link
                 </Menu.Item>
