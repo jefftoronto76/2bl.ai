@@ -3,10 +3,9 @@
 // dependent members, chat_sessions, etc. The audit record is written FIRST
 // so it is never lost even if the delete fails. This action is irreversible.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { hardDeleteMember } from '@/services/members'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 interface RouteContext {
   params: Promise<{ userId: string }>

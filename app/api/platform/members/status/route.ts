@@ -4,10 +4,9 @@
 // row per affected membership. Eligibility is resolved server-side (deleted
 // memberships are never overwritten back to a lesser state like suspended).
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 type MemberStatus = 'active' | 'invited' | 'waitlist' | 'suspended' | 'deleted'
 

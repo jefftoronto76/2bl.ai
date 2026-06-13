@@ -3,10 +3,9 @@
 // (invited-only / waitlist members — status='invited' or status='waitlist' with user_id IS NULL).
 // Used to revoke an invite or remove a waitlist entry before the person has signed up.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 interface RouteContext {
   params: Promise<{ memberId: string }>

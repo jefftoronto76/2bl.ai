@@ -6,10 +6,9 @@
 // intermediate write is logged and skipped but does not roll back prior writes.
 // Migrate to a Postgres RPC when full atomicity is required.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 interface RoleChange {
   tenant_id: string

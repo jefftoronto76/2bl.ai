@@ -3,9 +3,8 @@
 // returns the generated token. The client constructs the full invite URL from
 // window.location.origin + the tenant-appropriate path + '?invite=' + token.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { createMemberInvite } from '@/services/members'
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request'
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()
