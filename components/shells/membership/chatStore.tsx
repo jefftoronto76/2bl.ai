@@ -158,6 +158,7 @@ export function ChatProvider({
   enableExitWarning = false,
   invitedName = null,
   hasInviteToken = false,
+  inviteToken,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: true. */
@@ -171,6 +172,10 @@ export function ChatProvider({
   invitedName?: string | null;
   /** True when the visitor arrived with an invite token in the URL. */
   hasInviteToken?: boolean;
+  /** Raw invite token — present only when the visitor arrived via an unused
+   *  token. Stored in a ref (not state) and consumed once on the false→true
+   *  isSignedIn transition to call the accept endpoint. */
+  inviteToken?: string;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -204,6 +209,10 @@ export function ChatProvider({
   // is already signed in. null = Clerk not yet loaded (initial observation
   // pending); false/true = steady state.
   const wasSignedInRef = useRef<boolean | null>(null);
+
+  // Stable ref for the invite token — must not change across renders so the
+  // wasSignedIn effect closure always reads the original value from page load.
+  const inviteTokenRef = useRef<string | null>(inviteToken ?? null);
 
   // Last sessionId the buffering effect acted on. Lets clearDraft + re-buffer
   // fire only on a genuine null→id transition (a live send creating a session) —
@@ -445,6 +454,13 @@ export function ChatProvider({
     if (isSignedIn && !wasSignedInRef.current) {
       wasSignedInRef.current = true;
       void claimSessionsOnly();
+      if (inviteTokenRef.current) {
+        void fetch('/api/heirloom/invites/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: inviteTokenRef.current }),
+        }).catch(err => console.error('[heirloom/chat] invite accept failed:', err));
+      }
     }
     if (!isSignedIn) {
       // Reset on sign-out so the next sign-in fires again.

@@ -60,6 +60,11 @@ interface HeirloomAppProps {
   isAuthorized: boolean;
   invitedName?: string | null;
   hasInviteToken?: boolean;
+  /** Raw invite token string — present only when the visitor was authorized via
+   *  an unused token (not when already an active signed-in member). The
+   *  ChatProvider calls /api/heirloom/invites/accept on the false→true
+   *  isSignedIn transition to consume it. */
+  inviteToken?: string;
 }
 
 export default function HeirloomApp({
@@ -67,6 +72,7 @@ export default function HeirloomApp({
   isAuthorized,
   invitedName,
   hasInviteToken,
+  inviteToken,
 }: HeirloomAppProps) {
   return (
     <ChatProvider
@@ -74,6 +80,7 @@ export default function HeirloomApp({
       isAuthorized={isAuthorized}
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
+      inviteToken={inviteToken}
       enableExitWarning
     >
       <HeirloomInner />

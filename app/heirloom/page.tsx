@@ -65,12 +65,19 @@ export default async function HeirloomPage({
 
   const hasInviteToken = !!inviteToken;
 
+  // Pass the raw token to the client only when it was the authorization path
+  // (valid + unused). When the user is already a signed-in active member the
+  // token path didn't fire, so there is nothing to accept.
+  const validatedInviteToken =
+    isAuthorized && inviteToken && !session ? inviteToken : undefined;
+
   return (
     <HeirloomApp
       gateEnabled={gateEnabled}
       isAuthorized={isAuthorized}
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
+      inviteToken={validatedInviteToken}
     />
   );
 }
