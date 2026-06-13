@@ -43,7 +43,7 @@ import { InviteMemberModal } from './InviteMemberModal';
 interface MembersListProps {
   users: UserRow[];
   tenants: TenantOption[];
-  currentTenantId: string;
+  currentTenantId?: string;
 }
 
 export function MembersList({ users, tenants, currentTenantId }: MembersListProps) {
