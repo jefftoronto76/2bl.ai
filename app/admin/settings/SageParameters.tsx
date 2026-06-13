@@ -354,19 +354,7 @@ export function SageParameters() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-        <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
-          <Text
-            id="parameters-heading"
-            variant="title"
-            style={{ fontSize: 'var(--mantine-font-size-md)' }}
-          >
-            Parameters
-          </Text>
-          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-            Values Sage uses in conversation, such as booking links.
-          </Text>
-        </Stack>
+      <Group justify="flex-end">
         <Button
           variant="filled"
           color="green"

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button, Card, Group, Skeleton, Stack, Switch } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { Text } from '@/components/admin/primitives/Text'
 
 export function InviteGate() {
   const [loading, setLoading] = useState(true)
@@ -78,21 +77,6 @@ export function InviteGate() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-        <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
-          <Text
-            id="invite-gate-heading"
-            variant="title"
-            style={{ fontSize: 'var(--mantine-font-size-md)' }}
-          >
-            Invite Gate
-          </Text>
-          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-            Control whether this chat requires membership or an invite to access.
-          </Text>
-        </Stack>
-      </Group>
-
       {loading ? (
         <Skeleton height={100} radius="md" />
       ) : (

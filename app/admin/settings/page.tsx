@@ -1,4 +1,4 @@
-import { Stack } from '@mantine/core'
+import { Accordion } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
 import { ChatThresholds } from './ChatThresholds'
@@ -13,17 +13,34 @@ export default function SettingsPage() {
         <Text variant="title">Settings</Text>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-6">
-        <Stack gap="lg">
-          <section aria-labelledby="parameters-heading">
-            <SageParameters />
-          </section>
-          <section aria-labelledby="thresholds-heading">
-            <ChatThresholds />
-          </section>
-          <section aria-labelledby="invite-gate-heading">
-            <InviteGate />
-          </section>
-        </Stack>
+        <Accordion multiple variant="separated" defaultValue={[]}>
+          <Accordion.Item value="parameters">
+            <Accordion.Control description="Values Sage uses in conversation, such as booking links.">
+              Parameters
+            </Accordion.Control>
+            <Accordion.Panel>
+              <SageParameters />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="thresholds">
+            <Accordion.Control description="How long Sage waits before moving a session from In-progress → Active → Abandoned.">
+              Chat Thresholds
+            </Accordion.Control>
+            <Accordion.Panel>
+              <ChatThresholds />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="invite-gate">
+            <Accordion.Control description="Control whether this chat requires membership or an invite to access.">
+              Invite Gate
+            </Accordion.Control>
+            <Accordion.Panel>
+              <InviteGate />
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
       </div>
     </div>
   )
