@@ -330,7 +330,7 @@ export function SidebarV2({
 
   return (
     <aside
-      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${
+      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         expanded ? 'w-64' : 'w-12'
       }`}
     >
@@ -403,7 +403,7 @@ export function SidebarV2({
           </button>
 
           {expanded && convosOpen && (
-            <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5">
+            <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {recentSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
                   No memories yet
@@ -510,7 +510,7 @@ export function SidebarV2({
             </div>
 
             {/* Story list */}
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
               {stories.map((story) => {
                 const id = `story:${story.id}`;
                 const isMenuOpen = menuId === id;
