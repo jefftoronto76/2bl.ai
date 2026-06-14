@@ -29,6 +29,14 @@ export async function DELETE(req: Request, context: RouteContext) {
   const actorId = (actorRow as { id: string } | null)?.id ?? null
   const platformTenantId = await getTenantFromRequest(req)
 
+  let reason: string | null = null
+  try {
+    const body = await req.json() as { reason?: string }
+    reason = body.reason?.trim() || null
+  } catch {
+    // Body is optional — DELETE requests may have no body.
+  }
+
   // Verify the row exists and has no linked user — refuse to delete a signed-up member here.
   const { data: memberRow, error: fetchErr } = await supabase
     .from('members')
@@ -56,8 +64,9 @@ export async function DELETE(req: Request, context: RouteContext) {
     target_type: 'member',
     target_id: memberId,
     metadata: {
-      reason: 'admin_revoke_invite',
+      reason_type: 'admin_revoke_invite',
       status: (memberRow as { status: string }).status,
+      ...(reason ? { reason } : {}),
     },
   })
 
