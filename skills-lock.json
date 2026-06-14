@@ -53,7 +53,7 @@
       "source": "clerk/skills",
       "sourceType": "github",
       "skillPath": "skills/mobile/clerk-expo/SKILL.md",
-      "computedHash": "d23606fc053ad93d844fd2211177cdf2167294a3b3011f3e22bcb7f384ebeb07"
+      "computedHash": "f880c1ef1ed1c5740aaa984514cefe1c8e8f2edd4209bbbac6abc67c10726b55"
     },
     "clerk-expo-patterns": {
       "source": "clerk/skills",
