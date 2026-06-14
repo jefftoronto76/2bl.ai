@@ -11,8 +11,8 @@ import type { TenantOption } from './types';
 /**
  * "Invite member" button + its modal.
  *
- * Form: optional invited_name + required tenant. No email field — the invite token
- * is the gate; the invitee supplies their email when signing up.
+ * Form: required first name + required email OR phone (mutually exclusive) + required tenant.
+ * Email and phone are mutually exclusive — typing in one clears and disables the other.
  *
  * After a successful POST the modal switches to a success view showing the invite URL
  * with a copy button. The admin copies the link and shares it manually.
@@ -25,7 +25,7 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
   const [phone, setPhone] = useState('');
   const [tenantId, setTenantId] = useState<string | null>(currentTenantId ?? null);
   const [submitting, setSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ tenant?: string }>({});
+  const [errors, setErrors] = useState<{ tenant?: string; name?: string; emailOrPhone?: string }>({});
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   function reset() {
@@ -43,8 +43,22 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
     setOpened(false);
   }
 
+  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.currentTarget.value;
+    setEmail(val);
+    if (val.trim()) setPhone('');
+  }
+
+  function handlePhoneChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.currentTarget.value;
+    setPhone(val);
+    if (val.trim()) setEmail('');
+  }
+
   function validate() {
     const next: typeof errors = {};
+    if (!invitedName.trim()) next.name = 'First name is required';
+    if (!email.trim() && !phone.trim()) next.emailOrPhone = 'Enter an email or phone number';
     if (!tenantId) next.tenant = 'Select a tenant';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -128,28 +142,32 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
           /* Form */
           <Stack gap="md">
             <TextInput
-              label="Name (optional)"
+              label="First name"
+              required
               description="For your records — shown in the member list before they sign up."
-              placeholder="First Last"
+              placeholder="First name"
               value={invitedName}
               onChange={(e) => setInvitedName(e.currentTarget.value)}
+              error={errors.name}
               data-autofocus
             />
             <TextInput
-              label="Email (optional)"
-              description="Locks this invite to a specific email address."
+              label="Email"
+              description="Enter email or phone — not both."
               placeholder="member@example.com"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.currentTarget.value)}
+              onChange={handleEmailChange}
+              disabled={!!phone.trim() || submitting}
+              error={errors.emailOrPhone}
             />
             <TextInput
-              label="Phone (optional)"
-              description="Locks this invite to a specific phone number."
+              label="Phone"
               placeholder="+1 555 000 0000"
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.currentTarget.value)}
+              onChange={handlePhoneChange}
+              disabled={!!email.trim() || submitting}
             />
             {currentTenantId ? (
               <div>
@@ -175,7 +193,11 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
               <Button variant="subtle" color="gray" onClick={close} disabled={submitting}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} loading={submitting}>
+              <Button
+                onClick={handleSubmit}
+                loading={submitting}
+                disabled={submitting || !invitedName.trim() || (!email.trim() && !phone.trim())}
+              >
                 Create invite
               </Button>
             </Group>
