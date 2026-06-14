@@ -287,6 +287,8 @@ export async function hardDeleteMember(
   tenantId: string | null,
   reason?: string | null,
 ): Promise<MembersResult<{ id: string }>> {
+  console.log('[hardDeleteMember] starting', { userId, actorId, reason })
+
   const supabase = getAdminClient()
 
   // Look up clerk_id before any deletes so we can remove the Clerk identity.
@@ -301,6 +303,7 @@ export async function hardDeleteMember(
   }
 
   const clerkId = (userRow as { clerk_id?: string | null } | null)?.clerk_id ?? null
+  console.log('[hardDeleteMember] resolved clerk_id', { userId, clerkId: clerkId ?? 'null — no Clerk user' })
 
   // Write audit before delete so the record survives the cascade.
   void logEvent({
@@ -319,21 +322,28 @@ export async function hardDeleteMember(
   // Delete Clerk identity before Supabase row (Clerk is the source of truth for
   // authentication — remove it first so no sign-in is possible during the window).
   if (clerkId) {
+    console.log('[hardDeleteMember] calling Clerk deleteUser', { clerkId })
     try {
       await deleteClerkUser(clerkId)
+      console.log('[hardDeleteMember] Clerk deleteUser succeeded', { clerkId })
     } catch (err) {
       // Non-fatal: log and continue. The Supabase row deletion is still correct
       // even if Clerk deletion fails (e.g. user already deleted in Clerk dashboard).
-      console.error('[members] hardDeleteMember — Clerk delete failed, continuing:', err instanceof Error ? err.message : err)
+      console.error('[hardDeleteMember] Clerk deleteUser failed — proceeding with Supabase delete', {
+        clerkId,
+        error: err instanceof Error ? err.message : err,
+      })
     }
   }
 
+  console.log('[hardDeleteMember] deleting Supabase users row', { userId })
   const { error } = await supabase.from('users').delete().eq('id', userId)
 
   if (error) {
-    console.error('[members] hardDeleteMember failed:', error.message)
+    console.error('[hardDeleteMember] Supabase delete failed', { userId, error })
     return { ok: false, status: 500, error: error.message }
   }
 
+  console.log('[hardDeleteMember] Supabase users row deleted', { userId })
   return { ok: true, data: { id: userId } }
 }
