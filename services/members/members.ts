@@ -5,6 +5,7 @@
 
 import { randomBytes } from 'crypto'
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { deleteClerkUser } from '@/services/auth'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
@@ -277,16 +278,31 @@ export async function acceptInvite(
 /**
  * Hard-deletes a user row. The DB cascade removes dependent members /
  * chat_sessions rows. Writes an audit record before deleting (so the audit
- * row is never orphaned).
+ * row is never orphaned), then removes the Clerk identity (non-fatal — a
+ * Clerk-already-deleted user should not block Supabase cleanup).
  */
 export async function hardDeleteMember(
   userId: string,
   actorId: string | null,
   tenantId: string | null,
+  reason?: string | null,
 ): Promise<MembersResult<{ id: string }>> {
   const supabase = getAdminClient()
 
-  // Write audit before delete so the record survives.
+  // Look up clerk_id before any deletes so we can remove the Clerk identity.
+  const { data: userRow, error: lookupErr } = await supabase
+    .from('users')
+    .select('clerk_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (lookupErr) {
+    console.error('[members] hardDeleteMember — clerk_id lookup failed:', lookupErr.message)
+  }
+
+  const clerkId = (userRow as { clerk_id?: string | null } | null)?.clerk_id ?? null
+
+  // Write audit before delete so the record survives the cascade.
   void logEvent({
     action: AuditAction.MEMBER_HARD_DELETED,
     tenant_id: tenantId,
@@ -294,8 +310,23 @@ export async function hardDeleteMember(
     actor_type: 'user',
     target_type: 'user',
     target_id: userId,
-    metadata: { reason: 'admin_hard_delete' },
+    metadata: {
+      reason_type: 'admin_hard_delete',
+      ...(reason ? { reason } : {}),
+    },
   })
+
+  // Delete Clerk identity before Supabase row (Clerk is the source of truth for
+  // authentication — remove it first so no sign-in is possible during the window).
+  if (clerkId) {
+    try {
+      await deleteClerkUser(clerkId)
+    } catch (err) {
+      // Non-fatal: log and continue. The Supabase row deletion is still correct
+      // even if Clerk deletion fails (e.g. user already deleted in Clerk dashboard).
+      console.error('[members] hardDeleteMember — Clerk delete failed, continuing:', err instanceof Error ? err.message : err)
+    }
+  }
 
   const { error } = await supabase.from('users').delete().eq('id', userId)
 
