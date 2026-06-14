@@ -19,7 +19,7 @@ export type { AppSession, AuthUser, AuthUserState, AuthActions, AuthAppearance }
 export * from './errors'
 
 // Provider-backed session/identity API (Clerk adapter today).
-export { getSession, getCurrentUser, requirePlatformAdmin } from './providers/clerk/server'
+export { getSession, getCurrentUser, requirePlatformAdmin, deleteClerkUser } from './providers/clerk/server'
 
 // Existing service helpers — Supabase-resolved identity, tenant scoping, sync.
 export { getAuthContext } from './get-auth-context'
