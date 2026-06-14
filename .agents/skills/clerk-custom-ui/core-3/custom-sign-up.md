@@ -115,15 +115,6 @@ await signUp.finalize({
 
 If `signUp.isTransferable` is `true`, the identifier matches an existing user and the sign-up should be transferred to a sign-in flow. This involves coordinating between sign-up and sign-in resources. See the [transferable sign-up docs](https://clerk.com/docs/custom-flows/overview) for the full implementation.
 
-> **⚠️ Project note (observed in production, 2bl.ai 2026-06-11):**
-> `signUp.isTransferable` did NOT flip on the create-error path for existing
-> email or phone identifiers — `create()` returned `form_identifier_exists`
-> with the flag still `false`, breaking transfer-based detection. Detect
-> existing users by the `form_identifier_exists` error code and sign them in
-> directly via `signIn.emailCode.sendCode({ emailAddress })` /
-> `phoneCode.sendCode({ phoneNumber })`; treat `isTransferable` as a
-> secondary signal only.
-
 ### Reset State
 
 Clear local sign-up state and start over:
@@ -135,14 +126,6 @@ signUp.reset()
 ## Error Handling
 
 All methods return `Promise<{ error: ClerkError | null }>`. Errors are also available reactively on the hook:
-
-> **⚠️ Project note — dual error channel (undocumented by Clerk; observed in
-> production, 2bl.ai PR #86):** the OTP send methods (see the sign-in doc's
-> `sendCode`; treat `signUp.verifications.sendEmailCode()` /
-> `sendPhoneCode()` the same way) can ALSO **throw** on HTTP 4xx responses
-> (e.g. `ClerkAPIResponseError`) in addition to the documented `{ error }`
-> return. Wrap send calls in try/catch and normalize both channels. Do not
-> remove the defensive try/catch to match these docs.
 
 ```typescript
 const { signUp, errors } = useSignUp()

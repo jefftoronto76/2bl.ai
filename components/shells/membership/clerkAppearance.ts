@@ -42,9 +42,10 @@ export const heirloomClerkAppearance = {
     dividerRow:     { color: 'var(--hl-modal-ink-muted)' },
     footerActionText: { color: 'var(--hl-modal-ink-muted)' },
     footerActionLink: { color: 'rgb(var(--hl-modal-ink))', fontWeight: '600' },
-    // All social buttons get a visible border against the eggshell card background
+    // All social buttons get a visible border and dark text against the eggshell card background
     socialButtonsBlockButton: {
       border: '1px solid var(--hl-modal-border)',
+      color: 'rgb(var(--hl-modal-ink))',
     },
     // Apple button: dark background on light modal so the white Apple logo is legible
     socialButtonsBlockButton__apple: {

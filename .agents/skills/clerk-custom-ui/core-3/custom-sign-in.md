@@ -162,13 +162,6 @@ signIn.reset()
 
 All methods return `Promise<{ error: ClerkError | null }>`. Errors are also available reactively on the hook:
 
-> **⚠️ Project note — dual error channel (undocumented by Clerk; observed in
-> production, 2bl.ai PR #86):** `signIn.emailCode.sendCode()` /
-> `signIn.phoneCode.sendCode()` can ALSO **throw** on HTTP 4xx responses
-> (e.g. `ClerkAPIResponseError`) in addition to the documented `{ error }`
-> return. Wrap every sendCode call in try/catch and normalize both channels.
-> Do not remove the defensive try/catch to match these docs.
-
 ```typescript
 const { signIn, errors } = useSignIn()
 
