@@ -28,7 +28,15 @@ export async function DELETE(req: Request, context: RouteContext) {
   const actorId = (actorRow as { id: string } | null)?.id ?? null
   const platformTenantId = await getTenantFromRequest(req)
 
-  const result = await hardDeleteMember(userId, actorId, platformTenantId)
+  let reason: string | null = null
+  try {
+    const body = await req.json() as { reason?: string }
+    reason = body.reason?.trim() || null
+  } catch {
+    // Body is optional — DELETE requests may have no body.
+  }
+
+  const result = await hardDeleteMember(userId, actorId, platformTenantId, reason)
 
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
