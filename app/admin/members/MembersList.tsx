@@ -14,6 +14,7 @@ import {
   Checkbox,
   Group,
   Menu,
+  Modal,
   SegmentedControl,
   Stack,
   Table,
@@ -52,6 +53,12 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailUser, setDetailUser] = useState<UserRow | null>(null);
+
+  // Modal state
+  const [softDeleteTarget, setSoftDeleteTarget] = useState<{ userIds: string[]; label: string } | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<{ userId?: string; memberId?: string; name: string; isInviteOnly: boolean } | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [hardDeleteConfirm, setHardDeleteConfirm] = useState('');
 
   // Status filter counts: a user is counted under a status if ANY membership has it.
   const counts = useMemo(() => {
@@ -107,16 +114,18 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
-  async function setStatus(userIds: string[], status: MemberStatus, verb: string) {
+  async function setStatus(userIds: string[], status: MemberStatus, verb: string, reason?: string) {
     try {
+      const body: Record<string, unknown> = { user_ids: userIds, status };
+      if (reason) body.reason = reason;
       const res = await fetch('/api/platform/members/status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_ids: userIds, status }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Could not ${verb}.`);
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? `Could not ${verb}.`);
       }
       notifications.show({
         color: 'green',
@@ -134,12 +143,18 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
     }
   }
 
-  async function deletePermanently(userId: string, name: string) {
+  async function deletePermanently(userId: string, name: string, reason?: string) {
     try {
-      const res = await fetch(`/api/platform/members/${userId}`, { method: 'DELETE' });
+      const body: Record<string, unknown> = {};
+      if (reason) body.reason = reason;
+      const res = await fetch(`/api/platform/members/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? 'Could not delete member.');
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Could not delete member.');
       }
       notifications.show({ color: 'green', title: 'Member deleted', message: `${name} was permanently removed.` });
       router.refresh();
@@ -153,12 +168,18 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
   }
 
   // For invited-only / waitlist members (no users row) — deletes the members row directly.
-  async function deleteInviteMember(memberId: string, name: string) {
+  async function deleteInviteMember(memberId: string, name: string, reason?: string) {
     try {
-      const res = await fetch(`/api/platform/members/invite/${memberId}`, { method: 'DELETE' });
+      const body: Record<string, unknown> = {};
+      if (reason) body.reason = reason;
+      const res = await fetch(`/api/platform/members/invite/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? 'Could not remove member.');
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? 'Could not remove member.');
       }
       notifications.show({ color: 'green', title: 'Removed', message: `${name} was removed.` });
       router.refresh();
@@ -244,7 +265,12 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
             <Menu.Item
               color="red"
               leftSection={<IconX size={16} />}
-              onClick={() => m0 && deleteInviteMember(m0.memberId, user.name)}
+              onClick={() => {
+                if (!m0) return;
+                setDeleteReason('');
+                setHardDeleteConfirm('');
+                setHardDeleteTarget({ memberId: m0.memberId, name: user.name, isInviteOnly: true });
+              }}
             >
               {st === 'waitlist' ? 'Remove from waitlist' : 'Revoke invite'}
             </Menu.Item>
@@ -303,7 +329,11 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
               <Menu.Item
                 color="red"
                 leftSection={<IconX size={16} />}
-                onClick={() => deletePermanently(user.id, user.name)}
+                onClick={() => {
+                  setDeleteReason('');
+                  setHardDeleteConfirm('');
+                  setHardDeleteTarget({ userId: user.id, name: user.name, isInviteOnly: false });
+                }}
               >
                 Revoke invite
               </Menu.Item>
@@ -321,7 +351,11 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
               <Menu.Item
                 color="red"
                 leftSection={<IconTrash size={16} />}
-                onClick={() => deletePermanently(user.id, user.name)}
+                onClick={() => {
+                  setDeleteReason('');
+                  setHardDeleteConfirm('');
+                  setHardDeleteTarget({ userId: user.id, name: user.name, isInviteOnly: false });
+                }}
               >
                 Delete permanently
               </Menu.Item>
@@ -332,7 +366,10 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
               <Menu.Item
                 color="red"
                 leftSection={<IconTrash size={16} />}
-                onClick={() => setStatus([user.id], 'deleted', 'deleted')}
+                onClick={() => {
+                  setDeleteReason('');
+                  setSoftDeleteTarget({ userIds: [user.id], label: user.name });
+                }}
               >
                 Delete
               </Menu.Item>
@@ -419,7 +456,11 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
               variant="default"
               color="red"
               leftSection={<IconTrash size={15} />}
-              onClick={() => setStatus(selectedVisible, 'deleted', 'deleted')}
+              onClick={() => {
+                setDeleteReason('');
+                const n = selectedVisible.length;
+                setSoftDeleteTarget({ userIds: [...selectedVisible], label: `${n} member${n !== 1 ? 's' : ''}` });
+              }}
             >
               Delete
             </Button>
@@ -632,6 +673,103 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
         opened={detailUser !== null}
         onClose={() => setDetailUser(null)}
       />
+
+      {/* Soft-delete confirmation modal */}
+      <Modal
+        opened={softDeleteTarget !== null}
+        onClose={() => setSoftDeleteTarget(null)}
+        title={
+          softDeleteTarget && softDeleteTarget.userIds.length > 1
+            ? `Delete ${softDeleteTarget.userIds.length} members`
+            : 'Delete member'
+        }
+        centered
+      >
+        {softDeleteTarget && (
+          <Stack gap="md">
+            <Text size="sm">
+              Delete <strong>{softDeleteTarget.label}</strong>? Their status will be set to deleted.
+              This can be reversed with Restore.
+            </Text>
+            <TextInput
+              label="Reason (required)"
+              placeholder="e.g. Account closure request"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.currentTarget.value)}
+              data-autofocus
+            />
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={() => setSoftDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                color="red"
+                disabled={deleteReason.trim().length === 0}
+                onClick={async () => {
+                  const target = softDeleteTarget;
+                  setSoftDeleteTarget(null);
+                  await setStatus(target.userIds, 'deleted', 'deleted', deleteReason.trim());
+                }}
+              >
+                Delete
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+
+      {/* Hard-delete confirmation modal */}
+      <Modal
+        opened={hardDeleteTarget !== null}
+        onClose={() => setHardDeleteTarget(null)}
+        title="Permanently delete member"
+        centered
+      >
+        {hardDeleteTarget && (
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              This cannot be undone.
+              {!hardDeleteTarget.isInviteOnly && ' The Clerk account will be permanently removed.'}
+            </Text>
+            <TextInput
+              label="Reason (required)"
+              placeholder="e.g. Account closure on request"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.currentTarget.value)}
+              data-autofocus
+            />
+            <TextInput
+              label={`Type "${hardDeleteTarget.name}" to confirm`}
+              placeholder={hardDeleteTarget.name}
+              value={hardDeleteConfirm}
+              onChange={(e) => setHardDeleteConfirm(e.currentTarget.value)}
+            />
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={() => setHardDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                color="red"
+                disabled={
+                  deleteReason.trim().length === 0 ||
+                  hardDeleteConfirm.trim() !== hardDeleteTarget.name.trim()
+                }
+                onClick={async () => {
+                  const target = hardDeleteTarget;
+                  setHardDeleteTarget(null);
+                  if (target.isInviteOnly && target.memberId) {
+                    await deleteInviteMember(target.memberId, target.name, deleteReason.trim());
+                  } else if (target.userId) {
+                    await deletePermanently(target.userId, target.name, deleteReason.trim());
+                  }
+                }}
+              >
+                Delete permanently
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   );
 }

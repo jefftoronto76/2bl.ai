@@ -14,6 +14,11 @@ vi.mock('@/services/audit', () => ({
   logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 
+const deleteClerkUserMock = vi.fn()
+vi.mock('@/services/auth', () => ({
+  deleteClerkUser: (...args: unknown[]) => deleteClerkUserMock(...args),
+}))
+
 import {
   createMemberInvite,
   validateMemberToken,
@@ -129,13 +134,37 @@ function makeLinkClient({
   return { client, getUpdateCalls: () => updateCalls }
 }
 
-// Simple delete mock: from().delete().eq()
-function makeDeleteClient(returnError: unknown = null) {
+// Two-call delete mock for hardDeleteMember:
+//   Call 1: from('users').select('clerk_id').eq('id', userId).maybeSingle()
+//   Call 2: from('users').delete().eq('id', userId)
+function makeDeleteClient(
+  deleteError: unknown = null,
+  clerkId: string | null = null,
+  lookupError: unknown = null,
+) {
+  let callCount = 0
   const client = {
     from(_table: string) {
+      callCount++
+      if (callCount === 1) {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return {
+                  maybeSingle: async () => ({
+                    data: lookupError ? null : (clerkId ? { clerk_id: clerkId } : null),
+                    error: lookupError ?? null,
+                  }),
+                }
+              },
+            }
+          },
+        }
+      }
       return {
         delete() {
-          return { eq: async (_col: string, _val: unknown) => ({ error: returnError }) }
+          return { eq: async (_col: string, _val: unknown) => ({ error: deleteError }) }
         },
       }
     },
@@ -334,7 +363,10 @@ describe('linkInvitedMember', () => {
 // ── hardDeleteMember ─────────────────────────────────────────────────────────
 
 describe('hardDeleteMember', () => {
-  beforeEach(() => { logEventMock.mockReset() })
+  beforeEach(() => {
+    logEventMock.mockReset()
+    deleteClerkUserMock.mockReset()
+  })
 
   it('fires a MEMBER_HARD_DELETED audit event and returns ok:true on success', async () => {
     adminHolder.client = makeDeleteClient().client
@@ -351,9 +383,61 @@ describe('hardDeleteMember', () => {
     expect(arg.target_id).toBe('user-del-1')
     expect(arg.tenant_id).toBe('tenant-1')
     expect(arg.actor_id).toBe('actor-1')
+    expect((arg.metadata as Record<string, unknown>).reason_type).toBe('admin_hard_delete')
   })
 
-  it('returns ok:false on DB error', async () => {
+  it('includes reason in audit metadata when provided', async () => {
+    adminHolder.client = makeDeleteClient().client
+
+    await hardDeleteMember('user-del-r', 'actor-1', 'tenant-1', 'Violated community guidelines')
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    const meta = arg.metadata as Record<string, unknown>
+    expect(meta.reason_type).toBe('admin_hard_delete')
+    expect(meta.reason).toBe('Violated community guidelines')
+  })
+
+  it('omits reason key from audit metadata when reason is not provided', async () => {
+    adminHolder.client = makeDeleteClient().client
+
+    await hardDeleteMember('user-del-nr', 'actor-1', 'tenant-1')
+
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    const meta = arg.metadata as Record<string, unknown>
+    expect('reason' in meta).toBe(false)
+    expect(meta.reason_type).toBe('admin_hard_delete')
+  })
+
+  it('calls deleteClerkUser with the clerk_id when one is found', async () => {
+    adminHolder.client = makeDeleteClient(null, 'clerk-abc').client
+    deleteClerkUserMock.mockResolvedValue(undefined)
+
+    await hardDeleteMember('user-del-c', 'actor-1', 'tenant-1', 'reason')
+
+    expect(deleteClerkUserMock).toHaveBeenCalledOnce()
+    expect(deleteClerkUserMock).toHaveBeenCalledWith('clerk-abc')
+  })
+
+  it('does not call deleteClerkUser when no clerk_id is found', async () => {
+    adminHolder.client = makeDeleteClient(null, null).client
+
+    await hardDeleteMember('user-del-nc', 'actor-1', 'tenant-1')
+
+    expect(deleteClerkUserMock).not.toHaveBeenCalled()
+  })
+
+  it('still deletes the Supabase row when Clerk deletion throws', async () => {
+    adminHolder.client = makeDeleteClient(null, 'clerk-xyz').client
+    deleteClerkUserMock.mockRejectedValue(new Error('Clerk API error'))
+
+    const result = await hardDeleteMember('user-del-cf', 'actor-1', 'tenant-1')
+
+    expect(result.ok).toBe(true)
+    expect(deleteClerkUserMock).toHaveBeenCalledOnce()
+  })
+
+  it('returns ok:false on DB delete error', async () => {
     adminHolder.client = makeDeleteClient({ message: 'foreign key violation' }).client
 
     const result = await hardDeleteMember('user-del-2', null, null)
@@ -369,7 +453,6 @@ describe('hardDeleteMember', () => {
 
     await hardDeleteMember('user-del-3', 'actor-2', 'tenant-2')
 
-    // logEvent is void (fire-and-forget) — the important thing is it was called
     expect(logEventMock).toHaveBeenCalledOnce()
   })
 })

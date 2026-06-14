@@ -23,12 +23,12 @@ export const heirloomClerkAppearance = {
   variables: {
     colorPrimary: 'rgb(var(--color-accent))',
     colorBackground: 'rgb(var(--hl-modal-bg))',
-    colorText: 'rgb(var(--hl-modal-ink))',
-    colorTextSecondary: 'var(--hl-modal-ink-muted)',
+    colorForeground: 'rgb(var(--hl-modal-ink))',
+    colorMutedForeground: 'var(--hl-modal-ink-muted)',
     // Dark ink on gold primary button — unchanged direction
-    colorTextOnPrimaryBackground: 'rgb(var(--hl-modal-ink))',
-    colorInputBackground: 'rgb(var(--hl-modal-surface))',
-    colorInputText: 'rgb(var(--hl-modal-ink))',
+    colorPrimaryForeground: 'rgb(var(--hl-modal-ink))',
+    colorInput: 'rgb(var(--hl-modal-surface))',
+    colorInputForeground: 'rgb(var(--hl-modal-ink))',
     // --hl-modal-border is already rgba(...) — no rgb() wrapper needed
     colorNeutral: 'var(--hl-modal-border)',
     colorModalBackdrop: 'rgba(0, 0, 0, 0.7)',

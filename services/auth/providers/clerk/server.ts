@@ -3,7 +3,7 @@
 // Everything Clerk-specific on the server is contained here; product code
 // consumes the provider-agnostic surface via @/services/auth.
 
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server'
 
 import type { AppSession, AuthUser } from '../../types'
 import { getAdminClient } from '../../supabase-admin'
@@ -84,6 +84,17 @@ export async function requirePlatformAdmin(): Promise<AuthUser | null> {
   const user = await getCurrentUser()
   if (!user?.isPlatformAdmin) return null
   return user
+}
+
+/**
+ * Permanently deletes a Clerk user by their Clerk user id. Irreversible —
+ * destroys the Clerk identity, all active sessions, and all Clerk-side data.
+ * Callers must write the audit record and handle Supabase deletion separately.
+ * clerkClient is an async factory in Core 3 (v7) — must be awaited before use.
+ */
+export async function deleteClerkUser(clerkUserId: string): Promise<void> {
+  const client = await clerkClient()
+  await client.users.deleteUser(clerkUserId)
 }
 
 // Low-level Clerk re-exports for IN-BOUNDARY use only (the existing
