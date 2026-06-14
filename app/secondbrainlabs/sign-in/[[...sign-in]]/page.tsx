@@ -30,9 +30,9 @@ export default function PlatformSignInPage() {
           appearance={{
             variables: {
               colorPrimary: '#C8542E',
-              colorText: '#1F1A14',
-              colorTextSecondary: '#6B6256',
-              colorInputText: '#1F1A14',
+              colorForeground: '#1F1A14',
+              colorMutedForeground: '#6B6256',
+              colorInputForeground: '#1F1A14',
               colorBackground: '#FFFFFF',
               borderRadius: '0.625rem',
               fontFamily: 'var(--font-sans)',
