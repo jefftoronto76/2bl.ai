@@ -21,14 +21,15 @@ export async function PATCH(req: Request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-  let body: { user_ids?: string[]; status?: string }
+  let body: { user_ids?: string[]; status?: string; reason?: string }
   try {
     body = await req.json()
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { user_ids, status } = body
+  const { user_ids, status, reason } = body
+  const trimmedReason = reason?.trim() || null
   if (!Array.isArray(user_ids) || user_ids.length === 0) {
     return Response.json({ error: 'user_ids must be a non-empty array' }, { status: 400 })
   }
@@ -66,9 +67,14 @@ export async function PATCH(req: Request) {
     return Response.json({ ok: true, updated: 0, message: 'No eligible memberships to update' })
   }
 
+  const updatePayload: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
+  if (status === 'deleted' && trimmedReason) {
+    updatePayload.deleted_reason = trimmedReason
+  }
+
   const { error: updateErr } = await supabase
     .from('members')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .in('id', eligible.map((m) => m.id))
 
   if (updateErr) {
@@ -88,7 +94,7 @@ export async function PATCH(req: Request) {
       target_id: m.id,
       correlation_id: req.headers.get('x-correlation-id'),
       changes: { before: { status: m.status }, after: { status } },
-      metadata: { user_id: m.user_id, tenant_id: m.tenant_id },
+      metadata: { user_id: m.user_id, tenant_id: m.tenant_id, ...(trimmedReason ? { reason: trimmedReason } : {}) },
     })
   }
 
