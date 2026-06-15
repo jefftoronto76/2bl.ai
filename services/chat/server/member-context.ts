@@ -108,6 +108,12 @@ export async function getMemberPrimer(
 
   const result = contextLines.join(' ') + markerInstruction
 
-  console.log('[chat/primer] found and stamped', { memberId: member.id, hasName: !!name, hasEmail: !!email, hasPhone: !!phone })
+  console.log('[chat/primer] found and stamped', {
+    memberId: member.id,
+    hasName: !!name,
+    hasEmail: !!email,
+    hasPhone: !!phone,
+    resultPreview: result.slice(0, 200),
+  })
   return result
 }

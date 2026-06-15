@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   // tenant_users membership, since Heirloom visitors are end-customers, not
   // admins. Anonymous visitors get null and an unlinked session (unchanged).
   const userId = await syncUser()
+  console.log('[sessions/route] POST resolved', { tenant_id: tenantId, user_id: userId ?? 'anonymous' })
 
   const result = await createSession(tenantId, userId)
   if (!result.ok) {

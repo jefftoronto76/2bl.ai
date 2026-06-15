@@ -74,6 +74,11 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     sessionId ? getMemberPrimer(sessionId, tenantId) : Promise.resolve(null),
   ])
 
+  console.log('[chat] memberPrimer', memberPrimer !== null
+    ? `found (${memberPrimer.length} chars)`
+    : 'null — not injected'
+  )
+
   const systemPrompt = [
     basePrompt,
     bookingSection,
