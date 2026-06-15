@@ -1,20 +1,20 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Modal,
   TextInput,
-  Combobox,
-  useCombobox,
+  Table,
   Group,
   Text,
   Button,
   Stack,
+  ScrollArea,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconSearch } from '@tabler/icons-react'
 
-interface MemberResult {
+interface MemberRow {
   id: string
   user_id: string
   name: string | null
@@ -38,49 +38,48 @@ export function TransferModal({
   onClose,
   onSuccess,
 }: TransferModalProps) {
-  const [stage, setStage] = useState<'search' | 'confirm'>('search')
-  const [search, setSearch] = useState('')
-  const [results, setResults] = useState<MemberResult[]>([])
-  const [selectedMember, setSelectedMember] = useState<MemberResult | null>(null)
+  const [allMembers, setAllMembers] = useState<MemberRow[]>([])
+  const [query, setQuery] = useState('')
+  const [selectedMember, setSelectedMember] = useState<MemberRow | null>(null)
   const [confirming, setConfirming] = useState(false)
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Fetch all active members once when the modal opens
+  useEffect(() => {
+    if (!opened) return
+    fetch('/api/admin/members/search')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: MemberRow[]) => setAllMembers(data))
+      .catch(() => setAllMembers([]))
+  }, [opened])
 
-  const combobox = useCombobox({
-    onDropdownClose: () => combobox.resetSelectedOption(),
-  })
+  // Reset state after modal closes (after animation)
+  useEffect(() => {
+    if (!opened) {
+      const timer = setTimeout(() => {
+        setQuery('')
+        setSelectedMember(null)
+        setConfirming(false)
+        setAllMembers([])
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [opened])
 
-  const fetchMembers = useCallback(async (q: string) => {
-    if (!q.trim()) {
-      setResults([])
-      return
-    }
-    try {
-      const res = await fetch(`/api/admin/members/search?q=${encodeURIComponent(q.trim())}`)
-      if (!res.ok) {
-        setResults([])
-        return
-      }
-      const data: MemberResult[] = await res.json()
-      setResults(data)
-      combobox.openDropdown()
-    } catch {
-      setResults([])
-    }
-  }, [combobox])
+  const filtered = query.trim()
+    ? allMembers.filter((m) => {
+        const q = query.toLowerCase()
+        return (
+          m.name?.toLowerCase().includes(q) ||
+          m.invited_name?.toLowerCase().includes(q) ||
+          m.email?.toLowerCase().includes(q) ||
+          m.phone?.toLowerCase().includes(q) ||
+          m.id.toLowerCase().includes(q)
+        )
+      })
+    : allMembers
 
-  function handleSearchChange(value: string) {
-    setSearch(value)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!value.trim()) {
-      setResults([])
-      combobox.closeDropdown()
-      return
-    }
-    debounceRef.current = setTimeout(() => {
-      void fetchMembers(value)
-    }, 300)
-  }
+  const displayName = (m: MemberRow) => m.name ?? m.invited_name ?? '—'
+  const sessionDisplayName = visitorName ?? 'Anonymous'
 
   async function handleConfirm() {
     if (!selectedMember) return
@@ -101,11 +100,9 @@ export function TransferModal({
         setConfirming(false)
         return
       }
-      const displayName =
-        selectedMember.name ?? selectedMember.invited_name ?? 'the selected member'
       notifications.show({
         title: 'Session transferred',
-        message: `Session assigned to ${displayName}.`,
+        message: `Session assigned to ${displayName(selectedMember)}.`,
         color: 'green',
       })
       onSuccess()
@@ -119,120 +116,34 @@ export function TransferModal({
     }
   }
 
-  // Reset to Stage 1 after the modal closes (after animation)
-  useEffect(() => {
-    if (!opened) {
-      const timer = setTimeout(() => {
-        setStage('search')
-        setSearch('')
-        setResults([])
-        setSelectedMember(null)
-        setConfirming(false)
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-  }, [opened])
-
-  const memberDisplayName = (m: MemberResult) => m.name ?? m.invited_name ?? '—'
-  const sessionDisplayName = visitorName ?? 'Anonymous'
-
-  const options = results.map((member) => (
-    <Combobox.Option key={member.id} value={member.user_id}>
-      <Group gap="xs" wrap="nowrap">
-        <Text size="sm" fw={600} style={{ minWidth: 0, flexShrink: 1 }}>
-          {memberDisplayName(member)}
-        </Text>
-        {member.email && (
-          <Text
-            size="xs"
-            c="dimmed"
-            style={{
-              fontFamily: 'var(--mantine-font-family-monospace)',
-              flexShrink: 1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {member.email}
-          </Text>
-        )}
-      </Group>
-    </Combobox.Option>
-  ))
-
   return (
     <Modal
       opened={opened}
       onClose={onClose}
       title="Transfer Session"
-      size="sm"
+      size="lg"
       centered
     >
-      {stage === 'search' ? (
-        <Stack gap="md">
-          <Text size="sm" c="dimmed">
-            Search for a member to assign{' '}
-            <Text component="span" size="sm" fw={600} c="dark">
-              {sessionDisplayName}
-            </Text>
-            {"'s session to."}
-          </Text>
-          <Combobox
-            store={combobox}
-            onOptionSubmit={(userId) => {
-              const member = results.find((m) => m.user_id === userId)
-              if (member) {
-                setSelectedMember(member)
-                setStage('confirm')
-              }
-              combobox.closeDropdown()
-            }}
-          >
-            <Combobox.Target>
-              <TextInput
-                leftSection={<IconSearch size={14} />}
-                placeholder="Name, email, or phone"
-                value={search}
-                onChange={(e) => handleSearchChange(e.currentTarget.value)}
-                onFocus={() => {
-                  if (results.length > 0) combobox.openDropdown()
-                }}
-                autoFocus
-              />
-            </Combobox.Target>
-            <Combobox.Dropdown>
-              <Combobox.Options>
-                {options.length > 0 ? (
-                  options
-                ) : (
-                  <Combobox.Empty>
-                    {search.trim() ? 'No active members found' : 'Type to search members'}
-                  </Combobox.Empty>
-                )}
-              </Combobox.Options>
-            </Combobox.Dropdown>
-          </Combobox>
-        </Stack>
-      ) : (
+      {selectedMember ? (
+        // Confirmation stage
         <Stack gap="md">
           <Text size="sm">
-            You are transferring{' '}
+            Transfer{' '}
             <Text component="span" size="sm" fw={600}>
               {sessionDisplayName}
             </Text>
             {"'s session to "}
             <Text component="span" size="sm" fw={600}>
-              {selectedMember ? memberDisplayName(selectedMember) : ''}
+              {displayName(selectedMember)}
             </Text>
-            . Press OK to confirm.
+            ?
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button
               variant="subtle"
               color="gray"
               size="sm"
-              onClick={() => setStage('search')}
+              onClick={() => setSelectedMember(null)}
               disabled={confirming}
             >
               Back
@@ -243,9 +154,84 @@ export function TransferModal({
               loading={confirming}
               onClick={() => void handleConfirm()}
             >
-              OK
+              Confirm transfer
             </Button>
           </Group>
+        </Stack>
+      ) : (
+        // Search + table stage
+        <Stack gap="sm">
+          <TextInput
+            leftSection={<IconSearch size={14} />}
+            placeholder="Filter by name, email, or phone"
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            autoFocus
+          />
+          <ScrollArea h={320}>
+            <Table highlightOnHover verticalSpacing="xs" striped>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Email</Table.Th>
+                  <Table.Th>Phone</Table.Th>
+                  <Table.Th>Member ID</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {filtered.length === 0 ? (
+                  <Table.Tr>
+                    <Table.Td colSpan={4}>
+                      <Text size="sm" c="dimmed" ta="center" py="md">
+                        {allMembers.length === 0 ? 'Loading…' : 'No members match.'}
+                      </Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ) : (
+                  filtered.map((m) => (
+                    <Table.Tr
+                      key={m.id}
+                      onClick={() => setSelectedMember(m)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <Table.Td>
+                        <Text size="sm" fw={500}>
+                          {displayName(m)}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text
+                          size="xs"
+                          c="dimmed"
+                          style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                        >
+                          {m.email ?? '—'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text
+                          size="xs"
+                          c="dimmed"
+                          style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                        >
+                          {m.phone ?? '—'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text
+                          size="xs"
+                          c="dimmed"
+                          style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                        >
+                          {m.id}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                )}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea>
         </Stack>
       )}
     </Modal>

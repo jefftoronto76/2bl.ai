@@ -13,8 +13,8 @@ import {
   Anchor,
   Card,
   Text,
+  TextInput,
 } from '@mantine/core'
-import { useMediaQuery } from '@mantine/hooks'
 import { IconClipboard, IconCheck, IconArrowsRightLeft, IconCopy } from '@tabler/icons-react'
 import {
   parseBookingCards,
@@ -201,17 +201,17 @@ function MessageBubble({ msg }: { msg: Message }) {
   )
 }
 
-interface SessionDrawerBodyProps {
-  session: ChatSession
+export interface SessionDrawerProps {
+  session: ChatSession | null
   onClose: () => void
 }
 
-function SessionDrawerBody({ session, onClose }: SessionDrawerBodyProps) {
+export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
   const router = useRouter()
   const [copied, setCopied] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
 
-  const messages = parseMessages(session.messages)
+  const messages = parseMessages(session?.messages ?? null)
   const transcriptText = formatTranscript(messages)
 
   function handleCopy() {
@@ -229,17 +229,56 @@ function SessionDrawerBody({ session, onClose }: SessionDrawerBodyProps) {
 
   return (
     <>
-      <Drawer.Body
-        p="md"
-        style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}
+      <Drawer
+        opened={session !== null}
+        onClose={onClose}
+        position="right"
+        size="50%"
+        withOverlay={false}
+        trapFocus
+        returnFocus
+        title={
+          <TextInput
+            value={session?.visitor_name ?? ''}
+            placeholder="Anonymous"
+            readOnly
+            variant="unstyled"
+            styles={{
+              input: {
+                fontFamily: 'var(--mantine-font-family)',
+                fontSize: 'var(--mantine-font-size-lg)',
+                fontWeight: 600,
+                padding: 0,
+                height: 'auto',
+                minHeight: 'auto',
+              },
+            }}
+          />
+        }
+        styles={{
+          content: {
+            display: 'flex',
+            flexDirection: 'column',
+          },
+          body: {
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          },
+        }}
       >
-        {/* Session metadata */}
-        <Stack gap="xs" mb="lg">
-          {session.email && (
+        {/* Metadata */}
+        <div style={{ padding: 'var(--mantine-spacing-md)', paddingBottom: 0 }}>
+          {session?.email && (
             <Anchor
               href={`mailto:${session.email}`}
               size="sm"
+              mb="xs"
               style={{
+                display: 'block',
                 fontFamily: 'var(--mantine-font-family-monospace)',
                 wordBreak: 'break-all',
                 color: '#2d6a4f',
@@ -248,187 +287,103 @@ function SessionDrawerBody({ session, onClose }: SessionDrawerBodyProps) {
               {session.email}
             </Anchor>
           )}
-          <Group gap="xs" wrap="wrap">
-            <Badge
-              variant="light"
-              color={STATUS_COLORS[session.derived_status] ?? 'gray'}
-              size="sm"
-              radius="sm"
-            >
-              {session.derived_status}
-            </Badge>
-            <Text
-              size="xs"
-              c="dimmed"
-              style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
-            >
-              {messages.length} messages
-            </Text>
-            <Text
-              size="xs"
-              c="dimmed"
-              style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
-            >
-              Started {formatDate(session.created_at)}
-            </Text>
-            {session.updated_at && session.updated_at !== session.created_at && (
+          {session && (
+            <Group gap="xs" wrap="wrap" mb="md">
+              <Badge
+                variant="light"
+                color={STATUS_COLORS[session.derived_status] ?? 'gray'}
+                size="sm"
+                radius="sm"
+              >
+                {session.derived_status}
+              </Badge>
               <Text
                 size="xs"
                 c="dimmed"
                 style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
               >
-                Last active {formatDate(session.updated_at)}
+                {messages.length} messages
               </Text>
-            )}
-          </Group>
-        </Stack>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
+                Started {formatDate(session.created_at)}
+              </Text>
+              {session.updated_at && session.updated_at !== session.created_at && (
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                >
+                  Last active {formatDate(session.updated_at)}
+                </Text>
+              )}
+            </Group>
+          )}
+        </div>
 
-        {/* Transcript */}
-        {messages.length === 0 ? (
-          <Text
-            size="sm"
-            c="dimmed"
-            style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
-          >
-            No messages in this session.
-          </Text>
-        ) : (
-          <Stack gap="md">
-            {messages.map((msg) => (
-              <MessageBubble key={msg.id} msg={msg} />
-            ))}
-          </Stack>
-        )}
-      </Drawer.Body>
-
-      {/* Sticky footer */}
-      <div
-        style={{
-          padding: 'var(--mantine-spacing-md)',
-          borderTop: '1px solid var(--mantine-color-default-border)',
-          flexShrink: 0,
-        }}
-      >
-        <Group justify="space-between">
-          <Button
-            size="sm"
-            color="green"
-            variant="filled"
-            leftSection={<IconArrowsRightLeft size={14} />}
-            onClick={() => setTransferOpen(true)}
-          >
-            Transfer
-          </Button>
-          <Tooltip label={copied ? 'Copied!' : 'Copy transcript'} position="left">
-            <ActionIcon
-              variant="subtle"
-              color={copied ? 'green' : 'gray'}
-              size="md"
-              onClick={handleCopy}
-              aria-label={copied ? 'Transcript copied' : 'Copy transcript'}
-              disabled={messages.length === 0}
+        {/* Scrollable transcript */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--mantine-spacing-md)', paddingTop: 0 }}>
+          {messages.length === 0 ? (
+            <Text
+              size="sm"
+              c="dimmed"
+              style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
             >
-              {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </div>
+              No messages in this session.
+            </Text>
+          ) : (
+            <Stack gap="md">
+              {messages.map((msg) => (
+                <MessageBubble key={msg.id} msg={msg} />
+              ))}
+            </Stack>
+          )}
+        </div>
 
-      <TransferModal
-        opened={transferOpen}
-        sessionId={session.id}
-        visitorName={session.visitor_name}
-        onClose={() => setTransferOpen(false)}
-        onSuccess={handleTransferSuccess}
-      />
-    </>
-  )
-}
-
-export interface SessionDrawerProps {
-  session: ChatSession | null
-  onClose: () => void
-}
-
-export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)')
-  const opened = session !== null
-  const title = session?.visitor_name ?? 'Anonymous'
-
-  if (!isMobile) {
-    return (
-      <Drawer.Root
-        opened={opened}
-        onClose={onClose}
-        position="right"
-        size="lg"
-        trapFocus
-        returnFocus
-      >
-        <Drawer.Overlay />
-        <Drawer.Content style={{ display: 'flex', flexDirection: 'column' }}>
-          <Drawer.Header>
-            <Drawer.Title
-              style={{
-                fontFamily: 'var(--mantine-font-family)',
-                fontSize: 'var(--mantine-font-size-lg)',
-                fontWeight: 600,
-              }}
-            >
-              {title}
-            </Drawer.Title>
-            <Drawer.CloseButton />
-          </Drawer.Header>
-          {session && <SessionDrawerBody session={session} onClose={onClose} />}
-        </Drawer.Content>
-      </Drawer.Root>
-    )
-  }
-
-  return (
-    <Drawer.Root
-      opened={opened}
-      onClose={onClose}
-      position="bottom"
-      size="86%"
-      radius="md"
-      trapFocus
-      returnFocus
-    >
-      <Drawer.Overlay />
-      <Drawer.Content style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Sticky footer */}
         <div
-          aria-hidden
           style={{
-            display: 'flex',
-            justifyContent: 'center',
-            paddingTop: 8,
-            paddingBottom: 4,
+            padding: 'var(--mantine-spacing-md)',
+            borderTop: '1px solid var(--mantine-color-default-border)',
+            flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              width: 40,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: 'var(--mantine-color-gray-4)',
-            }}
-          />
+          <Group justify="space-between">
+            <Button
+              size="sm"
+              color="green"
+              variant="filled"
+              leftSection={<IconArrowsRightLeft size={14} />}
+              onClick={() => setTransferOpen(true)}
+            >
+              Transfer
+            </Button>
+            <Button
+              size="sm"
+              variant={copied ? 'filled' : 'subtle'}
+              color={copied ? 'green' : 'gray'}
+              leftSection={copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
+              onClick={handleCopy}
+              disabled={messages.length === 0}
+            >
+              {copied ? 'Copied!' : 'Copy transcript'}
+            </Button>
+          </Group>
         </div>
-        <Drawer.Header>
-          <Drawer.Title
-            style={{
-              fontFamily: 'var(--mantine-font-family)',
-              fontSize: 'var(--mantine-font-size-lg)',
-              fontWeight: 600,
-            }}
-          >
-            {title}
-          </Drawer.Title>
-          <Drawer.CloseButton />
-        </Drawer.Header>
-        {session && <SessionDrawerBody session={session} onClose={onClose} />}
-      </Drawer.Content>
-    </Drawer.Root>
+      </Drawer>
+
+      {session && (
+        <TransferModal
+          opened={transferOpen}
+          sessionId={session.id}
+          visitorName={session.visitor_name}
+          onClose={() => setTransferOpen(false)}
+          onSuccess={handleTransferSuccess}
+        />
+      )}
+    </>
   )
 }
