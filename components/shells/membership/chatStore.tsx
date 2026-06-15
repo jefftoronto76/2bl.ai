@@ -176,6 +176,7 @@ export function ChatProvider({
   hasInviteToken = false,
   inviteToken,
   autoOpenChat = false,
+  memberId,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: false. */
@@ -198,6 +199,10 @@ export function ChatProvider({
   /** When true, open the chat panel immediately on mount. Sourced from
    *  members.auto_open on the invite row. Default: false. */
   autoOpenChat?: boolean;
+  /** Supabase members.id for the pre-auth invite holder — lets getMemberPrimer
+   *  look up the member directly without chat_sessions.user_id. Only set for
+   *  guests who haven't signed in yet. */
+  memberId?: string;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -220,7 +225,7 @@ export function ChatProvider({
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
   // The conversation engine + state, isolated to this provider (no instanceKey).
-  const session = useChatSession({});
+  const session = useChatSession({ getMemberId: () => memberIdRef.current });
   const { messages, sessionId, isStreaming, isError, send, sendHidden, hydrate, reset } = session;
 
   // Latest-value mirror refs, assigned during render, so event handlers
@@ -261,6 +266,10 @@ export function ChatProvider({
   // Stable ref for the invite token — must not change across renders so the
   // wasSignedIn effect closure always reads the original value from page load.
   const inviteTokenRef = useRef<string | null>(inviteToken ?? null);
+
+  // Stable ref for the pre-auth member id — threaded into every /api/sage
+  // request so getMemberPrimer can look up the primer without user_id.
+  const memberIdRef = useRef<string | null>(memberId ?? null);
 
   // Last sessionId the buffering effect acted on. Lets clearDraft + re-buffer
   // fire only on a genuine null→id transition (a live send creating a session) —

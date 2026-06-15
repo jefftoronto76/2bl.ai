@@ -66,6 +66,10 @@ interface HeirloomAppProps {
    *  ChatProvider calls /api/heirloom/invites/accept on the false→true
    *  isSignedIn transition to consume it. */
   inviteToken?: string;
+  /** members.id for the invited member — present only for pre-auth invite holders.
+   *  Passed through to /api/sage so getMemberPrimer can look up the member
+   *  directly without needing chat_sessions.user_id. */
+  memberId?: string;
   /** When true, the chat panel opens automatically on mount. Sourced from
    *  members.auto_open on the invite row. */
   autoOpenChat?: boolean;
@@ -78,6 +82,7 @@ export default function HeirloomApp({
   invitedName,
   hasInviteToken,
   inviteToken,
+  memberId,
   autoOpenChat,
 }: HeirloomAppProps) {
   return (
@@ -88,6 +93,7 @@ export default function HeirloomApp({
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
       inviteToken={inviteToken}
+      memberId={memberId}
       autoOpenChat={autoOpenChat}
       enableExitWarning
     >

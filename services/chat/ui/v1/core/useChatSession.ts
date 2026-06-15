@@ -38,6 +38,13 @@ export interface ChatSessionConfig {
    * store scoped to this hook instance.
    */
   instanceKey?: string
+  /**
+   * Optional accessor for a pre-auth invited member's Supabase members.id.
+   * When provided, it is threaded into every /api/sage request as `member_id`
+   * so getMemberPrimer can look up the member directly without needing
+   * chat_sessions.user_id. Only relevant for Heirloom invite-holder paths.
+   */
+  getMemberId?: () => string | null
 }
 
 /** The session value every surface consumes (via context). */
@@ -59,7 +66,7 @@ export interface ChatSession {
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
-  const { instanceKey } = config
+  const { instanceKey, getMemberId } = config
 
   // Resolve the backing store. Singleton mode uses the client registry; on the
   // server (where a client component still renders for initial HTML) we never
@@ -102,8 +109,9 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
       setSessionId: (id) => store.setState({ sessionId: id }),
       getSessionId: () => store.getState().sessionId,
       getMode: () => store.getState().mode,
+      getMemberId,
     }),
-    [store],
+    [store, getMemberId],
   )
 
   const turn = useChatTurn({ accessors })
