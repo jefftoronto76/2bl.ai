@@ -140,7 +140,12 @@ export async function linkInvitedMember(
   clerkId: string,
   email: string,
 ): Promise<void> {
-  if (!email) return
+  console.log('[members] linkInvitedMember — called', { clerkId, email })
+
+  if (!email) {
+    console.log('[members] linkInvitedMember — EXIT: no email provided')
+    return
+  }
 
   const supabase = getAdminClient()
 
@@ -153,11 +158,16 @@ export async function linkInvitedMember(
     .single()
 
   if (userErr || !userRow) {
-    console.error('[members] linkInvitedMember — could not resolve users.id:', userErr?.message)
+    console.error('[members] linkInvitedMember — EXIT: could not resolve users.id', {
+      clerkId,
+      email,
+      error: userErr?.message,
+    })
     return
   }
 
   const userId = (userRow as { id: string }).id
+  console.log('[members] linkInvitedMember — resolved users.id', { clerkId, userId })
 
   // Find any invited row matching this email that hasn't been used yet.
   const { data: invitedRow, error: findErr } = await supabase
@@ -169,14 +179,25 @@ export async function linkInvitedMember(
     .maybeSingle()
 
   if (findErr) {
-    console.error('[members] linkInvitedMember — find failed:', findErr.message)
+    console.error('[members] linkInvitedMember — EXIT: find query failed', {
+      clerkId,
+      email,
+      error: findErr.message,
+    })
     return
   }
 
   if (!invitedRow) {
-    // Normal for sign-ups without an invite — no-op.
+    console.log('[members] linkInvitedMember — EXIT: no matching invited row (no invite or email mismatch)', {
+      clerkId,
+      email,
+    })
     return
   }
+
+  const memberId = (invitedRow as { id: string; tenant_id: string }).id
+  const tenantId = (invitedRow as { id: string; tenant_id: string }).tenant_id
+  console.log('[members] linkInvitedMember — found invited row, stamping', { clerkId, memberId, tenantId })
 
   const { error: updateErr } = await supabase
     .from('members')
@@ -188,16 +209,21 @@ export async function linkInvitedMember(
       used_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', (invitedRow as { id: string }).id)
+    .eq('id', memberId)
 
   if (updateErr) {
-    console.error('[members] linkInvitedMember — update failed:', updateErr.message)
+    console.error('[members] linkInvitedMember — EXIT: update failed', {
+      clerkId,
+      memberId,
+      error: updateErr.message,
+    })
     return
   }
 
-  console.log('[members] linkInvitedMember — linked:', {
+  console.log('[members] linkInvitedMember — SUCCESS: stamped invited row', {
     clerk_id: clerkId,
-    member_id: (invitedRow as { id: string }).id,
+    member_id: memberId,
+    tenant_id: tenantId,
   })
 }
 
