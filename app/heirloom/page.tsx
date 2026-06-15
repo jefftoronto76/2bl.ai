@@ -24,14 +24,14 @@ export default async function HeirloomPage({
 
   // Gate and auth default to safe values when the tenant cannot be resolved
   // (e.g. Vercel preview without PREVIEW_TENANT_ID set).
-  let gateEnabled = true;
+  let gateEnabled = false;
   let isAuthorized = false;
   let isAdmin = false;
 
   if (tenantId) {
     // Read the invite gate toggle from tenants.settings JSONB.
-    // Default to true (gate on) when the key is absent — preserves safe behavior
-    // until the admin explicitly disables it.
+    // Default to false (gate off) when the key is absent — gate is opt-in;
+    // an admin must explicitly set invite_gate_enabled: true to enable it.
     const { data: tenantRow } = await supabase
       .from('tenants')
       .select('settings')
@@ -39,7 +39,7 @@ export default async function HeirloomPage({
       .maybeSingle();
 
     const tenantSettings = tenantRow?.settings as Record<string, unknown> | null;
-    gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true;
+    gateEnabled = (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? false;
 
     // Check if the signed-in user is an active member of this tenant.
     if (session) {

@@ -76,6 +76,12 @@ export interface SidebarV2Props {
 
   // Per-row kebab menu
   onRowAction?: (target: RowTarget, id: string, action: RowAction) => void;
+
+  // Inline rename
+  /** Session id currently being renamed — shows an input in place of the title. */
+  renamingId?: string;
+  /** Called when rename input blurs or Enter is pressed. Empty string = cancel. */
+  onRenameCommit?: (id: string, newTitle: string) => void;
 }
 
 // ── Section label ───────────────────────────────────────────────────────────
@@ -302,6 +308,8 @@ export function SidebarV2({
   onStartStoryChat,
   onSelectPrompt,
   onRowAction,
+  renamingId,
+  onRenameCommit,
 }: SidebarV2Props) {
   const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
   const expanded = state.isSidebarExpanded;
@@ -414,18 +422,31 @@ export function SidebarV2({
                   const isMenuOpen = menuId === id;
                   return (
                     <div key={session.id} className="relative group flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => loadSession(session.id)}
-                        aria-current={state.sessionId === session.id ? 'true' : undefined}
-                        className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                          state.sessionId === session.id
-                            ? 'bg-text-primary/10 text-text-primary'
-                            : 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                        }`}
-                      >
-                        {session.title}
-                      </button>
+                      {renamingId === session.id ? (
+                        <input
+                          autoFocus
+                          defaultValue={session.title}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.currentTarget.blur(); }
+                            if (e.key === 'Escape') { onRenameCommit?.(session.id, ''); }
+                          }}
+                          onBlur={(e) => onRenameCommit?.(session.id, e.currentTarget.value)}
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-sm bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => loadSession(session.id)}
+                          aria-current={state.sessionId === session.id ? 'true' : undefined}
+                          className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            state.sessionId === session.id
+                              ? 'bg-text-primary/10 text-text-primary'
+                              : 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                          }`}
+                        >
+                          {session.title}
+                        </button>
+                      )}
                       {onRowAction && (
                         <button
                           type="button"
