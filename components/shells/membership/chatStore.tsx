@@ -56,6 +56,7 @@ export interface RecentSession {
   title: string;
   updatedAt: string;
   messages: Message[];
+  starred: boolean;
 }
 
 interface ChatContextType {
@@ -105,6 +106,12 @@ interface ChatContextType {
   hasInviteToken: boolean;
   /** True when the signed-in member has role 'admin' or 'owner' on this tenant. */
   isAdmin: boolean;
+  /** Toggle the starred flag for a session. Optimistic — reverts on API failure. */
+  starSession: (id: string) => Promise<void>;
+  /** Rename a session. No-op on empty/whitespace title. Optimistic — reverts on failure. */
+  renameSession: (id: string, title: string) => Promise<void>;
+  /** Soft-delete a session (sets status=deleted). Removes from recentSessions. Optimistic. */
+  deleteSession: (id: string) => Promise<void>;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -114,6 +121,8 @@ interface ApiSession {
   messages: unknown;
   updated_at: string;
   visitor_name: string | null;
+  title: string | null;
+  starred: boolean;
 }
 
 function deriveSessionTitle(visitorName: string | null, messages: Message[]): string {
@@ -127,11 +136,15 @@ function deriveSessionTitle(visitorName: string | null, messages: Message[]): st
 
 function toRecentSession(row: ApiSession): RecentSession {
   const messages = reviveUIMessages(row.messages);
+  // Use the DB-stored title when available; fall back to the derived title for
+  // sessions that pre-date AI title generation or whose title hasn't been set yet.
+  const title = row.title?.trim() || deriveSessionTitle(row.visitor_name, messages);
   return {
     id: row.id,
     updatedAt: row.updated_at,
     messages,
-    title: deriveSessionTitle(row.visitor_name, messages),
+    title,
+    starred: row.starred ?? false,
   };
 }
 
@@ -356,6 +369,9 @@ export function ChatProvider({
   // race the write. The DB fetch on the next load reconciles (titles gain
   // visitor_name there when the server captured one).
   const prevIsStreamingRef = useRef(false);
+  // Tracks sessions that have had an AI title generated so the effect never
+  // fires twice for the same session across re-renders.
+  const aiTitledIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const finished = prevIsStreamingRef.current && !isStreaming;
     prevIsStreamingRef.current = isStreaming;
@@ -368,15 +384,47 @@ export function ChatProvider({
       m => !(m.role === 'assistant' && m.content === ''),
     );
     if (msgs.length === 0) return;
+    // Preserve the starred state for an existing session in the list.
+    const existing = recentSessions.find(s => s.id === id);
     setRecentSessions(prev => [
       {
         id,
         title: deriveSessionTitle(null, msgs),
         updatedAt: new Date().toISOString(),
         messages: msgs,
+        starred: existing?.starred ?? false,
       },
       ...prev.filter(s => s.id !== id),
     ]);
+
+    // AI title generation — first turn only (1 user + 1 assistant message).
+    // Fire-and-forget: any failure leaves the derived title in place.
+    if (msgs.length === 2 && !aiTitledIdsRef.current.has(id)) {
+      aiTitledIdsRef.current.add(id);
+      const firstUserMsg = msgs.find(m => m.role === 'user');
+      const firstAssistantMsg = msgs.find(m => m.role === 'assistant');
+      const firstUserMessage = firstUserMsg?.content.trim() ?? '';
+      const firstAssistantText = (firstAssistantMsg?.content ?? '').slice(0, 200).trim();
+      if (firstUserMessage) {
+        console.log('[heirloom/title] triggered:', id);
+        fetch(`/api/sessions/${id}/title`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firstUserMessage, firstAssistantText }),
+        })
+          .then(r => r.json())
+          .then((data: { title?: string | null }) => {
+            if (data.title) {
+              console.log('[heirloom/title] received:', id, '|', data.title);
+              setRecentSessions(prev =>
+                prev.map(s => s.id === id ? { ...s, title: data.title! } : s),
+              );
+            }
+          })
+          .catch(err => console.error('[heirloom/title] fetch failed:', id, err));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStreaming]);
 
   // Warn before leaving while a turn is in flight or any conversation exists.
@@ -584,6 +632,78 @@ export function ChatProvider({
     [hydrateConversation],
   );
 
+  // ── Kebab action mutations ──────────────────────────────────────────────────
+
+  const starSession = useCallback(async (id: string) => {
+    const prev = recentSessions.find(s => s.id === id);
+    if (!prev) return;
+    const newStarred = !prev.starred;
+    // Optimistic update
+    setRecentSessions(sessions =>
+      sessions.map(s => s.id === id ? { ...s, starred: newStarred } : s),
+    );
+    console.log('[heirloom/session] star:', id, newStarred);
+    try {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ starred: newStarred }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+    } catch (err) {
+      console.error('[heirloom/session] star failed:', id, err);
+      // Revert
+      setRecentSessions(sessions =>
+        sessions.map(s => s.id === id ? { ...s, starred: prev.starred } : s),
+      );
+    }
+  }, [recentSessions]);
+
+  const renameSession = useCallback(async (id: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const prev = recentSessions.find(s => s.id === id);
+    if (!prev) return;
+    // Optimistic update
+    setRecentSessions(sessions =>
+      sessions.map(s => s.id === id ? { ...s, title: trimmed } : s),
+    );
+    console.log('[heirloom/session] rename:', id, trimmed);
+    try {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+    } catch (err) {
+      console.error('[heirloom/session] rename failed:', id, err);
+      // Revert
+      setRecentSessions(sessions =>
+        sessions.map(s => s.id === id ? { ...s, title: prev.title } : s),
+      );
+    }
+  }, [recentSessions]);
+
+  const deleteSession = useCallback(async (id: string) => {
+    const prevSessions = recentSessions;
+    // Optimistic removal
+    setRecentSessions(sessions => sessions.filter(s => s.id !== id));
+    // If this is the active conversation, start fresh
+    if (sessionIdRef.current === id) {
+      newChat();
+    }
+    console.log('[heirloom/session] delete:', id);
+    try {
+      const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) throw new Error(`status ${res.status}`);
+    } catch (err) {
+      console.error('[heirloom/session] delete failed:', id, err);
+      // Revert — restore removed session at its original position
+      setRecentSessions(prevSessions);
+    }
+  }, [recentSessions, newChat]);
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
   // isMember derives directly from Clerk — no local state needed.
@@ -599,7 +719,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, starSession, renameSession, deleteSession }}
     >
       {children}
     </ChatContext.Provider>
