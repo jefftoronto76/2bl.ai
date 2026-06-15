@@ -14,20 +14,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const q = (searchParams.get('q') ?? '').trim().slice(0, 100)
 
-  if (!q) {
-    return NextResponse.json([])
-  }
-
   const supabase = getAdminClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('members')
     .select('id, user_id, name, email, phone, invited_name')
     .eq('tenant_id', tenantId)
     .not('user_id', 'is', null)
     .eq('status', 'active')
-    .or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,id.ilike.%${q}%`)
-    .limit(10)
+    .limit(200)
+
+  if (q) {
+    query = query.or(`name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,id.ilike.%${q}%`)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     console.error('[admin/members/search] query error:', error.message)
