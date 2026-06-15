@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext } from '@/services/auth/get-auth-context'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 export async function GET(req: NextRequest) {
