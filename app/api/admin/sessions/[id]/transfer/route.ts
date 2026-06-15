@@ -106,7 +106,26 @@ export async function PATCH(
     return NextResponse.json({ error: 'Target user not found or not active' }, { status: 404 })
   }
 
-  const result = await transferSessions(authCtx.tenant_id, [id], target_user_id)
+  // Look up the member record to stamp email + visitor_name on the session
+  const { data: memberRow } = await supabase
+    .from('members')
+    .select('email, name, invited_name')
+    .eq('user_id', target_user_id)
+    .eq('tenant_id', authCtx.tenant_id)
+    .maybeSingle()
+
+  const memberEmail = memberRow?.email ?? null
+  const memberName = memberRow?.name ?? memberRow?.invited_name ?? null
+
+  console.log(
+    `[sessions/[id]/transfer] stamping email and name for user_id=${target_user_id}`,
+    { hasEmail: memberEmail !== null, hasName: memberName !== null },
+  )
+
+  const result = await transferSessions(authCtx.tenant_id, [id], target_user_id, {
+    email: memberEmail,
+    visitorName: memberName,
+  })
 
   if (!result.ok) {
     void logEvent({

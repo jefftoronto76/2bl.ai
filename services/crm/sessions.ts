@@ -206,11 +206,15 @@ export interface TransferSessionRow {
  * PATCH /api/admin/sessions/transfer — bulk-reassign chat_sessions.user_id to a
  * new owner. Scoped by tenant_id so only the caller's sessions are touched.
  * Returns the before-state rows so the route can emit per-session audit events.
+ *
+ * When contactStamp is provided, email and visitor_name are also stamped on the
+ * transferred sessions so the CRM reflects the member's identity immediately.
  */
 export async function transferSessions(
   tenantId: string,
   sessionIds: string[],
   targetUserId: string,
+  contactStamp?: { email: string | null; visitorName: string | null },
 ): Promise<SessionResult<{ transferred: number; sessions: TransferSessionRow[] }>> {
   const supabase = getAdminClient('[sessions/transfer]')
 
@@ -233,9 +237,17 @@ export async function transferSessions(
 
   const eligibleIds = found.map((s) => s.id)
 
+  const updatePayload: {
+    user_id: string
+    email?: string
+    visitor_name?: string
+  } = { user_id: targetUserId }
+  if (contactStamp?.email) updatePayload.email = contactStamp.email
+  if (contactStamp?.visitorName) updatePayload.visitor_name = contactStamp.visitorName
+
   const { error: updateError } = await supabase
     .from('chat_sessions')
-    .update({ user_id: targetUserId })
+    .update(updatePayload)
     .in('id', eligibleIds)
     .eq('tenant_id', tenantId)
 
