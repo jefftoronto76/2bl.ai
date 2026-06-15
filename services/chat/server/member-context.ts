@@ -44,7 +44,7 @@ export async function getMemberPrimer(
   // Step 2: find the member's primer (only when not yet used).
   const { data: memberRow, error: memberErr } = await supabase
     .from('members')
-    .select('id, primer, primer_used_at, invited_name')
+    .select('id, primer, primer_used_at, invited_name, email, phone')
     .eq('user_id', userId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
@@ -59,6 +59,8 @@ export async function getMemberPrimer(
     primer: string | null
     primer_used_at: string | null
     invited_name: string | null
+    email: string | null
+    phone: string | null
   } | null
 
   if (!member || !member.primer) {
@@ -84,10 +86,28 @@ export async function getMemberPrimer(
     console.error('[chat/primer] failed to stamp primer_used_at (non-fatal):', stampErr.message)
   }
 
-  const name = member.invited_name?.trim() ?? null
+  const name      = member.invited_name?.trim() ?? null
+  const email     = member.email?.trim() ?? null
+  const phone     = member.phone?.trim() ?? null
   const primerText = member.primer.trim()
-  const result = name ? `This member's name is ${name}. ${primerText}` : primerText
 
-  console.log('[chat/primer] found and stamped', { memberId: member.id, hasName: !!name })
+  const contextLines: string[] = []
+  if (name)       contextLines.push(`Member's name is ${name}.`)
+  if (email)      contextLines.push(`Email: ${email}.`)
+  if (phone)      contextLines.push(`Phone: ${phone}.`)
+  if (primerText) contextLines.push(primerText)
+
+  const markerLines: string[] = []
+  if (name)  markerLines.push(`[NAME: ${name}]`)
+  if (email) markerLines.push(`[EMAIL: ${email}]`)
+  if (phone) markerLines.push(`[PHONE: ${phone}]`)
+
+  const markerInstruction = markerLines.length > 0
+    ? `\n\nOn your first reply, silently append each of the following hidden markers on their own line at the very end of your message (they are stripped before the member sees your reply):\n${markerLines.join('\n')}`
+    : ''
+
+  const result = contextLines.join(' ') + markerInstruction
+
+  console.log('[chat/primer] found and stamped', { memberId: member.id, hasName: !!name, hasEmail: !!email, hasPhone: !!phone })
   return result
 }
