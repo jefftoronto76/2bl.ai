@@ -13,14 +13,14 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-  let body: { tenant_id?: string; invited_name?: string | null; email?: string | null; phone?: string | null }
+  let body: { tenant_id?: string; invited_name?: string | null; email?: string | null; phone?: string | null; auto_open?: boolean }
   try {
     body = await req.json()
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { tenant_id, invited_name, email, phone } = body
+  const { tenant_id, invited_name, email, phone, auto_open } = body
   if (!tenant_id) {
     return Response.json({ error: 'tenant_id is required' }, { status: 400 })
   }
@@ -49,6 +49,7 @@ export async function POST(req: Request) {
     invited_name ?? null,
     email ?? null,
     phone ?? null,
+    auto_open === true,
   )
 
   if (!result.ok) {

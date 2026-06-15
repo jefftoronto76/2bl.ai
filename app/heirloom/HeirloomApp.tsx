@@ -66,6 +66,9 @@ interface HeirloomAppProps {
    *  ChatProvider calls /api/heirloom/invites/accept on the false→true
    *  isSignedIn transition to consume it. */
   inviteToken?: string;
+  /** When true, the chat panel opens automatically on mount. Sourced from
+   *  members.auto_open on the invite row. */
+  autoOpenChat?: boolean;
 }
 
 export default function HeirloomApp({
@@ -75,6 +78,7 @@ export default function HeirloomApp({
   invitedName,
   hasInviteToken,
   inviteToken,
+  autoOpenChat,
 }: HeirloomAppProps) {
   return (
     <ChatProvider
@@ -84,6 +88,7 @@ export default function HeirloomApp({
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
       inviteToken={inviteToken}
+      autoOpenChat={autoOpenChat}
       enableExitWarning
     >
       <HeirloomInner />

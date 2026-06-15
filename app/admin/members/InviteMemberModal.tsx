@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, CopyButton, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Checkbox, CopyButton, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
 import { IconCheck, IconCopy, IconUserPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { TenantOption } from './types';
@@ -23,6 +23,7 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
   const [invitedName, setInvitedName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [autoOpen, setAutoOpen] = useState(false);
   const [tenantId, setTenantId] = useState<string | null>(currentTenantId ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ tenant?: string; name?: string; emailOrPhone?: string }>({});
@@ -32,6 +33,7 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
     setInvitedName('');
     setEmail('');
     setPhone('');
+    setAutoOpen(false);
     setTenantId(currentTenantId ?? null);
     setErrors({});
     setInviteUrl(null);
@@ -68,13 +70,14 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const payload: Record<string, string> = { tenant_id: tenantId! };
+      const payload: Record<string, unknown> = { tenant_id: tenantId! };
       const name = invitedName.trim();
       if (name) payload.invited_name = name;
       const emailTrimmed = email.trim();
       if (emailTrimmed) payload.email = emailTrimmed;
       const phoneTrimmed = phone.trim();
       if (phoneTrimmed) payload.phone = phoneTrimmed;
+      if (autoOpen) payload.auto_open = true;
 
       const res = await fetch('/api/platform/members/invite', {
         method: 'POST',
@@ -168,6 +171,13 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
               value={phone}
               onChange={handlePhoneChange}
               disabled={!!email.trim() || submitting}
+            />
+            <Checkbox
+              label="Auto-open chat on arrival"
+              description="The chat panel will open automatically when this person lands on the invite link."
+              checked={autoOpen}
+              onChange={(e) => setAutoOpen(e.currentTarget.checked)}
+              disabled={submitting}
             />
             {currentTenantId ? (
               <div>

@@ -59,11 +59,13 @@ export default async function HeirloomPage({
 
   // A valid unused members.token also grants full access.
   let invitedName: string | null = null;
+  let autoOpenChat = false;
   if (!isAuthorized && inviteToken) {
     const row = await validateMemberToken(inviteToken);
     if (row !== null) {
       isAuthorized = true;
       invitedName = row.invited_name ?? null;
+      autoOpenChat = row.auto_open ?? false;
     }
   }
 
@@ -75,7 +77,7 @@ export default async function HeirloomPage({
   const validatedInviteToken =
     isAuthorized && inviteToken && !session ? inviteToken : undefined;
 
-  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken });
+  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken, autoOpenChat });
 
   return (
     <HeirloomApp
@@ -85,6 +87,7 @@ export default async function HeirloomPage({
       invitedName={invitedName}
       hasInviteToken={hasInviteToken}
       inviteToken={validatedInviteToken}
+      autoOpenChat={autoOpenChat}
     />
   );
 }
