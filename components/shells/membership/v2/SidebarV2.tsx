@@ -16,7 +16,7 @@
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
@@ -322,7 +322,17 @@ export function SidebarV2({
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const searchRevealed = recentSessions.length >= searchThreshold;
 
+  // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
+  // its window listener on every SidebarV2 render.
+  const closeMenu = useCallback(() => setMenuId(null), []);
+
   const toggleMenu = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    // Stop propagation so the click never reaches an already-open RowMenu's
+    // window listener. Without this, clicking Kebab B while Menu A is open
+    // causes onDocClick (A's listener) to fire in the same event batch as
+    // toggleMenu, calling setMenuId(null) after setMenuId('B') — last write
+    // wins, Menu B never opens.
+    e.stopPropagation();
     if (menuId === id) {
       setMenuId(null);
     } else {
@@ -467,7 +477,7 @@ export function SidebarV2({
                         onAction={(action) =>
                           onRowAction?.('conversation', session.id, action)
                         }
-                        onClose={() => setMenuId(null)}
+                        onClose={closeMenu}
                       />
                     </div>
                   );
@@ -579,7 +589,7 @@ export function SidebarV2({
                       open={isMenuOpen}
                       anchorRect={menuRect}
                       onAction={(action) => onRowAction?.('story', story.id, action)}
-                      onClose={() => setMenuId(null)}
+                      onClose={closeMenu}
                     />
                   </div>
                 );
