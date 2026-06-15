@@ -29,6 +29,7 @@ interface SessionRow {
   input_tokens: number | null
   output_tokens: number | null
   user_id: string | null
+  users: { name: string | null; email: string | null } | null
 }
 
 // The triaged row shape consumed by InboundChatsTable: the session row plus its
@@ -45,6 +46,7 @@ export interface ChatSession {
   input_tokens: number | null
   output_tokens: number | null
   user_id: string | null
+  assigned_to: { name: string | null; email: string | null } | null
 }
 
 /**
@@ -61,7 +63,7 @@ export async function getInboundChats(tenantId: string): Promise<ChatSession[]> 
     await Promise.all([
       supabase
         .from('chat_sessions')
-        .select('id, visitor_name, email, messages, status, updated_at, created_at, input_tokens, output_tokens, user_id')
+        .select('id, visitor_name, email, messages, status, updated_at, created_at, input_tokens, output_tokens, user_id, users(name, email)')
         .eq('tenant_id', tenantId)
         .eq('session_type', 'prospect')
         .order('updated_at', { ascending: false }),
@@ -97,6 +99,7 @@ export async function getInboundChats(tenantId: string): Promise<ChatSession[]> 
       thresholds,
       now,
     })
-    return { ...session, derived_status: derivedStatus }
+    const { users, ...rest } = session
+    return { ...rest, derived_status: derivedStatus, assigned_to: users ?? null }
   })
 }
