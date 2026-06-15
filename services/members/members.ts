@@ -23,6 +23,7 @@ export interface MemberInviteRow {
   status: string
   token: string | null
   used_at: string | null
+  auto_open: boolean
   created_at: string
   updated_at: string
 }
@@ -48,6 +49,7 @@ export async function createMemberInvite(
   invitedName?: string | null,
   email?: string | null,
   phone?: string | null,
+  autoOpen?: boolean,
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
   const supabase = getAdminClient()
   const token = generateToken()
@@ -67,6 +69,9 @@ export async function createMemberInvite(
   }
   if (phone != null && phone.trim().length > 0) {
     payload.phone = phone.trim()
+  }
+  if (autoOpen === true) {
+    payload.auto_open = true
   }
 
   const { data, error } = await supabase
@@ -91,6 +96,7 @@ export async function createMemberInvite(
       has_invited_name: invitedName != null && invitedName.trim().length > 0,
       has_email: email != null && email.trim().length > 0,
       has_phone: phone != null && phone.trim().length > 0,
+      auto_open: autoOpen === true,
     },
   })
 
@@ -110,7 +116,7 @@ export async function validateMemberToken(
 
   const { data, error } = await supabase
     .from('members')
-    .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, role, status, token, used_at, created_at, updated_at')
+    .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, role, status, token, used_at, auto_open, created_at, updated_at')
     .eq('token', token)
     .is('used_at', null)
     .maybeSingle()

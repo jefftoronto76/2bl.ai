@@ -175,6 +175,7 @@ export function ChatProvider({
   invitedName = null,
   hasInviteToken = false,
   inviteToken,
+  autoOpenChat = false,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: false. */
@@ -194,11 +195,23 @@ export function ChatProvider({
    *  token. Stored in a ref (not state) and consumed once on the false→true
    *  isSignedIn transition to call the accept endpoint. */
   inviteToken?: string;
+  /** When true, open the chat panel immediately on mount. Sourced from
+   *  members.auto_open on the invite row. Default: false. */
+  autoOpenChat?: boolean;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
   // are no longer dispatched from here (removed in a follow-up commit).
   const [shellState, dispatch] = useReducer(chatReducer, initialState);
+
+  // Auto-open the chat panel when the invite was created with auto_open=true.
+  // Runs once on mount only — the empty dep array is intentional.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (autoOpenChat) {
+      dispatch({ type: 'OPEN_CHAT' });
+    }
+  }, []);
   // Boundary hook — passes the provider's isLoaded/isSignedIn tri-state
   // through verbatim. The recovery effect, wasSignedInRef first-observation
   // guard, and isMember below all depend on isSignedIn staying undefined
