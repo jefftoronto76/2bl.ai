@@ -75,17 +75,33 @@ export function SaveChatCTA() {
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   function handleOpen() {
-    // Scan assistant messages for the first [NAME: …] marker at the moment the
-    // modal opens — same source as MessageList, correct at click time regardless
-    // of when in the conversation the name was captured.
+    // Scan assistant messages for [NAME:], [EMAIL:], [PHONE:] markers at the
+    // moment the modal opens — same source as MessageList, correct at click time.
+    let foundName = '';
+    let foundEmail = '';
+    let foundPhone = '';
     for (const msg of messages) {
       if (msg.role !== 'assistant') continue;
-      const start = msg.content.indexOf('[NAME:');
-      if (start === -1) continue;
-      const end = msg.content.indexOf(']', start + 6);
-      if (end === -1) continue;
-      const name = msg.content.slice(start + 6, end).trim();
-      if (name) { setNameValue(name); break; }
+      if (!foundName) {
+        const m = msg.content.match(/\[NAME:\s*([^\]]+)\]/);
+        if (m) foundName = m[1].trim();
+      }
+      if (!foundEmail) {
+        const m = msg.content.match(/\[EMAIL:\s*([^\]]+)\]/);
+        if (m) foundEmail = m[1].trim();
+      }
+      if (!foundPhone) {
+        const m = msg.content.match(/\[PHONE:\s*([^\]]+)\]/);
+        if (m) foundPhone = m[1].trim();
+      }
+    }
+    if (foundName) setNameValue(foundName);
+    if (foundEmail) {
+      setInputValue(foundEmail);
+      setTab('email');
+    } else if (foundPhone) {
+      setInputValue(foundPhone);
+      setTab('phone');
     }
     setOpen(true);
   }

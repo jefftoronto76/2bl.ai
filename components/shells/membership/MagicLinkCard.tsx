@@ -39,6 +39,10 @@ interface MagicLinkCardProps {
   reason?: string;
   /** Visitor name from a [NAME: …] marker — pre-fills the name field. */
   initialName?: string | null;
+  /** Visitor email from a [EMAIL: …] marker — pre-fills the contact field and selects the email tab. */
+  initialEmail?: string | null;
+  /** Visitor phone from a [PHONE: …] marker — pre-fills the contact field and selects the phone tab (only when no email). */
+  initialPhone?: string | null;
   /** Called when the session is established. Receives the name the visitor typed. */
   onSuccess: (name: string) => void;
 }
@@ -95,13 +99,15 @@ function FieldError({ message }: { message: string | null }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function MagicLinkCard({ reason, initialName, onSuccess }: MagicLinkCardProps) {
+export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone, onSuccess }: MagicLinkCardProps) {
   const { isSignedIn, isLoaded } = useAuthUser();
   const flow = useAuthFlow();
 
   const [nameValue, setNameValue] = useState(initialName ?? '');
-  const [tab, setTab] = useState<'email' | 'phone'>('email');
-  const [inputValue, setInputValue] = useState('');
+  const [tab, setTab] = useState<'email' | 'phone'>(
+    initialEmail ? 'email' : (initialPhone ? 'phone' : 'email'),
+  );
+  const [inputValue, setInputValue] = useState(initialEmail ?? initialPhone ?? '');
   const [otpValue, setOtpValue] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 

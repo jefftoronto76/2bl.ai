@@ -227,6 +227,23 @@ export function ChatProvider({
   // (pagehide / beforeunload) and newChat read the current transcript/session
   // synchronously without re-binding listeners.
   const messagesRef = useRef<Message[]>(messages);
+
+  // Fire the auto-greeting once when the invite was created with auto_open=true
+  // and there is no existing conversation. Waits for auth to load, then defers
+  // 350ms so localStorage/DB hydration effects (which also trigger on isLoaded)
+  // have time to complete and re-render before we check messagesRef.current.
+  const autoGreetSentRef = useRef(false);
+  useEffect(() => {
+    if (!autoOpenChat || !isLoaded || autoGreetSentRef.current) return;
+    const timer = setTimeout(() => {
+      if (autoGreetSentRef.current) return;
+      if (messagesRef.current.length > 0) return; // returning member with history
+      autoGreetSentRef.current = true;
+      void sendHidden('Hi');
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenChat, isLoaded]);
   const sessionIdRef = useRef<string | null>(sessionId);
   const isStreamingRef = useRef<boolean>(isStreaming);
   const isSignedInRef = useRef<boolean>(!!isSignedIn);
