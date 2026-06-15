@@ -256,11 +256,16 @@ export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
           />
         }
         styles={{
+          content: {
+            display: 'flex',
+            flexDirection: 'column',
+          },
           body: {
             padding: 0,
             display: 'flex',
             flexDirection: 'column',
-            height: '100%',
+            flex: 1,
+            minHeight: 0,
             overflow: 'hidden',
           },
         }}
@@ -356,18 +361,16 @@ export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
             >
               Transfer
             </Button>
-            <Tooltip label={copied ? 'Copied!' : 'Copy transcript'} position="left">
-              <ActionIcon
-                variant="subtle"
-                color={copied ? 'green' : 'gray'}
-                size="md"
-                onClick={handleCopy}
-                aria-label={copied ? 'Transcript copied' : 'Copy transcript'}
-                disabled={messages.length === 0}
-              >
-                {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
-              </ActionIcon>
-            </Tooltip>
+            <Button
+              size="sm"
+              variant={copied ? 'filled' : 'subtle'}
+              color={copied ? 'green' : 'gray'}
+              leftSection={copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
+              onClick={handleCopy}
+              disabled={messages.length === 0}
+            >
+              {copied ? 'Copied!' : 'Copy transcript'}
+            </Button>
           </Group>
         </div>
       </Drawer>
