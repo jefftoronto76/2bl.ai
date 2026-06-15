@@ -11,6 +11,7 @@
 import { runChatStream, resolveModelConfig } from './stream'
 import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
 import { getBookingCardSection } from './booking'
+import { getMemberPrimer } from './member-context'
 import { handleSessionFinish } from '@/services/crm/session'
 import type { ChatMessage, ChatStreamRequest } from './types'
 
@@ -66,13 +67,19 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const lastVisitorText =
     [...conversationMessages].reverse().find(m => m.role === 'user')?.content ?? null
 
-  const [basePrompt, bookingSection, config] = await Promise.all([
+  const [basePrompt, bookingSection, config, memberPrimer] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
+    sessionId ? getMemberPrimer(sessionId, tenantId) : Promise.resolve(null),
   ])
 
-  const systemPrompt = [basePrompt, bookingSection, questionMode ? QUESTION_MODE_CONTEXT : '']
+  const systemPrompt = [
+    basePrompt,
+    bookingSection,
+    memberPrimer ? `MEMBER CONTEXT:\n${memberPrimer}` : '',
+    questionMode ? QUESTION_MODE_CONTEXT : '',
+  ]
     .filter(segment => segment.length > 0)
     .join('\n\n')
 

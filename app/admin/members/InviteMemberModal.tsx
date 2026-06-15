@@ -1,9 +1,9 @@
 'use client';
 // app/admin/members/InviteMemberModal.tsx
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Checkbox, CopyButton, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Checkbox, CopyButton, Group, Modal, Select, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { IconCheck, IconCopy, IconUserPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { TenantOption } from './types';
@@ -24,16 +24,31 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [autoOpen, setAutoOpen] = useState(false);
+  const [primer, setPrimer] = useState('');
   const [tenantId, setTenantId] = useState<string | null>(currentTenantId ?? null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ tenant?: string; name?: string; emailOrPhone?: string }>({});
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
+  // Pre-populate primer from tenant's default_primer when modal opens or tenant changes.
+  useEffect(() => {
+    if (!opened || !tenantId) return;
+    void fetch(`/api/admin/tenant-settings`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { default_primer?: string | null } | null) => {
+        if (data?.default_primer) {
+          setPrimer((prev) => prev || data.default_primer!);
+        }
+      })
+      .catch(() => {/* non-fatal */});
+  }, [opened, tenantId]);
 
   function reset() {
     setInvitedName('');
     setEmail('');
     setPhone('');
     setAutoOpen(false);
+    setPrimer('');
     setTenantId(currentTenantId ?? null);
     setErrors({});
     setInviteUrl(null);
@@ -78,6 +93,8 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
       const phoneTrimmed = phone.trim();
       if (phoneTrimmed) payload.phone = phoneTrimmed;
       if (autoOpen) payload.auto_open = true;
+      const primerTrimmed = primer.trim();
+      if (primerTrimmed) payload.primer = primerTrimmed;
 
       const res = await fetch('/api/platform/members/invite', {
         method: 'POST',
@@ -178,6 +195,23 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
               checked={autoOpen}
               onChange={(e) => setAutoOpen(e.currentTarget.checked)}
               disabled={submitting}
+            />
+            <Textarea
+              label="Custom Greeting"
+              description="Optional. The member's first name is automatically included — use this field to add any additional context you'd like Heirloom to know before they start chatting."
+              placeholder="e.g. This member wants to preserve their grandmother's wartime letters. Focus on narrative structure and emotional detail."
+              value={primer}
+              onChange={(e) => setPrimer(e.currentTarget.value.slice(0, 500))}
+              disabled={submitting}
+              autosize
+              minRows={3}
+              maxRows={6}
+              rightSectionWidth={60}
+              rightSection={
+                <Text size="xs" c={primer.length >= 480 ? 'red' : 'dimmed'} style={{ paddingRight: 8 }}>
+                  {primer.length}/500
+                </Text>
+              }
             />
             {currentTenantId ? (
               <div>

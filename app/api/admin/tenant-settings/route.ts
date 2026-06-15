@@ -6,6 +6,7 @@ interface TenantSettings {
   chat_in_progress_idle_seconds: number
   chat_active_idle_seconds: number
   invite_gate_enabled: boolean
+  default_primer: string | null
 }
 
 function isPositiveInteger(value: unknown): value is number {
@@ -25,7 +26,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('tenants')
-    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings')
+    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings, default_primer')
     .eq('id', authCtx.tenant_id)
     .maybeSingle()
 
@@ -45,6 +46,7 @@ export async function GET() {
     chat_in_progress_idle_seconds: data.chat_in_progress_idle_seconds,
     chat_active_idle_seconds: data.chat_active_idle_seconds,
     invite_gate_enabled: (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true,
+    default_primer: (data as unknown as { default_primer?: string | null }).default_primer ?? null,
   }
   console.log('[tenant-settings] GET', { tenant_id: authCtx.tenant_id, ...settings })
 
@@ -125,7 +127,7 @@ export async function PATCH(req: Request) {
     .from('tenants')
     .update(colUpdate)
     .eq('id', authCtx.tenant_id)
-    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings')
+    .select('chat_in_progress_idle_seconds, chat_active_idle_seconds, settings, default_primer')
     .single()
 
   if (error) {
@@ -139,6 +141,7 @@ export async function PATCH(req: Request) {
     chat_in_progress_idle_seconds: data.chat_in_progress_idle_seconds,
     chat_active_idle_seconds: data.chat_active_idle_seconds,
     invite_gate_enabled: (tenantSettings?.invite_gate_enabled as boolean | undefined) ?? true,
+    default_primer: (data as unknown as { default_primer?: string | null }).default_primer ?? null,
   }
   console.log('[tenant-settings] PATCH', { tenant_id: authCtx.tenant_id, ...settings })
 
