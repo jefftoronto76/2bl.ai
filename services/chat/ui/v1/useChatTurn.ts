@@ -24,6 +24,7 @@ async function streamTurn(
   mode: ChatMode,
   sessionId: string | null,
   onChunk: (accumulated: string) => void,
+  memberId?: string | null,
 ): Promise<void> {
   const response = await fetch('/api/sage', {
     method: 'POST',
@@ -32,6 +33,7 @@ async function streamTurn(
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       mode: mode ?? null,
       session_id: sessionId ?? null,
+      member_id: memberId ?? null,
     }),
   })
 
@@ -121,6 +123,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       try {
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
+          accessors.getMemberId?.() ?? null,
         )
       } catch {
         accessors.updateLastMessage('')
@@ -168,6 +171,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       try {
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
+          accessors.getMemberId?.() ?? null,
         )
       } catch {
         accessors.updateLastMessage('')
@@ -194,6 +198,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         accessors.getMode?.() ?? null,
         retrySessionIdRef.current,
         chunk => accessors.updateLastMessage(chunk),
+        accessors.getMemberId?.() ?? null,
       )
     } catch {
       accessors.updateLastMessage('')

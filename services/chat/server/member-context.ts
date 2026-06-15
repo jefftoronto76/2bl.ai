@@ -8,44 +8,78 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
  * Returns the primer text for the member who owns this session, then stamps
  * `primer_used_at` so it is only injected once (first session only).
  *
+ * Two resolution paths:
+ * - `memberId` provided (pre-auth invite holder): looks up the member directly
+ *   by id. Bypasses the chat_sessions lookup — user_id is null until sign-in.
+ * - `sessionId` only: resolves user_id from chat_sessions, then looks up the
+ *   member by user_id (the original signed-in path).
+ *
  * Returns null when:
- * - the session has no user_id (anonymous visitor)
- * - no matching members row with a primer is found
+ * - no member row with a primer is found
  * - the primer has already been used (primer_used_at is set)
  * - any DB call fails
  */
 export async function getMemberPrimer(
-  sessionId: string,
+  sessionId: string | null,
   tenantId: string | null,
+  memberId?: string | null,
 ): Promise<string | null> {
-  if (!sessionId || !tenantId) return null
+  if (!tenantId) return null
+  if (!sessionId && !memberId) return null
 
   const supabase = getAdminClient()
 
-  // Step 1: resolve user_id from the session.
-  const { data: sessionRow, error: sessionErr } = await supabase
-    .from('chat_sessions')
-    .select('user_id')
-    .eq('id', sessionId)
-    .eq('tenant_id', tenantId)
-    .maybeSingle()
+  let resolvedMemberId: string | null = null
 
-  if (sessionErr) {
-    console.error('[chat/primer] session lookup failed:', sessionErr.message)
-    return null
-  }
+  if (memberId) {
+    // Fast path: member id provided directly (pre-auth invite holder). Skip the
+    // chat_sessions lookup entirely — user_id is null until sign-in.
+    resolvedMemberId = memberId
+    console.log('[chat/primer] using provided memberId directly', { memberId, tenantId })
+  } else {
+    // Step 1: resolve user_id from the session.
+    const { data: sessionRow, error: sessionErr } = await supabase
+      .from('chat_sessions')
+      .select('user_id')
+      .eq('id', sessionId!)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
 
-  const userId = (sessionRow as { user_id?: string | null } | null)?.user_id ?? null
-  if (!userId) {
-    console.log('[chat/primer] no user_id for session — skipping', { sessionId })
-    return null
+    if (sessionErr) {
+      console.error('[chat/primer] session lookup failed:', sessionErr.message)
+      return null
+    }
+
+    const userId = (sessionRow as { user_id?: string | null } | null)?.user_id ?? null
+    if (!userId) {
+      console.log('[chat/primer] no user_id for session — skipping', { sessionId })
+      return null
+    }
+
+    // Resolve the member row id via user_id so Step 2 below is uniform.
+    const { data: idRow, error: idErr } = await supabase
+      .from('members')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (idErr) {
+      console.error('[chat/primer] member id lookup failed:', idErr.message)
+      return null
+    }
+    resolvedMemberId = (idRow as { id: string } | null)?.id ?? null
+    if (!resolvedMemberId) {
+      console.log('[chat/primer] no member row for user_id — skipping', { userId, tenantId })
+      return null
+    }
   }
 
   // Step 2: find the member's primer (only when not yet used).
   const { data: memberRow, error: memberErr } = await supabase
     .from('members')
     .select('id, primer, primer_used_at, invited_name, email, phone')
-    .eq('user_id', userId)
+    .eq('id', resolvedMemberId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
 
@@ -64,7 +98,7 @@ export async function getMemberPrimer(
   } | null
 
   if (!member || !member.primer) {
-    console.log('[chat/primer] no primer set for member', { userId, tenantId })
+    console.log('[chat/primer] no primer set for member', { resolvedMemberId, tenantId })
     return null
   }
 

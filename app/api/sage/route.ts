@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     messages: { role: string; content: string }[]
     mode?: string | null
     session_id?: string | null
+    member_id?: string | null
   }
   try {
     body = await req.json()
@@ -37,6 +38,9 @@ export async function POST(req: Request) {
     messages,
     mode,
     sessionId: body.session_id ?? null,
+    memberId: typeof body.member_id === 'string' && body.member_id.length > 0
+      ? body.member_id
+      : null,
     tenant: { tenantId },
   })
 }

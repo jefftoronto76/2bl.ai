@@ -67,11 +67,16 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const lastVisitorText =
     [...conversationMessages].reverse().find(m => m.role === 'user')?.content ?? null
 
+  const memberId =
+    typeof req.memberId === 'string' && req.memberId.length > 0 ? req.memberId : null
+
   const [basePrompt, bookingSection, config, memberPrimer] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
-    sessionId ? getMemberPrimer(sessionId, tenantId) : Promise.resolve(null),
+    (sessionId || memberId)
+      ? getMemberPrimer(sessionId, tenantId, memberId)
+      : Promise.resolve(null),
   ])
 
   console.log('[chat] memberPrimer', memberPrimer !== null
