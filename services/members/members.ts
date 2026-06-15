@@ -206,7 +206,18 @@ export async function acceptInvite(
   clerkUserId: string,
   supabaseUserId: string,
 ): Promise<MembersResult<{ memberId: string }>> {
+  console.log('[acceptInvite] entry', {
+    clerkUserId,
+    token: token.slice(0, 8) + '…',
+    supabaseUserId,
+  })
+
   if (!token || !clerkUserId || !supabaseUserId) {
+    console.error('[acceptInvite] missing required parameters', {
+      hasToken: !!token,
+      hasClerkUserId: !!clerkUserId,
+      hasSupabaseUserId: !!supabaseUserId,
+    })
     return { ok: false, status: 400, error: 'Missing required parameters' }
   }
 
@@ -221,19 +232,31 @@ export async function acceptInvite(
     .maybeSingle()
 
   if (findErr) {
-    console.error('[members] acceptInvite — find failed:', findErr.message)
+    console.error('[acceptInvite] step 1 find failed', { clerkUserId, error: findErr.message })
     return { ok: false, status: 500, error: findErr.message }
   }
 
   if (!invitedRow) {
+    console.warn('[acceptInvite] step 1 token not found or already used', {
+      clerkUserId,
+      token: token.slice(0, 8) + '…',
+    })
     return { ok: false, status: 404, error: 'Invalid or already used token' }
   }
 
   const row = invitedRow as { id: string; tenant_id: string }
+  console.log('[acceptInvite] step 1 invited row found', {
+    memberId: row.id,
+    tenantId: row.tenant_id,
+    clerkUserId,
+  })
 
   // Step 2: cross-tenant guard.
   if (row.tenant_id !== HEIRLOOM_TENANT_ID) {
-    console.error('[members] acceptInvite — cross-tenant attempt rejected')
+    console.error('[acceptInvite] step 2 cross-tenant attempt rejected', {
+      tenantId: row.tenant_id,
+      clerkUserId,
+    })
     return { ok: false, status: 403, error: 'Forbidden' }
   }
 
@@ -247,9 +270,14 @@ export async function acceptInvite(
     .neq('id', row.id)
 
   if (orphanErr) {
-    console.error('[members] acceptInvite — orphan delete failed:', orphanErr.message)
+    console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
+      clerkUserId,
+      error: orphanErr.message,
+    })
     // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
     // on clerk_id will surface a real error if the orphan remains.
+  } else {
+    console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id })
   }
 
   // Step 4: stamp the original invited row.
@@ -267,11 +295,20 @@ export async function acceptInvite(
     .eq('id', row.id)
 
   if (updateErr) {
-    console.error('[members] acceptInvite — update failed:', updateErr.message)
+    console.error('[acceptInvite] step 4 stamp failed', {
+      memberId: row.id,
+      clerkUserId,
+      error: updateErr.message,
+    })
     return { ok: false, status: 500, error: updateErr.message }
   }
 
-  console.log('[members] acceptInvite — accepted:', { member_id: row.id, clerk_id: clerkUserId })
+  console.log('[acceptInvite] step 4 accepted', {
+    memberId: row.id,
+    clerkUserId,
+    supabaseUserId,
+    usedAt: now,
+  })
   return { ok: true, data: { memberId: row.id } }
 }
 

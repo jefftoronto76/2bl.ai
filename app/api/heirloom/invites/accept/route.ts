@@ -11,8 +11,7 @@
 // 3. Stamp the original invited row: clerk_id, user_id, status='active',
 //    source='invite', used_at=now().
 
-import { getCurrentUser } from '@/services/auth'
-import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getCurrentUser, ensureClerkUser } from '@/services/auth'
 import { acceptInvite } from '@/services/members'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
@@ -38,25 +37,40 @@ export async function POST(req: Request) {
     return Response.json({ error: 'token is required' }, { status: 400 })
   }
 
-  // Resolve the Supabase users.id for the signed-in Clerk user.
-  const supabase = getAdminClient()
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('id')
-    .eq('clerk_id', user.providerUserId)
-    .maybeSingle()
+  console.log('[heirloom/invites/accept] entry', {
+    clerkUserId: user.providerUserId,
+    token: token.slice(0, 8) + '…',
+  })
 
-  const supabaseUserId = (userRow as { id: string } | null)?.id ?? null
+  // ensureClerkUser upserts the users row when needed, eliminating the race
+  // between isSignedIn→true (client) and the Clerk user.created webhook (async).
+  const supabaseUserId = await ensureClerkUser()
   if (!supabaseUserId) {
-    console.error('[heirloom/invites/accept] no users row for clerk_id:', user.providerUserId)
-    return Response.json({ error: 'User not found' }, { status: 404 })
+    console.error('[heirloom/invites/accept] ensureClerkUser returned null', {
+      clerkUserId: user.providerUserId,
+    })
+    return Response.json({ error: 'Could not resolve user record' }, { status: 500 })
   }
+  console.log('[heirloom/invites/accept] users row resolved', {
+    clerkUserId: user.providerUserId,
+    supabaseUserId,
+  })
 
   const result = await acceptInvite(token, user.providerUserId, supabaseUserId)
 
   if (!result.ok) {
+    console.error('[heirloom/invites/accept] acceptInvite failed', {
+      clerkUserId: user.providerUserId,
+      status: result.status,
+      error: result.error,
+    })
     return Response.json({ error: result.error }, { status: result.status })
   }
+
+  console.log('[heirloom/invites/accept] complete', {
+    memberId: result.data.memberId,
+    clerkUserId: user.providerUserId,
+  })
 
   void logEvent({
     action: AuditAction.MEMBER_INVITE_ACCEPTED,
