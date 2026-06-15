@@ -168,7 +168,7 @@ export function setOAuthInProgress(val: boolean): void {
 
 export function ChatProvider({
   children,
-  gateEnabled = true,
+  gateEnabled = false,
   isAuthorized = false,
   isAdmin = false,
   enableExitWarning = false,
@@ -177,7 +177,7 @@ export function ChatProvider({
   inviteToken,
 }: {
   children: ReactNode;
-  /** Whether the invite gate is enabled (from tenant settings). Default: true. */
+  /** Whether the invite gate is enabled (from tenant settings). Default: false. */
   gateEnabled?: boolean;
   /** Whether the current visitor is an active member or invite holder. Default: false. */
   isAuthorized?: boolean;
