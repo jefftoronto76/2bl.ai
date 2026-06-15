@@ -109,12 +109,22 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
     m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
   );
 
-  // Extract the first [NAME: …] marker value from parsed messages — used to
-  // pre-fill the MagicLinkCard name field when the engine has already captured
-  // the visitor's name mid-conversation.
+  // Extract the first [NAME: …], [EMAIL: …], [PHONE: …] marker values from parsed
+  // messages — used to pre-fill the MagicLinkCard fields when the engine has
+  // already captured the visitor's contact info mid-conversation.
   const visitorName = parsed
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'NAME')
+    ?.fields[0] ?? null;
+
+  const visitorEmail = parsed
+    .flatMap((r) => r?.markers ?? [])
+    .find((m) => m.type === 'EMAIL')
+    ?.fields[0] ?? null;
+
+  const visitorPhone = parsed
+    .flatMap((r) => r?.markers ?? [])
+    .find((m) => m.type === 'PHONE')
     ?.fields[0] ?? null;
 
   // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
@@ -167,6 +177,8 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
                 <MagicLinkCard
                   reason={authPrompt.fields[0] || undefined}
                   initialName={visitorName}
+                  initialEmail={visitorEmail}
+                  initialPhone={visitorPhone}
                   onSuccess={handleAuthSuccess}
                 />
               )}

@@ -404,6 +404,13 @@ export async function handleSessionFinish(params: {
     return
   }
 
+  console.log('[chat/session] onFinish: received', {
+    session_id: sessionId,
+    text_length: text.length,
+    text_tail: text.slice(-300),
+    has_visitor_text: !!visitorText,
+  })
+
   // Token usage — main streamText turn. Persisted before any other flow so
   // its short-circuits cannot bypass the metric.
   if (usage) {
