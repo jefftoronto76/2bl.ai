@@ -63,7 +63,6 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
               <Table.Th>Tokens</Table.Th>
               <Table.Th>Cost</Table.Th>
               <Table.Th>Status</Table.Th>
-              <Table.Th>Assigned To</Table.Th>
               <Table.Th>Last Active</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -111,24 +110,6 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
                     >
                       {status}
                     </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    {session.assigned_to ? (
-                      <>
-                        <Text variant="label">
-                          {session.assigned_to.name ?? '—'}
-                        </Text>
-                        {session.assigned_to.email && (
-                          <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                            {session.assigned_to.email}
-                          </Text>
-                        )}
-                      </>
-                    ) : (
-                      <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                        —
-                      </Text>
-                    )}
                   </Table.Td>
                   <Table.Td>
                     <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
@@ -192,11 +173,6 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
                   {formatCost(session.input_tokens, session.output_tokens)}
                 </Text>
               </Group>
-              {session.assigned_to && (
-                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)', marginTop: 4 }}>
-                  Assigned to {session.assigned_to.name ?? session.assigned_to.email ?? 'member'}
-                </Text>
-              )}
             </Paper>
           )
         })}
