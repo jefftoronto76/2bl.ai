@@ -76,6 +76,10 @@ export interface SessionUpdateInput {
    */
   phone?: unknown
   email?: unknown
+  /** AI-generated or user-set session title. Written only when non-empty. */
+  title?: unknown
+  /** User-set star flag. Written only when a boolean is supplied. */
+  starred?: unknown
 }
 
 /**
@@ -89,6 +93,8 @@ export interface ChatSessionSummary {
   messages: unknown
   updated_at: string
   visitor_name: string | null
+  title: string | null
+  starred: boolean
 }
 
 /**
@@ -105,9 +111,10 @@ export async function listSessions(
 
   const { data, error } = await supabase
     .from('chat_sessions')
-    .select('id, messages, updated_at, visitor_name')
+    .select('id, messages, updated_at, visitor_name, title, starred')
     .eq('tenant_id', tenantId)
     .eq('user_id', userId)
+    .neq('status', 'deleted')
     .order('updated_at', { ascending: false })
 
   if (error) {
@@ -131,7 +138,6 @@ export async function updateSession(
   id: string,
   input: SessionUpdateInput,
 ): Promise<SessionResult<null>> {
-  const { messages, visitorName, phone, email } = input
   const supabase = getAdminClient('[sessions/[id]/route]')
 
   // Only write visitor_name when the client sends a non-empty string. The
@@ -139,12 +145,14 @@ export async function updateSession(
   // from Sage's response, and client PATCHes still send `visitorName: null`
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
+  const { messages, visitorName, phone, email, title, starred } = input
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
   // Contact card → dedicated columns. The visitor may supply phone, email, or
   // both; each non-empty value writes to its own column (no more funneling
   // phone into email).
   const trimmedPhone = typeof phone === 'string' ? phone.trim() : ''
   const trimmedEmail = typeof email === 'string' ? email.trim() : ''
+  const trimmedTitle = typeof title === 'string' ? title.trim() : ''
 
   // Build the update with only the fields actually supplied, so a contact-only
   // PATCH (contact value, no messages) never clobbers the persisted transcript.
@@ -155,6 +163,8 @@ export async function updateSession(
     visitor_name?: string
     phone?: string
     email?: string
+    title?: string
+    starred?: boolean
   } = {
     updated_at: new Date().toISOString(),
     status: 'in_progress',
@@ -163,6 +173,8 @@ export async function updateSession(
   if (trimmedName.length > 0) update.visitor_name = trimmedName
   if (trimmedPhone.length > 0) update.phone = trimmedPhone
   if (trimmedEmail.length > 0) update.email = trimmedEmail
+  if (trimmedTitle.length > 0) update.title = trimmedTitle
+  if (typeof starred === 'boolean') update.starred = starred
 
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -300,5 +312,38 @@ export async function claimSession(
   }
 
   console.log('[sessions/[id]/claim] claimed session:', id, '| user_id:', userId)
+  return { ok: true, data: null }
+}
+
+/**
+ * DELETE /api/sessions/[id] — soft-delete a session by setting status to
+ * 'deleted'. Scoped by id + host-derived tenant_id. The session is excluded
+ * from listSessions() queries (which filter .neq('status', 'deleted')) so it
+ * disappears from the Recent sidebar and cross-device recovery immediately.
+ */
+export async function softDeleteSession(
+  tenantId: string,
+  id: string,
+): Promise<SessionResult<null>> {
+  const supabase = getAdminClient('[sessions/[id]/route DELETE]')
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .update({ status: 'deleted' })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .select('id')
+
+  if (error) {
+    console.error('[sessions/[id]/route DELETE] update error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  if (!data || data.length === 0) {
+    console.warn('[sessions/[id]/route DELETE] no session matched id + tenant:', { id, tenant_id: tenantId })
+    return { ok: false, status: 404, error: 'Session not found' }
+  }
+
+  console.log('[sessions/[id]/route DELETE] soft-deleted session:', id, '| tenant_id:', tenantId)
   return { ok: true, data: null }
 }
