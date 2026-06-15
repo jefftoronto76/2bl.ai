@@ -185,6 +185,70 @@ export async function updateSession(
   return { ok: true, data: null }
 }
 
+export interface TransferSessionRow {
+  id: string
+  prev_user_id: string | null
+}
+
+/**
+ * PATCH /api/admin/sessions/transfer — bulk-reassign chat_sessions.user_id to a
+ * new owner. Scoped by tenant_id so only the caller's sessions are touched.
+ * Returns the before-state rows so the route can emit per-session audit events.
+ */
+export async function transferSessions(
+  tenantId: string,
+  sessionIds: string[],
+  targetUserId: string,
+): Promise<SessionResult<{ transferred: number; sessions: TransferSessionRow[] }>> {
+  const supabase = getAdminClient('[sessions/transfer]')
+
+  // Capture before-state + enforce tenant scope (cross-tenant IDs simply won't match)
+  const { data: before, error: selectError } = await supabase
+    .from('chat_sessions')
+    .select('id, user_id')
+    .in('id', sessionIds)
+    .eq('tenant_id', tenantId)
+
+  if (selectError) {
+    console.error('[sessions/transfer] select error:', JSON.stringify(selectError))
+    return { ok: false, status: 500, error: selectError.message }
+  }
+
+  const found = (before ?? []) as Array<{ id: string; user_id: string | null }>
+  if (found.length === 0) {
+    return { ok: false, status: 404, error: 'No matching sessions found' }
+  }
+
+  const eligibleIds = found.map((s) => s.id)
+
+  const { error: updateError } = await supabase
+    .from('chat_sessions')
+    .update({ user_id: targetUserId })
+    .in('id', eligibleIds)
+    .eq('tenant_id', tenantId)
+
+  if (updateError) {
+    console.error('[sessions/transfer] update error:', JSON.stringify(updateError))
+    return { ok: false, status: 500, error: updateError.message }
+  }
+
+  console.log(
+    '[sessions/transfer] transferred',
+    eligibleIds.length,
+    'sessions → user_id:',
+    targetUserId,
+    '| tenant_id:',
+    tenantId,
+  )
+  return {
+    ok: true,
+    data: {
+      transferred: eligibleIds.length,
+      sessions: found.map((s) => ({ id: s.id, prev_user_id: s.user_id })),
+    },
+  }
+}
+
 /**
  * POST /api/sessions/[id]/claim — link an anonymous session to a now-signed-in
  * user. The `userId` is resolved server-side from the Clerk session (never a

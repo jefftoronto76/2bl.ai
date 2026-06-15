@@ -1,11 +1,11 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useState } from 'react'
 import { Table, Badge, Box, Center, Group, Paper, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import type { SessionStatus } from '@/services/crm/status'
 import type { ChatSession } from '@/services/crm/inbound'
+import { SessionDrawer } from './SessionDrawer'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
@@ -41,7 +41,7 @@ const STATUS_COLORS: Record<SessionStatus, string> = {
 }
 
 export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
-  const router = useRouter()
+  const [selectedSession, setSelectedSession] = useState<ChatSession | null>(null)
 
   if (!rows.length) {
     return (
@@ -73,7 +73,7 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
               return (
                 <Table.Tr
                   key={session.id}
-                  onClick={() => router.push(`/admin/sessions/${session.id}`)}
+                  onClick={() => setSelectedSession(session)}
                   style={{ cursor: 'pointer' }}
                 >
                   <Table.Td>
@@ -129,53 +129,56 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
           const messageCount = Array.isArray(session.messages) ? session.messages.length : 0
           const status = session.derived_status
           return (
-            <Link
+            <Paper
               key={session.id}
-              href={`/admin/sessions/${session.id}`}
-              style={{ textDecoration: 'none', color: 'inherit' }}
+              p="md"
+              withBorder
+              radius="sm"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSelectedSession(session)}
             >
-              <Paper p="md" withBorder radius="sm">
-                <Group justify="space-between" mb={4}>
-                  <Box>
-                    <Text variant="label" style={{ fontStyle: session.visitor_name ? 'normal' : 'italic' }}>
-                      {session.visitor_name ?? 'Anonymous'}
+              <Group justify="space-between" mb={4}>
+                <Box>
+                  <Text variant="label" style={{ fontStyle: session.visitor_name ? 'normal' : 'italic' }}>
+                    {session.visitor_name ?? 'Anonymous'}
+                  </Text>
+                  {session.email && (
+                    <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                      {session.email}
                     </Text>
-                    {session.email && (
-                      <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                        {session.email}
-                      </Text>
-                    )}
-                  </Box>
-                  <Badge
-                    variant="light"
-                    color={STATUS_COLORS[status]}
-                    size="sm"
-                    radius="sm"
-                  >
-                    {status}
-                  </Badge>
-                </Group>
-                <Group justify="space-between">
-                  <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
-                    {messageCount} messages
-                  </Text>
-                  <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                    {formatDate(session.updated_at ?? session.created_at)}
-                  </Text>
-                </Group>
-                <Group justify="space-between" mt={4}>
-                  <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                    {formatTokens(session.input_tokens, session.output_tokens)} tokens
-                  </Text>
-                  <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
-                    {formatCost(session.input_tokens, session.output_tokens)}
-                  </Text>
-                </Group>
-              </Paper>
-            </Link>
+                  )}
+                </Box>
+                <Badge
+                  variant="light"
+                  color={STATUS_COLORS[status]}
+                  size="sm"
+                  radius="sm"
+                >
+                  {status}
+                </Badge>
+              </Group>
+              <Group justify="space-between">
+                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
+                  {messageCount} messages
+                </Text>
+                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                  {formatDate(session.updated_at ?? session.created_at)}
+                </Text>
+              </Group>
+              <Group justify="space-between" mt={4}>
+                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                  {formatTokens(session.input_tokens, session.output_tokens)} tokens
+                </Text>
+                <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
+                  {formatCost(session.input_tokens, session.output_tokens)}
+                </Text>
+              </Group>
+            </Paper>
           )
         })}
       </Stack>
+
+      <SessionDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
     </>
   )
 }

@@ -21,6 +21,7 @@ export const AuditAction = {
   // Sessions (visitor)
   SESSION_CREATE: 'session.create',
   SESSION_CLAIM: 'session.claim',
+  CHAT_SESSION_TRANSFERRED: 'chat_session.transferred',
   // Members
   MEMBER_CLAIM: 'member.claim',
   MEMBER_ROLE_UPDATED: 'member.role_updated',
