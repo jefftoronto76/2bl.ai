@@ -198,7 +198,7 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
             />
             <Textarea
               label="Custom Greeting"
-              description="Optional. Personalizes the AI's opening approach for this member — injected once into their first chat session."
+              description="Optional. The member's first name is automatically included — use this field to add any additional context you'd like Heirloom to know before they start chatting."
               placeholder="e.g. This member wants to preserve their grandmother's wartime letters. Focus on narrative structure and emotional detail."
               value={primer}
               onChange={(e) => setPrimer(e.currentTarget.value.slice(0, 500))}
