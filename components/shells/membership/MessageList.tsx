@@ -6,11 +6,13 @@ import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+import { MediaPills, type MediaAction } from './MediaPills';
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
   isError: boolean;
+  onPill?: (action: MediaAction, mediaItemId: string) => void;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -229,9 +231,9 @@ function TypingIndicator() {
   );
 }
 
-export function MessageList({ messages, isLoading, isError }: MessageListProps) {
+export function MessageList({ messages, isLoading, isError, onPill }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { claimCurrentSession, inviteToken, mediaItems } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems, pendingPills } = useChatStore();
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -277,6 +279,9 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
       console.error('[heirloom/MessageList] members sync failed:', err),
     );
   }, [claimCurrentSession]);
+
+  // Index of the last assistant message — used to attach MediaPills.
+  const lastAssistantIdx = messages.reduce((acc, m, i) => (m.role === 'assistant' ? i : acc), -1);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -342,6 +347,13 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           // Skip empty assistant messages — no prose, no auth prompt, no debug.
           if (!prose && !authPrompt && debugMarkers.length === 0) return null;
 
+          const showPills =
+            i === lastAssistantIdx &&
+            !isLoading &&
+            !isError &&
+            pendingPills !== null &&
+            !!onPill;
+
           return (
             <div key={msg.id} className="flex flex-col gap-3">
               {prose && <MessageBubble message={msg} content={prose} />}
@@ -361,6 +373,12 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
                     <DebugPill key={idx} raw={m.raw} />
                   ))}
                 </div>
+              )}
+              {showPills && (
+                <MediaPills
+                  kind={pendingPills!.kind}
+                  onPill={(action) => onPill!(action, pendingPills!.mediaItemId)}
+                />
               )}
             </div>
           );

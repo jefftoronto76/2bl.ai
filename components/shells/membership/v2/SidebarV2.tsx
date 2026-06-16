@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import {
   BookOpen,
   ChevronRight,
@@ -391,15 +392,14 @@ export function SidebarV2({
           <Images size={16} className="flex-shrink-0" />
           {expanded && <span className="font-body text-sm font-normal truncate">Media</span>}
         </button>
-        <button
-          type="button"
-          aria-label="Uploads"
-          onClick={onUploads}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
+        <Link
+          href="/heirloom/materials"
+          aria-label="Materials"
+          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <Upload size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
-        </button>
+          {expanded && <span className="font-body text-sm font-normal truncate">Materials</span>}
+        </Link>
         <button
           type="button"
           aria-label="Share Heirloom"

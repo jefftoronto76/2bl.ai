@@ -13,6 +13,7 @@ import React, {
 import { useAuthUser } from '@/services/auth/client';
 import { createClient } from '@/services/auth/supabase';
 import type { MediaItem } from '@/services/media/types';
+import type { MediaKind } from './MediaPills';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
 export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
@@ -128,6 +129,10 @@ interface ChatContextType {
    *  before the background job starts. Upserts by id. For images, pass
    *  localPreviewUrl (a blob: URL from URL.createObjectURL) for instant preview. */
   addMediaItem: (item: ClientMediaItem) => void;
+  /** When set, MediaPills renders below the next fully-streamed assistant message.
+   *  Set by ChatInput after a successful upload; cleared by onPill in ChatHero. */
+  pendingPills: { kind: MediaKind; mediaItemId: string } | null;
+  setPendingPills: (v: { kind: MediaKind; mediaItemId: string } | null) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -889,6 +894,12 @@ export function ChatProvider({
     return () => clearTimeout(timer);
   }, [sessionId, isSignedIn, mediaItems]);
 
+  // ── Option pills state ────────────────────────────────────────────────────
+  const [pendingPills, setPendingPills] = useState<{
+    kind: MediaKind;
+    mediaItemId: string;
+  } | null>(null);
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
   // isMember derives directly from Clerk — no local state needed.
@@ -904,7 +915,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem, pendingPills, setPendingPills }}
     >
       {children}
     </ChatContext.Provider>

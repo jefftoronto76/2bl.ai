@@ -1,18 +1,19 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Upload } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
-import { ChatInput } from './ChatInput';
+import { ChatInput, type ChatInputHandle } from './ChatInput';
 import { MessageList } from './MessageList';
 import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
+import type { MediaAction } from './MediaPills';
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
 // sidebar's other story affordances are stubbed for the same reason). Copy is
@@ -54,7 +55,13 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, isError, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
+  const { state, isError, isGated, sendMessage, injectAssistantMessage, recentSessions, starSession, renameSession, deleteSession, pendingPills, setPendingPills } = useChatStore();
+
+  // Ref forwarded to ChatInput so drag-drop can pass files to the composer.
+  const composerRef = useRef<ChatInputHandle>(null);
+
+  // ── Drag-drop state ───────────────────────────────────────────────────────
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
@@ -136,6 +143,50 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     void sendMessage(prompt.text);
   };
 
+  // ── Pill dispatcher ───────────────────────────────────────────────────────
+  const handlePill = useCallback((action: MediaAction, mediaItemId: string) => {
+    setPendingPills(null);
+    switch (action) {
+      case 'story':
+        void sendMessage(`[media: ${mediaItemId}] Let's talk about this. What's the story behind it?`);
+        break;
+      case 'caption':
+        void sendMessage(`I'd like to add a caption to this photo.`);
+        break;
+      case 'tagPeople':
+        void sendMessage(`Can you help me note who's in this photo?`);
+        break;
+      case 'tagDate':
+        void sendMessage(`When do you think this was taken? Let's figure out the date.`);
+        break;
+      case 'memory':
+        void sendMessage(`Add this as a spoken memory.`);
+        break;
+      case 'file':
+        injectAssistantMessage('Saved to your materials. You can find it in the Materials library anytime.');
+        break;
+      case 'ocr':
+        // TODO(2bl): call /api/media/ocr?id=mediaItemId → open TranscriptReview
+        injectAssistantMessage('Transcribing your document… (coming soon — the full transcription pipeline will be wired shortly)');
+        break;
+      case 'stt':
+        // TODO(2bl): call /api/transcribe with audio → open TranscriptReview
+        injectAssistantMessage('Transcribing your audio… (coming soon)');
+        break;
+      case 'frameGrab':
+        injectAssistantMessage('Pulling a still from your video… (coming soon)');
+        break;
+      case 'reviewEach':
+        void sendMessage(`Let's go through these one by one.`);
+        break;
+      case 'batchFile':
+        injectAssistantMessage('All files saved to your materials.');
+        break;
+      default:
+        void sendMessage(`Let's work with this.`);
+    }
+  }, [sendMessage, injectAssistantMessage, setPendingPills]);
+
   // iOS keyboard handling. While the chat panel is open it's a modal overlay,
   // so we lock body scroll (the landing page behind must not scroll) and pin the
   // surface to the visual viewport. Under the scroll-lock iOS can't shift the
@@ -150,8 +201,38 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const surfaceStyle: CSSProperties | undefined =
     keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
+  // Drag-drop: forward dropped files to the composer's addFiles handle.
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes('Files')) setIsDraggingOver(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const { files } = e.dataTransfer;
+    if (files.length > 0) composerRef.current?.addFiles(files);
+  };
+
   return (
-    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
+    <section
+      style={surfaceStyle}
+      className="h-full w-full flex bg-background overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag-drop overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-accent/60 bg-surface/80 backdrop-blur-sm pointer-events-none select-none">
+          <Upload size={36} className="text-accent" />
+          <p className="font-display text-xl italic text-text-primary">Drop to add to this memory</p>
+        </div>
+      )}
       <SidebarV2
         stories={stories}
         writingPrompts={WRITING_PROMPTS}
@@ -172,13 +253,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           ) : (
             <>
               {state.hasStarted ? (
-                <MessageList messages={state.messages} isLoading={state.isLoading} isError={isError} />
+                <MessageList
+                  messages={state.messages}
+                  isLoading={state.isLoading}
+                  isError={isError}
+                  onPill={handlePill}
+                />
               ) : (
                 <EmptyState />
               )}
 
               <div className="pb-4">
-                <ChatInput />
+                <ChatInput ref={composerRef} />
                 <SaveChatCTA />
               </div>
             </>

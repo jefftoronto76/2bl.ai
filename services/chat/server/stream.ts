@@ -102,6 +102,96 @@ export function getModelInstance(provider: ModelProvider, modelId: string) {
   }
 }
 
+// ── Media block resolution ────────────────────────────────────────────────────
+
+const MEDIA_UPLOAD_RE = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]/g
+
+/**
+ * For the last user message, parse [MEDIA_UPLOAD: filename | mediaItemId | type]
+ * markers. For image-type items, fetch a short-lived signed URL via Supabase Storage
+ * and inject an Anthropic image content block so the guide can actually see the photo.
+ * Non-image markers are stripped from the text and the filename is left as context.
+ * Degrades gracefully: if the URL fetch fails, the text marker is left in place.
+ */
+async function resolveMediaBlocks(
+  messages: ChatMessage[],
+): Promise<Array<ChatMessage | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> }>> {
+  // Find the last user message index
+  const lastUserIdx = [...messages.entries()].reduce<number>(
+    (acc, [i, m]) => (m.role === 'user' ? i : acc),
+    -1,
+  )
+  if (lastUserIdx === -1) return messages
+
+  const lastUser = messages[lastUserIdx]
+  const markers: Array<{ filename: string; mediaItemId: string; type: string }> = []
+
+  MEDIA_UPLOAD_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = MEDIA_UPLOAD_RE.exec(lastUser.content)) !== null) {
+    markers.push({ filename: m[1].trim(), mediaItemId: m[2].trim(), type: m[3].trim() })
+  }
+
+  const imageMarkers = markers.filter((mk) => mk.type === 'image')
+  if (imageMarkers.length === 0) return messages
+
+  // Strip all MEDIA_UPLOAD markers from text; keep any remaining prose
+  const prose = lastUser.content
+    .replace(/\[MEDIA_UPLOAD:[^\]]+\]/g, '')
+    .replace(/\[MEDIA_UPLOAD_FAILED:[^\]]+\]/g, '')
+    .trim()
+
+  // Fetch signed URLs for image items
+  const supabase = getAdminClient()
+  const imageParts: Array<{ type: 'image'; image: string }> = []
+
+  await Promise.all(
+    imageMarkers.map(async (mk) => {
+      try {
+        // Look up the actual storage_path from the media_items table
+        const { data: item } = await supabase
+          .from('media_items')
+          .select('storage_path')
+          .eq('id', mk.mediaItemId)
+          .maybeSingle()
+
+        if (!item?.storage_path) {
+          console.warn('[chat/stream] no storage_path for media_item', mk.mediaItemId)
+          return
+        }
+
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(item.storage_path, 60)
+
+        if (signedError || !signedData?.signedUrl) {
+          console.warn('[chat/stream] signed URL failed for', mk.mediaItemId, signedError?.message)
+          return
+        }
+
+        imageParts.push({ type: 'image', image: signedData.signedUrl })
+      } catch (err) {
+        console.error('[chat/stream] resolveMediaBlocks error for', mk.mediaItemId, err)
+      }
+    }),
+  )
+
+  if (imageParts.length === 0) {
+    // All URL fetches failed — leave the message unchanged (text marker still context)
+    return messages
+  }
+
+  // Build the enriched content array: image blocks first, then the text
+  const contentParts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> = [
+    ...imageParts,
+    ...(prose ? [{ type: 'text' as const, text: prose }] : []),
+  ]
+
+  const enriched = [...messages]
+  enriched[lastUserIdx] = { role: 'user', content: contentParts as unknown as string }
+  return enriched as Array<ChatMessage | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> }>
+}
+
 export interface RunChatStreamParams {
   config: ModelConfig
   system: string
@@ -116,10 +206,19 @@ export interface RunChatStreamParams {
  */
 export async function runChatStream(params: RunChatStreamParams): Promise<Response> {
   const { config, system, messages, onFinish } = params
+
+  // Resolve image media blocks before calling the model. Degrades to plain text
+  // on any error so the stream is never blocked by a storage lookup failure.
+  const enrichedMessages = await resolveMediaBlocks(messages).catch((err) => {
+    console.error('[chat/stream] resolveMediaBlocks failed — falling back to plain text:', err)
+    return messages
+  })
+
   const result = await streamText({
     model: getModelInstance(config.provider, config.chatModel),
     system,
-    messages,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: enrichedMessages as any,
     maxTokens: config.maxTokens,
     onFinish: onFinish
       ? async ({ text, usage }) => {

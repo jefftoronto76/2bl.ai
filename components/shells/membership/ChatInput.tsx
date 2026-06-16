@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react';
 import {
   ArrowUp,
-  Paperclip,
-  Image as ImageIcon,
+  Plus,
   Mic,
   X,
   Check,
@@ -14,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useChatStore } from './chatStore';
 import { useMediaUpload } from '@/services/media/useMediaUpload';
+import { SourceSheet } from './SourceSheet';
+import { TranscriptReview } from './TranscriptReview';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
@@ -161,27 +162,35 @@ function TranscribingPill() {
 }
 
 /* --- Composer --------------------------------------------------------- */
-type TranscribeState = 'idle' | 'transcribing' | 'error' | 'empty';
+type TranscribeState = 'idle' | 'transcribing' | 'reviewing' | 'error' | 'empty';
 
-export function ChatInput() {
+export interface ChatInputHandle {
+  addFiles: (files: FileList) => void;
+}
+
+export const ChatInput = forwardRef<ChatInputHandle>(function ChatInput(_props, ref) {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribeState, setTranscribeState] = useState<TranscribeState>('idle');
+  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
+  // Holds the transcript + audio blob while the user reviews before sending.
+  const [reviewData, setReviewData] = useState<{ transcript: string; audioBlob: Blob | null } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const lastBlobRef = useRef<Blob | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { sendMessage, injectAssistantMessage, state, addMediaItem } = useChatStore();
+  const { sendMessage, injectAssistantMessage, state, addMediaItem, setPendingPills } = useChatStore();
   const { isMember } = state;
 
   const { upload, isUploading } = useMediaUpload(state.sessionId, null);
+
+  // Expose addFiles so ChatHero can forward drag-dropped files.
+  useImperativeHandle(ref, () => ({ addFiles }), []);
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -209,11 +218,14 @@ export function ChatInput() {
       // marker for each successful upload. Failures are logged; the text message
       // still sends so the turn is never silently dropped.
       const markers: string[] = [];
+      const uploadResults: Array<{ mediaItemId: string; type: string }> = [];
+
       await Promise.all(
         pendingAttachments.map(async (att) => {
           const result = await upload(att.file);
           if (result) {
             markers.push(`[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`);
+            uploadResults.push(result);
             // Fresh object URL for image preview — att.previewUrl was already
             // revoked above, but the File is still in memory so we can re-create.
             const localPreviewUrl = att.file.type.startsWith('image/')
@@ -245,6 +257,19 @@ export function ChatInput() {
           }
         }),
       );
+
+      // Surface option pills for the first successfully uploaded item.
+      if (uploadResults.length > 0) {
+        const kind =
+          uploadResults.length > 1
+            ? 'multiple'
+            : uploadResults[0].type === 'image'
+              ? 'image'
+              : uploadResults[0].type === 'audio'
+                ? 'audio'
+                : 'document';
+        setPendingPills({ kind, mediaItemId: uploadResults[0].mediaItemId });
+      }
 
       const parts = [...markers, trimmed].filter(Boolean);
       void sendMessage(parts.join('\n'));
@@ -342,15 +367,13 @@ export function ChatInput() {
       setTranscribeState('transcribing');
       try {
         const text = await fetchTranscript(blob);
-        if (text) {
-          setValue((v) => (v ? `${v} ` : '') + text);
-          requestAnimationFrame(autoResize);
-          setTranscribeState('idle');
-        } else {
-          setTranscribeState('empty');
-        }
+        // Move to review step instead of injecting into textarea directly.
+        setReviewData({ transcript: text || '', audioBlob: blob });
+        setTranscribeState('reviewing');
       } catch {
-        setTranscribeState('error');
+        // On STT failure, open review with empty transcript so user can type.
+        setReviewData({ transcript: '', audioBlob: blob });
+        setTranscribeState('reviewing');
       }
     };
     mr.stop();
@@ -361,15 +384,62 @@ export function ChatInput() {
     setTranscribeState('transcribing');
     try {
       const text = await fetchTranscript(lastBlobRef.current);
-      if (text) {
-        setValue((v) => (v ? `${v} ` : '') + text);
-        requestAnimationFrame(autoResize);
-        setTranscribeState('idle');
-      } else {
-        setTranscribeState('empty');
-      }
+      setReviewData({ transcript: text || '', audioBlob: lastBlobRef.current });
+      setTranscribeState('reviewing');
     } catch {
-      setTranscribeState('error');
+      setReviewData({ transcript: '', audioBlob: lastBlobRef.current });
+      setTranscribeState('reviewing');
+    }
+  };
+
+  // Called when the user sends from the TranscriptReview panel.
+  const handleReviewSend = async (keepVoice: boolean) => {
+    const data = reviewData;
+    if (!data) return;
+    setTranscribeState('idle');
+    setReviewData(null);
+
+    const trimmed = data.transcript.trim();
+
+    // When keepVoice and we have a blob, upload it first.
+    if (keepVoice && data.audioBlob) {
+      const audioFile = new File([data.audioBlob], 'voice-memory.webm', {
+        type: data.audioBlob.type || 'audio/webm',
+      });
+      const result = await upload(audioFile);
+      if (result) {
+        const localPreviewUrl = undefined;
+        addMediaItem({
+          id: result.mediaItemId,
+          tenant_id: '',
+          member_id: '',
+          chat_id: state.sessionId,
+          story_id: null,
+          type: result.type,
+          original_filename: audioFile.name,
+          storage_path: '',
+          file_size_bytes: audioFile.size,
+          mime_type: audioFile.type,
+          status: 'pending',
+          derived_content: null,
+          classification: null,
+          error_message: null,
+          processed_at: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          localPreviewUrl,
+        });
+        const marker = `[MEDIA_UPLOAD: ${audioFile.name} | ${result.mediaItemId} | ${result.type}]`;
+        setPendingPills({ kind: 'audio', mediaItemId: result.mediaItemId });
+        const parts = [marker, trimmed].filter(Boolean);
+        void sendMessage(parts.join('\n'));
+      } else {
+        // Upload failed — send transcript only
+        if (trimmed) void sendMessage(trimmed);
+      }
+    } else {
+      // Text only
+      if (trimmed) void sendMessage(trimmed);
     }
   };
 
@@ -383,106 +453,95 @@ export function ChatInput() {
 
   return (
     <div className="w-full max-w-2xl mx-auto px-4">
-      <div className="rounded-[22px] border border-border bg-surface p-1.5 transition-colors focus-within:border-accent/40">
-        {/* hidden pickers */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".m4a,.mp3,.wav,.ogg,.webm,.jpg,.jpeg,.png,.webp,.pdf,.docx,.txt"
-          className="hidden"
-          onChange={(e) => {
-            addFiles(e.target.files);
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept=".jpg,.jpeg,.png,.gif,.webp"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            addFiles(e.target.files);
-            e.target.value = '';
-          }}
+      {/* SourceSheet is positioned relative to the outer wrapper */}
+      <div className="relative">
+        <SourceSheet
+          open={sourceSheetOpen}
+          onClose={() => setSourceSheetOpen(false)}
+          onFiles={(files) => { addFiles(files); }}
+          onRecord={() => { if (!isMember) { injectAssistantMessage('🔒 Voice is a member feature.'); return; } void startRecording(); }}
+          isMember={isMember}
         />
 
-        {isRecording ? (
-          <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
-        ) : transcribeState === 'transcribing' ? (
-          <TranscribingPill />
-        ) : (
-          <>
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-1.5 pt-1.5 pb-2">
-                {attachments.map((att) => (
-                  <AttachmentChip key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />
-                ))}
-              </div>
-            )}
-
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onInput={autoResize}
-              onKeyDown={handleKeyDown}
-              placeholder="Share a memory, or ask your guide anything"
-              rows={1}
-              className="block w-full bg-transparent text-text-primary placeholder-text-muted font-body text-base resize-none focus:outline-none leading-6 px-2.5 pt-2.5 pb-1 min-h-[28px] max-h-[200px]"
+        <div className="rounded-[22px] border border-border bg-surface p-1.5 transition-colors focus-within:border-accent/40">
+          {isRecording ? (
+            <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
+          ) : transcribeState === 'transcribing' ? (
+            <TranscribingPill />
+          ) : transcribeState === 'reviewing' && reviewData ? (
+            <TranscriptReview
+              transcript={reviewData.transcript}
+              audioBlob={reviewData.audioBlob}
+              onTranscriptChange={(t) => setReviewData((d) => d ? { ...d, transcript: t } : d)}
+              onSend={handleReviewSend}
+              onReRecord={() => {
+                setTranscribeState('idle');
+                setReviewData(null);
+                void startRecording();
+              }}
+              onCancel={() => {
+                setTranscribeState('idle');
+                setReviewData(null);
+              }}
             />
+          ) : (
+            <>
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-1.5 pt-1.5 pb-2">
+                  {attachments.map((att) => (
+                    <AttachmentChip key={att.id} att={att} onRemove={() => removeAttachment(att.id)} />
+                  ))}
+                </div>
+              )}
 
-            <div className="flex items-center gap-1 pl-0.5 pr-1 py-0.5">
-              {/* Attachment + voice buttons are member-only. When locked they
-                  remain focusable so screen readers can announce the gate. */}
-              <button
-                type="button"
-                aria-label={isMember ? 'Attach files' : 'Sign in to attach files'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Attach files' : 'Sign in to unlock'}
-                onClick={isMember ? () => fileInputRef.current?.click() : undefined}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
-                )}
-              >
-                {isMember ? <Paperclip size={18} /> : <Lock size={15} />}
-              </button>
-              <button
-                type="button"
-                aria-label={isMember ? 'Add a photo' : 'Sign in to add photos'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Add a photo' : 'Sign in to unlock'}
-                onClick={isMember ? () => imageInputRef.current?.click() : undefined}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
-                )}
-              >
-                {isMember ? <ImageIcon size={18} /> : <Lock size={15} />}
-              </button>
+              <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onInput={autoResize}
+                onKeyDown={handleKeyDown}
+                placeholder="Share a memory, or ask your guide anything"
+                rows={1}
+                className="block w-full bg-transparent text-text-primary placeholder-text-muted font-body text-base resize-none focus:outline-none leading-6 px-2.5 pt-2.5 pb-1 min-h-[28px] max-h-[200px]"
+              />
 
-              <div className="flex-1" />
+              <div className="flex items-center gap-1 pl-0.5 pr-1 py-0.5">
+                {/* "+" opens SourceSheet (member-only). Lock icon when not a member. */}
+                <button
+                  type="button"
+                  aria-label={isMember ? 'Add photo, file, or recording' : 'Sign in to add media'}
+                  aria-haspopup="menu"
+                  aria-expanded={sourceSheetOpen}
+                  title={isMember ? 'Add media' : 'Sign in to unlock'}
+                  onClick={isMember ? () => setSourceSheetOpen((v) => !v) : undefined}
+                  className={cn(
+                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    isMember
+                      ? sourceSheetOpen
+                        ? 'bg-accent text-background'
+                        : 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                      : 'text-text-muted opacity-40 cursor-not-allowed',
+                  )}
+                >
+                  {isMember ? <Plus size={18} /> : <Lock size={15} />}
+                </button>
 
-              <button
-                type="button"
-                aria-label={isMember ? 'Record voice' : 'Voice is a member feature'}
-                title={isMember ? 'Record voice' : 'Voice is a member feature'}
-                onClick={handleMicClick}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40',
-                )}
-              >
-                {isMember ? <Mic size={18} /> : <Lock size={15} />}
-              </button>
+                <div className="flex-1" />
+
+                <button
+                  type="button"
+                  aria-label={isMember ? 'Record voice' : 'Voice is a member feature'}
+                  title={isMember ? 'Record voice' : 'Voice is a member feature'}
+                  onClick={handleMicClick}
+                  className={cn(
+                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    isMember
+                      ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                      : 'text-text-muted opacity-40',
+                  )}
+                >
+                  {isMember ? <Mic size={18} /> : <Lock size={15} />}
+                </button>
               <button
                 type="button"
                 aria-label="Send message"
@@ -532,6 +591,7 @@ export function ChatInput() {
       <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
         Your guide listens, asks, and never forgets a detail.
       </p>
+      </div>
     </div>
   );
-}
+});
