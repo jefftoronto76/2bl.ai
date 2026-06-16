@@ -1,7 +1,6 @@
 import { logEvent } from '@/services/audit';
 import { AuditAction } from '@/services/audit/types';
-import { getSession } from '@/services/auth';
-import { getTenantFromRequest } from '@/services/auth/get-tenant-from-request';
+import { getSession, getTenantFromRequest } from '@/services/auth';
 import { transcribeAudio } from '@/services/transcription';
 import { NextRequest, NextResponse } from 'next/server';
 
