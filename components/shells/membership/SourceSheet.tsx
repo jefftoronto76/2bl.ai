@@ -117,8 +117,6 @@ export function SourceSheet({ open, onClose, onFiles, onRecord, isMember }: Sour
         ref={cameraRef}
         type="file"
         accept="image/*"
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore — capture is valid HTML but not in all TS libs
         capture="environment"
         className="hidden"
         onChange={onInputChange}
