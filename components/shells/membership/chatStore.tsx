@@ -13,6 +13,9 @@ import React, {
 import { useAuthUser } from '@/services/auth/client';
 import { createClient } from '@/services/auth/supabase';
 import type { MediaItem } from '@/services/media/types';
+
+// Client-only extension — localPreviewUrl is never persisted to the DB.
+export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
@@ -120,10 +123,11 @@ interface ChatContextType {
   deleteSession: (id: string) => Promise<void>;
   /** Media items associated with the current chat session. Populated by Realtime
    *  subscription + catch-up query on session load. */
-  mediaItems: MediaItem[];
-  /** Register a newly-uploaded pending item so the UI can show an uploading chip
-   *  before the background job starts. Upserts by id. */
-  addMediaItem: (item: MediaItem) => void;
+  mediaItems: ClientMediaItem[];
+  /** Register a newly-uploaded pending item so the UI can show a processing chip
+   *  before the background job starts. Upserts by id. For images, pass
+   *  localPreviewUrl (a blob: URL from URL.createObjectURL) for instant preview. */
+  addMediaItem: (item: ClientMediaItem) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -777,14 +781,16 @@ export function ChatProvider({
   }, [recentSessions, newChat]);
 
   // ── Media items — Realtime subscription + catch-up hydration ──────────────
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [mediaItems, setMediaItems] = useState<ClientMediaItem[]>([]);
 
-  const addMediaItem = useCallback((item: MediaItem) => {
+  const addMediaItem = useCallback((item: ClientMediaItem) => {
     setMediaItems(prev => {
       const idx = prev.findIndex(m => m.id === item.id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = item;
+        // Preserve localPreviewUrl when updating an existing item (Realtime
+        // updates won't carry it — keep the one set on initial upload).
+        next[idx] = { localPreviewUrl: prev[idx].localPreviewUrl, ...item };
         return next;
       }
       return [...prev, item];

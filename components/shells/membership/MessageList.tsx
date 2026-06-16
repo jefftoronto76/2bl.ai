@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
-import { Message, useChatStore } from './chatStore';
+import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
-import type { MediaItem } from '@/services/media/types';
 
 interface MessageListProps {
   messages: Message[];
@@ -36,51 +35,139 @@ function DebugPill({ raw }: { raw: string }) {
   );
 }
 
-function MediaIcon({ type }: { type: MediaItem['type'] }) {
-  if (type === 'audio') return <AudioLines size={13} />;
-  if (type === 'image') return <ImageIcon size={13} />;
-  return <FileText size={13} />;
+// ── Media parsing ─────────────────────────────────────────────────────────────
+
+const MEDIA_UPLOAD_RE = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]/g;
+const MEDIA_FAILED_RE = /\[MEDIA_UPLOAD_FAILED:\s*([^\]]+?)\s*\]/g;
+
+interface ParsedUserMessage {
+  uploads: Array<{ filename: string; mediaItemId: string; type: string }>;
+  failures: Array<{ filename: string }>;
+  text: string;
 }
 
-/** Self-contained card for a media item's processing lifecycle.
- *  Failure state is fully displayed here — does not depend on a guide turn. */
-function MediaCompletionCard({ item }: { item: MediaItem }) {
-  const isPending = item.status === 'pending' || item.status === 'processing';
-  const isReady = item.status === 'ready';
+function parseUserMessage(content: string): ParsedUserMessage {
+  const uploads: ParsedUserMessage['uploads'] = [];
+  const failures: ParsedUserMessage['failures'] = [];
+
+  let m: RegExpExecArray | null;
+  MEDIA_UPLOAD_RE.lastIndex = 0;
+  while ((m = MEDIA_UPLOAD_RE.exec(content)) !== null) {
+    uploads.push({ filename: m[1].trim(), mediaItemId: m[2].trim(), type: m[3].trim() });
+  }
+  MEDIA_FAILED_RE.lastIndex = 0;
+  while ((m = MEDIA_FAILED_RE.exec(content)) !== null) {
+    failures.push({ filename: m[1].trim() });
+  }
+
+  const text = content
+    .replace(/\[MEDIA_UPLOAD:[^\]]+\]/g, '')
+    .replace(/\[MEDIA_UPLOAD_FAILED:[^\]]+\]/g, '')
+    .trim();
+
+  return { uploads, failures, text };
+}
+
+// ── Inline media components ───────────────────────────────────────────────────
+
+function MediaStatusBadge({ item, small = false }: { item: ClientMediaItem | undefined; small?: boolean }) {
+  const sz = small ? 9 : 11;
+  const textCls = small ? 'text-[10px]' : 'text-[10.5px]';
+  if (!item || item.status === 'pending' || item.status === 'processing') {
+    return (
+      <>
+        <Loader2 size={sz} className="text-text-muted animate-spin flex-shrink-0" />
+        <span className={`font-mono ${textCls} text-text-muted`}>Processing…</span>
+      </>
+    );
+  }
+  if (item.status === 'ready') {
+    return (
+      <>
+        <CheckCircle size={sz} className="text-accent flex-shrink-0" />
+        <span className={`font-mono ${textCls} text-text-muted`}>{item.classification ?? 'Ready'}</span>
+      </>
+    );
+  }
+  return (
+    <>
+      <XCircle size={sz} className="text-red-400 flex-shrink-0" />
+      <span className={`font-mono ${textCls} text-red-400`}>Processing failed</span>
+    </>
+  );
+}
+
+/** Inline image preview — shown in the user message thread immediately on upload.
+ *  Falls back to a signed URL fetch when localPreviewUrl is not available (page reload). */
+function InlineImage({ mediaItemId, filename, item }: {
+  mediaItemId: string;
+  filename: string;
+  item: ClientMediaItem | undefined;
+}) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const src = item?.localPreviewUrl ?? signedUrl;
+
+  useEffect(() => {
+    if (item?.localPreviewUrl) return;
+    fetch(`/api/media/${mediaItemId}/url`)
+      .then(r => r.json())
+      .then((d: { url?: string }) => { if (d.url) setSignedUrl(d.url); })
+      .catch(() => {});
+  }, [mediaItemId, item?.localPreviewUrl]);
 
   return (
     <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1.5 max-w-[75%]">
+        {src ? (
+          <img
+            src={src}
+            alt={filename}
+            className="rounded-2xl rounded-br-sm max-h-72 w-auto object-cover"
+          />
+        ) : (
+          <div className="w-48 h-36 rounded-2xl rounded-br-sm bg-surface border border-border flex items-center justify-center">
+            <ImageIcon size={22} className="text-text-muted opacity-30" />
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 pr-0.5">
+          <MediaStatusBadge item={item} small />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Chip for audio/document uploads — shown inline in the user message thread. */
+function InlineFileChip({ filename, type, item }: {
+  filename: string;
+  type: string;
+  item: ClientMediaItem | undefined;
+}) {
+  const icon = type === 'audio'
+    ? <AudioLines size={13} />
+    : <FileText size={13} />;
+  return (
+    <div className="flex justify-end">
       <div className="flex items-start gap-2.5 max-w-[75%] rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5">
-        <span className="flex-shrink-0 mt-0.5 text-accent">
-          <MediaIcon type={item.type} />
-        </span>
+        <span className="flex-shrink-0 mt-0.5 text-accent">{icon}</span>
         <div className="min-w-0 flex flex-col gap-0.5">
-          <span className="text-[12.5px] font-body text-text-primary truncate leading-tight">
-            {item.original_filename}
-          </span>
+          <span className="text-[12.5px] font-body text-text-primary truncate leading-tight">{filename}</span>
           <div className="flex items-center gap-1.5">
-            {isPending ? (
-              <>
-                <Loader2 size={11} className="text-text-muted animate-spin flex-shrink-0" />
-                <span className="font-mono text-[10.5px] text-text-muted">Processing…</span>
-              </>
-            ) : isReady ? (
-              <>
-                <CheckCircle size={11} className="text-accent flex-shrink-0" />
-                <span className="font-mono text-[10.5px] text-text-muted">
-                  {item.classification ?? 'Ready'}
-                </span>
-              </>
-            ) : (
-              <>
-                <XCircle size={11} className="text-red-400 flex-shrink-0" />
-                <span className="font-mono text-[10.5px] text-red-400">
-                  I wasn&apos;t able to process that file. You can try again from your media gallery.
-                </span>
-              </>
-            )}
+            <MediaStatusBadge item={item} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Small chip for uploads that failed before reaching the server. */
+function FailedUploadChip({ filename }: { filename: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="flex items-center gap-2 max-w-[75%] rounded-2xl rounded-br-sm border border-red-400/20 bg-surface px-3.5 py-2 text-red-400">
+        <XCircle size={12} className="flex-shrink-0" />
+        <span className="font-mono text-[10.5px] truncate">{filename} — upload failed</span>
       </div>
     </div>
   );
@@ -207,7 +294,41 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
                 </div>
               );
             }
-            return <MessageBubble key={msg.id} message={msg} content={msg.content} />;
+
+            const userMsg = parseUserMessage(msg.content);
+
+            return (
+              <div key={msg.id} className="flex flex-col gap-2">
+                {/* Image uploads — full-width preview above prose */}
+                {userMsg.uploads
+                  .filter(u => u.type === 'image')
+                  .map(u => (
+                    <InlineImage
+                      key={u.mediaItemId}
+                      mediaItemId={u.mediaItemId}
+                      filename={u.filename}
+                      item={mediaItems.find(m => m.id === u.mediaItemId)}
+                    />
+                  ))}
+                {/* Audio / document chips */}
+                {userMsg.uploads
+                  .filter(u => u.type !== 'image')
+                  .map(u => (
+                    <InlineFileChip
+                      key={u.mediaItemId}
+                      filename={u.filename}
+                      type={u.type}
+                      item={mediaItems.find(m => m.id === u.mediaItemId)}
+                    />
+                  ))}
+                {/* Failed-before-server uploads */}
+                {userMsg.failures.map((f, idx) => (
+                  <FailedUploadChip key={idx} filename={f.filename} />
+                ))}
+                {/* Prose — only when there's actual text alongside the upload */}
+                {userMsg.text && <MessageBubble message={msg} content={userMsg.text} />}
+              </div>
+            );
           }
 
           const result = parsed[i];
@@ -244,10 +365,6 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
             </div>
           );
         })}
-        {/* Media processing chips — rendered after conversation messages */}
-        {mediaItems.map((item) => (
-          <MediaCompletionCard key={item.id} item={item} />
-        ))}
         {isLoading && <TypingIndicator />}
         {isError && <ErrorBubble />}
         <div ref={bottomRef} />
