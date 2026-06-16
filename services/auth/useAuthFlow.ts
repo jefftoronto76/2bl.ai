@@ -46,9 +46,11 @@ export interface UseAuthFlowReturn {
   flowType: AuthFlowType | null
   error: string | null
   /** Optional name is attached to the Clerk profile on the sign-up path
-   *  (first whitespace token → firstName, remainder → lastName). */
-  sendEmail: (email: string, name?: string) => Promise<void>
-  sendPhone: (phone: string, name?: string) => Promise<void>
+   *  (first whitespace token → firstName, remainder → lastName).
+   *  Optional inviteToken is written to Clerk unsafeMetadata on the sign-up
+   *  path so the webhook can look up the invited members row by token. */
+  sendEmail: (email: string, name?: string, inviteToken?: string | null) => Promise<void>
+  sendPhone: (phone: string, name?: string, inviteToken?: string | null) => Promise<void>
   verifyOtp: (code: string) => Promise<void>
   resend: () => Promise<void>
   reset: () => void
@@ -90,8 +92,9 @@ export function useAuthFlow(): UseAuthFlowReturn {
   const [flowType, setFlowType] = useState<AuthFlowType | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Name supplied with the active attempt, kept so resend() re-sends it.
+  // Name and invite token supplied with the active attempt, kept so resend() re-sends them.
   const nameRef = useRef<string | undefined>(undefined)
+  const inviteTokenRef = useRef<string | null | undefined>(undefined)
 
   // Guards setState calls after unmount.
   const mountedRef = useRef(true)
@@ -111,7 +114,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
   // ── Send (shared by email + phone) ─────────────────────────────────────────
 
   const send = useCallback(
-    async (type: AuthContactType, value: string, name?: string) => {
+    async (type: AuthContactType, value: string, name?: string, inviteToken?: string | null) => {
       if (!adapter.isReady) return
 
       setStage('sending')
@@ -120,13 +123,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
       setContactValue(value)
       setFlowType(null)
       nameRef.current = name?.trim() || undefined
+      inviteTokenRef.current = inviteToken
 
       try {
         // Validation gate runs BEFORE any provider call — ordering is
         // load-bearing (server-side rate limiting fronts the provider).
         await callValidationGate(type, value)
 
-        const result = await adapter.sendCode({ type, value, ...splitFullName(nameRef.current) })
+        const result = await adapter.sendCode({ type, value, ...splitFullName(nameRef.current), inviteToken: inviteTokenRef.current ?? undefined })
         if (!result.ok) {
           if (mountedRef.current) { setError(result.message); setStage('error') }
           return
@@ -148,8 +152,8 @@ export function useAuthFlow(): UseAuthFlowReturn {
     [adapter],
   )
 
-  const sendEmail = useCallback((email: string, name?: string) => send('email', email, name), [send])
-  const sendPhone = useCallback((phone: string, name?: string) => send('phone', phone, name), [send])
+  const sendEmail = useCallback((email: string, name?: string, inviteToken?: string | null) => send('email', email, name, inviteToken), [send])
+  const sendPhone = useCallback((phone: string, name?: string, inviteToken?: string | null) => send('phone', phone, name, inviteToken), [send])
 
   // ── OTP verification ───────────────────────────────────────────────────────
 
@@ -177,7 +181,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
   const resend = useCallback(async () => {
     if (!contactType || !contactValue) return
-    await send(contactType, contactValue, nameRef.current)
+    await send(contactType, contactValue, nameRef.current, inviteTokenRef.current)
   }, [contactType, contactValue, send])
 
   return {

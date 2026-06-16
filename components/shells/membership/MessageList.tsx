@@ -93,7 +93,7 @@ function TypingIndicator() {
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { claimCurrentSession } = useChatStore();
+  const { claimCurrentSession, inviteToken } = useChatStore();
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -179,6 +179,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
                   initialName={visitorName}
                   initialEmail={visitorEmail}
                   initialPhone={visitorPhone}
+                  inviteToken={inviteToken}
                   onSuccess={handleAuthSuccess}
                 />
               )}
