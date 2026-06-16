@@ -152,7 +152,11 @@ export async function linkInvitedMember(
   email: string,
   token?: string | null,
 ): Promise<boolean> {
-  console.log('[members] linkInvitedMember — called', { clerkId, email, hasToken: !!token })
+  console.log('[members] linkInvitedMember — called', {
+    clerkId,
+    email,
+    token: token ? token.slice(0, 8) + '…' : null,
+  })
 
   if (!email && !token) {
     console.log('[members] linkInvitedMember — EXIT: no email or token provided')
@@ -183,6 +187,10 @@ export async function linkInvitedMember(
 
   // Step 1: token-based lookup (primary). Token is unique — no .ilike needed.
   let invitedRow: { id: string; tenant_id: string } | null = null
+
+  if (!token) {
+    console.log('[members] linkInvitedMember — token lookup skipped (no token provided, will try email)', { clerkId, email })
+  }
 
   if (token) {
     const { data: tokenRow, error: tokenErr } = await supabase

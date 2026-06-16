@@ -147,9 +147,14 @@ export async function POST(req: Request): Promise<NextResponse> {
         ?.heirloom_invite_token as string | undefined) ?? null
 
     if (inviteToken) {
-      console.log('[webhook/clerk] found heirloom_invite_token in unsafeMetadata', {
+      console.log('[webhook/clerk] heirloom_invite_token present in unsafeMetadata', {
         clerkUserId,
         token: inviteToken.slice(0, 8) + '…',
+      })
+    } else {
+      console.log('[webhook/clerk] heirloom_invite_token absent from unsafeMetadata (non-invite or GateView modal sign-up)', {
+        clerkUserId,
+        email,
       })
     }
 
