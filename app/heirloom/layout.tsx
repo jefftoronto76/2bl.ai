@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, DM_Sans } from 'next/font/google';
+import { Cormorant_Garamond, DM_Mono, DM_Sans } from 'next/font/google';
 import './globals.css';
 
 const serif = Cormorant_Garamond({
@@ -14,6 +14,13 @@ const sans = DM_Sans({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-heirloom-sans',
+  display: 'swap',
+});
+
+const mono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-heirloom-mono',
   display: 'swap',
 });
 
@@ -40,7 +47,7 @@ export default function HeirloomLayout({ children }: { children: React.ReactNode
   // The next/font classNames define --font-heirloom-serif/-sans, which globals.css
   // maps onto --font-display / --font-serif / --font-body for this subtree.
   return (
-    <div data-brand="heirloom" className={`${serif.variable} ${sans.variable}`}>
+    <div data-brand="heirloom" className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
       {children}
     </div>
   );

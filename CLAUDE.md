@@ -291,16 +291,13 @@ remaps must resolve there rather than at `:root`.
 | Accent hover | `#B8935A` |
 | Border | `rgba(245,239,230,0.12)` |
 
-**Fonts are scoped per brand.** Cormorant Garamond (serif/display) and DM Sans
-(body) are loaded via `next/font/google` in `app/heirloom/layout.tsx` and
-exposed as `--font-heirloom-serif` / `--font-heirloom-sans`, which
-`app/heirloom/globals.css` remaps onto `--font-display` / `--font-serif` /
-`--font-body` **on the Heirloom layout wrapper only**. The same wrapper block
-also defines `--font-mono` as the system mono stack (`ui-monospace,
-SFMono-Regular, Menlo, …` — no downloaded mono font; matches the V2 design
-preview), so Tailwind `font-mono` resolves on Heirloom routes instead of
-silently inheriting the body font (added 2026-06-12 for the chat-widget V2
-sidebar/modal section labels).
+**Fonts are scoped per brand.** Cormorant Garamond (serif/display), DM Sans
+(body), and DM Mono (mono) are loaded via `next/font/google` in
+`app/heirloom/layout.tsx` and exposed as `--font-heirloom-serif` /
+`--font-heirloom-sans` / `--font-heirloom-mono`, which `app/heirloom/globals.css`
+remaps onto `--font-display` / `--font-serif` / `--font-body` / `--font-mono`
+**on the Heirloom layout wrapper only**, so Tailwind `font-display`, `font-body`,
+and `font-mono` resolve correctly on Heirloom routes.
 
 ---
 
