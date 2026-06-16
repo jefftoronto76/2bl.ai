@@ -317,12 +317,35 @@ export function ChatProvider({
   // draft slot and re-buffer under the session key. Guarded by a prev-value
   // compare so it fires only on an actual transition — not on every render, and
   // not when hydrate() restored the id (prevSessionIdRef was primed to match).
+  // Also adds the new session to the sidebar immediately for signed-in users so
+  // the entry appears as soon as the session is created rather than waiting for
+  // the turn to finish.
   useEffect(() => {
     if (sessionId === prevSessionIdRef.current) return;
     prevSessionIdRef.current = sessionId;
     if (sessionId) {
       clearDraft();
       persistCurrent();
+      if (isSignedInRef.current) {
+        const msgs = messagesRef.current.filter(
+          m => !(m.role === 'assistant' && m.content === ''),
+        );
+        if (msgs.length > 0) {
+          setRecentSessions(prev => {
+            if (prev.some(s => s.id === sessionId)) return prev;
+            return [
+              {
+                id: sessionId,
+                title: deriveSessionTitle(null, msgs),
+                updatedAt: new Date().toISOString(),
+                messages: msgs,
+                starred: false,
+              },
+              ...prev,
+            ];
+          });
+        }
+      }
     }
   }, [sessionId, persistCurrent]);
 
