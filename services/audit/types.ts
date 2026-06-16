@@ -22,6 +22,10 @@ export const AuditAction = {
   SESSION_CREATE: 'session.create',
   SESSION_CLAIM: 'session.claim',
   CHAT_SESSION_TRANSFERRED: 'chat_session.transferred',
+  // Media items
+  MEDIA_ITEM_PROCESSING: 'media.item.processing',
+  MEDIA_ITEM_PROCESSED: 'media.item.processed',
+  MEDIA_ITEM_FAILED: 'media.item.failed',
   // Members
   MEMBER_CLAIM: 'member.claim',
   MEMBER_ROLE_UPDATED: 'member.role_updated',
