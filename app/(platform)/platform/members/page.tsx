@@ -108,7 +108,7 @@ export default async function PlatformMembersPage() {
       {error ? (
         <Text variant="muted">Unable to load members.</Text>
       ) : (
-        <MembersList users={allUsers} tenants={tenants} />
+        <MembersList users={allUsers} tenants={tenants} inviteApiBase="/api/platform/members" />
       )}
     </Stack>
   );

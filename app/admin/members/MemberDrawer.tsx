@@ -27,6 +27,7 @@ interface MemberDrawerProps {
   user: UserRow | null;
   opened: boolean;
   onClose: () => void;
+  inviteApiBase?: string;
 }
 
 /**
@@ -35,7 +36,7 @@ interface MemberDrawerProps {
  * request (PATCH /api/platform/members/roles). For invited-only members the role
  * form is hidden; instead the invite URL and a regenerate-link button are shown.
  */
-export function MemberDrawer({ user, opened, onClose }: MemberDrawerProps) {
+export function MemberDrawer({ user, opened, onClose, inviteApiBase = '/api/platform/members' }: MemberDrawerProps) {
   return (
     <Drawer
       opened={opened}
@@ -60,12 +61,12 @@ export function MemberDrawer({ user, opened, onClose }: MemberDrawerProps) {
       }
     >
       {/* key on user.id so role edit state resets cleanly between users */}
-      {user ? <DrawerBody key={user.id} user={user} onDone={onClose} /> : null}
+      {user ? <DrawerBody key={user.id} user={user} onDone={onClose} inviteApiBase={inviteApiBase} /> : null}
     </Drawer>
   );
 }
 
-function DrawerBody({ user, onDone }: { user: UserRow; onDone: () => void }) {
+function DrawerBody({ user, onDone, inviteApiBase }: { user: UserRow; onDone: () => void; inviteApiBase: string }) {
   const router = useRouter();
   const initial = useMemo(
     () => Object.fromEntries(user.memberships.map((m) => [m.tenantId, m.role])) as Record<string, Role>,
@@ -117,7 +118,7 @@ function DrawerBody({ user, onDone }: { user: UserRow; onDone: () => void }) {
   async function handleResend(memberId: string) {
     setResending(true);
     try {
-      const res = await fetch('/api/platform/members/invite/resend', {
+      const res = await fetch(`${inviteApiBase}/invite/resend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ member_id: memberId }),
