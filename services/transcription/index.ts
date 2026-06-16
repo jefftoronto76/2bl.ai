@@ -24,22 +24,22 @@ export type TranscriptionResult = {
   attempts: number;
 };
 
-async function callDeepgram(apiKey: string, body: Uint8Array, contentType: string): Promise<Response> {
+async function callDeepgram(apiKey: string, audioBuffer: ArrayBuffer, contentType: string): Promise<Response> {
   return fetch(DEEPGRAM_URL, {
     method: 'POST',
     headers: {
       Authorization: `Token ${apiKey}`,
       'Content-Type': contentType,
     },
-    body,
+    // slice(0) creates a fresh copy — fetch may transfer/detach the original,
+    // so each call needs its own ArrayBuffer to keep the retry path safe.
+    body: audioBuffer.slice(0),
   });
 }
 
 /**
  * Sends audio to Deepgram and returns the transcript plus metadata.
  *
- * - Converts ArrayBuffer to Node.js Buffer before use — Buffer is not subject
- *   to transfer/detachment, so the same instance is safe to pass to fetch twice.
  * - Retries once on 429 / 5xx (transient errors) with a 1-second delay.
  * - Does not retry on 400 (bad audio) or 401 (invalid key).
  * - Returns empty string when Deepgram transcribes silence / no speech.
@@ -50,13 +50,11 @@ export async function transcribeAudio(
   contentType: string,
   apiKey: string,
 ): Promise<TranscriptionResult> {
-  // Convert once — Node.js Buffer is reusable across fetch calls without detachment.
-  const body = Buffer.from(audioBuffer);
   let attempts = 1;
 
   let dgRes: Response;
   try {
-    dgRes = await callDeepgram(apiKey, body, contentType);
+    dgRes = await callDeepgram(apiKey, audioBuffer, contentType);
   } catch (fetchErr) {
     console.error('[transcription/service] fetch failed', { fetchErr });
     throw fetchErr;
@@ -67,7 +65,7 @@ export async function transcribeAudio(
     await new Promise((r) => setTimeout(r, 1000));
     attempts = 2;
     try {
-      dgRes = await callDeepgram(apiKey, body, contentType);
+      dgRes = await callDeepgram(apiKey, audioBuffer, contentType);
     } catch (fetchErr) {
       console.error('[transcription/service] fetch failed on retry', { fetchErr });
       throw fetchErr;
