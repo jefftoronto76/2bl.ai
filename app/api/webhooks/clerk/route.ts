@@ -140,24 +140,47 @@ export async function POST(req: Request): Promise<NextResponse> {
       console.error('[webhook/clerk] users upsert failed:', usersErr.message)
     }
 
-    // Link any pending invited members row to this Clerk user (email match).
-    // Must run before syncMember so the clerk_id is set on the existing row —
-    // syncMember's upsert then updates it rather than inserting a duplicate.
-    if (email) {
-      await linkInvitedMember(clerkUserId, email)
+    // Extract the invite token written to Clerk unsafeMetadata during sign-up
+    // by the custom OTP flow (signUp.update({ unsafeMetadata: { heirloom_invite_token } })).
+    const inviteToken =
+      ((data.unsafe_metadata as Record<string, unknown> | undefined)
+        ?.heirloom_invite_token as string | undefined) ?? null
+
+    if (inviteToken) {
+      console.log('[webhook/clerk] found heirloom_invite_token in unsafeMetadata', {
+        clerkUserId,
+        token: inviteToken.slice(0, 8) + '…',
+      })
     }
 
-    // Upsert members row for Heirloom tenant
-    const membersResult = await syncMember({
-      clerkUserId,
-      tenantId: HEIRLOOM_TENANT_ID,
-      name: name ?? undefined,
-      email: email ?? undefined,
-      phone: phone ?? undefined,
-    })
+    // Link any pending invited members row to this Clerk user. Primary lookup
+    // is by token (when present in unsafeMetadata); email is the fallback.
+    // Returns true when an invited row was found and stamped — in that case skip
+    // syncMember: the invited row already has the correct clerk_id so the upsert
+    // conflict would fire, but avoiding the extra write is cleaner and prevents
+    // a race where the upsert could clobber fields (e.g. status='invited'→'active'
+    // already set; upsert would write 'active' again which is fine, but source and
+    // used_at would not be set by syncMember). When false, no invited row matched
+    // and syncMember creates a fresh active row as normal.
+    const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken)
 
-    if (!membersResult.ok) {
-      console.error('[webhook/clerk] members sync failed:', membersResult.error)
+    if (linked) {
+      console.log('[webhook/clerk] skipping syncMember — invited row stamped by linkInvitedMember', {
+        clerkUserId,
+      })
+    } else {
+      // Upsert members row for Heirloom tenant (non-invite or fallback path)
+      const membersResult = await syncMember({
+        clerkUserId,
+        tenantId: HEIRLOOM_TENANT_ID,
+        name: name ?? undefined,
+        email: email ?? undefined,
+        phone: phone ?? undefined,
+      })
+
+      if (!membersResult.ok) {
+        console.error('[webhook/clerk] members sync failed:', membersResult.error)
+      }
     }
   }
 
