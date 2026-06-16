@@ -55,12 +55,14 @@ context behind the panel, not a co-equal surface.
 
 | Component | File | Role |
 |-----------|------|------|
-| `HeirloomPage` | `app/heirloom/page.tsx` | Root. Mounts `ChatProvider`, renders `<LandingPage>` with the panel layered over it. |
-| `ChatHero` | `components/shells/membership/ChatHero.tsx` | Panel body: `Sidebar` + header + message area + input. |
-| `ChatHeader` | `components/shells/membership/ChatHeader.tsx` | Panel header — "Your Story" label + Account / Close buttons. |
+| `HeirloomPage` | `app/heirloom/page.tsx` | **Server gate.** Reads `invite_gate_enabled`, validates `?invite=TOKEN`, resolves `isAuthorized` / `invitedName`. Passes props to `<HeirloomApp>`. Must be a server component — DB reads happen here. |
+| `HeirloomApp` | `app/heirloom/HeirloomApp.tsx` | **Client shell root.** Wraps `<ChatProvider>` with the gate/invite props and renders `<HeirloomInner>`. Exists as a separate `'use client'` file because `page.tsx` must stay a server component. |
+| `HeirloomInner` | (inside `HeirloomApp.tsx`) | **Layout compositor.** Renders `<LandingPage>` + backdrop + `<ChatDrawerV2>` + `<ChatHero>`. Calls `useChatStore` — requires being inside `<ChatProvider>`, which is why it is a child component rather than inline in `HeirloomApp`. |
+| `ChatHero` | `components/shells/membership/ChatHero.tsx` | Panel body: `SidebarV2` + header + message area + input. |
+| `ChatHeader` | `components/shells/membership/ChatHeader.tsx` | Panel header — account dropdown + fullscreen toggle + close. |
 | `ChatInput` | `components/shells/membership/ChatInput.tsx` | Auto-growing textarea, Enter-to-send, ArrowUp send button. |
 | `MessageList` | `components/shells/membership/MessageList.tsx` | Renders turns; auto-scrolls to bottom; bouncing-dots typing indicator. |
-| `Sidebar` | `components/shells/membership/Sidebar.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
+| `SidebarV2` | `components/shells/membership/v2/SidebarV2.tsx` | Collapsible nav — New Chat, Recent sessions (signed-in), session load. |
 
 **Store:** `useReducer` in `components/shells/membership/chatStore.tsx` via
 `ChatProvider`. Isolated mode — no `instanceKey`. State includes `messages`,
@@ -68,12 +70,12 @@ context behind the panel, not a co-equal surface.
 `sendMessage` is the shared `useChatTurn().send` wired through
 `ChatEngineAccessors` adapting the reducer.
 
-**Panel geometry** (`app/heirloom/page.tsx`): `position: fixed; top: 0;
-right: 0; h-full; max-w-2xl`. Slides in from the right via
-`translateX(100%)` (closed) → `translateX(0)` (open). A `bg-black/50
-backdrop-blur-sm` backdrop renders only while open. Escape key and
-backdrop click both dispatch `CLOSE_CHAT`. Panel carries `role="dialog"` /
-`aria-modal` / `aria-hidden`.
+**Panel geometry** (`HeirloomInner` in `app/heirloom/HeirloomApp.tsx`):
+`ChatDrawerV2` is `position: fixed; top: 0; right: 0; h-full; max-w-2xl`.
+Slides in from the right via `translateX(100%)` (closed) → `translateX(0)`
+(open). A `bg-black/50 backdrop-blur-sm` backdrop renders only while open.
+Escape key and backdrop click both dispatch `CLOSE_CHAT`. Panel carries
+`role="dialog"` / `aria-modal` / `aria-hidden`.
 
 **Keyboard handling:** `useKeyboardViewport({ active: isChatOpen,
 lockBodyScroll: true })`. Returns `{ keyboardOpen, height }`. While the
@@ -87,6 +89,44 @@ is open.
 Signed-in users also get DB recovery via `GET /api/sessions`; DB wins
 over the local buffer only when `updated_at` on the DB session is strictly
 newer.
+
+**Design decisions — `HeirloomApp.tsx`**
+
+*Server/client split (`page.tsx` → `HeirloomApp.tsx`).* `page.tsx` is a
+server component because the gate logic (reading `tenants.settings`,
+calling `validateMemberToken`) must be DB-resolved server-side. `HeirloomApp.tsx`
+(`'use client'`) is the handoff boundary: the server gate resolves what the
+visitor is authorized to see; the client shell renders it. All future
+server-side gate expansions belong in `page.tsx`; all client-side shell
+chrome belongs in `HeirloomApp.tsx`.
+
+*Two-component structure (`HeirloomApp` + `HeirloomInner`).* `HeirloomApp`
+wraps `<ChatProvider>`. `HeirloomInner` renders the shell chrome (backdrop,
+drawer, landing page). The split is load-bearing: `HeirloomInner` calls
+`useChatStore`, which requires being inside `<ChatProvider>` in the React
+tree. If they were one component, `useChatStore` would throw outside its
+provider context.
+
+*`isFullScreen` is local state, not in the reducer.* State belongs in the
+reducer only when it affects session recovery, persistence, keyboard
+handling, or another concern the store owns. Fullscreen is transient shell
+chrome — losing it on unmount is correct behavior. Move it to the reducer
+if a second panel surface needs to read it.
+
+*Escape handler — why not `useModalA11y`.* `HeirloomInner` registers its
+own `window.addEventListener('keydown', ...)` for Escape → `CLOSE_CHAT`
+rather than routing through `useModalA11y`. `useModalA11y` owns focus-trap
+concerns (initial focus, Tab cycling, focus restore) — a different
+responsibility from shell-level dismiss. The two are intentionally separate
+so they can evolve independently. Layering still works: V2 modals and row
+menus register capture-phase Escape handlers with `stopPropagation`, so a
+single Escape press closes only the innermost layer and `HeirloomInner`'s
+bubble-phase handler never fires while a modal is open.
+
+*Backdrop — not yet extracted.* The `bg-black/50 backdrop-blur-sm` backdrop
+is an inline div rather than a shared `<Backdrop>` primitive. Extraction
+criterion: a second shell needs it. One consumer doesn't justify the
+abstraction.
 
 ---
 
