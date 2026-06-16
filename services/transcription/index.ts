@@ -24,7 +24,7 @@ export type TranscriptionResult = {
   attempts: number;
 };
 
-async function callDeepgram(apiKey: string, body: Buffer, contentType: string): Promise<Response> {
+async function callDeepgram(apiKey: string, body: Uint8Array, contentType: string): Promise<Response> {
   return fetch(DEEPGRAM_URL, {
     method: 'POST',
     headers: {
