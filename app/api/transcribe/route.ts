@@ -1,4 +1,5 @@
 import { getSession } from '@/services/auth';
+import { transcribeAudio } from '@/services/transcription';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
-    console.error('[2bl/transcribe] DEEPGRAM_API_KEY is not set');
+    console.error('[transcribe/route] DEEPGRAM_API_KEY is not set');
     return NextResponse.json({ error: 'Transcription unavailable' }, { status: 503 });
   }
 
@@ -26,36 +27,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No audio provided' }, { status: 400 });
   }
 
+  console.log('[transcribe/route] entry', { size: audio.size, type: audio.type });
+
   const audioBuffer = await audio.arrayBuffer();
+  const contentType = audio.type || 'audio/webm';
 
-  const dgRes = await fetch(
-    'https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Token ${apiKey}`,
-        'Content-Type': audio.type || 'audio/webm',
-      },
-      body: audioBuffer,
-    },
-  );
-
-  if (!dgRes.ok) {
-    const body = await dgRes.text();
-    console.error(`[2bl/transcribe] Deepgram error ${dgRes.status}: ${body}`);
+  try {
+    const text = await transcribeAudio(audioBuffer, contentType, apiKey);
+    return NextResponse.json({ text });
+  } catch {
     return NextResponse.json({ error: 'Transcription failed' }, { status: 502 });
   }
-
-  type DeepgramResponse = {
-    results?: {
-      channels?: Array<{
-        alternatives?: Array<{ transcript?: string }>;
-      }>;
-    };
-  };
-
-  const data = (await dgRes.json()) as DeepgramResponse;
-  const text = data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
-
-  return NextResponse.json({ text });
 }

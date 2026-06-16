@@ -47,11 +47,10 @@ function prettySize(bytes: number): string {
 }
 
 /**
- * POSTs audio to /api/transcribe (Deepgram nova-2) and returns the transcript.
- * If the route is absent or returns an error the caller's catch block logs and
- * leaves the textarea untouched — the composer never breaks.
+ * POSTs audio to /api/transcribe and returns the transcript.
+ * Throws on non-ok responses so the caller can surface the error state.
  */
-async function transcribeAudio(blob: Blob): Promise<string> {
+async function fetchTranscript(blob: Blob): Promise<string> {
   const form = new FormData();
   form.append('audio', blob, 'recording.webm');
   const res = await fetch('/api/transcribe', { method: 'POST', body: form });
@@ -151,21 +150,35 @@ function VoiceBar({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: ()
   );
 }
 
+/* --- Transcribing pill ------------------------------------------------ */
+function TranscribingPill() {
+  return (
+    <div className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-text-muted font-body">
+      <span className="flex-shrink-0 h-3.5 w-3.5 rounded-full border-2 border-accent/30 border-t-accent animate-spin" />
+      Transcribing…
+    </div>
+  );
+}
+
 /* --- Composer --------------------------------------------------------- */
+type TranscribeState = 'idle' | 'transcribing' | 'error' | 'empty';
+
 export function ChatInput() {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [transcribeState, setTranscribeState] = useState<TranscribeState>('idle');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const lastBlobRef = useRef<Blob | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { sendMessage, state, addMediaItem } = useChatStore();
+  const { sendMessage, injectAssistantMessage, state, addMediaItem } = useChatStore();
   const { isMember } = state;
 
   const { upload, isUploading } = useMediaUpload(state.sessionId, null);
@@ -188,6 +201,7 @@ export function ChatInput() {
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     setValue('');
     setAttachments([]);
+    setTranscribeState('idle');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     if (pendingAttachments.length > 0) {
@@ -281,6 +295,7 @@ export function ChatInput() {
   };
 
   const startRecording = async () => {
+    setTranscribeState('idle');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -293,7 +308,7 @@ export function ChatInput() {
       mediaRecorderRef.current = mr;
       setIsRecording(true);
     } catch (err) {
-      console.error('[2bl/chat] microphone unavailable or permission denied', err);
+      console.error('[chat-input] microphone unavailable or permission denied', err);
     }
   };
 
@@ -317,18 +332,48 @@ export function ChatInput() {
     mr.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
       stopStream();
+      lastBlobRef.current = blob;
       setIsRecording(false);
+      setTranscribeState('transcribing');
       try {
-        const text = await transcribeAudio(blob);
+        const text = await fetchTranscript(blob);
         if (text) {
           setValue((v) => (v ? `${v} ` : '') + text);
           requestAnimationFrame(autoResize);
+          setTranscribeState('idle');
+        } else {
+          setTranscribeState('empty');
         }
-      } catch (err) {
-        console.error('[2bl/chat] transcription failed', err);
+      } catch {
+        setTranscribeState('error');
       }
     };
     mr.stop();
+  };
+
+  const handleRetry = async () => {
+    if (!lastBlobRef.current) return;
+    setTranscribeState('transcribing');
+    try {
+      const text = await fetchTranscript(lastBlobRef.current);
+      if (text) {
+        setValue((v) => (v ? `${v} ` : '') + text);
+        requestAnimationFrame(autoResize);
+        setTranscribeState('idle');
+      } else {
+        setTranscribeState('empty');
+      }
+    } catch {
+      setTranscribeState('error');
+    }
+  };
+
+  const handleMicClick = () => {
+    if (!isMember) {
+      injectAssistantMessage('🔒 Voice is a member feature.');
+      return;
+    }
+    void startRecording();
   };
 
   return (
@@ -360,6 +405,8 @@ export function ChatInput() {
 
         {isRecording ? (
           <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
+        ) : transcribeState === 'transcribing' ? (
+          <TranscribingPill />
         ) : (
           <>
             {attachments.length > 0 && (
@@ -419,15 +466,14 @@ export function ChatInput() {
 
               <button
                 type="button"
-                aria-label={isMember ? 'Record voice' : 'Sign in to record voice'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Record voice' : 'Sign in to unlock'}
-                onClick={isMember ? startRecording : undefined}
+                aria-label={isMember ? 'Record voice' : 'Voice is a member feature'}
+                title={isMember ? 'Record voice' : 'Voice is a member feature'}
+                onClick={handleMicClick}
                 className={cn(
                   'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                   isMember
                     ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
+                    : 'text-text-muted opacity-40',
                 )}
               >
                 {isMember ? <Mic size={18} /> : <Lock size={15} />}
@@ -447,6 +493,32 @@ export function ChatInput() {
                 <ArrowUp size={17} />
               </button>
             </div>
+
+            {(transcribeState === 'error' || transcribeState === 'empty') && (
+              <div
+                className="flex items-center gap-2 px-2.5 pb-2 text-xs text-amber-600/90 font-body"
+                role="alert"
+              >
+                <span>
+                  {transcribeState === 'error' ? "Couldn't transcribe —" : 'No speech detected —'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleRetry()}
+                  className="underline underline-offset-2 hover:text-amber-700 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+                >
+                  try again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscribeState('idle')}
+                  className="ml-auto text-text-muted hover:text-text-primary focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  aria-label="Dismiss"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
