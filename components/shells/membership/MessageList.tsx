@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Bot } from 'lucide-react';
+import { Bot, FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+import type { MediaItem } from '@/services/media/types';
 
 interface MessageListProps {
   messages: Message[];
@@ -31,6 +32,56 @@ function DebugPill({ raw }: { raw: string }) {
       <span className="font-mono text-xs text-text-muted opacity-75 break-all">
         {raw}
       </span>
+    </div>
+  );
+}
+
+function MediaIcon({ type }: { type: MediaItem['type'] }) {
+  if (type === 'audio') return <AudioLines size={13} />;
+  if (type === 'image') return <ImageIcon size={13} />;
+  return <FileText size={13} />;
+}
+
+/** Self-contained card for a media item's processing lifecycle.
+ *  Failure state is fully displayed here — does not depend on a guide turn. */
+function MediaCompletionCard({ item }: { item: MediaItem }) {
+  const isPending = item.status === 'pending' || item.status === 'processing';
+  const isReady = item.status === 'ready';
+
+  return (
+    <div className="flex justify-end">
+      <div className="flex items-start gap-2.5 max-w-[75%] rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5">
+        <span className="flex-shrink-0 mt-0.5 text-accent">
+          <MediaIcon type={item.type} />
+        </span>
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <span className="text-[12.5px] font-body text-text-primary truncate leading-tight">
+            {item.original_filename}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {isPending ? (
+              <>
+                <Loader2 size={11} className="text-text-muted animate-spin flex-shrink-0" />
+                <span className="font-mono text-[10.5px] text-text-muted">Processing…</span>
+              </>
+            ) : isReady ? (
+              <>
+                <CheckCircle size={11} className="text-accent flex-shrink-0" />
+                <span className="font-mono text-[10.5px] text-text-muted">
+                  {item.classification ?? 'Ready'}
+                </span>
+              </>
+            ) : (
+              <>
+                <XCircle size={11} className="text-red-400 flex-shrink-0" />
+                <span className="font-mono text-[10.5px] text-red-400">
+                  I wasn&apos;t able to process that file. You can try again from your media gallery.
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -93,7 +144,7 @@ function TypingIndicator() {
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { claimCurrentSession, inviteToken } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems } = useChatStore();
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -193,6 +244,10 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
             </div>
           );
         })}
+        {/* Media processing chips — rendered after conversation messages */}
+        {mediaItems.map((item) => (
+          <MediaCompletionCard key={item.id} item={item} />
+        ))}
         {isLoading && <TypingIndicator />}
         {isError && <ErrorBubble />}
         <div ref={bottomRef} />

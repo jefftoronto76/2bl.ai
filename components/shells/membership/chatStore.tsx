@@ -11,6 +11,8 @@ import React, {
   ReactNode,
 } from 'react';
 import { useAuthUser } from '@/services/auth/client';
+import { createClient } from '@/services/auth/supabase';
+import type { MediaItem } from '@/services/media/types';
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
@@ -116,6 +118,12 @@ interface ChatContextType {
   renameSession: (id: string, title: string) => Promise<void>;
   /** Soft-delete a session (sets status=deleted). Removes from recentSessions. Optimistic. */
   deleteSession: (id: string) => Promise<void>;
+  /** Media items associated with the current chat session. Populated by Realtime
+   *  subscription + catch-up query on session load. */
+  mediaItems: MediaItem[];
+  /** Register a newly-uploaded pending item so the UI can show an uploading chip
+   *  before the background job starts. Upserts by id. */
+  addMediaItem: (item: MediaItem) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -768,6 +776,72 @@ export function ChatProvider({
     }
   }, [recentSessions, newChat]);
 
+  // ── Media items — Realtime subscription + catch-up hydration ──────────────
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+
+  const addMediaItem = useCallback((item: MediaItem) => {
+    setMediaItems(prev => {
+      const idx = prev.findIndex(m => m.id === item.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = item;
+        return next;
+      }
+      return [...prev, item];
+    });
+  }, []);
+
+  // Catch-up: on session load, fetch any items whose Realtime completion event
+  // was missed (tab closed during processing). Runs whenever sessionId changes.
+  useEffect(() => {
+    if (!sessionId || !isSignedIn) return;
+    let cancelled = false;
+    fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
+      .then(r => r.json())
+      .then((data: { items?: MediaItem[] }) => {
+        if (!cancelled && Array.isArray(data.items) && data.items.length > 0) {
+          setMediaItems(prev => {
+            const merged = [...prev];
+            for (const item of data.items!) {
+              const idx = merged.findIndex(m => m.id === item.id);
+              if (idx >= 0) merged[idx] = item;
+              else merged.push(item);
+            }
+            return merged;
+          });
+        }
+      })
+      .catch(err => console.error('[heirloom/chat] media catch-up failed:', err));
+    return () => { cancelled = true; };
+  }, [sessionId, isSignedIn]);
+
+  // Realtime subscription: listen for media_items UPDATE events on this chat.
+  // Requires `supabase_realtime` publication enabled on media_items in Studio.
+  useEffect(() => {
+    if (!sessionId) return;
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`media-${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'media_items',
+          filter: `chat_id=eq.${sessionId}`,
+        },
+        (payload: { new: Record<string, unknown> }) => {
+          const item = payload.new as unknown as MediaItem;
+          if (item.status === 'ready' || item.status === 'failed') {
+            addMediaItem(item);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [sessionId, addMediaItem]);
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
   // isMember derives directly from Clerk — no local state needed.
@@ -783,7 +857,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
     >
       {children}
     </ChatContext.Provider>

@@ -13,6 +13,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { useChatStore } from './chatStore';
+import { useMediaUpload } from '@/services/media/useMediaUpload';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
@@ -164,8 +165,10 @@ export function ChatInput() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { sendMessage, state } = useChatStore();
+  const { sendMessage, state, addMediaItem } = useChatStore();
   const { isMember } = state;
+
+  const { upload, isUploading } = useMediaUpload(state.sessionId, null);
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -174,41 +177,92 @@ export function ChatInput() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
-  const canSend = (value.trim().length > 0 || attachments.length > 0) && !state.isLoading;
+  const canSend = (value.trim().length > 0 || attachments.length > 0) && !state.isLoading && !isUploading;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = value.trim();
-    if ((!trimmed && attachments.length === 0) || state.isLoading) return;
+    if ((!trimmed && attachments.length === 0) || state.isLoading || isUploading) return;
 
-    // TODO(2bl): upload `attachments` to Supabase Storage and pass their refs to
-    // sendMessage so the Anthropic call can attach images as content blocks.
-    // Until sendMessage accepts attachments we inline their names as a marker so
-    // the turn is never silently dropped.
-    const marker = attachments.map((a) => `[${a.file.name}]`).join(' ');
-    const content = [marker, trimmed].filter(Boolean).join(marker && trimmed ? '\n' : '');
-
-    void sendMessage(content);
-
+    // Clear UI immediately so the composer feels responsive while uploads happen.
+    const pendingAttachments = [...attachments];
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     setValue('');
     setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
+    if (pendingAttachments.length > 0) {
+      // Upload each attachment and build a [MEDIA_UPLOAD: ...] acknowledgement
+      // marker for each successful upload. Failures are logged; the text message
+      // still sends so the turn is never silently dropped.
+      const markers: string[] = [];
+      await Promise.all(
+        pendingAttachments.map(async (att) => {
+          const result = await upload(att.file);
+          if (result) {
+            markers.push(`[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`);
+            // Register as pending in the store so MessageList can show a processing chip.
+            addMediaItem({
+              id: result.mediaItemId,
+              tenant_id: '',
+              member_id: '',
+              chat_id: state.sessionId,
+              story_id: null,
+              type: result.type,
+              original_filename: att.file.name,
+              storage_path: '',
+              file_size_bytes: att.file.size,
+              mime_type: att.file.type,
+              status: 'pending',
+              derived_content: null,
+              classification: null,
+              error_message: null,
+              processed_at: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          } else {
+            // Upload failed — include the filename so the guide knows what was attempted.
+            markers.push(`[MEDIA_UPLOAD_FAILED: ${att.file.name}]`);
+          }
+        }),
+      );
+
+      const parts = [...markers, trimmed].filter(Boolean);
+      void sendMessage(parts.join('\n'));
+    } else {
+      void sendMessage(trimmed);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
+  const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50 MB
+
   const addFiles = (list: FileList | null) => {
     if (!list || list.length === 0) return;
-    const next: Attachment[] = Array.from(list).map((file) => ({
-      id: attachmentId(),
-      file,
-      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
-    }));
+    const next: Attachment[] = [];
+    for (const file of Array.from(list)) {
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        console.warn(`[ChatInput] ${file.name} exceeds 50 MB limit — skipped`);
+        continue;
+      }
+      // Reject HEIC on the client side with a visible cue (skipped silently here;
+      // the server also rejects with a user-friendly message if it slips through).
+      if (file.type === 'image/heic' || file.type === 'image/heif' || file.name.toLowerCase().endsWith('.heic')) {
+        console.warn(`[ChatInput] HEIC not supported — skipped: ${file.name}`);
+        continue;
+      }
+      next.push({
+        id: attachmentId(),
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+      });
+    }
     setAttachments((prev) => [...prev, ...next].slice(0, 6)); // cap at 6
   };
 
@@ -285,6 +339,7 @@ export function ChatInput() {
           ref={fileInputRef}
           type="file"
           multiple
+          accept=".m4a,.mp3,.wav,.ogg,.webm,.jpg,.jpeg,.png,.webp,.pdf,.docx,.txt"
           className="hidden"
           onChange={(e) => {
             addFiles(e.target.files);
@@ -294,7 +349,7 @@ export function ChatInput() {
         <input
           ref={imageInputRef}
           type="file"
-          accept="image/*"
+          accept=".jpg,.jpeg,.png,.gif,.webp"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -381,7 +436,7 @@ export function ChatInput() {
                 type="button"
                 aria-label="Send message"
                 disabled={!canSend}
-                onClick={handleSend}
+                onClick={() => void handleSend()}
                 className={cn(
                   'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                   canSend

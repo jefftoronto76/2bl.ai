@@ -25,6 +25,7 @@ import {
   FolderInput,
   FolderMinus,
   Feather,
+  Images,
   LogIn,
   MessageCircle,
   MessageSquare,
@@ -63,6 +64,7 @@ export interface SidebarV2Props {
   storiesDisabled?: boolean;
 
   // Nav actions (New Chat + the conversation list come from the store)
+  onMedia?: () => void;
   onUploads?: () => void;
   onShareHeirloom?: () => void;
   onSearch?: (query: string) => void;
@@ -302,6 +304,7 @@ export function SidebarV2({
   starredConversationIds = [],
   starredStoryIds = [],
   storiesDisabled = false,
+  onMedia,
   onUploads,
   onShareHeirloom,
   onSearch,
@@ -378,6 +381,15 @@ export function SidebarV2({
         >
           <SquarePen size={16} className="flex-shrink-0" />
           {expanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
+        </button>
+        <button
+          type="button"
+          aria-label="Media"
+          onClick={onMedia}
+          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onMedia ? '' : 'opacity-40 pointer-events-none'}`}
+        >
+          <Images size={16} className="flex-shrink-0" />
+          {expanded && <span className="font-body text-sm font-normal truncate">Media</span>}
         </button>
         <button
           type="button"
