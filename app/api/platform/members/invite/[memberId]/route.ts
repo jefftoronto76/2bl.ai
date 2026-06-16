@@ -5,7 +5,7 @@
 
 import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { logEvent, AuditAction } from '@/services/audit'
+import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
 
 interface RouteContext {
   params: Promise<{ memberId: string }>
@@ -15,10 +15,29 @@ export async function DELETE(req: Request, context: RouteContext) {
   const user = await getCurrentUser()
   if (!user) {
     console.warn('[platform/members/invite/delete] 401 — no session')
+    void logAuthEvent({
+      event_type: AuthEventType.ADMIN_ACCESS_FAILED,
+      outcome: 'failure',
+      failure_reason: 'no_session',
+      ip_address: req.headers.get('x-forwarded-for'),
+      user_agent: req.headers.get('user-agent'),
+      correlation_id: req.headers.get('x-correlation-id'),
+      metadata: { path: '/api/platform/members/invite/[memberId]' },
+    })
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   if (!user.isPlatformAdmin) {
     console.warn('[platform/members/invite/delete] 403 — not platform admin', { providerUserId: user.providerUserId })
+    void logAuthEvent({
+      event_type: AuthEventType.ADMIN_ACCESS_FAILED,
+      clerk_user_id: user.providerUserId,
+      outcome: 'failure',
+      failure_reason: 'not_platform_admin',
+      ip_address: req.headers.get('x-forwarded-for'),
+      user_agent: req.headers.get('user-agent'),
+      correlation_id: req.headers.get('x-correlation-id'),
+      metadata: { path: '/api/platform/members/invite/[memberId]' },
+    })
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
