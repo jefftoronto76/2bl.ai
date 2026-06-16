@@ -326,25 +326,23 @@ export function ChatProvider({
     if (sessionId) {
       clearDraft();
       persistCurrent();
-      if (isSignedInRef.current) {
-        const msgs = messagesRef.current.filter(
-          m => !(m.role === 'assistant' && m.content === ''),
-        );
-        if (msgs.length > 0) {
-          setRecentSessions(prev => {
-            if (prev.some(s => s.id === sessionId)) return prev;
-            return [
-              {
-                id: sessionId,
-                title: deriveSessionTitle(null, msgs),
-                updatedAt: new Date().toISOString(),
-                messages: msgs,
-                starred: false,
-              },
-              ...prev,
-            ];
-          });
-        }
+      const msgs = messagesRef.current.filter(
+        m => !(m.role === 'assistant' && m.content === ''),
+      );
+      if (msgs.length > 0) {
+        setRecentSessions(prev => {
+          if (prev.some(s => s.id === sessionId)) return prev;
+          return [
+            {
+              id: sessionId,
+              title: deriveSessionTitle(null, msgs),
+              updatedAt: new Date().toISOString(),
+              messages: msgs,
+              starred: false,
+            },
+            ...prev,
+          ];
+        });
       }
     }
   }, [sessionId, persistCurrent]);
