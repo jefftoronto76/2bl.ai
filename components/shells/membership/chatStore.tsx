@@ -848,6 +848,47 @@ export function ChatProvider({
     return () => { void supabase.removeChannel(channel); };
   }, [sessionId, addMediaItem]);
 
+  // Polling fallback for pending media items: poll the API every 3 s while
+  // any item is still pending or processing. Realtime postgres_changes would
+  // be cleaner but requires RLS SELECT access — since Heirloom authenticates
+  // via Clerk rather than Supabase Auth, auth.uid() is always null and the
+  // subscription silently receives no events. The API route uses the service-
+  // role client so it bypasses RLS. The effect re-runs whenever mediaItems
+  // changes, creating a self-regulating loop that stops automatically once
+  // all items are ready or failed.
+  useEffect(() => {
+    if (!sessionId || !isSignedIn) return;
+    const hasPending = mediaItems.some(
+      (m) => m.status === 'pending' || m.status === 'processing',
+    );
+    if (!hasPending) return;
+
+    const timer = setTimeout(() => {
+      fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
+        .then((r) => r.json())
+        .then((data: { items?: MediaItem[] }) => {
+          if (!Array.isArray(data.items) || data.items.length === 0) return;
+          setMediaItems((prev) => {
+            const merged = [...prev];
+            for (const item of data.items!) {
+              const idx = merged.findIndex((m) => m.id === item.id);
+              if (idx >= 0) {
+                merged[idx] = { localPreviewUrl: merged[idx].localPreviewUrl, ...item };
+              } else {
+                merged.push(item);
+              }
+            }
+            return merged;
+          });
+        })
+        .catch((err) =>
+          console.error('[heirloom/chat] media status poll failed:', err),
+        );
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [sessionId, isSignedIn, mediaItems]);
+
   // The context state preserves the historical ChatState shape: conversation
   // fields are sourced from the session, shell fields from the reducer.
   // isMember derives directly from Clerk — no local state needed.
