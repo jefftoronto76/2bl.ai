@@ -26,6 +26,11 @@ export const AuditAction = {
   MEDIA_ITEM_PROCESSING: 'media.item.processing',
   MEDIA_ITEM_PROCESSED: 'media.item.processed',
   MEDIA_ITEM_FAILED: 'media.item.failed',
+  // Transcription
+  TRANSCRIPTION_REQUESTED: 'transcription.requested',
+  TRANSCRIPTION_SUCCEEDED: 'transcription.succeeded',
+  TRANSCRIPTION_EMPTY: 'transcription.empty',
+  TRANSCRIPTION_FAILED: 'transcription.failed',
   // Members
   MEMBER_CLAIM: 'member.claim',
   MEMBER_ROLE_UPDATED: 'member.role_updated',
