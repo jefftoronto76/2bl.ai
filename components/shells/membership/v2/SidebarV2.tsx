@@ -54,8 +54,10 @@ export interface SidebarV2Props {
   searchThreshold?: number;
   /** Whether Conversations starts expanded. Default true. */
   conversationsDefaultOpen?: boolean;
-  /** IDs of starred conversations (drives the Star/Unstar menu label). */
+  /** IDs of starred conversations (drives the Star/Unstar menu label + rest-state marker). */
   starredConversationIds?: string[];
+  /** IDs of starred stories (drives the Star/Unstar menu label + rest-state marker). */
+  starredStoryIds?: string[];
   /** Render the Stories section inert: actions disabled, "soon" tag on the
    *  header. The section stays visible. Default false. */
   storiesDisabled?: boolean;
@@ -210,13 +212,13 @@ function RowMenu({
             }}
             className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               it.danger
-                ? 'text-amber-400 hover:bg-amber-400/10'
+                ? 'text-[#E58D80] hover:bg-[#E58D80]/10'
                 : 'text-text-primary hover:bg-text-primary/[0.08]'
             }`}
           >
             <it.icon
               size={16}
-              className={it.danger ? 'text-amber-400' : 'text-text-muted'}
+              className={it.danger ? 'text-[#E58D80]' : 'text-text-muted'}
             />
             {it.key === 'star' && starred ? 'Unstar' : it.label}
           </button>
@@ -298,6 +300,7 @@ export function SidebarV2({
   searchThreshold = 8,
   conversationsDefaultOpen = true,
   starredConversationIds = [],
+  starredStoryIds = [],
   storiesDisabled = false,
   onUploads,
   onShareHeirloom,
@@ -458,17 +461,30 @@ export function SidebarV2({
                         </button>
                       )}
                       {onRowAction && (
-                        <button
-                          type="button"
-                          aria-label="Conversation options"
-                          aria-expanded={isMenuOpen}
-                          onClick={(e) => toggleMenu(id, e)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}
-                        >
-                          <MoreVertical size={15} />
-                        </button>
+                        // One 28×28 slot: star marker at rest, kebab on hover.
+                        // Both fill the same absolute box — no layout shift.
+                        <div className="relative flex-shrink-0 w-7 h-7">
+                          {starredConversationIds.includes(session.id) && (
+                            <span
+                              className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
+                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                              }`}
+                            >
+                              <Star size={13} fill="currentColor" />
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            aria-label="Conversation options"
+                            aria-expanded={isMenuOpen}
+                            onClick={(e) => toggleMenu(id, e)}
+                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            }`}
+                          >
+                            <MoreVertical size={15} />
+                          </button>
+                        </div>
                       )}
                       <RowMenu
                         open={isMenuOpen}
@@ -573,21 +589,34 @@ export function SidebarV2({
                       </button>
                     )}
                     {onRowAction && !storiesDisabled && (
-                      <button
-                        type="button"
-                        aria-label="Story options"
-                        aria-expanded={isMenuOpen}
-                        onClick={(e) => toggleMenu(id, e)}
-                        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        <MoreVertical size={15} />
-                      </button>
+                      // One 28×28 slot: star marker at rest, kebab on hover.
+                      <div className="relative flex-shrink-0 w-7 h-7">
+                        {starredStoryIds.includes(story.id) && (
+                          <span
+                            className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
+                              isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                            }`}
+                          >
+                            <Star size={13} fill="currentColor" />
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          aria-label="Story options"
+                          aria-expanded={isMenuOpen}
+                          onClick={(e) => toggleMenu(id, e)}
+                          className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                        >
+                          <MoreVertical size={15} />
+                        </button>
+                      </div>
                     )}
                     <RowMenu
                       open={isMenuOpen}
                       anchorRect={menuRect}
+                      starred={starredStoryIds.includes(story.id)}
                       onAction={(action) => onRowAction?.('story', story.id, action)}
                       onClose={closeMenu}
                     />

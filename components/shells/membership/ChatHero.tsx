@@ -4,6 +4,7 @@ import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
+import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
@@ -65,6 +66,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   // Kebab action state
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    target: RowTarget;
+    id: string;
+    title?: string;
+  } | null>(null);
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
@@ -90,6 +96,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [renameSession, showToast]);
 
   const handleRowAction = useCallback((target: RowTarget, id: string, action: RowAction) => {
+    // Delete always opens the confirmation dialog, regardless of target.
+    if (action === 'delete') {
+      const title =
+        target === 'conversation'
+          ? recentSessions.find(s => s.id === id)?.title
+          : stories.find(s => s.id === id)?.name;
+      setPendingDelete({ target, id, title });
+      return;
+    }
     // Story actions and chapter/invite actions are deferred — no-op
     if (target !== 'conversation') return;
     switch (action) {
@@ -102,13 +117,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       case 'rename':
         setRenamingId(id);
         break;
-      case 'delete':
-        void deleteSession(id);
-        showToast('Conversation deleted');
-        break;
       // moveToChapter, removeFromChapter, invite: deferred — deliberate no-op
     }
-  }, [recentSessions, starSession, deleteSession, showToast]);
+  }, [recentSessions, stories, starSession, showToast]);
 
   const handleCreateStory = (name: string, description: string) => {
     setStories((prev) => [
@@ -176,11 +187,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       </div>
 
       {/* absolute inset-0 — resolves to the drawer's relative body (this
-          section is static), so the modal overlays the whole drawer. */}
+          section is static), so modals overlay the whole drawer. */}
       <BeginStoryModal
         open={beginStoryOpen}
         onClose={() => setBeginStoryOpen(false)}
         onCreate={handleCreateStory}
+      />
+      <ConfirmDeleteModal
+        item={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          void deleteSession(pendingDelete.id);
+          showToast('Deleted');
+          setPendingDelete(null);
+        }}
       />
 
       {/* Kebab action confirmation toast — fixed bottom-center, auto-dismiss 2.2s */}

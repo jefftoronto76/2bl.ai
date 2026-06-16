@@ -45,11 +45,7 @@
   --font-display: var(--font-heirloom-serif);
   --font-serif:   var(--font-heirloom-serif);
   --font-body:    var(--font-heirloom-sans);
-  /* No next/font mono is loaded for Heirloom; without this the Tailwind
-     `font-mono` utility resolves an undefined var and silently inherits the
-     body font. The system mono stack matches the V2 design preview (Tailwind
-     CDN default) at zero download cost. */
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-mono: var(--font-heirloom-mono);
 }
 
 /* Heirloom gradient + pattern utilities. */
@@ -83,5 +79,21 @@
 /* Search input text inside the open country code dropdown */
 .cl-selectSearchInput__countryCode {
   color: rgb(var(--hl-modal-ink));
+}
+
+/* ── Modal / overlay animations ──────────────────────────────────────────── */
+@keyframes hl-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hl-modal-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.hl-animate-fade {
+  animation: hl-fade-in 0.2s ease both;
+}
+.hl-animate-modal {
+  animation: hl-modal-in 0.26s cubic-bezier(.22, 1, .36, 1) both;
 }
 
