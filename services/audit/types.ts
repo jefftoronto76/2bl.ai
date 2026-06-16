@@ -27,6 +27,8 @@ export const AuditAction = {
   MEMBER_ROLE_UPDATED: 'member.role_updated',
   MEMBER_STATUS_UPDATED: 'member.status_updated',
   MEMBER_INVITE_CREATED: 'member.invite_created',
+  MEMBER_INVITE_RESENT: 'member.invite_resent',
+  MEMBER_INVITE_REVOKED: 'member.invite_revoked',
   MEMBER_INVITE_ACCEPTED: 'member.invite_accepted',
   MEMBER_HARD_DELETED: 'user.hard_deleted',
 } as const

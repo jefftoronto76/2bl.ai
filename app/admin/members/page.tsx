@@ -112,7 +112,7 @@ export default async function MembersPage() {
       {error ? (
         <Text variant="muted">Unable to load members.</Text>
       ) : (
-        <MembersList users={allUsers} tenants={tenants} currentTenantId={authCtx.tenant_id} />
+        <MembersList users={allUsers} tenants={tenants} currentTenantId={authCtx.tenant_id} inviteApiBase="/api/admin/members" />
       )}
     </Stack>
   );

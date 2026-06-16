@@ -7,11 +7,18 @@
 import { getCurrentUser } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMemberInvite } from '@/services/members'
+import { logEvent, AuditAction } from '@/services/audit'
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
+  if (!user) {
+    console.warn('[platform/members/invite] 401 — no session')
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!user.isPlatformAdmin) {
+    console.warn('[platform/members/invite] 403 — not platform admin', { providerUserId: user.providerUserId })
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   let body: { tenant_id?: string; invited_name?: string | null; email?: string | null; phone?: string | null; auto_open?: boolean; primer?: string | null }
   try {
@@ -24,6 +31,16 @@ export async function POST(req: Request) {
   if (!tenant_id) {
     return Response.json({ error: 'tenant_id is required' }, { status: 400 })
   }
+
+  console.log('[platform/members/invite] POST entry', {
+    providerUserId: user.providerUserId,
+    tenant_id,
+    hasEmail: !!email,
+    hasPhone: !!phone,
+    hasName: !!invited_name,
+    autoOpen: auto_open === true,
+    hasPrimer: !!(primer && String(primer).trim()),
+  })
 
   const supabase = getAdminClient()
 
@@ -60,6 +77,17 @@ export async function POST(req: Request) {
   )
 
   if (!result.ok) {
+    console.error('[platform/members/invite] createMemberInvite failed:', result.error, { providerUserId: user.providerUserId, tenant_id })
+    void logEvent({
+      action: AuditAction.MEMBER_INVITE_CREATED,
+      tenant_id,
+      actor_id: resolvedActorId,
+      actor_type: 'user',
+      clerk_user_id: user.providerUserId,
+      outcome: 'failure',
+      correlation_id: req.headers.get('x-correlation-id'),
+      metadata: { error: result.error },
+    })
     return Response.json({ error: result.error }, { status: result.status })
   }
 
@@ -67,6 +95,8 @@ export async function POST(req: Request) {
   const inviteUrl = tenantDomain
     ? `https://${tenantDomain}?invite=${token}`
     : null
+
+  console.log('[platform/members/invite] success', { providerUserId: user.providerUserId, tenant_id, memberId, hasInviteUrl: !!inviteUrl })
 
   return Response.json({ token, member_id: memberId, invite_url: inviteUrl }, { status: 201 })
 }

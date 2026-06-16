@@ -45,9 +45,10 @@ interface MembersListProps {
   users: UserRow[];
   tenants: TenantOption[];
   currentTenantId?: string;
+  inviteApiBase?: string;
 }
 
-export function MembersList({ users, tenants, currentTenantId }: MembersListProps) {
+export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '/api/platform/members' }: MembersListProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -172,7 +173,7 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
     try {
       const body: Record<string, unknown> = {};
       if (reason) body.reason = reason;
-      const res = await fetch(`/api/platform/members/invite/${memberId}`, {
+      const res = await fetch(`${inviteApiBase}/invite/${memberId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -195,7 +196,7 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
   // Regenerates the invite token (also promotes waitlist → invited).
   async function resendInvite(memberId: string) {
     try {
-      const res = await fetch('/api/platform/members/invite/resend', {
+      const res = await fetch(`${inviteApiBase}/invite/resend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ member_id: memberId }),
@@ -417,7 +418,7 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
             }))}
           />
         </Group>
-        <InviteMemberModal tenants={tenants} currentTenantId={currentTenantId} />
+        <InviteMemberModal tenants={tenants} currentTenantId={currentTenantId} inviteEndpoint={`${inviteApiBase}/invite`} />
       </Group>
 
       {/* Bulk action bar */}
@@ -672,6 +673,7 @@ export function MembersList({ users, tenants, currentTenantId }: MembersListProp
         user={detailUser}
         opened={detailUser !== null}
         onClose={() => setDetailUser(null)}
+        inviteApiBase={inviteApiBase}
       />
 
       {/* Soft-delete confirmation modal */}

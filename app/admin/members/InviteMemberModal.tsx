@@ -17,7 +17,15 @@ import type { TenantOption } from './types';
  * After a successful POST the modal switches to a success view showing the invite URL
  * with a copy button. The admin copies the link and shares it manually.
  */
-export function InviteMemberModal({ tenants, currentTenantId }: { tenants: TenantOption[]; currentTenantId?: string }) {
+export function InviteMemberModal({
+  tenants,
+  currentTenantId,
+  inviteEndpoint = '/api/platform/members/invite',
+}: {
+  tenants: TenantOption[]
+  currentTenantId?: string
+  inviteEndpoint?: string
+}) {
   const router = useRouter();
   const [opened, setOpened] = useState(false);
   const [invitedName, setInvitedName] = useState('');
@@ -96,7 +104,7 @@ export function InviteMemberModal({ tenants, currentTenantId }: { tenants: Tenan
       const primerTrimmed = primer.trim();
       if (primerTrimmed) payload.primer = primerTrimmed;
 
-      const res = await fetch('/api/platform/members/invite', {
+      const res = await fetch(inviteEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
