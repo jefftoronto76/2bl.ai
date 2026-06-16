@@ -1,16 +1,14 @@
 // POST /api/webhooks/media-process
 // Supabase Database Webhook receiver for media_items INSERT.
-// Verifies the HMAC-SHA256 signature, checks idempotency, then delegates
+// Verifies the shared-secret header, checks idempotency, then delegates
 // to services/media/processor.ts for the full job lifecycle.
 //
 // To test locally / on preview without waiting for a real Supabase INSERT:
-// 1. Generate HMAC:
-//    echo -n '<json-payload>' | openssl dgst -sha256 -hmac '<SUPABASE_WEBHOOK_SECRET>'
-// 2. curl -X POST https://{preview-url}/api/webhooks/media-process \
-//      -H "Content-Type: application/json" \
-//      -H "X-Supabase-Signature: sha256=<hex-digest>" \
-//      -d '{"type":"INSERT","table":"media_items","schema":"public","record":{...},"old_record":null}'
-//    Replace {...} with a real media_items row at status=pending.
+// curl -X POST https://{preview-url}/api/webhooks/media-process \
+//   -H "Content-Type: application/json" \
+//   -H "x-supabase-signature: <SUPABASE_WEBHOOK_SECRET>" \
+//   -d '{"type":"INSERT","table":"media_items","schema":"public","record":{...},"old_record":null}'
+// Replace {...} with a real media_items row at status=pending.
 
 import { timingSafeEqual } from 'crypto'
 import { processMediaItem } from '@/services/media/processor'
@@ -27,44 +25,28 @@ interface SupabaseWebhookPayload {
   old_record: Record<string, unknown> | null
 }
 
-async function verifySignature(rawBody: string, signature: string): Promise<boolean> {
+// Supabase Database Webhooks (pg_net) send the secret as a static header value,
+// not as an HMAC digest. Compare directly with constant-time equality.
+function verifySignature(signature: string): boolean {
   const secret = process.env.SUPABASE_WEBHOOK_SECRET
   if (!secret) {
     console.error('[media-process] SUPABASE_WEBHOOK_SECRET is not set')
     return false
   }
-
-  // Signature arrives as "sha256=<hex>" from Supabase
-  const hexDigest = signature.startsWith('sha256=') ? signature.slice(7) : signature
-
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-
-  const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody))
-  const expected = Buffer.from(mac).toString('hex')
-  const actual = hexDigest
-
-  // Constant-time comparison to prevent timing attacks
-  if (expected.length !== actual.length) return false
-  const expectedBuf = Buffer.from(expected, 'hex')
-  const actualBuf = Buffer.from(actual, 'hex')
-  if (expectedBuf.length !== actualBuf.length) return false
-  return timingSafeEqual(expectedBuf, actualBuf)
+  try {
+    const secretBuf = Buffer.from(secret)
+    const sigBuf = Buffer.from(signature)
+    if (secretBuf.length !== sigBuf.length) return false
+    return timingSafeEqual(secretBuf, sigBuf)
+  } catch {
+    return false
+  }
 }
 
 export async function POST(req: Request) {
-  // Read raw body BEFORE parsing JSON — signature verification requires the
-  // original bytes, not a re-serialized object.
-  const rawBody = await req.text()
   const signature = req.headers.get('x-supabase-signature') ?? ''
 
-  const valid = await verifySignature(rawBody, signature)
+  const valid = verifySignature(signature)
   if (!valid) {
     console.error('[media-process] signature verification failed')
     return Response.json({ error: 'Invalid signature' }, { status: 401 })
@@ -72,6 +54,7 @@ export async function POST(req: Request) {
 
   let payload: SupabaseWebhookPayload
   try {
+    const rawBody = await req.text()
     payload = JSON.parse(rawBody) as SupabaseWebhookPayload
   } catch {
     return Response.json({ error: 'Invalid JSON payload' }, { status: 400 })
