@@ -133,18 +133,30 @@ export async function validateMemberToken(
 
 /**
  * Called by the Clerk user.created webhook to link a newly-signed-up user to
- * their pending invited members row. Matches by email (case-insensitive).
- * No-ops when no matching invited row is found (sign-up without an invite).
+ * their pending invited members row.
+ *
+ * Lookup order:
+ *  1. Token (primary) — looks up the invited row by token from Clerk
+ *     unsafeMetadata. Reliable even when the invite was created without an email
+ *     or when the user signs up with a different email.
+ *  2. Email (fallback) — case-insensitive match, used when no token is present
+ *     (e.g. old invite flow without unsafeMetadata, or GateView sign-up via the
+ *     prebuilt Clerk modal which bypasses the custom OTP flow).
+ *
+ * Returns true when an invited row was found and stamped (caller should skip
+ * syncMember to avoid inserting a duplicate active row). Returns false when no
+ * invited row was found — caller proceeds with syncMember as normal.
  */
 export async function linkInvitedMember(
   clerkId: string,
   email: string,
-): Promise<void> {
-  console.log('[members] linkInvitedMember — called', { clerkId, email })
+  token?: string | null,
+): Promise<boolean> {
+  console.log('[members] linkInvitedMember — called', { clerkId, email, hasToken: !!token })
 
-  if (!email) {
-    console.log('[members] linkInvitedMember — EXIT: no email provided')
-    return
+  if (!email && !token) {
+    console.log('[members] linkInvitedMember — EXIT: no email or token provided')
+    return false
   }
 
   const supabase = getAdminClient()
@@ -153,7 +165,7 @@ export async function linkInvitedMember(
   // before the first sign-in write — create it if missing).
   const { data: userRow, error: userErr } = await supabase
     .from('users')
-    .upsert({ clerk_id: clerkId, email: email.toLowerCase() }, { onConflict: 'clerk_id' })
+    .upsert({ clerk_id: clerkId, email: email?.toLowerCase() ?? null }, { onConflict: 'clerk_id' })
     .select('id')
     .single()
 
@@ -163,42 +175,87 @@ export async function linkInvitedMember(
       email,
       error: userErr?.message,
     })
-    return
+    return false
   }
 
   const userId = (userRow as { id: string }).id
   console.log('[members] linkInvitedMember — resolved users.id', { clerkId, userId })
 
-  // Find any invited row matching this email that hasn't been used yet.
-  const { data: invitedRow, error: findErr } = await supabase
-    .from('members')
-    .select('id, tenant_id')
-    .ilike('email', email)
-    .eq('status', 'invited')
-    .is('used_at', null)
-    .maybeSingle()
+  // Step 1: token-based lookup (primary). Token is unique — no .ilike needed.
+  let invitedRow: { id: string; tenant_id: string } | null = null
 
-  if (findErr) {
-    console.error('[members] linkInvitedMember — EXIT: find query failed', {
-      clerkId,
-      email,
-      error: findErr.message,
-    })
-    return
+  if (token) {
+    const { data: tokenRow, error: tokenErr } = await supabase
+      .from('members')
+      .select('id, tenant_id')
+      .eq('token', token)
+      .eq('status', 'invited')
+      .is('used_at', null)
+      .maybeSingle()
+
+    if (tokenErr) {
+      console.error('[members] linkInvitedMember — token lookup failed (falling back to email)', {
+        clerkId,
+        error: tokenErr.message,
+      })
+    } else if (tokenRow) {
+      console.log('[members] linkInvitedMember — found invited row via token', {
+        clerkId,
+        memberId: tokenRow.id,
+        tenantId: tokenRow.tenant_id,
+      })
+      invitedRow = tokenRow as { id: string; tenant_id: string }
+    } else {
+      console.log('[members] linkInvitedMember — token not found or already used, trying email fallback', {
+        clerkId,
+        token: token.slice(0, 8) + '…',
+      })
+    }
+  }
+
+  // Step 2: email-based fallback (used when no token, or token lookup missed).
+  if (!invitedRow && email) {
+    const { data: emailRow, error: findErr } = await supabase
+      .from('members')
+      .select('id, tenant_id')
+      .ilike('email', email)
+      .eq('status', 'invited')
+      .is('used_at', null)
+      .maybeSingle()
+
+    if (findErr) {
+      console.error('[members] linkInvitedMember — EXIT: email find query failed', {
+        clerkId,
+        email,
+        error: findErr.message,
+      })
+      return false
+    }
+
+    if (emailRow) {
+      console.log('[members] linkInvitedMember — found invited row via email', {
+        clerkId,
+        memberId: emailRow.id,
+        tenantId: emailRow.tenant_id,
+      })
+      invitedRow = emailRow as { id: string; tenant_id: string }
+    }
   }
 
   if (!invitedRow) {
-    console.log('[members] linkInvitedMember — EXIT: no matching invited row (no invite or email mismatch)', {
+    console.log('[members] linkInvitedMember — EXIT: no matching invited row (no invite, email mismatch, or token used)', {
       clerkId,
       email,
+      hadToken: !!token,
     })
-    return
+    return false
   }
 
-  const memberId = (invitedRow as { id: string; tenant_id: string }).id
-  const tenantId = (invitedRow as { id: string; tenant_id: string }).tenant_id
-  console.log('[members] linkInvitedMember — found invited row, stamping', { clerkId, memberId, tenantId })
+  const memberId = invitedRow.id
+  const tenantId = invitedRow.tenant_id
+  console.log('[members] linkInvitedMember — stamping invited row', { clerkId, memberId, tenantId })
 
+  const now = new Date().toISOString()
   const { error: updateErr } = await supabase
     .from('members')
     .update({
@@ -206,8 +263,8 @@ export async function linkInvitedMember(
       user_id: userId,
       status: 'active',
       source: 'invite',
-      used_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      used_at: now,
+      updated_at: now,
     })
     .eq('id', memberId)
 
@@ -217,14 +274,16 @@ export async function linkInvitedMember(
       memberId,
       error: updateErr.message,
     })
-    return
+    return false
   }
 
   console.log('[members] linkInvitedMember — SUCCESS: stamped invited row', {
     clerk_id: clerkId,
     member_id: memberId,
     tenant_id: tenantId,
+    lookup_method: token && invitedRow ? 'token' : 'email',
   })
+  return true
 }
 
 /**

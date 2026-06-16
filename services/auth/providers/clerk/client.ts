@@ -74,6 +74,11 @@ export interface AuthFlowContact {
    *  profile is never overwritten from this flow. */
   firstName?: string
   lastName?: string
+  /** Invite token from the URL (?invite=TOKEN). Written to Clerk unsafeMetadata
+   *  on the sign-up path so the user.created webhook can look up the invited
+   *  members row directly by token instead of relying on email match. Non-fatal
+   *  on failure — same pattern as the name update. Sign-in path: ignored. */
+  inviteToken?: string | null
 }
 
 export type SendCodeResult =
@@ -163,6 +168,29 @@ export function useAuthFlowAdapter(): {
             metadata: { auth_surface: 'custom_otp', step: 'signUp_update_name_threw', contactType: type, code: extractClerkErrorCode(e) } })
         }
       }
+      // Write the invite token to Clerk unsafeMetadata so the user.created
+      // webhook can look up the invited members row directly by token. Non-fatal
+      // by design — a metadata failure never blocks the sign-up itself.
+      if (contact.inviteToken) {
+        try {
+          const { error: tokenErr } = await signUp.update({
+            unsafeMetadata: { heirloom_invite_token: contact.inviteToken },
+          })
+          if (tokenErr) {
+            logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+              failure_reason: extractErrorMessage(tokenErr),
+              metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type, code: extractClerkErrorCode(tokenErr) } })
+          } else {
+            logAuthStep({ event_type: 'sign_up', outcome: 'success',
+              metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type } })
+          }
+        } catch (e: unknown) {
+          logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+            failure_reason: extractErrorMessage(e),
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token_threw', contactType: type, code: extractClerkErrorCode(e) } })
+        }
+      }
+
       const { error: sendErr } =
         type === 'email'
           ? await signUp.verifications.sendEmailCode()

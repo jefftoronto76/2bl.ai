@@ -106,6 +106,10 @@ interface ChatContextType {
   hasInviteToken: boolean;
   /** True when the signed-in member has role 'admin' or 'owner' on this tenant. */
   isAdmin: boolean;
+  /** Raw invite token from the URL — present only when the visitor arrived via
+   *  an unused invite link. Null after sign-in (consumed). Passed to
+   *  MagicLinkCard so it can write it to Clerk unsafeMetadata on sign-up. */
+  inviteToken: string | null;
   /** Toggle the starred flag for a session. Optimistic — reverts on API failure. */
   starSession: (id: string) => Promise<void>;
   /** Rename a session. No-op on empty/whitespace title. Optimistic — reverts on failure. */
@@ -758,7 +762,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, starSession, renameSession, deleteSession }}
+      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession }}
     >
       {children}
     </ChatContext.Provider>
