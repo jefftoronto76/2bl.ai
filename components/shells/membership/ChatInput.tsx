@@ -214,7 +214,11 @@ export function ChatInput() {
           const result = await upload(att.file);
           if (result) {
             markers.push(`[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`);
-            // Register as pending in the store so MessageList can show a processing chip.
+            // Fresh object URL for image preview — att.previewUrl was already
+            // revoked above, but the File is still in memory so we can re-create.
+            const localPreviewUrl = att.file.type.startsWith('image/')
+              ? URL.createObjectURL(att.file)
+              : undefined;
             addMediaItem({
               id: result.mediaItemId,
               tenant_id: '',
@@ -233,6 +237,7 @@ export function ChatInput() {
               processed_at: null,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
+              localPreviewUrl,
             });
           } else {
             // Upload failed — include the filename so the guide knows what was attempted.
