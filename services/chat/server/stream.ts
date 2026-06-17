@@ -113,7 +113,7 @@ const MEDIA_UPLOAD_RE = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]
  * Non-image markers are stripped from the text and the filename is left as context.
  * Degrades gracefully: if the URL fetch fails, the text marker is left in place.
  */
-async function resolveMediaBlocks(
+export async function resolveMediaBlocks(
   messages: ChatMessage[],
   tenantId: string | null,
 ): Promise<Array<ChatMessage | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> }>> {
