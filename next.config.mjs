@@ -1,3 +1,5 @@
+import withSerwist from '@serwist/next';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // mammoth uses Node.js APIs that must not be bundled
@@ -11,6 +13,12 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
-}
+};
 
-export default nextConfig
+export default withSerwist({
+  swSrc: 'app/sw.ts',
+  swDest: 'public/sw.js',
+  // Disabled in development — service workers interfere with Next.js HMR.
+  // PWA behavior is only testable via a production build on heirloom.2bl.ai.
+  disable: process.env.NODE_ENV === 'development',
+})(nextConfig);
