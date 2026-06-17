@@ -40,6 +40,14 @@ export const AuditAction = {
   MEMBER_INVITE_REVOKED: 'member.invite_revoked',
   MEMBER_INVITE_ACCEPTED: 'member.invite_accepted',
   MEMBER_HARD_DELETED: 'user.hard_deleted',
+  // PWA lifecycle
+  PWA_SW_REGISTERED: 'pwa.sw_registered',
+  PWA_INSTALL_PROMPTED: 'pwa.install_prompted',
+  PWA_INSTALLED: 'pwa.installed',
+  PWA_PUSH_PROMPTED: 'pwa.push_prompted',
+  PWA_PUSH_GRANTED: 'pwa.push_granted',
+  PWA_PUSH_DENIED: 'pwa.push_denied',
+  PWA_SUBSCRIPTION_CREATED: 'pwa.subscription_created',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
