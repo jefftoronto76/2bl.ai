@@ -8,3 +8,7 @@ tsconfig.tsbuildinfo
 # macOS
 .DS_Store
 tsconfig.sw.tsbuildinfo
+
+# Serwist build output — generated at build time, not committed
+public/sw.js
+public/sw.js.map
