@@ -39,6 +39,11 @@ export const metadata: Metadata = {
     description:
       'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
   },
+  // Next.js injects <link rel="manifest"> automatically from app/manifest.ts.
+  // The apple-touch-icon is not injected automatically and must be declared here.
+  icons: {
+    apple: '/heirloom/icons/heirloom-180-apple-touch.png',
+  },
 };
 
 export default function HeirloomLayout({ children }: { children: React.ReactNode }) {
