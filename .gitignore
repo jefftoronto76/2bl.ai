@@ -7,3 +7,4 @@ tsconfig.tsbuildinfo
 
 # macOS
 .DS_Store
+tsconfig.sw.tsbuildinfo
