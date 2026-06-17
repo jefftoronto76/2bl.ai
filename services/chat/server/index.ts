@@ -98,6 +98,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       config,
       system: systemPrompt,
       messages: conversationMessages,
+      tenantId,
       onFinish: async ({ text, usage }) => {
         await handleSessionFinish({ sessionId, text, usage, visitorText: lastVisitorText })
       },

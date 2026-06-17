@@ -115,6 +115,7 @@ const MEDIA_UPLOAD_RE = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]
  */
 async function resolveMediaBlocks(
   messages: ChatMessage[],
+  tenantId: string | null,
 ): Promise<Array<ChatMessage | { role: 'user'; content: Array<{ type: 'text'; text: string } | { type: 'image'; image: string }> }>> {
   // Find the last user message index
   const lastUserIdx = [...messages.entries()].reduce<number>(
@@ -148,12 +149,15 @@ async function resolveMediaBlocks(
   await Promise.all(
     imageMarkers.map(async (mk) => {
       try {
-        // Look up the actual storage_path from the media_items table
-        const { data: item } = await supabase
+        // Look up the actual storage_path from the media_items table.
+        // Scope by tenant_id so the service-role client cannot be used to
+        // resolve media belonging to a different tenant.
+        let query = supabase
           .from('media_items')
           .select('storage_path')
           .eq('id', mk.mediaItemId)
-          .maybeSingle()
+        if (tenantId) query = query.eq('tenant_id', tenantId)
+        const { data: item } = await query.maybeSingle()
 
         if (!item?.storage_path) {
           console.warn('[chat/stream] no storage_path for media_item', mk.mediaItemId)
@@ -196,6 +200,7 @@ export interface RunChatStreamParams {
   config: ModelConfig
   system: string
   messages: ChatMessage[]
+  tenantId?: string | null
   onFinish?: (args: { text: string; usage: TokenUsage | null }) => Promise<void> | void
 }
 
@@ -205,11 +210,11 @@ export interface RunChatStreamParams {
  * stream completes; its argument normalizes the SDK usage shape to TokenUsage.
  */
 export async function runChatStream(params: RunChatStreamParams): Promise<Response> {
-  const { config, system, messages, onFinish } = params
+  const { config, system, messages, tenantId = null, onFinish } = params
 
   // Resolve image media blocks before calling the model. Degrades to plain text
   // on any error so the stream is never blocked by a storage lookup failure.
-  const enrichedMessages = await resolveMediaBlocks(messages).catch((err) => {
+  const enrichedMessages = await resolveMediaBlocks(messages, tenantId).catch((err) => {
     console.error('[chat/stream] resolveMediaBlocks failed — falling back to plain text:', err)
     return messages
   })

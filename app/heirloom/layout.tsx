@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Cormorant_Garamond, DM_Mono, DM_Sans } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/react';
 import './globals.css';
 
 const serif = Cormorant_Garamond({
@@ -54,6 +55,7 @@ export default function HeirloomLayout({ children }: { children: React.ReactNode
   return (
     <div data-brand="heirloom" className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
       {children}
+      <Analytics />
     </div>
   );
 }
