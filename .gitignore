@@ -4,6 +4,10 @@ dist
 .env.local
 .next/
 tsconfig.tsbuildinfo
+tsconfig.sw.tsbuildinfo
+
+# Serwist service worker build output
+public/sw.js
 
 # macOS
 .DS_Store
