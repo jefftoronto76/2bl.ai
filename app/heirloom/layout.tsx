@@ -28,6 +28,15 @@ export const metadata: Metadata = {
   title: 'Heirloom — Every life deserves to be a book.',
   description:
     'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
+  icons: {
+    icon: [
+      { url: '/heirloom/favicons/favicon.ico', sizes: 'any' },
+      { url: '/heirloom/favicons/favicon.svg', type: 'image/svg+xml' },
+      { url: '/heirloom/favicons/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
+    ],
+    apple: { url: '/heirloom/favicons/apple-touch-icon.png' },
+  },
+  manifest: '/heirloom/favicons/site.webmanifest',
   openGraph: {
     title: 'Heirloom — Every life deserves to be a book.',
     description:
