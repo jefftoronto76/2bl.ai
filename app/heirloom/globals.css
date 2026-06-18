@@ -15,22 +15,22 @@
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
   /* Re-scoped existing tokens (rgb triplets) */
-  --color-surface: 42 26 14;     /* #2A1A0E */
-  --color-accent:  201 169 110;  /* #C9A96E */
+  --color-surface: 246 239 224;  /* #F6EFE0 */
+  --color-accent:  46 133 77;    /* #2E854D */
 
   /* Heirloom-only tokens */
-  --hl-bg:           28 15 6;     /* #1C0F06 */
-  --hl-text-primary: 245 239 230; /* #F5EFE6 */
-  --hl-text-muted:   rgba(245, 239, 230, 0.55);
-  --hl-accent-hover: #B8935A;
-  --hl-border:       rgba(245, 239, 230, 0.12);
+  --hl-bg:           236 227 210; /* #ECE3D2 */
+  --hl-text-primary: 46 36 23;    /* #2E2417 */
+  --hl-text-muted:   rgba(46, 36, 23, 0.62);
+  --hl-accent-hover: #15733C;
+  --hl-border:       rgba(46, 36, 23, 0.14);
 
-  /* Clerk modal light-surface tokens — eggshell card floats over the dark page */
-  --hl-modal-bg:         250 246 238;          /* #FAF6EE — warm eggshell card background */
-  --hl-modal-surface:    236 227 210;          /* #ECE3D2 — input / select field background */
-  --hl-modal-ink:        28 15 6;              /* #1C0F06 — primary text on light modal (same triplet as --hl-bg) */
-  --hl-modal-ink-muted:  rgba(28, 15, 6, 0.55);
-  --hl-modal-border:     rgba(28, 15, 6, 0.12);
+  /* Clerk modal light-surface tokens — card floats above the warm-light page */
+  --hl-modal-bg:         255 252 247;          /* #FFFCF7 — near-white warm; clear elevation above ECE3D2 */
+  --hl-modal-surface:    246 239 224;          /* #F6EFE0 — input fields; matches --color-surface */
+  --hl-modal-ink:        46 36 23;             /* #2E2417 — matches new --hl-text-primary */
+  --hl-modal-ink-muted:  rgba(46, 36, 23, 0.55);
+  --hl-modal-border:     rgba(46, 36, 23, 0.14);
 
   background-color: rgb(var(--hl-bg));
   color: rgb(var(--hl-text-primary));
@@ -50,19 +50,19 @@
 
 /* Heirloom gradient + pattern utilities. */
 [data-brand="heirloom"] .bg-hero-glow {
-  background: radial-gradient(ellipse at 50% 40%, #5C3317 0%, #3D2010 35%, #2C1A0E 65%, #1C0F06 100%);
+  background: radial-gradient(ellipse at 50% 40%, #E9D3A8 0%, #E0CCA0 35%, #D4BF8E 65%, #ECE3D2 100%);
 }
 [data-brand="heirloom"] .bg-contributor-glow {
-  background: radial-gradient(ellipse at 50% 30%, #5C3317 0%, #3D2010 40%, #2C1A0E 100%);
+  background: radial-gradient(ellipse at 50% 30%, #E9D3A8 0%, #E0CCA0 40%, #ECE3D2 100%);
 }
 [data-brand="heirloom"] .bg-pricing-glow {
-  background: radial-gradient(ellipse at 50% 20%, #4A2610 0%, #2C1A0E 55%, #1E110A 100%);
+  background: radial-gradient(ellipse at 50% 20%, #E9D3A8 0%, #E0CCA0 55%, #ECE3D2 100%);
 }
 [data-brand="heirloom"] .bg-cta-glow {
-  background: radial-gradient(ellipse at 50% 0%, #7A4520 0%, #4A2610 40%, #2C1A0E 100%);
+  background: radial-gradient(ellipse at 50% 0%, #E9D3A8 0%, #E0CCA0 40%, #ECE3D2 100%);
 }
 [data-brand="heirloom"] .bg-pattern-dots {
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C9A96E' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232E854D' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* Clerk modal input placeholder — the elements block uses inline styles which
