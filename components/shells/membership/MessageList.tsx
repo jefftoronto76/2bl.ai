@@ -7,28 +7,6 @@ import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 
-function FeatherIcon({ size = 14, className }: { size?: number; className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 512 512"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <g transform="translate(256 256) scale(9.6) translate(-12 -12)">
-        <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-        <path d="M16 8 2 22" />
-        <path d="M17.5 15H9" />
-      </g>
-    </svg>
-  );
-}
 
 interface MessageListProps {
   messages: Message[];
@@ -202,8 +180,8 @@ function MessageBubble({ message, content }: { message: Message; content: string
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent border border-accent flex items-center justify-center mt-0.5">
-          <FeatherIcon size={14} className="text-background" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+          <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
         </div>
       )}
       <div
@@ -222,8 +200,8 @@ function MessageBubble({ message, content }: { message: Message; content: string
 function ErrorBubble() {
   return (
     <div className="flex gap-3 justify-start">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent border border-accent flex items-center justify-center mt-0.5">
-        <FeatherIcon size={14} className="text-background" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+        <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
       <div className="max-w-[75%] rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
         Something went wrong reaching your story guide. Please try again in a moment.
@@ -235,8 +213,8 @@ function ErrorBubble() {
 function TypingIndicator() {
   return (
     <div className="flex gap-3 justify-start">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent border border-accent flex items-center justify-center">
-        <FeatherIcon size={14} className="text-background" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden">
+        <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
       <div className="bg-surface rounded-2xl rounded-bl-sm px-4 py-3">
         <div className="flex gap-1 items-center h-4">
