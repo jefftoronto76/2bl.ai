@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   ArrowUp,
   Paperclip,
-  Image as ImageIcon,
   Mic,
   X,
   Check,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useChatStore } from './chatStore';
 import { useMediaUpload } from '@/services/media/useMediaUpload';
+import { SourceSheet } from './SourceSheet';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
@@ -168,10 +168,13 @@ export function ChatInput() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribeState, setTranscribeState] = useState<TranscribeState>('idle');
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
   const lastBlobRef = useRef<Blob | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -407,6 +410,28 @@ export function ChatInput() {
             e.target.value = '';
           }}
         />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={scanInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
 
         {isRecording ? (
           <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
@@ -434,14 +459,13 @@ export function ChatInput() {
             />
 
             <div className="flex items-center gap-1 pl-0.5 pr-1 py-0.5">
-              {/* Attachment + voice buttons are member-only. When locked they
-                  remain focusable so screen readers can announce the gate. */}
+              {/* Attach button — member-only. Opens SourceSheet on mobile/desktop. */}
               <button
                 type="button"
-                aria-label={isMember ? 'Attach files' : 'Sign in to attach files'}
+                aria-label={isMember ? 'Add attachment' : 'Sign in to attach files'}
                 aria-disabled={!isMember}
-                title={isMember ? 'Attach files' : 'Sign in to unlock'}
-                onClick={isMember ? () => fileInputRef.current?.click() : undefined}
+                title={isMember ? 'Add attachment' : 'Sign in to unlock'}
+                onClick={isMember ? () => setSheetOpen(true) : undefined}
                 className={cn(
                   'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                   isMember
@@ -450,21 +474,6 @@ export function ChatInput() {
                 )}
               >
                 {isMember ? <Paperclip size={18} /> : <Lock size={15} />}
-              </button>
-              <button
-                type="button"
-                aria-label={isMember ? 'Add a photo' : 'Sign in to add photos'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Add a photo' : 'Sign in to unlock'}
-                onClick={isMember ? () => imageInputRef.current?.click() : undefined}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
-                )}
-              >
-                {isMember ? <ImageIcon size={18} /> : <Lock size={15} />}
               </button>
 
               <div className="flex-1" />
@@ -532,6 +541,15 @@ export function ChatInput() {
       <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
         Your guide listens, asks, and never forgets a detail.
       </p>
+
+      <SourceSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCamera={() => cameraInputRef.current?.click()}
+        onLibrary={() => imageInputRef.current?.click()}
+        onScan={() => scanInputRef.current?.click()}
+        onRecord={handleMicClick}
+      />
     </div>
   );
 }
