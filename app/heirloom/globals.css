@@ -97,3 +97,19 @@
   animation: hl-modal-in 0.26s cubic-bezier(.22, 1, .36, 1) both;
 }
 
+@keyframes hl-sheet-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hl-animate-sheet {
+  animation: hl-sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hl-animate-sheet,
+  .hl-animate-fade,
+  .hl-animate-modal {
+    animation: none !important;
+  }
+}
+
