@@ -480,6 +480,7 @@ export function ChatInput() {
               onKeyDown={handleKeyDown}
               placeholder="Share a memory, or ask your guide anything"
               rows={1}
+              autoComplete="off"
               className="block w-full bg-transparent text-text-primary placeholder-text-muted font-body text-base resize-none focus:outline-none leading-6 px-2.5 pt-2.5 pb-1 min-h-[28px] max-h-[200px]"
             />
 
