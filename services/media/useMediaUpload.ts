@@ -86,6 +86,7 @@ export function useMediaUpload(
         body: JSON.stringify({ mediaItemId, event: 'upload_completed' }),
       })
 
+      if (!mediaItemId) throw new Error('mediaItemId unexpectedly null after upload')
       return {
         mediaItemId,
         type: classifyFile(file),
