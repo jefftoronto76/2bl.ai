@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { usePeekCoach } from './usePeekCoach';
 import {
   BookOpen,
   ChevronRight,
@@ -82,6 +83,10 @@ export interface SidebarV2Props {
   onRowAction?: (target: RowTarget, id: string, action: RowAction) => void;
 
   // Inline rename
+  /** Navigation mode. 'peek' (default) collapses to an edge handle and slides in as a fixed overlay. */
+  navMode?: 'dock' | 'hover' | 'drawer' | 'peek';
+  /** Changing this value re-arms the coachmark timer. Pass `sessionId ?? 'init'`. */
+  armKey?: unknown;
   /** Session id currently being renamed — shows an input in place of the title. */
   renamingId?: string;
   /** Called when rename input blurs or Enter is pressed. Empty string = cancel. */
@@ -304,6 +309,8 @@ export function SidebarV2({
   starredConversationIds = [],
   starredStoryIds = [],
   storiesDisabled = false,
+  navMode = 'peek',
+  armKey,
   onMedia,
   onUploads,
   onShareHeirloom,
@@ -318,8 +325,46 @@ export function SidebarV2({
   onRenameCommit,
 }: SidebarV2Props) {
   const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
-  const expanded = state.isSidebarExpanded;
+  const isSidebarExpanded = state.isSidebarExpanded;
+  // In dock/hover mode `expanded` drives the w-12↔w-64 toggle.
+  // In peek/drawer mode the overlay is always w-64, so content renders as expanded.
+  const isPeek = navMode === 'peek';
+  const isDrawer = navMode === 'drawer';
+  const expanded = (isPeek || isDrawer) ? true : isSidebarExpanded;
   const { isMember } = state;
+
+  // Peek coachmark
+  const { show: coachShow, learned, openedRef } = usePeekCoach(navMode, 'first-use', armKey);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const closePanel = useCallback(() => dispatch({ type: 'SET_SIDEBAR', payload: false }), [dispatch]);
+
+  const handleEdgeEnter = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    dispatch({ type: 'SET_SIDEBAR', payload: true });
+    openedRef.current = true;
+    if (coachShow) learned();
+  };
+  const handleEdgeClick = () => {
+    dispatch({ type: 'SET_SIDEBAR', payload: true });
+    openedRef.current = true;
+    if (coachShow) learned();
+  };
+  const handlePanelEnter = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+  };
+  const handlePanelLeave = () => {
+    closeTimerRef.current = setTimeout(() => dispatch({ type: 'SET_SIDEBAR', payload: false }), 160);
+  };
+
+  // Esc closes the overlay in peek/drawer mode
+  useEffect(() => {
+    if (!isPeek && !isDrawer) return;
+    if (!isSidebarExpanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closePanel(); };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [isSidebarExpanded, isPeek, isDrawer, closePanel]);
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`
@@ -352,17 +397,14 @@ export function SidebarV2({
     'hover:text-text-primary transition-all duration-200 focus:outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-accent';
 
-  return (
-    <aside
-      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
-        expanded ? 'w-64' : 'w-12'
-      }`}
-    >
-      {/* Collapse toggle */}
+  // ── Inner content (shared by dock aside and peek overlay) ─────────────────
+  const sidebarInner = (
+    <>
+      {/* Collapse / close toggle */}
       <div className={`flex items-center px-1.5 mb-2 pt-2 ${expanded ? 'justify-end' : 'justify-center'}`}>
         <IconButton
-          label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          label={isPeek || isDrawer ? 'Close menu' : (expanded ? 'Collapse sidebar' : 'Expand sidebar')}
+          onClick={isPeek || isDrawer ? closePanel : () => dispatch({ type: 'TOGGLE_SIDEBAR' })}
           className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronRight size={16} />
@@ -376,7 +418,7 @@ export function SidebarV2({
         <button
           type="button"
           aria-label="New Chat"
-          onClick={newChat}
+          onClick={isPeek ? () => { newChat(); closePanel(); } : newChat}
           className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={16} className="flex-shrink-0" />
@@ -461,7 +503,7 @@ export function SidebarV2({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => loadSession(session.id)}
+                          onClick={() => { loadSession(session.id); if (isPeek) closePanel(); }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
@@ -550,7 +592,7 @@ export function SidebarV2({
             <div className="flex flex-col gap-px mb-2 pb-2 border-b border-border">
               <button
                 type="button"
-                onClick={onCreateStory}
+                onClick={isPeek ? () => { onCreateStory?.(); closePanel(); } : onCreateStory}
                 disabled={storiesDisabled || !onCreateStory}
                 className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent opacity-40 pointer-events-none"
               >
@@ -578,7 +620,7 @@ export function SidebarV2({
                     <button
                       type="button"
                       title={story.description ?? story.name}
-                      onClick={() => onSelectStory?.(story.id)}
+                      onClick={() => { onSelectStory?.(story.id); if (isPeek) closePanel(); }}
                       disabled={storiesDisabled}
                       className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
                     >
@@ -592,7 +634,7 @@ export function SidebarV2({
                         type="button"
                         aria-label={`Start a chat in ${story.name}`}
                         title="Start a new chat"
-                        onClick={() => onStartStoryChat(story.id)}
+                        onClick={() => { onStartStoryChat(story.id); if (isPeek) closePanel(); }}
                         className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                           isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}
@@ -646,7 +688,7 @@ export function SidebarV2({
                 <button
                   key={prompt.id}
                   type="button"
-                  onClick={() => onSelectPrompt?.(prompt)}
+                  onClick={() => { onSelectPrompt?.(prompt); if (isPeek) closePanel(); }}
                   className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted hover:bg-accent/15 hover:border-accent/30 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Quote size={13} className="flex-shrink-0 text-accent/80 mt-0.5" />
@@ -657,6 +699,100 @@ export function SidebarV2({
           </div>
         </div>
       )}
+    </>
+  );
+
+  // ── Peek / drawer mode ──────────────────────────────────────────────────────
+
+  if (isPeek || isDrawer) {
+    return (
+      <>
+        {/* Zero-width placeholder keeps the flex layout intact */}
+        <aside className="w-0 flex-shrink-0 overflow-hidden" aria-hidden />
+
+        {/* Edge handle — peek only */}
+        {isPeek && (
+          <button
+            type="button"
+            aria-label="Open navigation"
+            onMouseEnter={handleEdgeEnter}
+            onClick={handleEdgeClick}
+            className="fixed left-0 top-0 h-full w-[18px] z-[36] flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            <span
+              className={`w-[5px] h-[52px] rounded-full bg-accent opacity-55 ${coachShow ? 'hl-edge-pulse' : ''}`}
+            />
+          </button>
+        )}
+
+        {/* Scrim */}
+        <div
+          aria-hidden
+          onClick={closePanel}
+          className={[
+            'fixed inset-0 z-[49] bg-black/40 transition-opacity duration-200',
+            isSidebarExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+          ].join(' ')}
+        />
+
+        {/* Overlay panel */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+          inert={!isSidebarExpanded}
+          onMouseEnter={isPeek ? handlePanelEnter : undefined}
+          onMouseLeave={isPeek ? handlePanelLeave : undefined}
+          className={[
+            'fixed left-0 top-0 h-full w-64 z-[50] flex flex-col',
+            'bg-background border-r border-border shadow-xl overflow-x-hidden overflow-y-auto',
+            'transition-transform duration-300',
+            isSidebarExpanded ? 'translate-x-0' : '-translate-x-full',
+          ].join(' ')}
+        >
+          {sidebarInner}
+        </div>
+
+        {/* Coachmark */}
+        {coachShow && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed left-[22px] top-1/2 -translate-y-1/2 z-[37] w-[232px] bg-surface border border-text-primary/20 rounded-2xl p-[13px_15px_12px] shadow-[0_18px_44px_-16px_rgba(0,0,0,0.35)] hl-animate-coach-in"
+          >
+            {/* CSS triangle pointing left toward the edge handle */}
+            <span className="absolute -left-[7px] top-1/2 -translate-y-1/2 border-y-[7px] border-y-transparent border-r-[7px] border-r-surface" />
+            <p className="font-mono text-[10px] tracking-[0.22em] uppercase text-accent mb-1.5">
+              One thing
+            </p>
+            <p className="font-display italic text-[19px] leading-[1.2] text-text-primary mb-1">
+              Your menu hides here.
+            </p>
+            <p className="text-[12.5px] leading-[1.4] text-text-muted mb-2.5">
+              Tap the edge anytime — stories, prompts, search, all of it.
+            </p>
+            <button
+              type="button"
+              onClick={learned}
+              className="font-mono text-[10.5px] tracking-[0.1em] uppercase text-text-muted hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              Got it
+            </button>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Dock / hover mode (existing push layout) ────────────────────────────────
+
+  return (
+    <aside
+      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
+        isSidebarExpanded ? 'w-64' : 'w-12'
+      }`}
+    >
+      {sidebarInner}
     </aside>
   );
 }
