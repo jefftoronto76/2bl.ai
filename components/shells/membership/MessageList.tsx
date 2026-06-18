@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+
 
 interface MessageListProps {
   messages: Message[];
@@ -179,8 +180,8 @@ function MessageBubble({ message, content }: { message: Message; content: string
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mt-0.5">
-          <Bot size={14} className="text-accent" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+          <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
         </div>
       )}
       <div
@@ -199,8 +200,8 @@ function MessageBubble({ message, content }: { message: Message; content: string
 function ErrorBubble() {
   return (
     <div className="flex gap-3 justify-start">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center mt-0.5">
-        <Bot size={14} className="text-accent" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+        <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
       <div className="max-w-[75%] rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
         Something went wrong reaching your story guide. Please try again in a moment.
@@ -212,8 +213,8 @@ function ErrorBubble() {
 function TypingIndicator() {
   return (
     <div className="flex gap-3 justify-start">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center">
-        <Bot size={14} className="text-accent" />
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden">
+        <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
       <div className="bg-surface rounded-2xl rounded-bl-sm px-4 py-3">
         <div className="flex gap-1 items-center h-4">
