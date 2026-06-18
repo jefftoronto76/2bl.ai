@@ -1,6 +1,7 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
@@ -54,7 +55,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, isError, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
+  const { state, dispatch, isError, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
 
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
@@ -150,21 +151,65 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const surfaceStyle: CSSProperties | undefined =
     keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
+
+  // On mobile, close the overlay when Esc is pressed (capture phase so it runs
+  // before any modal Esc handlers that would also stop propagation).
+  useEffect(() => {
+    if (!isMobile || !state.isSidebarExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dispatch({ type: 'TOGGLE_SIDEBAR' });
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [isMobile, state.isSidebarExpanded, dispatch]);
+
   return (
     <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
-      <SidebarV2
-        stories={stories}
-        writingPrompts={WRITING_PROMPTS}
-        onCreateStory={() => setBeginStoryOpen(true)}
-        onSelectPrompt={handleSelectPrompt}
-        onRowAction={handleRowAction}
-        starredConversationIds={starredIds}
-        renamingId={renamingId ?? undefined}
-        onRenameCommit={handleRenameCommit}
-      />
+      {/* Desktop: docked sidebar */}
+      {!isMobile && (
+        <SidebarV2
+          stories={stories}
+          writingPrompts={WRITING_PROMPTS}
+          onCreateStory={() => setBeginStoryOpen(true)}
+          onSelectPrompt={handleSelectPrompt}
+          onRowAction={handleRowAction}
+          starredConversationIds={starredIds}
+          renamingId={renamingId ?? undefined}
+          onRenameCommit={handleRenameCommit}
+        />
+      )}
+
+      {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
+      {isMobile && state.isSidebarExpanded && (
+        <>
+          <div
+            className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
+            aria-hidden="true"
+            onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          />
+          <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
+            <SidebarV2
+              stories={stories}
+              writingPrompts={WRITING_PROMPTS}
+              onCreateStory={() => setBeginStoryOpen(true)}
+              onSelectPrompt={handleSelectPrompt}
+              onRowAction={handleRowAction}
+              starredConversationIds={starredIds}
+              renamingId={renamingId ?? undefined}
+              onRenameCommit={handleRenameCommit}
+              onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+            />
+          </div>
+        </>
+      )}
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
-        <ChatHeader isFullScreen={isFullScreen} onToggleFullScreen={onToggleFullScreen} />
+        <ChatHeader
+          isFullScreen={isFullScreen}
+          onToggleFullScreen={onToggleFullScreen}
+          onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
+        />
 
         <div className="flex flex-col flex-1 min-h-0">
           {isGated ? (

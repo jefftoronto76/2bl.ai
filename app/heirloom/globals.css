@@ -105,8 +105,17 @@
   animation: hl-sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes hl-sheet-left {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+.hl-animate-sheet-left {
+  animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hl-animate-sheet,
+  .hl-animate-sheet-left,
   .hl-animate-fade,
   .hl-animate-modal {
     animation: none !important;
