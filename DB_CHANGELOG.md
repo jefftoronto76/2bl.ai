@@ -1,5 +1,211 @@
 # DB Changelog
 
+## 2026-06-18
+
+### Create `prompt_types` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+CREATE TABLE prompt_types (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id),
+  key text NOT NULL,
+  name text NOT NULL,
+  description text,
+  is_default boolean NOT NULL DEFAULT false,
+  sort_order integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, key)
+);
+
+CREATE INDEX prompt_types_tenant_id_idx ON prompt_types(tenant_id);
+```
+
+**Purpose:** Stores prompt type definitions per tenant. The platform tenant
+(`6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb`) owns the platform-level defaults,
+which flow down to all product tenants. Tenants may define additional types
+on top. Four platform defaults seeded at creation time:
+
+| key | name | sort_order |
+|-----|------|-----------|
+| `base` | Base | 0 |
+| `sales` | Sales | 1 |
+| `onboarding` | Onboarding | 2 |
+| `editor` | Editor | 3 |
+
+**Notes:**
+- `key` is unique per `tenant_id` (enforced by UNIQUE constraint)
+- `is_default` flags the type that compiles when no `prompt_type_key` is
+  specified
+- `sort_order` controls display ordering in the admin UI (nulls last)
+
+---
+
+### Create `pills` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+CREATE TABLE pills (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id),
+  label text NOT NULL,
+  scope text NOT NULL CHECK (scope IN ('composer', 'runtime')),
+  trigger_type text NOT NULL CHECK (trigger_type IN ('message', 'tool', 'card')),
+  payload jsonb NOT NULL DEFAULT '{}',
+  prompt_type_key text,
+  block_id uuid REFERENCES blocks(id),
+  is_default boolean NOT NULL DEFAULT false,
+  sort_order integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX pills_tenant_id_idx ON pills(tenant_id);
+```
+
+**Purpose:** Stores pills (Composer-facing UI actions) and chips (member-facing
+runtime suggestions) in one table, distinguished by `scope`.
+
+- `scope = 'composer'` — action pill displayed in the Prompt Studio Composer
+- `scope = 'runtime'` — suggestion chip shown to members during a chat session
+
+`trigger_type` determines what happens when the pill/chip is activated:
+
+| trigger_type | Behaviour |
+|--------------|-----------|
+| `message` | Sends a message; `payload.text` is the message body |
+| `tool` | Invokes a tool call; `payload` carries the tool definition |
+| `card` | Renders a card; `payload` carries the card config |
+
+`prompt_type_key` scopes a pill/chip to a specific prompt type (null = applies
+to all types). `block_id` optionally links a composer pill to a specific block.
+
+Three platform default composer pills seeded at creation time:
+- "Summarize my prompt"
+- "Identify opportunities to improve"
+- "Create a new block"
+
+---
+
+### Create `session_tokens` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+CREATE TABLE session_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id),
+  created_by uuid NOT NULL REFERENCES users(id),
+  token text NOT NULL UNIQUE,
+  context_injection text,
+  prompt_type_key text,
+  chip_preload jsonb NOT NULL DEFAULT '[]',
+  expires_at timestamptz,
+  used_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX session_tokens_tenant_id_idx ON session_tokens(tenant_id);
+CREATE INDEX session_tokens_token_idx ON session_tokens(token);
+```
+
+**Purpose:** Stores shareable URL tokens that pre-configure a chat session
+before the first message. A token resolves to:
+- `context_injection` — an invisible system-prompt addition (injected for the
+  life of the session, not shown to the member)
+- `prompt_type_key` — the prompt type to load for the session
+- `chip_preload` — an array of chip definitions to surface to the member at
+  session open
+
+**Use cases:** custom deep-link URLs, QR codes, referral links, and any
+scenario where the session needs to be pre-configured based on how the
+visitor arrived.
+
+**Notes:**
+- `token` has a unique index for fast lookup on inbound URLs
+- `expires_at` is nullable; null = never expires
+- `used_count` tracks how many sessions have been initiated with this token
+  (informational only — no hard limit enforced at the DB layer)
+- Table is currently unpopulated; no application code reads or writes it yet.
+  Created to establish the schema ahead of the feature build.
+
+---
+
+### Add `scope` and `prompt_type_key` columns to `blocks` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+ALTER TABLE blocks ADD COLUMN scope text NOT NULL DEFAULT 'runtime'
+  CHECK (scope IN ('platform', 'composer', 'runtime'));
+
+ALTER TABLE blocks ADD COLUMN prompt_type_key text;
+```
+
+**Purpose:**
+
+`scope` distinguishes three categories of block:
+
+| scope | Meaning |
+|-------|---------|
+| `platform` | Owned by the 2BL platform tenant; flows to all product tenants |
+| `composer` | Powers the Prompt Studio Composer UI; never compiled into the runtime Sage conversation prompt |
+| `runtime` | Compiles into the tenant's Sage conversation prompt (all existing blocks) |
+
+Default is `'runtime'` so all pre-existing blocks remain valid and the
+compile pipeline is unchanged without any backfill.
+
+`prompt_type_key` links a block to a specific prompt type. Semantics:
+- `null` — shared; block compiles into every prompt type for the tenant
+- non-null — block only compiles into the matching `prompt_type_key`
+
+**Notes:**
+- No backfill required — `scope = 'runtime'` and `prompt_type_key = null`
+  are the correct values for all existing blocks
+- Compile-order logic in `/api/admin/prompt/compile` and
+  `services/prompt/compile.ts` is unchanged; runtime blocks with a
+  `prompt_type_key` will be filtered there once the feature is built
+
+---
+
+### Add `prompt_type_key` and `description` columns to `master_prompt` table
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+ALTER TABLE master_prompt ADD COLUMN prompt_type_key text;
+ALTER TABLE master_prompt ADD COLUMN description text;
+```
+
+**Purpose:**
+
+`prompt_type_key` identifies which prompt type a compiled master prompt
+represents (e.g. `'base'`, `'sales'`, `'onboarding'`, `'editor'`). Existing
+rows with `prompt_type_key = null` continue to behave as the default prompt —
+no backfill required.
+
+`description` is a human-readable label for the compiled prompt, surfaced in
+the admin UI (e.g. "Base prompt — compiled 2026-06-18"). Optional; null for
+existing rows.
+
+**Notes:**
+- The existing `key` column (added 2026-05-20) distinguishes multiple prompt
+  _engines_ per tenant; `prompt_type_key` distinguishes which _type_ a
+  compiled prompt serves. Both can be null for the default path.
+- `master_prompt_history` rows are not altered — archived versions retain their
+  shape at the time of archival.
+
+---
+
 ## 2026-06-12
 
 ### Backfill — document `users.role` column
