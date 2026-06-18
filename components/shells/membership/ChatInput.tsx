@@ -5,7 +5,6 @@ import {
   ArrowUp,
   Plus,
   Mic,
-  Maximize2,
   X,
   Check,
   FileText,
@@ -16,7 +15,6 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useChatStore } from './chatStore';
 import { useMediaUpload } from '@/services/media/useMediaUpload';
 import { SourceMenu, type SourceKey } from './SourceMenu';
-import { VoiceImmersive } from './VoiceImmersive';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
@@ -99,19 +97,15 @@ const WAVE_HEIGHTS = [
   0.5, 0.85, 0.35, 1, 0.6, 0.9, 0.45, 0.75, 1, 0.55, 0.8, 0.4, 0.95, 0.6, 0.7, 0.5, 0.88, 0.42, 0.66, 0.9,
 ];
 
-function VoiceBar({
-  onCancel,
-  onConfirm,
-  onExpand,
-  elapsedSeconds,
-}: {
-  onCancel: () => void;
-  onConfirm: () => void;
-  onExpand?: () => void;
-  elapsedSeconds: number;
-}) {
-  const mm = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
-  const ss = String(elapsedSeconds % 60).padStart(2, '0');
+function VoiceBar({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  const [secs, setSecs] = useState(0);
+  // Self-contained elapsed timer; the parent owns the MediaRecorder lifecycle.
+  useEffect(() => {
+    const t = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+  const ss = String(secs % 60).padStart(2, '0');
 
   return (
     <div className="flex items-center gap-3 w-full pl-3.5 pr-1.5 py-1.5">
@@ -144,17 +138,6 @@ function VoiceBar({
           />
         ))}
       </div>
-
-      {onExpand && (
-        <button
-          type="button"
-          aria-label="Open immersive recording"
-          onClick={onExpand}
-          className="flex-shrink-0 grid place-items-center w-[34px] h-[34px] rounded-[10px] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Maximize2 size={15} />
-        </button>
-      )}
 
       <button
         type="button"
@@ -201,14 +184,8 @@ export function ChatInput() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [immersiveOpen, setImmersiveOpen] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
   const { sendMessage, injectAssistantMessage, state, addMediaItem } = useChatStore();
   const { isMember } = state;
-
-  const guidanceQuestion =
-    [...state.messages].reverse().find((m) => m.role === 'assistant')?.content ?? '';
 
   const { upload, isUploading } = useMediaUpload(state.sessionId, null);
 
@@ -429,12 +406,6 @@ export function ChatInput() {
   };
 
   useEffect(() => {
-    if (!isRecording) { setElapsedSeconds(0); return; }
-    const t = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [isRecording]);
-
-  useEffect(() => {
     if (!sourceMenuOpen || isMobile) return;
     const onMouseDown = (e: MouseEvent) => {
       if (plusWrapRef.current && !plusWrapRef.current.contains(e.target as Node)) {
@@ -488,12 +459,7 @@ export function ChatInput() {
           }}
         />
         {isRecording ? (
-          <VoiceBar
-            onCancel={cancelRecording}
-            onConfirm={confirmRecording}
-            onExpand={() => setImmersiveOpen(true)}
-            elapsedSeconds={elapsedSeconds}
-          />
+          <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
         ) : transcribeState === 'transcribing' ? (
           <TranscribingPill />
         ) : (
@@ -627,20 +593,6 @@ export function ChatInput() {
         Your guide listens, asks, and never forgets a detail.
       </p>
 
-      <VoiceImmersive
-        open={immersiveOpen}
-        onClose={() => { setImmersiveOpen(false); cancelRecording(); }}
-        onDone={() => { setImmersiveOpen(false); confirmRecording(); }}
-        onSkipToTyping={() => {
-          setImmersiveOpen(false);
-          cancelRecording();
-          requestAnimationFrame(() => textareaRef.current?.focus());
-        }}
-        guidanceQuestion={guidanceQuestion}
-        isRecording={isRecording}
-        elapsedSeconds={elapsedSeconds}
-        onPause={() => setImmersiveOpen(false)}
-      />
     </div>
   );
 }
