@@ -15,11 +15,15 @@
 // full-screen toggle lives in ChatHeader's right cluster in that setup.
 //
 // The body is position: relative — the V2 modals use `absolute inset-0`, so
-// they overlay the drawer (below the header), not the whole page.
+// they overlay the drawer (below the header), not the whole page. This body
+// also publishes itself as the overlay host (ChatOverlayProvider) so
+// descendants (e.g. ChatInput's VoiceImmersive portal) can use `absolute
+// inset-0` overlays that are transform-safe and drawer-relative.
 
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { ChevronDown, Maximize2, Minimize2, X } from 'lucide-react';
 import { IconButton } from '../ui/IconButton';
+import { ChatOverlayProvider } from './ChatOverlayHost';
 
 export interface ChatDrawerV2Props {
   /** Slide the drawer in (true) or off-screen (false). Default true. */
@@ -59,6 +63,9 @@ export function ChatDrawerV2({
   defaultWidthClassName = 'w-[clamp(680px,50vw,1120px)]',
   children,
 }: ChatDrawerV2Props) {
+  // Published to descendants so they can portal overlays into this body.
+  const [overlayHost, setOverlayHost] = useState<HTMLDivElement | null>(null);
+
   return (
     <div
       className={[
@@ -101,8 +108,10 @@ export function ChatDrawerV2({
         </header>
       )}
 
-      {/* Body — `relative` so the V2 modals' absolute overlays scope here. */}
-      <div className="relative flex flex-1 min-h-0">{children}</div>
+      {/* Body — `relative`; the V2 modals AND the VoiceImmersive overlay scope here. */}
+      <div ref={setOverlayHost} className="relative flex flex-1 min-h-0">
+        <ChatOverlayProvider value={overlayHost}>{children}</ChatOverlayProvider>
+      </div>
     </div>
   );
 }

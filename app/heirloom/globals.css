@@ -122,3 +122,16 @@
   }
 }
 
+/* ── VoiceImmersive listening orb ───────────────────────────────────────── */
+@keyframes hl-orb {
+  0%, 100% { transform: scale(0.82); opacity: 0.55; }
+  50%      { transform: scale(1.08); opacity: 0.20; }
+}
+
+/* VoiceImmersive gates orb + fade on `motion-safe:` in the component.
+   This hard-stop covers any case where the class selector is matched
+   outside that context. */
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[hl-orb"] { animation: none !important; }
+}
+

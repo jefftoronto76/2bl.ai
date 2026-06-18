@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUp,
   Plus,
@@ -10,23 +11,25 @@ import {
   FileText,
   AudioLines,
   Lock,
+  Maximize2,
 } from 'lucide-react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useChatStore } from './chatStore';
 import { useMediaUpload } from '@/services/media/useMediaUpload';
 import { SourceMenu, type SourceKey } from './SourceMenu';
+import { VoiceImmersive } from './VoiceImmersive';
+import { useChatOverlayHost } from './v2/ChatOverlayHost';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
  *
- * Delta vs. previous single-line composer:
- *   1. Multi-attachment support (files + images) with preview chips.
- *   2. Voice capture: mic -> recording bar (waveform + timer + cancel/confirm),
- *      transcript dropped back into the textarea so it stays editable.
- *   3. Action toolbar moved BELOW the textarea (modern composer pattern).
- *
- * Backend seams are marked `// TODO(2bl)`. The component degrades gracefully if
- * those routes / permissions are absent — it never throws into the UI.
+ * Voice flow (two steps):
+ *   1. mic (or "+" → Record audio) starts the INLINE recording bar.
+ *   2. the Expand ⤢ button promotes it to the full-screen VoiceImmersive
+ *      surface (portaled into ChatDrawerV2's relative body; Minimize ▢
+ *      collapses back to the inline bar). Cancel/Done behave identically in
+ *      both. The MediaRecorder + elapsed timer + transcribe live here, so the
+ *      inline bar and the full-screen surface always share one session/clock.
  * ------------------------------------------------------------------ */
 
 const cn = (...c: Array<string | false | undefined>) => c.filter(Boolean).join(' ');
@@ -58,6 +61,10 @@ async function fetchTranscript(blob: Blob): Promise<string> {
   if (!res.ok) throw new Error(`transcribe failed: ${res.status}`);
   const data = (await res.json()) as { text?: string };
   return (data.text ?? '').trim();
+}
+
+function fmtClock(secs: number): string {
+  return `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
 }
 
 /* --- Attachment chip -------------------------------------------------- */
@@ -92,21 +99,22 @@ function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove: () => vo
   );
 }
 
-/* --- Voice recording bar ---------------------------------------------- */
+/* --- Voice recording bar (STEP 1, inline) ----------------------------- */
 const WAVE_HEIGHTS = [
   0.5, 0.85, 0.35, 1, 0.6, 0.9, 0.45, 0.75, 1, 0.55, 0.8, 0.4, 0.95, 0.6, 0.7, 0.5, 0.88, 0.42, 0.66, 0.9,
 ];
 
-function VoiceBar({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
-  const [secs, setSecs] = useState(0);
-  // Self-contained elapsed timer; the parent owns the MediaRecorder lifecycle.
-  useEffect(() => {
-    const t = setInterval(() => setSecs((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const mm = String(Math.floor(secs / 60)).padStart(2, '0');
-  const ss = String(secs % 60).padStart(2, '0');
-
+function VoiceBar({
+  elapsed,
+  onCancel,
+  onExpand,
+  onConfirm,
+}: {
+  elapsed: string;
+  onCancel: () => void;
+  onExpand: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="flex items-center gap-3 w-full pl-3.5 pr-1.5 py-1.5">
       <button
@@ -121,7 +129,7 @@ function VoiceBar({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: ()
       <span className="flex-shrink-0 flex items-center gap-2">
         <span className="w-2.5 h-2.5 rounded-full bg-accent animate-recpulse" />
         <span className="font-mono text-[13px] tracking-wide text-text-primary tabular-nums min-w-[42px]">
-          {mm}:{ss}
+          {elapsed}
         </span>
       </span>
 
@@ -138,6 +146,16 @@ function VoiceBar({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: ()
           />
         ))}
       </div>
+
+      <button
+        type="button"
+        aria-label="Expand to full screen"
+        title="Expand to full screen"
+        onClick={onExpand}
+        className="flex-shrink-0 grid place-items-center w-[34px] h-[34px] rounded-[10px] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Maximize2 size={17} />
+      </button>
 
       <button
         type="button"
@@ -168,6 +186,8 @@ export function ChatInput() {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceFullscreen, setIsVoiceFullscreen] = useState(false);
+  const [elapsedSecs, setElapsedSecs] = useState(0);
   const [transcribeState, setTranscribeState] = useState<TranscribeState>('idle');
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
 
@@ -177,6 +197,7 @@ export function ChatInput() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const plusWrapRef = useRef<HTMLDivElement>(null);
   const lastBlobRef = useRef<Blob | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
@@ -187,7 +208,33 @@ export function ChatInput() {
   const { sendMessage, injectAssistantMessage, state, addMediaItem } = useChatStore();
   const { isMember } = state;
 
+  const overlayHost = useChatOverlayHost();
+
   const { upload, isUploading } = useMediaUpload(state.sessionId, null);
+
+  // The guide's current question — newest assistant turn, shown atop the
+  // full-screen surface. Optional-chained so it never throws if the store
+  // shape differs; falls back to a gentle default inside VoiceImmersive.
+  const voiceQuestion = (() => {
+    const msgs = (state as { messages?: Array<{ role?: string; content?: string }> })?.messages;
+    const last = msgs?.slice().reverse().find((m) => m?.role === 'assistant')?.content;
+    return typeof last === 'string' && last.trim() ? last : undefined;
+  })();
+
+  const elapsed = fmtClock(elapsedSecs);
+
+  const startTimer = () => {
+    setElapsedSecs(0);
+    if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    elapsedTimerRef.current = setInterval(() => setElapsedSecs((s) => s + 1), 1000);
+  };
+  const stopTimer = () => {
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+  };
+  useEffect(() => () => stopTimer(), []);
 
   const autoResize = () => {
     const el = textareaRef.current;
@@ -318,7 +365,9 @@ export function ChatInput() {
       };
       mr.start();
       mediaRecorderRef.current = mr;
+      setIsVoiceFullscreen(false); // step 1 = inline; user expands to step 2
       setIsRecording(true);
+      startTimer();
     } catch (err) {
       console.error('[chat-input] microphone unavailable or permission denied', err);
     }
@@ -332,6 +381,8 @@ export function ChatInput() {
     } else {
       stopStream();
     }
+    stopTimer();
+    setIsVoiceFullscreen(false);
     setIsRecording(false);
   };
 
@@ -339,12 +390,16 @@ export function ChatInput() {
     const mr = mediaRecorderRef.current;
     if (!mr) {
       setIsRecording(false);
+      setIsVoiceFullscreen(false);
+      stopTimer();
       return;
     }
     mr.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
       stopStream();
+      stopTimer();
       lastBlobRef.current = blob;
+      setIsVoiceFullscreen(false);
       setIsRecording(false);
       setTranscribeState('transcribing');
       try {
@@ -459,7 +514,15 @@ export function ChatInput() {
           }}
         />
         {isRecording ? (
-          <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
+          // Inline recording bar (step 1). When the user expands, the full-screen
+          // surface renders over the whole drawer (portaled below); this bar stays
+          // mounted so Minimize collapses straight back to it.
+          <VoiceBar
+            elapsed={elapsed}
+            onCancel={cancelRecording}
+            onExpand={() => setIsVoiceFullscreen(true)}
+            onConfirm={confirmRecording}
+          />
         ) : transcribeState === 'transcribing' ? (
           <TranscribingPill />
         ) : (
@@ -594,6 +657,19 @@ export function ChatInput() {
         Your guide listens, asks, and never forgets a detail.
       </p>
 
+      {/* STEP 2 · full-screen surface — portaled into ChatDrawerV2's relative body
+          so it covers the whole drawer (absolute, transform-safe). */}
+      {isRecording && isVoiceFullscreen && overlayHost &&
+        createPortal(
+          <VoiceImmersive
+            elapsed={elapsed}
+            question={voiceQuestion}
+            onMinimize={() => setIsVoiceFullscreen(false)}
+            onCancel={cancelRecording}
+            onConfirm={confirmRecording}
+          />,
+          overlayHost,
+        )}
     </div>
   );
 }
