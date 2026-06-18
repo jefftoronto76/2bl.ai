@@ -22,10 +22,27 @@ export const AuditAction = {
   SESSION_CREATE: 'session.create',
   SESSION_CLAIM: 'session.claim',
   CHAT_SESSION_TRANSFERRED: 'chat_session.transferred',
-  // Media items
+  // Media items (legacy strings — preserved for existing DB rows)
   MEDIA_ITEM_PROCESSING: 'media.item.processing',
   MEDIA_ITEM_PROCESSED: 'media.item.processed',
   MEDIA_ITEM_FAILED: 'media.item.failed',
+  // Media upload pipeline
+  MEDIA_UPLOAD_STARTED: 'media.upload_started',
+  MEDIA_UPLOAD_COMPLETED: 'media.upload_completed',
+  MEDIA_UPLOAD_FAILED: 'media.upload_failed',
+  // Media processing pipeline
+  MEDIA_PROCESS_STARTED: 'media.process_started',
+  MEDIA_PROCESS_COMPLETED: 'media.process_completed',
+  MEDIA_PROCESS_FAILED: 'media.process_failed',
+  MEDIA_URL_FAILED: 'media.url_failed',
+  // Anthropic AI calls within media processing
+  AI_MEDIA_REQUEST_SENT: 'ai.media_request_sent',
+  AI_MEDIA_RESPONSE_RECEIVED: 'ai.media_response_received',
+  AI_MEDIA_REQUEST_FAILED: 'ai.media_request_failed',
+  // Deepgram STT calls within media processing
+  STT_REQUEST_SENT: 'stt.request_sent',
+  STT_RESPONSE_RECEIVED: 'stt.response_received',
+  STT_REQUEST_FAILED: 'stt.request_failed',
   // Transcription
   TRANSCRIPTION_REQUESTED: 'transcription.requested',
   TRANSCRIPTION_SUCCEEDED: 'transcription.succeeded',
