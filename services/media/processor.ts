@@ -2,11 +2,17 @@ import { AuditAction } from '@/services/audit/types'
 import { extractText } from '@/services/content/assets'
 import {
   getMediaItem,
+  isMediaAuditEnabled,
+  logAiMediaEvent,
   logMediaEvent,
+  logSttMediaEvent,
   updateMediaItem,
   type MediaItem,
 } from './index'
 import { generateLongLivedSignedUrl, generateSignedDownloadUrl } from './storage'
+
+const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
+const SONNET_MODEL = 'claude-sonnet-4-6'
 
 // ---------------------------------------------------------------------------
 // Audio transcription via Deepgram nova-3 batch API.
@@ -19,10 +25,50 @@ async function processAudio(
 ): Promise<void> {
   // Use a long-lived URL (1hr) to guard against slow Deepgram queues for
   // large audio files causing URL expiry before the fetch completes.
-  const signedUrl = await generateLongLivedSignedUrl(item.storage_path)
+  let signedUrl: string
+  try {
+    signedUrl = await generateLongLivedSignedUrl(item.storage_path)
+  } catch (err) {
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.MEDIA_URL_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          mime_type: item.mime_type,
+          original_filename: item.original_filename,
+          file_size_bytes: item.file_size_bytes,
+          timestamp: new Date().toISOString(),
+          error_message: err instanceof Error ? err.message : String(err),
+        },
+      })
+    }
+    throw err
+  }
 
   const key = process.env.DEEPGRAM_API_KEY
   if (!key) throw new Error('DEEPGRAM_API_KEY is not configured')
+
+  const sttStart = Date.now()
+
+  if (isMediaAuditEnabled()) {
+    await logSttMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.STT_REQUEST_SENT,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        mime_type: item.mime_type,
+        file_size_bytes: item.file_size_bytes,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
 
   const res = await fetch(
     'https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true',
@@ -38,12 +84,43 @@ async function processAudio(
 
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`Deepgram API error: ${res.status} ${body}`)
+    const errorMessage = `Deepgram API error: ${res.status} ${body}`
+    if (isMediaAuditEnabled()) {
+      await logSttMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.STT_REQUEST_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          error_message: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
+    throw new Error(errorMessage)
   }
 
   const data = await res.json()
   const transcript: string =
     data?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? ''
+
+  if (isMediaAuditEnabled()) {
+    await logSttMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.STT_RESPONSE_RECEIVED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        transcript_length_chars: transcript.length,
+        latency_ms: Date.now() - sttStart,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
 
   // Classify based on filename/context heuristics
   const lower = item.original_filename.toLowerCase()
@@ -57,19 +134,25 @@ async function processAudio(
     processed_at: new Date().toISOString(),
   })
 
-  await logMediaEvent({
-    tenant_id: item.tenant_id,
-    member_id: item.member_id,
-    media_item_id: item.id,
-    action: AuditAction.MEDIA_ITEM_PROCESSED,
-    outcome: 'success',
-    correlation_id: correlationId,
-    metadata: {
-      type: item.type,
-      classification,
-      derived_content_length: transcript.length,
-    },
-  })
+  if (isMediaAuditEnabled()) {
+    await logMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.MEDIA_PROCESS_COMPLETED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        mime_type: item.mime_type,
+        original_filename: item.original_filename,
+        file_size_bytes: item.file_size_bytes,
+        timestamp: new Date().toISOString(),
+        type: item.type,
+        classification,
+        derived_content_length: transcript.length,
+      },
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -79,10 +162,50 @@ async function processImage(
   item: MediaItem,
   correlationId: string,
 ): Promise<void> {
-  const signedUrl = await generateSignedDownloadUrl(item.storage_path)
+  let signedUrl: string
+  try {
+    signedUrl = await generateSignedDownloadUrl(item.storage_path)
+  } catch (err) {
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.MEDIA_URL_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          mime_type: item.mime_type,
+          original_filename: item.original_filename,
+          file_size_bytes: item.file_size_bytes,
+          timestamp: new Date().toISOString(),
+          error_message: err instanceof Error ? err.message : String(err),
+        },
+      })
+    }
+    throw err
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
+
+  const aiStart = Date.now()
+
+  if (isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.AI_MEDIA_REQUEST_SENT,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        model: HAIKU_MODEL,
+        mime_type: item.mime_type,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -92,7 +215,7 @@ async function processImage(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: HAIKU_MODEL,
       max_tokens: 512,
       messages: [
         {
@@ -114,7 +237,23 @@ async function processImage(
 
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`Anthropic vision error: ${res.status} ${body}`)
+    const errorMessage = `Anthropic vision error: ${res.status} ${body}`
+    if (isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.AI_MEDIA_REQUEST_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          model: HAIKU_MODEL,
+          error_message: errorMessage,
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
+    throw new Error(errorMessage)
   }
 
   const data = await res.json()
@@ -133,6 +272,23 @@ async function processImage(
     caption = textBlock.text
   }
 
+  if (isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.AI_MEDIA_RESPONSE_RECEIVED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        model: HAIKU_MODEL,
+        latency_ms: Date.now() - aiStart,
+        classification,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
+
   const derived = [caption, extracted_text].filter(Boolean).join('\n\n')
 
   await updateMediaItem(item.id, {
@@ -142,19 +298,25 @@ async function processImage(
     processed_at: new Date().toISOString(),
   })
 
-  await logMediaEvent({
-    tenant_id: item.tenant_id,
-    member_id: item.member_id,
-    media_item_id: item.id,
-    action: AuditAction.MEDIA_ITEM_PROCESSED,
-    outcome: 'success',
-    correlation_id: correlationId,
-    metadata: {
-      type: item.type,
-      classification,
-      derived_content_length: derived.length,
-    },
-  })
+  if (isMediaAuditEnabled()) {
+    await logMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.MEDIA_PROCESS_COMPLETED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        mime_type: item.mime_type,
+        original_filename: item.original_filename,
+        file_size_bytes: item.file_size_bytes,
+        timestamp: new Date().toISOString(),
+        type: item.type,
+        classification,
+        derived_content_length: derived.length,
+      },
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,20 +329,119 @@ async function processDocument(
   correlationId: string,
 ): Promise<void> {
   // Download the file binary from storage for extraction
-  const signedUrl = await generateSignedDownloadUrl(item.storage_path)
+  let signedUrl: string
+  try {
+    signedUrl = await generateSignedDownloadUrl(item.storage_path)
+  } catch (err) {
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.MEDIA_URL_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          mime_type: item.mime_type,
+          original_filename: item.original_filename,
+          file_size_bytes: item.file_size_bytes,
+          timestamp: new Date().toISOString(),
+          error_message: err instanceof Error ? err.message : String(err),
+        },
+      })
+    }
+    throw err
+  }
+
   const fileRes = await fetch(signedUrl)
   if (!fileRes.ok) throw new Error(`Failed to download file: ${fileRes.status}`)
 
   const arrayBuffer = await fileRes.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
 
-  const rawText = await extractText(buffer, item.mime_type)
+  // PDF extraction calls claude-sonnet-4-6 via the Anthropic document API.
+  // DOCX/TXT use mammoth/Buffer — no AI call. Only emit AI events for PDFs.
+  const isPdf = item.mime_type === 'application/pdf'
+  const extractStart = Date.now()
+
+  if (isPdf && isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.AI_MEDIA_REQUEST_SENT,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        model: SONNET_MODEL,
+        mime_type: item.mime_type,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
+
+  let rawText: string
+  try {
+    rawText = await extractText(buffer, item.mime_type)
+  } catch (err) {
+    if (isPdf && isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.AI_MEDIA_REQUEST_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          model: SONNET_MODEL,
+          error_message: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
+    throw err
+  }
+
+  if (isPdf && isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.AI_MEDIA_RESPONSE_RECEIVED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        model: SONNET_MODEL,
+        latency_ms: Date.now() - extractStart,
+        classification: null,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
 
   // Light classification pass via Claude Haiku
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
 
   let classification = 'document'
+  const classStart = Date.now()
+
+  if (isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.AI_MEDIA_REQUEST_SENT,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        model: HAIKU_MODEL,
+        mime_type: item.mime_type,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
+
   try {
     const classRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -190,7 +451,7 @@ async function processDocument(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: HAIKU_MODEL,
         max_tokens: 64,
         messages: [
           {
@@ -204,9 +465,56 @@ async function processDocument(
       const classData = await classRes.json()
       const word = classData.content?.[0]?.text?.trim().toLowerCase()
       if (word) classification = word
+      if (isMediaAuditEnabled()) {
+        await logAiMediaEvent({
+          tenant_id: item.tenant_id,
+          member_id: item.member_id,
+          media_item_id: item.id,
+          action: AuditAction.AI_MEDIA_RESPONSE_RECEIVED,
+          outcome: 'success',
+          correlation_id: correlationId,
+          metadata: {
+            model: HAIKU_MODEL,
+            latency_ms: Date.now() - classStart,
+            classification,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      }
+    } else {
+      if (isMediaAuditEnabled()) {
+        await logAiMediaEvent({
+          tenant_id: item.tenant_id,
+          member_id: item.member_id,
+          media_item_id: item.id,
+          action: AuditAction.AI_MEDIA_REQUEST_FAILED,
+          outcome: 'failure',
+          correlation_id: correlationId,
+          metadata: {
+            model: HAIKU_MODEL,
+            error_message: `Classification HTTP ${classRes.status}`,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      }
     }
   } catch {
     // classification pass is best-effort; continue with 'document' default
+    if (isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.AI_MEDIA_REQUEST_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          model: HAIKU_MODEL,
+          error_message: 'Classification request threw',
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
   }
 
   await updateMediaItem(item.id, {
@@ -216,19 +524,25 @@ async function processDocument(
     processed_at: new Date().toISOString(),
   })
 
-  await logMediaEvent({
-    tenant_id: item.tenant_id,
-    member_id: item.member_id,
-    media_item_id: item.id,
-    action: AuditAction.MEDIA_ITEM_PROCESSED,
-    outcome: 'success',
-    correlation_id: correlationId,
-    metadata: {
-      type: item.type,
-      classification,
-      derived_content_length: rawText.length,
-    },
-  })
+  if (isMediaAuditEnabled()) {
+    await logMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.MEDIA_PROCESS_COMPLETED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        mime_type: item.mime_type,
+        original_filename: item.original_filename,
+        file_size_bytes: item.file_size_bytes,
+        timestamp: new Date().toISOString(),
+        type: item.type,
+        classification,
+        derived_content_length: rawText.length,
+      },
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,20 +557,23 @@ export async function processMediaItem(record: MediaItem): Promise<void> {
   const item = await getMediaItem(record.id, record.tenant_id)
   if (!item || item.status !== 'pending') return
 
-  // Job start audit log
-  await logMediaEvent({
-    tenant_id: item.tenant_id,
-    member_id: item.member_id,
-    media_item_id: item.id,
-    action: AuditAction.MEDIA_ITEM_PROCESSING,
-    outcome: 'success',
-    correlation_id: correlationId,
-    metadata: {
-      type: item.type,
-      file_size_bytes: item.file_size_bytes,
-      original_filename: item.original_filename,
-    },
-  })
+  if (isMediaAuditEnabled()) {
+    await logMediaEvent({
+      tenant_id: item.tenant_id,
+      member_id: item.member_id,
+      media_item_id: item.id,
+      action: AuditAction.MEDIA_PROCESS_STARTED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        mime_type: item.mime_type,
+        original_filename: item.original_filename,
+        file_size_bytes: item.file_size_bytes,
+        timestamp: new Date().toISOString(),
+        type: item.type,
+      },
+    })
+  }
 
   await updateMediaItem(item.id, { status: 'processing' })
 
@@ -293,19 +610,25 @@ export async function processMediaItem(record: MediaItem): Promise<void> {
       error_message: errorMessage,
     })
 
-    await logMediaEvent({
-      tenant_id: item.tenant_id,
-      member_id: item.member_id,
-      media_item_id: item.id,
-      action: AuditAction.MEDIA_ITEM_FAILED,
-      outcome: 'failure',
-      correlation_id: correlationId,
-      metadata: {
-        type: item.type,
-        error: errorMessage,
-        pipeline_step,
-        duration_ms: Date.now() - startMs,
-      },
-    })
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.MEDIA_PROCESS_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          mime_type: item.mime_type,
+          original_filename: item.original_filename,
+          file_size_bytes: item.file_size_bytes,
+          timestamp: new Date().toISOString(),
+          type: item.type,
+          error_message: errorMessage,
+          pipeline_step,
+          duration_ms: Date.now() - startMs,
+        },
+      })
+    }
   }
 }

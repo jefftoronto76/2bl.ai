@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   ArrowUp,
-  Paperclip,
-  Image as ImageIcon,
+  Plus,
   Mic,
   X,
   Check,
@@ -12,8 +11,10 @@ import {
   AudioLines,
   Lock,
 } from 'lucide-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { useChatStore } from './chatStore';
 import { useMediaUpload } from '@/services/media/useMediaUpload';
+import { SourceMenu, type SourceKey } from './SourceMenu';
 
 /* ------------------------------------------------------------------ *
  * ChatInput — composer with file attachments + voice capture.
@@ -168,11 +169,16 @@ export function ChatInput() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribeState, setTranscribeState] = useState<TranscribeState>('idle');
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const plusWrapRef = useRef<HTMLDivElement>(null);
   const lastBlobRef = useRef<Blob | null>(null);
+
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -261,6 +267,7 @@ export function ChatInput() {
   };
 
   const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50 MB
+  const DEFAULT_FILE_ACCEPT = '.m4a,.mp3,.wav,.ogg,.webm,.jpg,.jpeg,.png,.webp,.pdf,.docx,.txt';
 
   const addFiles = (list: FileList | null) => {
     if (!list || list.length === 0) return;
@@ -381,6 +388,39 @@ export function ChatInput() {
     void startRecording();
   };
 
+  const handleSource = (key: SourceKey) => {
+    setSourceMenuOpen(false);
+    switch (key) {
+      case 'camera':  cameraInputRef.current?.click(); break;
+      case 'library': imageInputRef.current?.click(); break;
+      case 'scan': {
+        if (!fileInputRef.current) break;
+        fileInputRef.current.accept = 'image/*,application/pdf';
+        fileInputRef.current.click();
+        setTimeout(() => { if (fileInputRef.current) fileInputRef.current.accept = DEFAULT_FILE_ACCEPT; }, 300);
+        break;
+      }
+      case 'record': void startRecording(); break;
+      case 'browse': fileInputRef.current?.click(); break;
+    }
+  };
+
+  useEffect(() => {
+    if (!sourceMenuOpen || isMobile) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (plusWrapRef.current && !plusWrapRef.current.contains(e.target as Node)) {
+        setSourceMenuOpen(false);
+      }
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') setSourceMenuOpen(false); };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [sourceMenuOpen, isMobile]);
+
   return (
     <div className="w-full max-w-2xl mx-auto px-4">
       <div className="rounded-[22px] border border-border bg-surface p-1.5 transition-colors focus-within:border-accent/40">
@@ -389,7 +429,7 @@ export function ChatInput() {
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".m4a,.mp3,.wav,.ogg,.webm,.jpg,.jpeg,.png,.webp,.pdf,.docx,.txt"
+          accept={DEFAULT_FILE_ACCEPT}
           className="hidden"
           onChange={(e) => {
             addFiles(e.target.files);
@@ -407,7 +447,17 @@ export function ChatInput() {
             e.target.value = '';
           }}
         />
-
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
         {isRecording ? (
           <VoiceBar onCancel={cancelRecording} onConfirm={confirmRecording} />
         ) : transcribeState === 'transcribing' ? (
@@ -430,42 +480,53 @@ export function ChatInput() {
               onKeyDown={handleKeyDown}
               placeholder="Share a memory, or ask your guide anything"
               rows={1}
+              autoComplete="off"
               className="block w-full bg-transparent text-text-primary placeholder-text-muted font-body text-base resize-none focus:outline-none leading-6 px-2.5 pt-2.5 pb-1 min-h-[28px] max-h-[200px]"
             />
 
             <div className="flex items-center gap-1 pl-0.5 pr-1 py-0.5">
-              {/* Attachment + voice buttons are member-only. When locked they
-                  remain focusable so screen readers can announce the gate. */}
-              <button
-                type="button"
-                aria-label={isMember ? 'Attach files' : 'Sign in to attach files'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Attach files' : 'Sign in to unlock'}
-                onClick={isMember ? () => fileInputRef.current?.click() : undefined}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
+              {/* "+" source menu button — member-only. Popover on desktop, sheet on mobile. */}
+              <div ref={plusWrapRef} className="relative">
+                <button
+                  type="button"
+                  aria-label="Add to your story"
+                  aria-haspopup="menu"
+                  aria-expanded={sourceMenuOpen}
+                  aria-disabled={!isMember}
+                  onClick={isMember ? () => setSourceMenuOpen((o) => !o) : undefined}
+                  className={cn(
+                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    isMember
+                      ? 'bg-accent hover:bg-accent-hover text-background'
+                      : 'bg-text-primary/10 text-text-muted opacity-40 cursor-not-allowed',
+                  )}
+                >
+                  {isMember
+                    ? <Plus size={20} className="transition-transform duration-200" style={{ transform: sourceMenuOpen ? 'rotate(45deg)' : 'none' }} />
+                    : <Lock size={15} />
+                  }
+                </button>
+
+                {/* Desktop popover — absolute, anchored to this wrapper */}
+                {!isMobile && (
+                  <SourceMenu
+                    open={sourceMenuOpen}
+                    variant="popover"
+                    onSelect={handleSource}
+                    onClose={() => setSourceMenuOpen(false)}
+                  />
                 )}
-              >
-                {isMember ? <Paperclip size={18} /> : <Lock size={15} />}
-              </button>
-              <button
-                type="button"
-                aria-label={isMember ? 'Add a photo' : 'Sign in to add photos'}
-                aria-disabled={!isMember}
-                title={isMember ? 'Add a photo' : 'Sign in to unlock'}
-                onClick={isMember ? () => imageInputRef.current?.click() : undefined}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  isMember
-                    ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
-                    : 'text-text-muted opacity-40 cursor-not-allowed',
-                )}
-              >
-                {isMember ? <ImageIcon size={18} /> : <Lock size={15} />}
-              </button>
+              </div>
+
+              {/* Mobile sheet — portaled to body to escape transform ancestor */}
+              {isMobile && (
+                <SourceMenu
+                  open={sourceMenuOpen}
+                  variant="sheet"
+                  onSelect={handleSource}
+                  onClose={() => setSourceMenuOpen(false)}
+                />
+              )}
 
               <div className="flex-1" />
 
@@ -532,6 +593,7 @@ export function ChatInput() {
       <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
         Your guide listens, asks, and never forgets a detail.
       </p>
+
     </div>
   );
 }

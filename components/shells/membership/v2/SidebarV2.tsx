@@ -81,6 +81,10 @@ export interface SidebarV2Props {
   // Per-row kebab menu
   onRowAction?: (target: RowTarget, id: string, action: RowAction) => void;
 
+  // Mobile overlay close callback — called after New Chat or session selection
+  // so the parent can dismiss the overlay. No-op when undefined (desktop).
+  onClose?: () => void;
+
   // Inline rename
   /** Session id currently being renamed — shows an input in place of the title. */
   renamingId?: string;
@@ -314,6 +318,7 @@ export function SidebarV2({
   onStartStoryChat,
   onSelectPrompt,
   onRowAction,
+  onClose,
   renamingId,
   onRenameCommit,
 }: SidebarV2Props) {
@@ -376,7 +381,7 @@ export function SidebarV2({
         <button
           type="button"
           aria-label="New Chat"
-          onClick={newChat}
+          onClick={() => { newChat(); onClose?.(); }}
           className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={16} className="flex-shrink-0" />
@@ -461,7 +466,7 @@ export function SidebarV2({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => loadSession(session.id)}
+                          onClick={() => { loadSession(session.id); onClose?.(); }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id

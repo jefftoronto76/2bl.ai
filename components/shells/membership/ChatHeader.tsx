@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Maximize2,
+  Menu,
   Minimize2,
   Settings,
   Share2,
@@ -30,9 +31,12 @@ export interface ChatHeaderProps {
    *  provided (keeps the header usable outside the V2 drawer). */
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
+  /** When provided, renders a hamburger button (mobile-only via md:hidden)
+   *  to the left of the title. Desktop passes undefined — no button rendered. */
+  onMenuOpen?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen }: ChatHeaderProps) {
   const { dispatch, isAdmin } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -76,6 +80,16 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen }: ChatHea
 
   return (
     <header className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
+      {onMenuOpen && (
+        <button
+          type="button"
+          aria-label="Open navigation"
+          onClick={onMenuOpen}
+          className="md:hidden grid place-items-center w-10 h-10 rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent mr-1 flex-shrink-0"
+        >
+          <Menu size={18} />
+        </button>
+      )}
       <button
         type="button"
         className="flex items-center gap-1.5 font-body text-text-primary font-semibold text-base hover:bg-text-primary/10 rounded-lg px-2 py-1.5 transition-colors"
