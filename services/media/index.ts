@@ -113,6 +113,14 @@ export async function listByMember(
   return (data ?? []) as MediaItem[]
 }
 
+/**
+ * Returns true unless ENABLE_MEDIA_AUDIT_LOGGING is explicitly set to 'false'.
+ * Readable from environment variables — no deploy required to toggle.
+ */
+export function isMediaAuditEnabled(): boolean {
+  return process.env.ENABLE_MEDIA_AUDIT_LOGGING !== 'false'
+}
+
 interface LogMediaEventParams {
   tenant_id: string
   member_id: string
@@ -134,6 +142,48 @@ export async function logMediaEvent(params: LogMediaEventParams): Promise<void> 
     tenant_id: params.tenant_id,
     actor_id: params.actor_id ?? null,
     actor_type: 'user',
+    target_type: 'media_item',
+    target_id: params.media_item_id,
+    outcome: params.outcome,
+    correlation_id: params.correlation_id,
+    metadata: {
+      member_id: params.member_id,
+      ...params.metadata,
+    },
+  })
+}
+
+/**
+ * Wraps logEvent for Anthropic AI calls within the media processing pipeline.
+ * Same envelope as logMediaEvent — kept separate for log query clarity.
+ */
+export async function logAiMediaEvent(params: LogMediaEventParams): Promise<void> {
+  await logEvent({
+    action: params.action as AuditAction,
+    tenant_id: params.tenant_id,
+    actor_id: params.actor_id ?? null,
+    actor_type: 'system',
+    target_type: 'media_item',
+    target_id: params.media_item_id,
+    outcome: params.outcome,
+    correlation_id: params.correlation_id,
+    metadata: {
+      member_id: params.member_id,
+      ...params.metadata,
+    },
+  })
+}
+
+/**
+ * Wraps logEvent for Deepgram STT calls within the media processing pipeline.
+ * Same envelope as logMediaEvent — kept separate for log query clarity.
+ */
+export async function logSttMediaEvent(params: LogMediaEventParams): Promise<void> {
+  await logEvent({
+    action: params.action as AuditAction,
+    tenant_id: params.tenant_id,
+    actor_id: params.actor_id ?? null,
+    actor_type: 'system',
     target_type: 'media_item',
     target_id: params.media_item_id,
     outcome: params.outcome,
