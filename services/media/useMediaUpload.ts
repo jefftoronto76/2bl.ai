@@ -36,6 +36,8 @@ export function useMediaUpload(
     setError(null)
     setIsUploading(true)
 
+    let mediaItemId: string | null = null
+
     try {
       // Step 1: get a signed upload URL + create the media_items record server-side
       const urlRes = await fetch('/api/media/upload-url', {
@@ -55,7 +57,17 @@ export function useMediaUpload(
         throw new Error(body.error ?? `Upload URL request failed: ${urlRes.status}`)
       }
 
-      const { signedUrl, mediaItemId } = await urlRes.json()
+      const result = await urlRes.json()
+      mediaItemId = result.mediaItemId
+      const { signedUrl } = result
+
+      // Fire upload_started after the media_items record exists so the event
+      // route can resolve metadata. Best-effort — never blocks the upload.
+      void fetch('/api/events/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaItemId, event: 'upload_started' }),
+      })
 
       // Step 2: PUT the file binary directly to Supabase Storage
       const uploadRes = await fetch(signedUrl, {
@@ -68,6 +80,12 @@ export function useMediaUpload(
         throw new Error(`Storage upload failed: ${uploadRes.status}`)
       }
 
+      void fetch('/api/events/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaItemId, event: 'upload_completed' }),
+      })
+
       return {
         mediaItemId,
         type: classifyFile(file),
@@ -77,6 +95,13 @@ export function useMediaUpload(
       const msg = err instanceof Error ? err.message : 'Upload failed'
       setError(msg)
       console.error('[media/useMediaUpload] upload failed:', err)
+      if (mediaItemId) {
+        void fetch('/api/events/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mediaItemId, event: 'upload_failed', error_message: msg }),
+        })
+      }
       return null
     } finally {
       setIsUploading(false)
