@@ -56,12 +56,6 @@ export interface ChatHeroProps {
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const { state, isError, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
 
-  // Nav mode — persisted to localStorage, defaults to peek.
-  const [navMode] = useState<'dock' | 'hover' | 'drawer' | 'peek'>(() => {
-    if (typeof window === 'undefined') return 'peek';
-    return (localStorage.getItem('hl.navMode') as 'dock' | 'hover' | 'drawer' | 'peek') ?? 'peek';
-  });
-
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
   // the session and demo the flow; rows are inert (no select/chat/kebab
@@ -161,8 +155,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       <SidebarV2
         stories={stories}
         writingPrompts={WRITING_PROMPTS}
-        navMode={navMode}
-        armKey={state.sessionId ?? 'init'}
         onCreateStory={() => setBeginStoryOpen(true)}
         onSelectPrompt={handleSelectPrompt}
         onRowAction={handleRowAction}
