@@ -113,3 +113,17 @@
   }
 }
 
+@keyframes hl-orb {
+  0%, 100% { opacity: 0.18; transform: scale(1); }
+  50%       { opacity: 0.32; transform: scale(1.06); }
+}
+.hl-orb-pulse {
+  animation: hl-orb 2.4s ease-in-out infinite;
+}
+.hl-orb-pulse-slow {
+  animation: hl-orb 3.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hl-orb-pulse, .hl-orb-pulse-slow { animation: none; }
+}
+
