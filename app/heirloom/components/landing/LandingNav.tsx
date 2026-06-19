@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BookOpen } from 'lucide-react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import { useChatStore, setOAuthInProgress } from '@/components/shells/membership/chatStore';
 import { heirloomClerkAppearance } from '@/components/shells/membership/clerkAppearance';
@@ -44,7 +43,13 @@ export function LandingNav() {
           aria-label="Heirloom home"
         >
           <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center">
-            <BookOpen size={16} className="text-accent" />
+            <img
+                src="/heirloom/favicons/icons/heirloom-feather-cream.svg"
+                width={16}
+                height={16}
+                alt=""
+                aria-hidden="true"
+              />
           </div>
           <span className="font-display font-semibold text-lg text-text-primary tracking-wide">
             Heirloom
