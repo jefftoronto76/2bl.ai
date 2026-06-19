@@ -1,0 +1,55 @@
+/* components/admin/shell/UnifiedSidebarNav.module.css
+   Sidebar internals — wordmark, section labels, nav links. Tokens from the
+   prototype (tenant-admin/styles.css). */
+
+.wordmark { padding: 8px; }
+.wordmarkName {
+  font-family: var(--mantine-font-family-headings, 'Playfair Display', serif);
+  font-weight: 400;
+  font-size: 16px;
+  color: #f1f3f5;          /* gray-1 */
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.wordmarkKicker {
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 9px;
+  color: #2d6a4f;          /* green-6 (accent) */
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.navScroll { flex: 1; overflow-y: auto; }
+
+.sectionLabel {
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 9px;
+  color: #868e96;          /* gray-6 */
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding-left: 12px;
+  margin-bottom: 4px;
+}
+
+.navlink {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: #ced4da;          /* gray-4 */
+  font-size: 14px;
+  font-weight: 400;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.navlink:hover {
+  background: #245741;     /* green-7 */
+  color: #fff;
+}
+.navlink[data-active] {
+  background: #2d6a4f;     /* green-6 */
+  color: #fff;
+  font-weight: 500;
+}

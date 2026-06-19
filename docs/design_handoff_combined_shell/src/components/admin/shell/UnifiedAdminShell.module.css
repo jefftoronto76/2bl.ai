@@ -1,0 +1,39 @@
+/* components/admin/shell/UnifiedAdminShell.module.css
+   Dark sidebar + content tokens lifted verbatim from the prototype
+   (tenant-admin/styles.css). Replace literals with your Mantine theme vars where
+   you already have them (var(--mantine-color-dark-9) etc.). */
+
+.navbar {
+  background: #101113;                 /* dark-9 */
+  border-right: 1px solid #2C2E33;     /* dark-6 */
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  background: #fff;
+  overflow-y: auto;
+}
+
+/* Padded, max-width column for platform + members screens. */
+.mainInner {
+  padding: 24px;
+  max-width: 1080px;
+}
+
+/* Mobile header (burger). AppShell hides it on desktop via `hiddenFrom`. */
+.mobileHeader {
+  background: #fff;
+  border-bottom: 1px solid #e9ecef;    /* gray-2 */
+}
+.mhTitle {
+  font-family: var(--mantine-font-family-headings, 'Playfair Display', serif);
+  font-weight: 600;
+  font-size: 15px;
+  color: #1a1917;
+}
+
+@media (max-width: 768px) {
+  .mainInner { max-width: none; padding: 16px; }
+}
