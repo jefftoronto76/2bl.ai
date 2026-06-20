@@ -20,8 +20,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     getTenantType(),
   ])
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  console.log('[admin layout]', { userRole: (user as any)?.role, isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
+  console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
   return (
     <AdminUserProvider supabaseUserId={supabaseUserId}>
