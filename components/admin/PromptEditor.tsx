@@ -1,6 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { Stack, Textarea, Group, Alert, ActionIcon, Tooltip, Button, Text as MantineText } from '@mantine/core'
+import { useClipboard } from '@mantine/hooks'
+import { IconCopy, IconCheck } from '@tabler/icons-react'
+import { Text } from '@/components/admin/primitives/Text'
+import { PromptFullnessMeter } from '@/components/admin/primitives/PromptFullnessMeter'
 
 type Issue = { description: string; offendingText: string | null }
 type CheckResult = { pass: boolean; issues: Issue[] }
@@ -35,6 +40,7 @@ export function PromptEditor({
   const [savedVersion, setSavedVersion] = useState(initialVersion)
   const [errorMsg, setErrorMsg] = useState('')
   const [history, setHistory] = useState<HistoryEntry[]>(initialHistory)
+  const clipboard = useClipboard({ timeout: 2000 })
 
   const handleChange = (value: string) => {
     setPrompt(value)
@@ -78,7 +84,7 @@ export function PromptEditor({
 
   const runSave = async (result: CheckResult | null) => {
     setStatus('saving')
-    const prevPrompt = initialPrompt // capture before state changes
+    const prevPrompt = initialPrompt
 
     try {
       const res = await fetch('/api/admin/prompt/save', {
@@ -89,7 +95,6 @@ export function PromptEditor({
       const data = await res.json()
 
       if (data.version) {
-        // Optimistically prepend the just-archived version to history
         if (savedVersion > 0) {
           const archivedEntry: HistoryEntry = {
             id: `local-${savedVersion}`,
@@ -115,189 +120,145 @@ export function PromptEditor({
   const showFailResult = checkResult && !checkResult.pass && status === 'idle'
 
   return (
-    <div style={{ maxWidth: '800px' }}>
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 'clamp(28px, 3vw, 40px)',
-          fontWeight: 400,
-          letterSpacing: '-0.02em',
-          color: 'var(--color-text-primary)',
-          marginBottom: '8px',
-        }}>
-          System Prompt
-        </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <p style={{ fontFamily: 'var(--font-body)', fontSize: '15px', color: 'var(--color-text-muted)' }}>
-            The instructions Sage follows in every conversation.
-          </p>
-          {savedVersion > 0 && (
-            <span style={{
-              fontFamily: 'var(--font-mono)', fontSize: '10px',
-              letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--color-text-dim)',
-            }}>
-              v{savedVersion}
-            </span>
-          )}
-        </div>
-      </div>
+    <Stack gap="md">
+      <PromptFullnessMeter bodies={[prompt]} />
 
-      <textarea
+      <Group justify="space-between" wrap="nowrap">
+        <Text
+          variant="muted"
+          style={{
+            fontFamily: 'var(--mantine-font-family-monospace)',
+            fontSize: 'var(--mantine-font-size-xs)',
+          }}
+        >
+          Version: {savedVersion > 0 ? `v${savedVersion}` : '—'}
+        </Text>
+
+        <Tooltip label={clipboard.copied ? 'Copied!' : 'Copy prompt'} withArrow position="left">
+          <ActionIcon
+            variant="subtle"
+            color={clipboard.copied ? 'teal' : 'gray'}
+            size="md"
+            aria-label="Copy prompt to clipboard"
+            onClick={() => clipboard.copy(prompt)}
+          >
+            {clipboard.copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+
+      <Textarea
         value={prompt}
         onChange={(e) => handleChange(e.target.value)}
         disabled={busy}
-        style={{
-          width: '100%',
-          minHeight: '400px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '13px',
-          lineHeight: 1.7,
-          color: 'var(--color-text-primary)',
-          background: busy ? '#f5f4f1' : 'white',
-          border: '1px solid var(--color-border)',
-          borderRadius: '4px',
-          padding: '20px',
-          resize: 'vertical',
-          outline: 'none',
-          boxSizing: 'border-box',
-          opacity: busy ? 0.7 : 1,
+        autosize
+        minRows={8}
+        maxRows={40}
+        styles={{
+          input: {
+            fontFamily: 'var(--mantine-font-family-monospace)',
+            fontSize: 'var(--mantine-font-size-sm)',
+            lineHeight: 1.6,
+          },
         }}
       />
 
-      {/* Failed check — show issues */}
       {showFailResult && (
-        <div style={{
-          marginTop: '16px', padding: '16px 20px',
-          background: 'white', border: '1px solid var(--color-border)', borderLeft: '3px solid #b45309',
-        }}>
-          <p style={{
-            fontFamily: 'var(--font-mono)', fontSize: '10px',
-            letterSpacing: '0.18em', textTransform: 'uppercase', color: '#b45309', marginBottom: '10px',
-          }}>
-            Issues found
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <Alert color="orange" variant="light" radius="sm">
+          <Stack gap="xs">
             {checkResult.issues.map((issue, i) => {
               const canRemove = !!issue.offendingText && prompt.includes(issue.offendingText)
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-                  <p style={{ fontFamily: 'var(--font-body)', fontSize: '14px', color: 'var(--color-text-primary)', lineHeight: 1.6, margin: 0 }}>
-                    {issue.description}
-                  </p>
+                <Group key={i} justify="space-between" wrap="nowrap" align="flex-start">
+                  <MantineText size="sm">{issue.description}</MantineText>
                   {canRemove && (
-                    <button
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      color="orange"
                       onClick={() => removeOffendingText(issue.offendingText!)}
-                      style={{
-                        flexShrink: 0, background: 'transparent',
-                        border: '1px solid rgba(180,83,9,0.4)', color: '#b45309',
-                        fontFamily: 'var(--font-mono)', fontSize: '10px',
-                        letterSpacing: '0.15em', textTransform: 'uppercase',
-                        padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap',
-                      }}
                     >
                       Remove
-                    </button>
+                    </Button>
                   )}
-                </div>
+                </Group>
               )
             })}
-          </div>
-        </div>
+          </Stack>
+        </Alert>
       )}
 
-      {/* Error */}
       {status === 'error' && (
-        <p style={{ marginTop: '12px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#b45309' }}>
-          {errorMsg}
-        </p>
+        <Alert color="red" variant="light" radius="sm">
+          <MantineText size="sm">{errorMsg}</MantineText>
+        </Alert>
       )}
 
-      {/* Saved confirmation */}
       {status === 'saved' && (
-        <p style={{ marginTop: '12px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#2d6a4f', letterSpacing: '0.05em' }}>
-          ✓ Saved. Version {savedVersion}.
-        </p>
+        <Alert color="teal" variant="light" radius="sm">
+          <MantineText size="sm">Saved. Version {savedVersion}.</MantineText>
+        </Alert>
       )}
 
-      {/* Action buttons */}
-      <div style={{ marginTop: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-        <button
+      <Group gap="sm">
+        <Button
+          color="green"
+          loading={busy}
+          disabled={!prompt.trim()}
           onClick={runCheck}
-          disabled={busy || !prompt.trim()}
-          style={{
-            background: '#2d6a4f', color: 'white', border: 'none',
-            fontFamily: 'var(--font-mono)', fontSize: '11px',
-            letterSpacing: '0.18em', textTransform: 'uppercase',
-            padding: '14px 28px',
-            cursor: busy || !prompt.trim() ? 'not-allowed' : 'pointer',
-            opacity: busy || !prompt.trim() ? 0.5 : 1,
-          }}
         >
-          {status === 'checking' ? 'Checking...' : status === 'saving' ? 'Saving...' : 'Check & Save'}
-        </button>
+          Check & Save
+        </Button>
 
         {showFailResult && (
-          <button
+          <Button
+            variant="outline"
+            color="orange"
             onClick={() => runSave(checkResult)}
-            style={{
-              background: 'transparent', color: '#b45309', border: '1px solid #b45309',
-              fontFamily: 'var(--font-mono)', fontSize: '11px',
-              letterSpacing: '0.18em', textTransform: 'uppercase',
-              padding: '14px 28px', cursor: 'pointer',
-            }}
           >
             Save Anyway
-          </button>
+          </Button>
         )}
-      </div>
+      </Group>
 
-      {/* Version history */}
       {history.length > 0 && (
-        <div style={{ marginTop: '64px' }}>
-          <p style={{
-            fontFamily: 'var(--font-mono)', fontSize: '10px',
-            letterSpacing: '0.18em', textTransform: 'uppercase',
-            color: 'var(--color-text-dim)', marginBottom: '16px',
-          }}>
+        <Stack gap="xs" mt="xl">
+          <MantineText
+            size="xs"
+            c="dimmed"
+            style={{
+              fontFamily: 'var(--mantine-font-family-monospace)',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+            }}
+          >
             Version History
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {history.map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '14px 16px', background: 'white',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                  <span style={{
-                    fontFamily: 'var(--font-mono)', fontSize: '12px',
-                    color: 'var(--color-text-muted)', minWidth: '32px',
-                  }}>
-                    v{entry.version}
-                  </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-text-dim)' }}>
-                    {formatDate(entry.saved_at)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleChange(entry.content)}
-                  style={{
-                    background: 'transparent', border: '1px solid var(--color-border)',
-                    fontFamily: 'var(--font-mono)', fontSize: '10px',
-                    letterSpacing: '0.15em', textTransform: 'uppercase',
-                    color: 'var(--color-text-muted)', padding: '4px 12px', cursor: 'pointer',
-                  }}
+          </MantineText>
+          {history.map((entry) => (
+            <Group key={entry.id} justify="space-between" wrap="nowrap">
+              <Group gap="xl" wrap="nowrap">
+                <MantineText
+                  size="xs"
+                  c="dimmed"
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)', minWidth: '32px' }}
                 >
-                  Restore
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+                  v{entry.version}
+                </MantineText>
+                <MantineText
+                  size="xs"
+                  c="dimmed"
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                >
+                  {formatDate(entry.saved_at)}
+                </MantineText>
+              </Group>
+              <Button variant="subtle" size="xs" onClick={() => handleChange(entry.content)}>
+                Restore
+              </Button>
+            </Group>
+          ))}
+        </Stack>
       )}
-    </div>
+    </Stack>
   )
 }
