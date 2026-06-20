@@ -22,25 +22,25 @@ type Props = {
 };
 
 export function UnifiedAdminShell({ tenantName, isPlatformAdmin, user, children }: Props) {
-  const [opened, { toggle, close }] = useDisclosure(false);
+  const [mobileOpened, { toggle, close }] = useDisclosure(false);
   const pathname = usePathname();
   const padded = isPaddedRoute(pathname);
   const title = PAGE_TITLES[pathname] ?? '';
 
   return (
     <AppShell
-      header={{ height: 48, collapsed: { desktop: true, mobile: false } }}
+      header={{ height: 48, collapsed: !mobileOpened }}
       navbar={{
         width: 240,
         breakpoint: 'md',
-        collapsed: { mobile: !opened },
+        collapsed: { mobile: !mobileOpened },
       }}
       padding={0}
     >
       {/* Mobile-only header with the burger */}
       <AppShell.Header className={classes.mobileHeader} hiddenFrom="md">
         <Group h="100%" px="md" gap={12}>
-          <Burger opened={opened} onClick={toggle} size="sm" aria-label="Toggle navigation" />
+          <Burger opened={mobileOpened} onClick={toggle} size="sm" aria-label="Toggle navigation" />
           {title && <Text className={classes.mhTitle}>{title}</Text>}
         </Group>
       </AppShell.Header>
