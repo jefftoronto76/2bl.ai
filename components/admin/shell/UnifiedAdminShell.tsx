@@ -38,7 +38,10 @@ export function UnifiedAdminShell({ tenantName, isPlatformAdmin, user, children 
       padding={0}
     >
       {/* Mobile-only header with the burger */}
-      <AppShell.Header className={classes.mobileHeader} hiddenFrom="md">
+      <AppShell.Header
+        hiddenFrom="md"
+        style={{ backgroundColor: 'var(--mantine-color-white)', borderBottom: '1px solid var(--mantine-color-gray-2)' }}
+      >
         <Group h="100%" px="md" gap={12}>
           <Burger opened={mobileOpened} onClick={toggle} size="sm" aria-label="Toggle navigation" />
           {title && <Text className={classes.mhTitle}>{title}</Text>}
@@ -48,7 +51,8 @@ export function UnifiedAdminShell({ tenantName, isPlatformAdmin, user, children 
       {/* Dark sidebar */}
       <AppShell.Navbar
         className={classes.navbar}
-        style={{ background: 'var(--mantine-color-dark-9)', borderRight: '1px solid var(--mantine-color-dark-6)' }}
+        withBorder={false}
+        style={{ backgroundColor: 'var(--mantine-color-dark-9)', borderRight: '1px solid var(--mantine-color-dark-6)' }}
         data-mantine-color-scheme="dark"
       >
         <UnifiedSidebarNav
@@ -61,7 +65,7 @@ export function UnifiedAdminShell({ tenantName, isPlatformAdmin, user, children 
 
       {/* Content area. Platform + /admin/members sit in the padded column;
           full-bleed tenant screens own their own scroll + header. */}
-      <AppShell.Main className={classes.main}>
+      <AppShell.Main className={classes.main} style={{ backgroundColor: 'var(--mantine-color-white)' }}>
         {padded ? <Box className={classes.mainInner}>{children}</Box> : children}
       </AppShell.Main>
     </AppShell>

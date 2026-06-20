@@ -33,7 +33,7 @@
 .sectionLabel {
   font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
   font-size: 9px;
-  color: #868e96; /* gray-6 */
+  /* color resolved via c="dimmed" Mantine prop on the Text component */
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 500;
@@ -50,18 +50,18 @@
   font-size: 14px;
   font-weight: 400;
   padding: 8px 12px;
-  border-radius: 4px;
+  /* border-radius applied inline via var(--mantine-radius-sm) */
   transition: background-color 120ms ease, color 120ms ease;
   cursor: pointer;
 }
 
 .navlink:hover {
-  background: #245741; /* green-7 */
-  color: #fff;
+  background: var(--mantine-color-green-filled-hover);
+  color: var(--mantine-color-white);
 }
 
 .navlink[data-active] {
-  background: var(--mantine-color-green-6, #2d6a4f);
-  color: #fff;
+  background: var(--mantine-color-green-filled);
+  color: var(--mantine-color-white);
   font-weight: 500;
 }

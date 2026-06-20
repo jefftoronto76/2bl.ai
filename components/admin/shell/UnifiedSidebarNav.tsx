@@ -47,6 +47,7 @@ export function UnifiedSidebarNav({ tenantName, isPlatformAdmin, user, onNavigat
           <Box key={section.label} component="section" aria-label={section.label}>
             <Text
               className={classes.sectionLabel}
+              c="dimmed"
               mt={i === 0 ? 6 : 14}
               component="span"
             >
@@ -60,11 +61,14 @@ export function UnifiedSidebarNav({ tenantName, isPlatformAdmin, user, onNavigat
                     key={item.href}
                     className={classes.navlink}
                     mod={{ active }}
-                    style={
-                      active
-                        ? { background: 'var(--mantine-color-green-6, #2d6a4f)', color: '#fff', fontWeight: 500 }
-                        : undefined
-                    }
+                    style={{
+                      borderRadius: 'var(--mantine-radius-sm)',
+                      ...(active ? {
+                        background: 'var(--mantine-color-green-filled)',
+                        color: 'var(--mantine-color-white)',
+                        fontWeight: 500,
+                      } : {}),
+                    }}
                     aria-current={active ? 'page' : undefined}
                     onClick={() => go(item.href)}
                   >

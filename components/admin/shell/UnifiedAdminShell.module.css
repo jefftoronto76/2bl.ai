@@ -7,7 +7,6 @@
 }
 
 .main {
-  background: var(--mantine-color-white);
   overflow-y: auto;
 }
 
@@ -15,12 +14,6 @@
 .mainInner {
   padding: 24px;
   max-width: 1080px;
-}
-
-/* Mobile-only header (burger bar). AppShell hides it on desktop. */
-.mobileHeader {
-  background: var(--mantine-color-white);
-  border-bottom: 1px solid var(--mantine-color-gray-2);
 }
 
 .mhTitle {
