@@ -1,8 +1,6 @@
 /* components/admin/shell/UnifiedAdminShell.module.css */
 
 .navbar {
-  background: var(--mantine-color-dark-9);
-  border-right: 1px solid var(--mantine-color-dark-6);
   padding: 8px;
   display: flex;
   flex-direction: column;

@@ -60,6 +60,11 @@ export function UnifiedSidebarNav({ tenantName, isPlatformAdmin, user, onNavigat
                     key={item.href}
                     className={classes.navlink}
                     mod={{ active }}
+                    style={
+                      active
+                        ? { background: 'var(--mantine-color-green-6, #2d6a4f)', color: '#fff', fontWeight: 500 }
+                        : undefined
+                    }
                     aria-current={active ? 'page' : undefined}
                     onClick={() => go(item.href)}
                   >

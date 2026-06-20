@@ -46,7 +46,11 @@ export function UnifiedAdminShell({ tenantName, isPlatformAdmin, user, children 
       </AppShell.Header>
 
       {/* Dark sidebar */}
-      <AppShell.Navbar className={classes.navbar}>
+      <AppShell.Navbar
+        className={classes.navbar}
+        style={{ background: 'var(--mantine-color-dark-9)', borderRight: '1px solid var(--mantine-color-dark-6)' }}
+        data-mantine-color-scheme="dark"
+      >
         <UnifiedSidebarNav
           tenantName={tenantName}
           isPlatformAdmin={isPlatformAdmin}
