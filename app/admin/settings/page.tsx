@@ -5,6 +5,7 @@ import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
 import { ChatThresholds } from './ChatThresholds'
 import { InviteGate } from './InviteGate'
+import { Appearance } from './Appearance'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,16 @@ export default function SettingsPage() {
             </Accordion.Control>
             <Accordion.Panel>
               <InviteGate />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="appearance">
+            <Accordion.Control>
+              <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>Appearance</span>
+              <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>Colors, fonts, and brand tokens for your storefront.</span>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Appearance />
             </Accordion.Panel>
           </Accordion.Item>
         </Accordion>

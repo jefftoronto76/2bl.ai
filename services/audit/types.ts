@@ -11,6 +11,8 @@ export const AuditAction = {
   SAGE_PARAMETER_DELETE: 'sage_parameter.delete',
   // Tenant settings
   TENANT_SETTINGS_UPDATE: 'tenant_settings.update',
+  // Appearance (tenant_branding)
+  APPEARANCE_UPDATE: 'appearance.update',
   // Invites
   INVITE_CREATE: 'invite.create',
   INVITE_DELETE: 'invite.delete',
