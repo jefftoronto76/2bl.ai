@@ -28,6 +28,7 @@ export async function getTenantType(): Promise<string | null> {
       return null
     }
 
+    console.log('[getTenantType]', { tenant_id, type: data?.type ?? null })
     return data.type
   } catch (err) {
     console.error('[getTenantType] resolution threw:', err instanceof Error ? err.message : err)

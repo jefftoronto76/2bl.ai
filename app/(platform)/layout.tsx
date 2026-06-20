@@ -31,6 +31,8 @@ export default async function PlatformLayout({ children }: { children: React.Rea
 
   const [tenantName, tenantType] = await Promise.all([getTenantName(), getTenantType()])
   const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  console.log('[platform layout]', { userRole: (user as any)?.role, isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
   return (
     <MantineProvider theme={adminTheme}>
