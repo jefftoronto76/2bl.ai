@@ -1,8 +1,8 @@
 // app/(platform)/platform/members/page.tsx
 //
 // Platform-admin cross-tenant members view. Mirrors the data-fetching pattern in
-// app/admin/members/page.tsx but renders inside PlatformShell instead of AdminShell.
-// Reuses the shared MembersList client component and its associated types.
+// app/admin/members/page.tsx. Reuses the shared MembersList client component and
+// its associated types.
 
 import { getCurrentUser } from '@/services/auth';
 import { redirect } from 'next/navigation';

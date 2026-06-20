@@ -1,0 +1,40 @@
+/* components/admin/shell/UnifiedAdminShell.module.css */
+
+.navbar {
+  background: var(--mantine-color-dark-9);
+  border-right: 1px solid var(--mantine-color-dark-6);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  background: var(--mantine-color-white);
+  overflow-y: auto;
+}
+
+/* Padded, max-width column for platform + /admin/members screens. */
+.mainInner {
+  padding: 24px;
+  max-width: 1080px;
+}
+
+/* Mobile-only header (burger bar). AppShell hides it on desktop. */
+.mobileHeader {
+  background: var(--mantine-color-white);
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+}
+
+.mhTitle {
+  font-family: var(--mantine-font-family-headings, 'Playfair Display', serif);
+  font-weight: 600;
+  font-size: 15px;
+  color: #1a1917;
+}
+
+@media (max-width: 768px) {
+  .mainInner {
+    max-width: none;
+    padding: 16px;
+  }
+}

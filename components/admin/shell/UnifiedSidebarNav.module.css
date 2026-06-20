@@ -1,0 +1,67 @@
+/* components/admin/shell/UnifiedSidebarNav.module.css */
+
+.wordmark {
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.wordmarkName {
+  font-family: var(--mantine-font-family-headings, 'Playfair Display', serif);
+  font-weight: 400;
+  font-size: 16px;
+  color: #f1f3f5; /* gray-1 */
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.wordmarkKicker {
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 9px;
+  color: var(--mantine-color-green-6, #2d6a4f);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Scrolling nav body — grows to fill space between wordmark and footer */
+.navScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 4px;
+}
+
+.sectionLabel {
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 9px;
+  color: #868e96; /* gray-6 */
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+  padding-left: 12px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.navlink {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: #ced4da; /* gray-4 */
+  font-size: 14px;
+  font-weight: 400;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 120ms ease, color 120ms ease;
+  cursor: pointer;
+}
+
+.navlink:hover {
+  background: #245741; /* green-7 */
+  color: #fff;
+}
+
+.navlink[data-active] {
+  background: var(--mantine-color-green-6, #2d6a4f);
+  color: #fff;
+  font-weight: 500;
+}
