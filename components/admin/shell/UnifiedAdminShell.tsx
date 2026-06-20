@@ -11,6 +11,7 @@ import { PAGE_TITLES } from './nav-config';
 export interface UnifiedAdminShellProps {
   children: ReactNode;
   tenantName: string;
+  isPlatformAdmin: boolean;
 }
 
 function Wordmark({ tenantName }: { tenantName: string }) {
@@ -43,12 +44,12 @@ function Wordmark({ tenantName }: { tenantName: string }) {
   );
 }
 
-function NavContent({ tenantName, onNavigate }: { tenantName: string; onNavigate?: () => void }) {
+function NavContent({ tenantName, isPlatformAdmin, onNavigate }: { tenantName: string; isPlatformAdmin: boolean; onNavigate?: () => void }) {
   return (
     <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-dark-9)' }}>
       <Wordmark tenantName={tenantName} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <UnifiedSidebarNav tenantName={tenantName} onNavigate={onNavigate} />
+        <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
       </div>
       <Stack p="sm">
         <UserButton />
@@ -57,7 +58,7 @@ function NavContent({ tenantName, onNavigate }: { tenantName: string; onNavigate
   );
 }
 
-export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellProps) {
+export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: UnifiedAdminShellProps) {
   const [opened, { toggle, close }] = useDisclosure();
   const pathname = usePathname();
   const title = PAGE_TITLES[pathname] ?? '';
@@ -116,7 +117,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
           <Wordmark tenantName={tenantName} />
         </AppShell.Section>
         <AppShell.Section grow style={{ overflowY: 'auto' }}>
-          <UnifiedSidebarNav tenantName={tenantName} />
+          <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} />
         </AppShell.Section>
         <AppShell.Section>
           <Stack p="sm">
@@ -139,7 +140,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
           content: { backgroundColor: 'var(--mantine-color-dark-9)' },
         }}
       >
-        <NavContent tenantName={tenantName} onNavigate={close} />
+        <NavContent tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={close} />
       </Drawer>
 
       <AppShell.Main

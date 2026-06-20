@@ -23,10 +23,11 @@ const sectionLabelStyle = {
 
 interface Props {
   tenantName: string;
+  isPlatformAdmin: boolean;
   onNavigate?: () => void;
 }
 
-function NavBody({ tenantName, onNavigate }: Props) {
+function NavBody({ tenantName, isPlatformAdmin, onNavigate }: Props) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -35,9 +36,13 @@ function NavBody({ tenantName, onNavigate }: Props) {
     onNavigate?.();
   }
 
+  const visibleSections = NAV_SECTIONS.filter(
+    (section) => !section.platformOnly || isPlatformAdmin,
+  );
+
   return (
     <Stack gap="xs" component="section" aria-label="Admin navigation">
-      {NAV_SECTIONS.map((section, i) => {
+      {visibleSections.map((section, i) => {
         const label = section.isTenant ? tenantName : section.label;
         const links = section.items.map(({ label: itemLabel, href }) => {
           const active = isActive(href, pathname);
@@ -55,7 +60,7 @@ function NavBody({ tenantName, onNavigate }: Props) {
         });
 
         // Last section (Prompt Studio): nested Stack, matching old AdminSidebarNav exactly
-        if (i === NAV_SECTIONS.length - 1) {
+        if (i === visibleSections.length - 1) {
           return (
             <Stack key={section.label} gap={2} mt="sm" component="section" aria-label={label}>
               <Text size="xs" c="dimmed" fw={500} mb={2} pl="sm" style={sectionLabelStyle}>
@@ -80,10 +85,10 @@ function NavBody({ tenantName, onNavigate }: Props) {
   );
 }
 
-export function UnifiedSidebarNav({ tenantName, onNavigate }: Props) {
+export function UnifiedSidebarNav({ tenantName, isPlatformAdmin, onNavigate }: Props) {
   return (
     <Suspense>
-      <NavBody tenantName={tenantName} onNavigate={onNavigate} />
+      <NavBody tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
     </Suspense>
   );
 }

@@ -3,12 +3,14 @@ export type NavItem = { label: string; href: string };
 export type NavSection = {
   label: string;
   isTenant?: boolean;
+  platformOnly?: boolean;
   items: NavItem[];
 };
 
 export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Platform',
+    platformOnly: true,
     items: [
       { label: 'Tenants', href: '/platform/admin' },
       { label: 'Members', href: '/platform/members' },

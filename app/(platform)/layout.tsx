@@ -1,6 +1,6 @@
 import { MantineProvider, ColorSchemeScript } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { getCurrentUser, getTenantName } from '@/services/auth';
+import { getCurrentUser, getTenantName, getTenantType } from '@/services/auth';
 import { redirect } from 'next/navigation';
 
 import '@mantine/core/styles.css';
@@ -29,13 +29,16 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     redirect('/admin');
   }
 
-  const tenantName = (await getTenantName()) ?? 'Natural Resource';
+  const [tenantName, tenantType] = await Promise.all([getTenantName(), getTenantType()])
+  const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
 
   return (
     <MantineProvider theme={adminTheme}>
       <ColorSchemeScript defaultColorScheme="light" />
       <Notifications position="top-right" />
-      <UnifiedAdminShell tenantName={tenantName}>{children}</UnifiedAdminShell>
+      <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>
+        {children}
+      </UnifiedAdminShell>
     </MantineProvider>
   );
 }
