@@ -8,25 +8,28 @@ import '@mantine/notifications/styles.css';
 import '../(jefflougheed)/globals.css';
 
 import { adminTheme } from '@/components/admin/theme/mantine-theme';
-import { AdminShell } from '@/components/admin/layout/AdminShell';
+import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
-import { syncUser, getTenantName } from '@/services/auth';
+import { syncUser, getTenantName, getCurrentUser, getTenantType } from '@/services/auth';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabaseUserId = await syncUser()
-  // Host-derived tenant name for the banner. Falls back to 'Natural Resource'
-  // (the primary tenant brand) only if resolution fails, preserving the prior
-  // behavior on the error path.
-  const tenantName = (await getTenantName()) ?? 'Natural Resource'
+  const [supabaseUserId, user, tenantName, tenantType] = await Promise.all([
+    syncUser(),
+    getCurrentUser(),
+    getTenantName(),
+    getTenantType(),
+  ])
+  const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
+  console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
   return (
     <AdminUserProvider supabaseUserId={supabaseUserId}>
       <MantineProvider theme={adminTheme}>
         <ColorSchemeScript defaultColorScheme="light" />
         <Notifications position="top-right" />
-        <AdminShell tenantName={tenantName}>
+        <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>
           {children}
-        </AdminShell>
+        </UnifiedAdminShell>
       </MantineProvider>
     </AdminUserProvider>
   );

@@ -1,16 +1,20 @@
 'use client';
 
-import { Suspense, type ReactNode } from 'react';
-import { AppShell, Burger, Drawer, Group, Text, Stack } from '@mantine/core';
+import { type ReactNode } from 'react';
+import { AppShell, Burger, Drawer, Group, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { usePathname } from 'next/navigation';
 import { UserButton } from '@/services/auth/ui';
-import { PlatformSidebarNav } from '@/components/admin/navigation/PlatformSidebarNav';
+import { UnifiedSidebarNav } from './UnifiedSidebarNav';
+import { PAGE_TITLES } from './nav-config';
 
-export interface PlatformShellProps {
+export interface UnifiedAdminShellProps {
   children: ReactNode;
+  tenantName: string;
+  isPlatformAdmin: boolean;
 }
 
-function Wordmark() {
+function Wordmark({ tenantName }: { tenantName: string }) {
   return (
     <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
       <Text
@@ -22,7 +26,7 @@ function Wordmark() {
           letterSpacing: '-0.01em',
         }}
       >
-        Second Brain Labs
+        {tenantName}
       </Text>
       <Text
         size="xs"
@@ -34,30 +38,19 @@ function Wordmark() {
           textTransform: 'uppercase',
         }}
       >
-        Platform
+        Admin
       </Text>
     </div>
   );
 }
 
-function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+function NavContent({ tenantName, isPlatformAdmin, onNavigate }: { tenantName: string; isPlatformAdmin: boolean; onNavigate?: () => void }) {
   return (
-    <Stack
-      gap={0}
-      h="100%"
-      data-mantine-color-scheme="dark"
-      style={{
-        backgroundColor: 'var(--mantine-color-dark-9)',
-      }}
-    >
-      <Wordmark />
-
-      <div style={{ flex: 1, overflowY: 'auto' }} onClick={onNavigate}>
-        <Suspense>
-          <PlatformSidebarNav />
-        </Suspense>
+    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-dark-9)' }}>
+      <Wordmark tenantName={tenantName} />
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
       </div>
-
       <Stack p="sm">
         <UserButton />
       </Stack>
@@ -65,8 +58,10 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function PlatformShell({ children }: PlatformShellProps) {
+export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: UnifiedAdminShellProps) {
   const [opened, { toggle, close }] = useDisclosure();
+  const pathname = usePathname();
+  const title = PAGE_TITLES[pathname] ?? '';
 
   return (
     <AppShell
@@ -84,7 +79,7 @@ export function PlatformShell({ children }: PlatformShellProps) {
           borderBottom: '1px solid var(--mantine-color-gray-2)',
         }}
       >
-        <Group h="100%" px="md">
+        <Group h="100%" px="md" gap={12}>
           <Burger
             opened={opened}
             onClick={toggle}
@@ -92,6 +87,18 @@ export function PlatformShell({ children }: PlatformShellProps) {
             size="sm"
             aria-label="Toggle navigation"
           />
+          {title ? (
+            <Text
+              fw={600}
+              style={{
+                fontFamily: 'var(--mantine-font-family-headings)',
+                fontSize: '15px',
+                color: 'var(--mantine-color-dark-9)',
+              }}
+            >
+              {title}
+            </Text>
+          ) : null}
         </Group>
       </AppShell.Header>
 
@@ -107,15 +114,11 @@ export function PlatformShell({ children }: PlatformShellProps) {
         }}
       >
         <AppShell.Section>
-          <Wordmark />
+          <Wordmark tenantName={tenantName} />
         </AppShell.Section>
-
         <AppShell.Section grow style={{ overflowY: 'auto' }}>
-          <Suspense>
-            <PlatformSidebarNav />
-          </Suspense>
+          <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} />
         </AppShell.Section>
-
         <AppShell.Section>
           <Stack p="sm">
             <UserButton />
@@ -137,7 +140,7 @@ export function PlatformShell({ children }: PlatformShellProps) {
           content: { backgroundColor: 'var(--mantine-color-dark-9)' },
         }}
       >
-        <NavContent onNavigate={close} />
+        <NavContent tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={close} />
       </Drawer>
 
       <AppShell.Main
