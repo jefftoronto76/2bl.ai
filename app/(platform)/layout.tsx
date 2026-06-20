@@ -1,6 +1,6 @@
 import { MantineProvider, ColorSchemeScript } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { getCurrentUser } from '@/services/auth';
+import { getCurrentUser, getTenantName } from '@/services/auth';
 import { redirect } from 'next/navigation';
 
 import '@mantine/core/styles.css';
@@ -10,7 +10,7 @@ import '@mantine/notifications/styles.css';
 import '../(jefflougheed)/globals.css';
 
 import { adminTheme } from '@/components/admin/theme/mantine-theme';
-import { PlatformShell } from '@/components/admin/layout/PlatformShell';
+import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 
 // Platform admin is gated here in the layout (server component) rather than via
 // middleware auth.protect(): no NEXT_PUBLIC_CLERK_SIGN_IN_URL is configured, so
@@ -29,11 +29,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     redirect('/admin');
   }
 
+  const tenantName = (await getTenantName()) ?? 'Natural Resource';
+
   return (
     <MantineProvider theme={adminTheme}>
       <ColorSchemeScript defaultColorScheme="light" />
       <Notifications position="top-right" />
-      <PlatformShell>{children}</PlatformShell>
+      <UnifiedAdminShell tenantName={tenantName}>{children}</UnifiedAdminShell>
     </MantineProvider>
   );
 }

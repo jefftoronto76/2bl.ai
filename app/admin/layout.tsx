@@ -8,7 +8,7 @@ import '@mantine/notifications/styles.css';
 import '../(jefflougheed)/globals.css';
 
 import { adminTheme } from '@/components/admin/theme/mantine-theme';
-import { AdminShell } from '@/components/admin/layout/AdminShell';
+import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
 import { syncUser, getTenantName } from '@/services/auth';
 
@@ -24,9 +24,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <MantineProvider theme={adminTheme}>
         <ColorSchemeScript defaultColorScheme="light" />
         <Notifications position="top-right" />
-        <AdminShell tenantName={tenantName}>
+        <UnifiedAdminShell tenantName={tenantName}>
           {children}
-        </AdminShell>
+        </UnifiedAdminShell>
       </MantineProvider>
     </AdminUserProvider>
   );
