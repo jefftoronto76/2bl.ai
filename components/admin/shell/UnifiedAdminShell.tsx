@@ -1,15 +1,60 @@
 'use client';
 
 import { type ReactNode } from 'react';
-import { AppShell, Burger, Drawer, Group, Text } from '@mantine/core';
+import { AppShell, Burger, Drawer, Group, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { usePathname } from 'next/navigation';
+import { UserButton } from '@/services/auth/ui';
 import { UnifiedSidebarNav } from './UnifiedSidebarNav';
 import { PAGE_TITLES, isPaddedRoute } from './nav-config';
 
 export interface UnifiedAdminShellProps {
   children: ReactNode;
   tenantName: string;
+}
+
+function Wordmark() {
+  return (
+    <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
+      <Text
+        size="md"
+        fw={400}
+        c="gray.1"
+        style={{
+          fontFamily: 'var(--mantine-font-family-headings)',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        Second Brain Labs
+      </Text>
+      <Text
+        size="xs"
+        c="green.6"
+        style={{
+          fontFamily: 'var(--mantine-font-family-monospace)',
+          fontSize: '9px',
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Admin
+      </Text>
+    </div>
+  );
+}
+
+function NavContent({ tenantName, onNavigate }: { tenantName: string; onNavigate?: () => void }) {
+  return (
+    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-dark-9)' }}>
+      <Wordmark />
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        <UnifiedSidebarNav tenantName={tenantName} onNavigate={onNavigate} />
+      </div>
+      <Stack p="sm">
+        <UserButton />
+      </Stack>
+    </Stack>
+  );
 }
 
 export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellProps) {
@@ -57,7 +102,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
         </Group>
       </AppShell.Header>
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar — AppShell.Section keeps Navbar p="sm" in effect */}
       <AppShell.Navbar
         p="sm"
         withBorder={false}
@@ -68,7 +113,17 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
           borderRight: '1px solid var(--mantine-color-dark-6)',
         }}
       >
-        <UnifiedSidebarNav tenantName={tenantName} />
+        <AppShell.Section>
+          <Wordmark />
+        </AppShell.Section>
+        <AppShell.Section grow style={{ overflowY: 'auto' }}>
+          <UnifiedSidebarNav tenantName={tenantName} />
+        </AppShell.Section>
+        <AppShell.Section>
+          <Stack p="sm">
+            <UserButton />
+          </Stack>
+        </AppShell.Section>
       </AppShell.Navbar>
 
       {/* Mobile drawer */}
@@ -85,7 +140,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
           content: { backgroundColor: 'var(--mantine-color-dark-9)' },
         }}
       >
-        <UnifiedSidebarNav tenantName={tenantName} onNavigate={close} />
+        <NavContent tenantName={tenantName} onNavigate={close} />
       </Drawer>
 
       <AppShell.Main
