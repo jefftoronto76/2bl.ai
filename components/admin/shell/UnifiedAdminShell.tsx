@@ -6,14 +6,14 @@ import { useDisclosure } from '@mantine/hooks';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@/services/auth/ui';
 import { UnifiedSidebarNav } from './UnifiedSidebarNav';
-import { PAGE_TITLES, isPaddedRoute } from './nav-config';
+import { PAGE_TITLES } from './nav-config';
 
 export interface UnifiedAdminShellProps {
   children: ReactNode;
   tenantName: string;
 }
 
-function Wordmark() {
+function Wordmark({ tenantName }: { tenantName: string }) {
   return (
     <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
       <Text
@@ -25,7 +25,7 @@ function Wordmark() {
           letterSpacing: '-0.01em',
         }}
       >
-        Second Brain Labs
+        {tenantName}
       </Text>
       <Text
         size="xs"
@@ -46,7 +46,7 @@ function Wordmark() {
 function NavContent({ tenantName, onNavigate }: { tenantName: string; onNavigate?: () => void }) {
   return (
     <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-dark-9)' }}>
-      <Wordmark />
+      <Wordmark tenantName={tenantName} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <UnifiedSidebarNav tenantName={tenantName} onNavigate={onNavigate} />
       </div>
@@ -60,7 +60,6 @@ function NavContent({ tenantName, onNavigate }: { tenantName: string; onNavigate
 export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellProps) {
   const [opened, { toggle, close }] = useDisclosure();
   const pathname = usePathname();
-  const padded = isPaddedRoute(pathname);
   const title = PAGE_TITLES[pathname] ?? '';
 
   return (
@@ -70,7 +69,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
         width: 240,
         breakpoint: 'md',
       }}
-      padding={0}
+      padding="lg"
     >
       <AppShell.Header
         hiddenFrom="md"
@@ -102,7 +101,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
         </Group>
       </AppShell.Header>
 
-      {/* Desktop sidebar — AppShell.Section keeps Navbar p="sm" in effect */}
+      {/* Desktop sidebar */}
       <AppShell.Navbar
         p="sm"
         withBorder={false}
@@ -114,7 +113,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
         }}
       >
         <AppShell.Section>
-          <Wordmark />
+          <Wordmark tenantName={tenantName} />
         </AppShell.Section>
         <AppShell.Section grow style={{ overflowY: 'auto' }}>
           <UnifiedSidebarNav tenantName={tenantName} />
@@ -148,13 +147,7 @@ export function UnifiedAdminShell({ children, tenantName }: UnifiedAdminShellPro
           backgroundColor: 'var(--mantine-color-white)',
         }}
       >
-        {padded ? (
-          <div style={{ maxWidth: 1080, padding: 24 }}>
-            {children}
-          </div>
-        ) : (
-          children
-        )}
+        {children}
       </AppShell.Main>
     </AppShell>
   );
