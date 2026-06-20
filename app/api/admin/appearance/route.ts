@@ -3,6 +3,50 @@ import { getAuthContext } from '@/services/auth';
 import { logEvent, AuditAction } from '@/services/audit';
 import type { AppearanceChangeKind } from '@/app/admin/settings/types';
 
+// Per-tenant CSS defaults — returned when tenant_branding has no row yet.
+// Colors are solid-hex approximations of the CSS palette values (including
+// any rgba → hex conversions for the muted tokens on their respective bg).
+const TENANT_BRAND_DEFAULTS: Record<string, {
+  color_background: string;
+  color_accent: string;
+  color_text_primary: string;
+  color_text_muted: string;
+  font_display: string;
+  font_body: string;
+  font_mono: string;
+}> = {
+  // jefflougheed.ca
+  'e07334a0-2afd-4544-898b-edb124d2dd33': {
+    color_background: '#f9f8f5',
+    color_accent: '#2d6a4f',
+    color_text_primary: '#1a1917',
+    color_text_muted: '#7e7d7b',
+    font_display: 'Playfair Display, Georgia, serif',
+    font_body: 'DM Sans, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+  },
+  // 2bl.ai (SBL)
+  '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
+    color_background: '#FAF6EE',
+    color_accent: '#C8542E',
+    color_text_primary: '#1F1A14',
+    color_text_muted: '#6B6256',
+    font_display: 'Newsreader, serif',
+    font_body: 'Manrope, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+  },
+  // heirloom.2bl.ai
+  '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
+    color_background: '#1C0F06',
+    color_accent: '#C9A96E',
+    color_text_primary: '#F5EFE6',
+    color_text_muted: '#938A81',
+    font_display: 'Cormorant Garamond, serif',
+    font_body: 'DM Sans, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+  },
+};
+
 // The 7 user-controllable columns — color_accent_rgb is excluded (derived).
 const EDITABLE_FIELDS = [
   'color_background',
@@ -56,7 +100,14 @@ export async function GET() {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json({ data: data ?? null });
+  if (data === null) {
+    const defaults =
+      TENANT_BRAND_DEFAULTS[authCtx.tenant_id] ??
+      TENANT_BRAND_DEFAULTS['e07334a0-2afd-4544-898b-edb124d2dd33'];
+    return Response.json({ data: defaults });
+  }
+
+  return Response.json({ data });
 }
 
 export async function PATCH(req: Request) {

@@ -6,11 +6,11 @@ import {
   Card,
   ColorInput,
   Group,
+  Select,
   SimpleGrid,
   Skeleton,
   Stack,
   Text,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -67,17 +67,69 @@ function extractDirtyFields(saved: BrandingRow, current: BrandingRow): Partial<B
 }
 
 // ---------------------------------------------------------------------------
+// Font registry + Google Fonts loader
+// ---------------------------------------------------------------------------
+
+type FontEntry = { label: string; value: string; googleFamily?: string };
+
+const DISPLAY_FONTS: FontEntry[] = [
+  { label: 'Playfair Display',   value: 'Playfair Display, Georgia, serif',   googleFamily: 'Playfair+Display:ital,wght@0,400;0,700;1,400' },
+  { label: 'Cormorant Garamond', value: 'Cormorant Garamond, Georgia, serif', googleFamily: 'Cormorant+Garamond:ital,wght@0,400;0,600;1,400' },
+  { label: 'Newsreader',         value: 'Newsreader, Georgia, serif',         googleFamily: 'Newsreader:ital,wght@0,400;0,600;1,400' },
+  { label: 'Lora',               value: 'Lora, Georgia, serif',               googleFamily: 'Lora:ital,wght@0,400;0,700;1,400' },
+  { label: 'Merriweather',       value: 'Merriweather, Georgia, serif',       googleFamily: 'Merriweather:ital,wght@0,400;0,700;1,400' },
+  { label: 'EB Garamond',        value: 'EB Garamond, Georgia, serif',        googleFamily: 'EB+Garamond:ital,wght@0,400;0,700;1,400' },
+  { label: 'Georgia (system)',   value: 'Georgia, serif' },
+];
+
+const BODY_FONTS: FontEntry[] = [
+  { label: 'DM Sans',            value: 'DM Sans, sans-serif',        googleFamily: 'DM+Sans:wght@400;500;700' },
+  { label: 'Manrope',            value: 'Manrope, sans-serif',        googleFamily: 'Manrope:wght@400;500;700' },
+  { label: 'Inter',              value: 'Inter, sans-serif',          googleFamily: 'Inter:wght@400;500;700' },
+  { label: 'Source Sans 3',      value: 'Source Sans 3, sans-serif',  googleFamily: 'Source+Sans+3:wght@400;600;700' },
+  { label: 'Nunito',             value: 'Nunito, sans-serif',         googleFamily: 'Nunito:wght@400;600;700' },
+  { label: 'Open Sans',          value: 'Open Sans, sans-serif',      googleFamily: 'Open+Sans:wght@400;600;700' },
+  { label: 'System UI (system)', value: 'system-ui, sans-serif' },
+];
+
+const MONO_FONTS: FontEntry[] = [
+  { label: 'DM Mono',               value: 'DM Mono, Courier New, monospace',  googleFamily: 'DM+Mono:wght@400;500' },
+  { label: 'JetBrains Mono',        value: 'JetBrains Mono, monospace',        googleFamily: 'JetBrains+Mono:wght@400;700' },
+  { label: 'Fira Code',             value: 'Fira Code, monospace',             googleFamily: 'Fira+Code:wght@400;700' },
+  { label: 'Source Code Pro',       value: 'Source Code Pro, monospace',       googleFamily: 'Source+Code+Pro:wght@400;700' },
+  { label: 'Courier New (system)',   value: 'Courier New, monospace' },
+];
+
+const ALL_FONTS = [...DISPLAY_FONTS, ...BODY_FONTS, ...MONO_FONTS];
+
+const _loadedFonts = new Set<string>();
+
+function loadGoogleFont(googleFamily: string): void {
+  if (_loadedFonts.has(googleFamily)) return;
+  _loadedFonts.add(googleFamily);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${googleFamily}&display=swap`;
+  document.head.appendChild(link);
+}
+
+function loadFontForValue(value: string): void {
+  const entry = ALL_FONTS.find((f) => f.value === value);
+  if (entry?.googleFamily) loadGoogleFont(entry.googleFamily);
+}
+
+// ---------------------------------------------------------------------------
 // Live preview
 // ---------------------------------------------------------------------------
 
 function AppearancePreview({ values }: { values: BrandingRow }) {
-  const bg     = values.color_background   || '#FAF6EE';
-  const accent = values.color_accent       || '#C8542E';
-  const primary = values.color_text_primary || '#1F1A14';
-  const muted  = values.color_text_muted   || '#6B6256';
-  const serif  = values.font_display       || 'Georgia, serif';
-  const sans   = values.font_body          || 'system-ui, sans-serif';
-  const mono   = values.font_mono          || 'monospace';
+  const bg      = values.color_background   || '#f9f8f5';
+  const accent  = values.color_accent       || '#2d6a4f';
+  const primary = values.color_text_primary || '#1a1917';
+  const muted   = values.color_text_muted   || '#7e7d7b';
+  const serif   = values.font_display       || 'Georgia, serif';
+  const sans    = values.font_body          || 'system-ui, sans-serif';
+  const mono    = values.font_mono          || 'monospace';
 
   return (
     <Card
@@ -157,6 +209,10 @@ export function Appearance() {
       const form = rowToForm(json.data);
       setSaved(form);
       setValues(form);
+      // Pre-load any Google Fonts that are already set.
+      if (form.font_display) loadFontForValue(form.font_display);
+      if (form.font_body)    loadFontForValue(form.font_body);
+      if (form.font_mono)    loadFontForValue(form.font_mono);
     } catch (err) {
       console.error('[Appearance] settings fetch threw:', err);
       notifications.show({
@@ -301,34 +357,46 @@ export function Appearance() {
               Fonts
             </Title>
             <Text size="xs" c="dimmed" mt={-4}>
-              Enter any valid CSS font-family string, e.g. <em>Playfair Display, serif</em>.
+              Select from the curated list. The preview updates live.
             </Text>
-            <TextInput
+            <Select
               label="Display font"
               description="Used for headings and display text."
+              data={DISPLAY_FONTS}
               value={values.font_display ?? ''}
-              onChange={(e) => set('font_display', e.currentTarget.value)}
+              onChange={(v) => {
+                const val = v ?? '';
+                set('font_display', val);
+                if (val) loadFontForValue(val);
+              }}
               size="sm"
               disabled={saving}
-              placeholder="e.g. Playfair Display, serif"
             />
-            <TextInput
+            <Select
               label="Body font"
               description="Used for body copy and UI text."
+              data={BODY_FONTS}
               value={values.font_body ?? ''}
-              onChange={(e) => set('font_body', e.currentTarget.value)}
+              onChange={(v) => {
+                const val = v ?? '';
+                set('font_body', val);
+                if (val) loadFontForValue(val);
+              }}
               size="sm"
               disabled={saving}
-              placeholder="e.g. DM Sans, sans-serif"
             />
-            <TextInput
+            <Select
               label="Mono font"
               description="Used for code, IDs, and monospace contexts."
+              data={MONO_FONTS}
               value={values.font_mono ?? ''}
-              onChange={(e) => set('font_mono', e.currentTarget.value)}
+              onChange={(v) => {
+                const val = v ?? '';
+                set('font_mono', val);
+                if (val) loadFontForValue(val);
+              }}
               size="sm"
               disabled={saving}
-              placeholder="e.g. DM Mono, monospace"
             />
 
             <Group justify="flex-end" mt="xs">
