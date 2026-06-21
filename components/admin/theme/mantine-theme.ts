@@ -1,6 +1,5 @@
-'use client';
-
 import { createTheme, MantineColorsTuple } from '@mantine/core';
+import { isValidHex } from '@/services/branding/hex-utils';
 
 /**
  * Mantine theme bridge for the Natural Resource admin interface.
@@ -15,9 +14,7 @@ import { createTheme, MantineColorsTuple } from '@mantine/core';
  * Phase 2 replaces them with Mantine equivalents.
  */
 
-// ── Primary color scale ───────────────────────────────────────────────────────
-// Base: #2d6a4f (CLAUDE.md "Accent green")
-// 10-shade scale for Mantine's tuple requirement.
+// Fallback 10-shade green scale (base: #2d6a4f, CLAUDE.md "Accent green").
 const primaryGreen: MantineColorsTuple = [
   '#f0faf4',   // 0 - lightest tint
   '#ddf1e5',   // 1
@@ -31,67 +28,112 @@ const primaryGreen: MantineColorsTuple = [
   '#133126',   // 9 - darkest shade
 ];
 
-export const adminTheme = createTheme({
-  // ── Colors ──────────────────────────────────────────────────────────────────
-  primaryColor: 'green',
-  colors: {
-    green: primaryGreen,
-  },
+/**
+ * Generates a 10-shade Mantine color tuple from a single hex color.
+ * Index 6 = base color; 0–5 = tints (blended toward white);
+ * 7–9 = shades (blended toward black).
+ */
+function hexToMantineScale(hex: string): MantineColorsTuple {
+  if (!isValidHex(hex)) return primaryGreen;
 
-  // CLAUDE.md: Background #f9f8f5, Text primary #1a1917
-  other: {
-    bodyBackground: '#f9f8f5',
-    textPrimary: '#1a1917',
-    textMuted: 'rgba(26,25,23,0.55)',
-  },
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
 
-  // ── Typography ──────────────────────────────────────────────────────────────
-  // CLAUDE.md: Font body = DM Sans, Font display = Playfair Display, Font mono = DM Mono
-  // These map to the Google Fonts loaded in app/layout.tsx.
-  fontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
-  fontFamilyMonospace: '"DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-  headings: {
-    fontFamily: '"Playfair Display", serif',
-  },
+  const toHex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
+  const blend = (base: number, target: number, t: number) => base + (target - base) * t;
+  const shade = (t: number, dark = false) => {
+    const target = dark ? 0 : 255;
+    return `#${toHex(blend(r, target, t))}${toHex(blend(g, target, t))}${toHex(blend(b, target, t))}`;
+  };
 
-  // Font sizes from tokens.typography.size (xs through xl)
-  fontSizes: {
-    xs: '0.75rem',    // 12px
-    sm: '0.875rem',   // 14px
-    md: '1rem',       // 16px (CLAUDE.md min font size)
-    lg: '1.125rem',   // 18px
-    xl: '1.25rem',    // 20px
-  },
+  return [
+    shade(0.90),  // 0 — 90% toward white
+    shade(0.75),  // 1
+    shade(0.60),  // 2
+    shade(0.45),  // 3
+    shade(0.30),  // 4
+    shade(0.15),  // 5
+    hex,          // 6 — base
+    shade(0.15, true), // 7 — 15% toward black
+    shade(0.30, true), // 8
+    shade(0.45, true), // 9
+  ] as MantineColorsTuple;
+}
 
-  // ── Spacing ─────────────────────────────────────────────────────────────────
-  // CLAUDE.md: Spacing unit = 4px multiples
-  // Mapped from tokens.spacing scale (spacingPrimitives)
-  spacing: {
-    xs: '0.25rem',    // 4px  — spacingPrimitives[2]
-    sm: '0.5rem',     // 8px  — spacingPrimitives[3]
-    md: '1rem',       // 16px — spacingPrimitives[5]
-    lg: '1.5rem',     // 24px — spacingPrimitives[6]
-    xl: '2rem',       // 32px — spacingPrimitives[7]
-  },
+interface BrandingForTheme {
+  color_background?:   string | null;
+  color_accent?:       string | null;
+  color_text_primary?: string | null;
+  color_text_muted?:   string | null;
+}
 
-  // ── Radius ──────────────────────────────────────────────────────────────────
-  // Mapped from tokens.radius (radiusPrimitives)
-  radius: {
-    xs: '2px',        // radiusPrimitives[1] — tokens.radius.sm
-    sm: '4px',        // radiusPrimitives[2] — tokens.radius.md
-    md: '8px',        // radiusPrimitives[3] — tokens.radius.lg
-    lg: '12px',       // radiusPrimitives[4] — tokens.radius.xl
-    xl: '16px',
-  },
-  defaultRadius: 'sm',
+/** Builds a dynamic Mantine theme from tenant_branding values. Falls back to inkwell defaults. */
+export function buildAdminTheme(branding?: BrandingForTheme | null) {
+  const accent      = isValidHex(branding?.color_accent)       ? branding!.color_accent!      : '#2d6a4f';
+  const bg          = isValidHex(branding?.color_background)   ? branding!.color_background!  : '#f9f8f5';
+  const textPrimary = isValidHex(branding?.color_text_primary) ? branding!.color_text_primary! : '#1a1917';
+  const textMuted   = branding?.color_text_muted ?? 'rgba(26,25,23,0.55)';
 
-  // ── Shadows ─────────────────────────────────────────────────────────────────
-  // Minimal shadows — the admin aesthetic is flat and border-driven.
-  shadows: {
-    xs: '0 1px 2px rgba(0, 0, 0, 0.04)',
-    sm: '0 1px 3px rgba(0, 0, 0, 0.06)',
-    md: '0 4px 6px rgba(0, 0, 0, 0.06)',
-    lg: '0 10px 15px rgba(0, 0, 0, 0.06)',
-    xl: '0 20px 25px rgba(0, 0, 0, 0.06)',
-  },
-});
+  return createTheme({
+    // ── Colors ──────────────────────────────────────────────────────────────────
+    primaryColor: 'brand',
+    colors: {
+      brand: hexToMantineScale(accent),
+    },
+
+    other: {
+      bodyBackground: bg,
+      textPrimary,
+      textMuted,
+    },
+
+    // ── Typography ──────────────────────────────────────────────────────────────
+    // CLAUDE.md: Font body = DM Sans, Font display = Playfair Display, Font mono = DM Mono
+    fontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
+    fontFamilyMonospace: '"DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    headings: {
+      fontFamily: '"Playfair Display", serif',
+    },
+
+    // Font sizes from tokens.typography.size (xs through xl)
+    fontSizes: {
+      xs: '0.75rem',    // 12px
+      sm: '0.875rem',   // 14px
+      md: '1rem',       // 16px (CLAUDE.md min font size)
+      lg: '1.125rem',   // 18px
+      xl: '1.25rem',    // 20px
+    },
+
+    // ── Spacing ─────────────────────────────────────────────────────────────────
+    spacing: {
+      xs: '0.25rem',    // 4px
+      sm: '0.5rem',     // 8px
+      md: '1rem',       // 16px
+      lg: '1.5rem',     // 24px
+      xl: '2rem',       // 32px
+    },
+
+    // ── Radius ──────────────────────────────────────────────────────────────────
+    radius: {
+      xs: '2px',
+      sm: '4px',
+      md: '8px',
+      lg: '12px',
+      xl: '16px',
+    },
+    defaultRadius: 'sm',
+
+    // ── Shadows ─────────────────────────────────────────────────────────────────
+    shadows: {
+      xs: '0 1px 2px rgba(0, 0, 0, 0.04)',
+      sm: '0 1px 3px rgba(0, 0, 0, 0.06)',
+      md: '0 4px 6px rgba(0, 0, 0, 0.06)',
+      lg: '0 10px 15px rgba(0, 0, 0, 0.06)',
+      xl: '0 20px 25px rgba(0, 0, 0, 0.06)',
+    },
+  });
+}
+
+// Static export kept for any existing imports that haven't switched to buildAdminTheme.
+export const adminTheme = buildAdminTheme();
