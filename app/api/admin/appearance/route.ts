@@ -5,72 +5,96 @@ import type { AppearanceChangeKind } from '@/app/admin/settings/types';
 import { hexToRgbTriplet } from '@/services/branding/hex-utils';
 
 // Per-tenant CSS defaults — returned when tenant_branding has no row yet.
-// Colors are solid-hex approximations of the CSS palette values (including
-// any rgba → hex conversions for the muted tokens on their respective bg).
 const TENANT_BRAND_DEFAULTS: Record<string, {
-  color_background: string;
-  color_accent: string;
-  color_text_primary: string;
-  color_text_muted: string;
-  font_display: string;
-  font_body: string;
-  font_mono: string;
+  background:     string;
+  accent:         string;
+  lede:           string;
+  heading:        string;
+  body:           string;
+  font_primary:   string;
+  font_secondary: string;
+  font_mono:      string;
+  paper_effect:   boolean;
+  accent_buttons: boolean;
 }> = {
   // jefflougheed.ca
   'e07334a0-2afd-4544-898b-edb124d2dd33': {
-    color_background: '#f9f8f5',
-    color_accent: '#2d6a4f',
-    color_text_primary: '#1a1917',
-    color_text_muted: '#7e7d7b',
-    font_display: 'Playfair Display, Georgia, serif',
-    font_body: 'DM Sans, sans-serif',
-    font_mono: 'DM Mono, Courier New, monospace',
+    background:     '#f9f8f5',
+    accent:         '#2d6a4f',
+    lede:           '#7e7d7b',
+    heading:        '#1a1917',
+    body:           '#1a1917',
+    font_primary:   'Playfair Display, Georgia, serif',
+    font_secondary: 'DM Sans, sans-serif',
+    font_mono:      'DM Mono, Courier New, monospace',
+    paper_effect:   false,
+    accent_buttons: true,
   },
   // 2bl.ai (SBL)
   '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
-    color_background: '#FAF6EE',
-    color_accent: '#C8542E',
-    color_text_primary: '#1F1A14',
-    color_text_muted: '#6B6256',
-    font_display: 'Newsreader, serif',
-    font_body: 'Manrope, sans-serif',
-    font_mono: 'DM Mono, Courier New, monospace',
+    background:     '#FAF6EE',
+    accent:         '#C8542E',
+    lede:           '#6B6256',
+    heading:        '#1F1A14',
+    body:           '#1F1A14',
+    font_primary:   'Newsreader, serif',
+    font_secondary: 'Manrope, sans-serif',
+    font_mono:      'DM Mono, Courier New, monospace',
+    paper_effect:   false,
+    accent_buttons: true,
   },
-  // heirloom.2bl.ai — warm light palette (keep in sync with app/heirloom/globals.css)
+  // heirloom.2bl.ai — warm light palette
   '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
-    color_background: '#ECE3D2',   // --hl-bg: 236 227 210
-    color_accent: '#2E854D',       // --color-accent: 46 133 77
-    color_text_primary: '#2E2417', // --hl-text-primary: 46 36 23
-    color_text_muted: '#8C7E6E',   // rgba(46,36,23,0.62) on #ECE3D2 — precomputed
-    font_display: 'Cormorant Garamond, Georgia, serif',
-    font_body: 'DM Sans, sans-serif',
-    font_mono: 'DM Mono, Courier New, monospace',
+    background:     '#ECE3D2',
+    accent:         '#2E854D',
+    lede:           '#8C7E6E',
+    heading:        '#2E2417',
+    body:           '#2E2417',
+    font_primary:   'Cormorant Garamond, Georgia, serif',
+    font_secondary: 'DM Sans, sans-serif',
+    font_mono:      'DM Mono, Courier New, monospace',
+    paper_effect:   false,
+    accent_buttons: true,
   },
 };
 
-// The 7 user-controllable columns — color_accent_rgb is excluded (derived).
-const EDITABLE_FIELDS = [
-  'color_background',
-  'color_accent',
-  'color_text_primary',
-  'color_text_muted',
-  'font_display',
-  'font_body',
+// User-controllable string columns
+const STRING_FIELDS = [
+  'background',
+  'accent',
+  'lede',
+  'heading',
+  'body',
+  'font_primary',
+  'font_secondary',
   'font_mono',
 ] as const;
 
-type EditableField = (typeof EDITABLE_FIELDS)[number];
+// User-controllable boolean columns (excluded from string validation)
+const BOOL_FIELDS = [
+  'paper_effect',
+  'accent_buttons',
+] as const;
+
+type StringField   = (typeof STRING_FIELDS)[number];
+type BoolField     = (typeof BOOL_FIELDS)[number];
+type EditableField = StringField | BoolField;
 
 const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
-  color_background:   'color',
-  color_accent:       'color',
-  color_text_primary: 'color',
-  color_text_muted:   'color',
-  font_display:       'font',
-  font_body:          'font',
-  font_mono:          'font',
+  background:     'color',
+  accent:         'color',
+  lede:           'color',
+  heading:        'color',
+  body:           'color',
+  font_primary:   'font',
+  font_secondary: 'font',
+  font_mono:      'font',
+  paper_effect:   'toggle',
+  accent_buttons: 'toggle',
 };
 
+const GET_SELECT =
+  'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, brand_name, logo_url, favicon_folder';
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string };
@@ -85,9 +109,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('tenant_branding')
-    .select(
-      'color_background, color_accent, color_accent_rgb, color_text_primary, color_text_muted, font_display, font_body, font_mono, brand_name, logo_url, favicon_folder'
-    )
+    .select(GET_SELECT)
     .eq('tenant_id', authCtx.tenant_id)
     .maybeSingle();
 
@@ -122,18 +144,29 @@ export async function PATCH(req: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  // Strip any keys that aren't in the editable set (color_accent_rgb excluded from input).
-  const incoming: Partial<Record<EditableField, string>> = {};
-  for (const field of EDITABLE_FIELDS) {
+  // Parse and validate string fields
+  const incomingStr: Partial<Record<StringField, string>> = {};
+  for (const field of STRING_FIELDS) {
     if (body[field] !== undefined) {
       if (typeof body[field] !== 'string') {
         return Response.json({ error: `${field} must be a string` }, { status: 400 });
       }
-      incoming[field] = body[field] as string;
+      incomingStr[field] = body[field] as string;
     }
   }
 
-  if (Object.keys(incoming).length === 0) {
+  // Parse and validate boolean fields
+  const incomingBool: Partial<Record<BoolField, boolean>> = {};
+  for (const field of BOOL_FIELDS) {
+    if (body[field] !== undefined) {
+      if (typeof body[field] !== 'boolean') {
+        return Response.json({ error: `${field} must be a boolean` }, { status: 400 });
+      }
+      incomingBool[field] = body[field] as boolean;
+    }
+  }
+
+  if (Object.keys(incomingStr).length + Object.keys(incomingBool).length === 0) {
     return Response.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
@@ -142,7 +175,7 @@ export async function PATCH(req: Request) {
   // Fetch current row for diffing and for the upsert base.
   const { data: current, error: fetchErr } = await supabase
     .from('tenant_branding')
-    .select(EDITABLE_FIELDS.join(', '))
+    .select([...STRING_FIELDS, ...BOOL_FIELDS].join(', '))
     .eq('tenant_id', authCtx.tenant_id)
     .maybeSingle();
 
@@ -151,23 +184,30 @@ export async function PATCH(req: Request) {
     return Response.json({ error: fetchErr.message }, { status: 500 });
   }
 
-  const currentRow = (current ?? {}) as Partial<Record<EditableField, string | null>>;
+  const currentRow = (current ?? {}) as Record<string, string | boolean | null>;
 
-  // Build the upsert payload with only changed fields.
-  const upsertPayload: Record<string, string | null> = { tenant_id: authCtx.tenant_id };
+  // Build upsert payload with only changed fields.
+  const upsertPayload: Record<string, string | boolean | null> = { tenant_id: authCtx.tenant_id };
   const changedFields: EditableField[] = [];
 
-  for (const field of EDITABLE_FIELDS) {
-    if (incoming[field] !== undefined && incoming[field] !== (currentRow[field] ?? null)) {
-      upsertPayload[field] = incoming[field]!;
+  for (const field of STRING_FIELDS) {
+    if (incomingStr[field] !== undefined && incomingStr[field] !== (currentRow[field] ?? null)) {
+      upsertPayload[field] = incomingStr[field]!;
       changedFields.push(field);
     }
   }
 
-  // Silently derive color_accent_rgb when color_accent is changing.
-  if (changedFields.includes('color_accent') && incoming.color_accent) {
-    const triplet = hexToRgbTriplet(incoming.color_accent);
-    if (triplet) upsertPayload.color_accent_rgb = triplet;
+  for (const field of BOOL_FIELDS) {
+    if (incomingBool[field] !== undefined && incomingBool[field] !== (currentRow[field] ?? null)) {
+      upsertPayload[field] = incomingBool[field]!;
+      changedFields.push(field);
+    }
+  }
+
+  // Derive accent_rgb when accent changes.
+  if (changedFields.includes('accent') && incomingStr.accent) {
+    const triplet = hexToRgbTriplet(incomingStr.accent);
+    if (triplet) upsertPayload.accent_rgb = triplet;
   }
 
   if (changedFields.length === 0) {
@@ -181,15 +221,13 @@ export async function PATCH(req: Request) {
     .select('name, email')
     .eq('id', authCtx.owner_id)
     .maybeSingle();
-  const actorName = actorUser?.name ?? actorUser?.email ?? 'Admin';
+  const actorName  = actorUser?.name ?? actorUser?.email ?? 'Admin';
   const actorEmail = actorUser?.email ?? null;
 
   const { data: updated, error: upsertErr } = await supabase
     .from('tenant_branding')
     .upsert(upsertPayload, { onConflict: 'tenant_id' })
-    .select(
-      'color_background, color_accent, color_accent_rgb, color_text_primary, color_text_muted, font_display, font_body, font_mono, brand_name, logo_url, favicon_folder'
-    )
+    .select(GET_SELECT)
     .single();
 
   if (upsertErr) {
@@ -202,21 +240,27 @@ export async function PATCH(req: Request) {
     changed: changedFields,
   });
 
-  const correlationId = req.headers.get('x-correlation-id');
+  const correlationId  = req.headers.get('x-correlation-id');
+  const stringFieldSet = new Set<string>(STRING_FIELDS);
 
   for (const field of changedFields) {
+    const oldVal = currentRow[field] ?? null;
+    const newVal: string | boolean | null = stringFieldSet.has(field)
+      ? (incomingStr[field as StringField] ?? null)
+      : (incomingBool[field as BoolField] ?? null);
+
     void logEvent({
       action: AuditAction.APPEARANCE_UPDATE,
-      tenant_id: authCtx.tenant_id,
-      actor_id: authCtx.owner_id,
+      tenant_id:   authCtx.tenant_id,
+      actor_id:    authCtx.owner_id,
       actor_email: actorEmail,
       target_type: 'settings.appearance',
-      target_id: authCtx.tenant_id,
+      target_id:   authCtx.tenant_id,
       correlation_id: correlationId,
       metadata: {
         field,
-        old_value: currentRow[field] ?? null,
-        new_value: incoming[field],
+        old_value: oldVal,
+        new_value: newVal,
         kind: FIELD_KIND[field],
         actor_name: actorName,
       },

@@ -60,36 +60,36 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
 
   // Build :root color overrides (rgb triplets for vars used with alpha in globals.css)
   const colorLines: string[] = [];
-  if (isValidHex(branding?.color_background)) {
-    const rgb = hexToRgbTriplet(branding!.color_background!);
+  if (isValidHex(branding?.background)) {
+    const rgb = hexToRgbTriplet(branding!.background!);
     if (rgb) colorLines.push(`  --hl-bg: ${rgb};`);
   }
-  if (isValidHex(branding?.color_accent)) {
-    const rgb = hexToRgbTriplet(branding!.color_accent!);
+  if (isValidHex(branding?.accent)) {
+    const rgb = hexToRgbTriplet(branding!.accent!);
     if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
   }
-  if (isValidHex(branding?.color_text_primary)) {
-    const rgb = hexToRgbTriplet(branding!.color_text_primary!);
+  if (isValidHex(branding?.heading)) {
+    const rgb = hexToRgbTriplet(branding!.heading!);
     if (rgb) colorLines.push(`  --hl-text-primary: ${rgb};`);
   }
-  if (isValidHex(branding?.color_text_muted)) {
-    colorLines.push(`  --hl-text-muted: ${branding!.color_text_muted!};`);
+  if (isValidHex(branding?.lede)) {
+    colorLines.push(`  --hl-text-muted: ${branding!.lede!};`);
   }
 
   // Font overrides on [data-brand="heirloom"] — validate against registry to prevent CSS injection
   const fontLines: string[] = [];
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
 
-  const fontDisplay = branding?.font_display;
-  const fontBody    = branding?.font_body;
-  const fontMono    = branding?.font_mono;
+  const fontPrimary   = branding?.font_primary;
+  const fontSecondary = branding?.font_secondary;
+  const fontMono      = branding?.font_mono;
 
-  if (fontDisplay && allowedFontValues.has(fontDisplay)) fontLines.push(`  --font-display: ${fontDisplay};`);
-  if (fontBody    && allowedFontValues.has(fontBody))    fontLines.push(`  --font-body: ${fontBody};`);
-  if (fontMono    && allowedFontValues.has(fontMono))    fontLines.push(`  --font-mono: ${fontMono};`);
+  if (fontPrimary   && allowedFontValues.has(fontPrimary))   fontLines.push(`  --font-display: ${fontPrimary};`);
+  if (fontSecondary && allowedFontValues.has(fontSecondary)) fontLines.push(`  --font-body: ${fontSecondary};`);
+  if (fontMono      && allowedFontValues.has(fontMono))      fontLines.push(`  --font-mono: ${fontMono};`);
 
   // Inject Google Fonts <link> tags for any custom font that has a googleFamily
-  const fontEntriesToLoad = [fontDisplay, fontBody, fontMono]
+  const fontEntriesToLoad = [fontPrimary, fontSecondary, fontMono]
     .filter(Boolean)
     .map(v => ALL_FONTS.find(f => f.value === v))
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);

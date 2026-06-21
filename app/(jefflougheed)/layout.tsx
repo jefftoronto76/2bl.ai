@@ -28,34 +28,34 @@ export default async function JeffLougheedLayout({ children }: { children: React
 
   // Build :root color overrides (rgb triplets for vars used with alpha in globals.css)
   const colorLines: string[] = [];
-  if (isValidHex(branding?.color_background)) {
-    const rgb = hexToRgbTriplet(branding!.color_background!);
+  if (isValidHex(branding?.background)) {
+    const rgb = hexToRgbTriplet(branding!.background!);
     if (rgb) colorLines.push(`  --color-bg: ${rgb};`);
   }
-  if (isValidHex(branding?.color_accent)) {
-    const rgb = hexToRgbTriplet(branding!.color_accent!);
+  if (isValidHex(branding?.accent)) {
+    const rgb = hexToRgbTriplet(branding!.accent!);
     if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
   }
-  if (isValidHex(branding?.color_text_primary)) {
-    colorLines.push(`  --color-text-primary: ${branding!.color_text_primary!};`);
+  if (isValidHex(branding?.heading)) {
+    colorLines.push(`  --color-text-primary: ${branding!.heading!};`);
   }
-  if (isValidHex(branding?.color_text_muted)) {
-    colorLines.push(`  --color-text-muted: ${branding!.color_text_muted!};`);
+  if (isValidHex(branding?.lede)) {
+    colorLines.push(`  --color-text-muted: ${branding!.lede!};`);
   }
 
   // Font overrides in :root — validate against registry to prevent CSS injection
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
 
-  const fontDisplay = branding?.font_display;
-  const fontBody    = branding?.font_body;
-  const fontMono    = branding?.font_mono;
+  const fontPrimary   = branding?.font_primary;
+  const fontSecondary = branding?.font_secondary;
+  const fontMono      = branding?.font_mono;
 
-  if (fontDisplay && allowedFontValues.has(fontDisplay)) colorLines.push(`  --font-display: ${fontDisplay};`);
-  if (fontBody    && allowedFontValues.has(fontBody))    colorLines.push(`  --font-body: ${fontBody};`);
-  if (fontMono    && allowedFontValues.has(fontMono))    colorLines.push(`  --font-mono: ${fontMono};`);
+  if (fontPrimary   && allowedFontValues.has(fontPrimary))   colorLines.push(`  --font-display: ${fontPrimary};`);
+  if (fontSecondary && allowedFontValues.has(fontSecondary)) colorLines.push(`  --font-body: ${fontSecondary};`);
+  if (fontMono      && allowedFontValues.has(fontMono))      colorLines.push(`  --font-mono: ${fontMono};`);
 
   // Inject Google Fonts <link> tags for any custom font that has a googleFamily
-  const fontEntriesToLoad = [fontDisplay, fontBody, fontMono]
+  const fontEntriesToLoad = [fontPrimary, fontSecondary, fontMono]
     .filter(Boolean)
     .map(v => ALL_FONTS.find(f => f.value === v))
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);

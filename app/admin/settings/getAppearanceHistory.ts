@@ -12,17 +12,28 @@ import type { AppearanceChange, AppearanceChangeKind } from './types';
 
 /**
  * Maps tenant_branding column names (as stored in metadata.field) to their
- * display label and diff kind. Keep in sync with Appearance.tsx editor fields
- * and the PATCH route's EDITABLE_FIELDS list.
+ * display label and diff kind. Includes both new schema names and legacy names
+ * so old audit_events rows still render correctly.
  */
 const FIELD_META: Record<string, { label: string; kind: AppearanceChangeKind }> = {
+  // New schema
+  background:     { label: 'Background',    kind: 'color'  },
+  accent:         { label: 'Accent',        kind: 'color'  },
+  lede:           { label: 'Lede',          kind: 'color'  },
+  heading:        { label: 'Heading (H1)',  kind: 'color'  },
+  body:           { label: 'Body copy',     kind: 'color'  },
+  font_primary:   { label: 'Primary font',  kind: 'font'   },
+  font_secondary: { label: 'Secondary font',kind: 'font'   },
+  font_mono:      { label: 'Mono font',     kind: 'font'   },
+  paper_effect:   { label: 'Paper effect',  kind: 'toggle' },
+  accent_buttons: { label: 'Accent buttons',kind: 'toggle' },
+  // Legacy backward-compat (old audit_events rows still render)
   color_background:   { label: 'Background',    kind: 'color' },
   color_accent:       { label: 'Accent',         kind: 'color' },
   color_text_primary: { label: 'Text primary',   kind: 'color' },
   color_text_muted:   { label: 'Text muted',     kind: 'color' },
   font_display:       { label: 'Display font',   kind: 'font'  },
   font_body:          { label: 'Body font',      kind: 'font'  },
-  font_mono:          { label: 'Mono font',      kind: 'font'  },
 };
 
 function formatValue(kind: AppearanceChangeKind, raw: unknown): string {

@@ -62,18 +62,18 @@ function hexToMantineScale(hex: string): MantineColorsTuple {
 }
 
 interface BrandingForTheme {
-  color_background?:   string | null;
-  color_accent?:       string | null;
-  color_text_primary?: string | null;
-  color_text_muted?:   string | null;
+  background?:  string | null;
+  accent?:      string | null;
+  heading?:     string | null;
+  lede?:        string | null;
 }
 
 /** Builds a dynamic Mantine theme from tenant_branding values. Falls back to inkwell defaults. */
 export function buildAdminTheme(branding?: BrandingForTheme | null) {
-  const accent      = isValidHex(branding?.color_accent)       ? branding!.color_accent!      : '#2d6a4f';
-  const bg          = isValidHex(branding?.color_background)   ? branding!.color_background!  : '#f9f8f5';
-  const textPrimary = isValidHex(branding?.color_text_primary) ? branding!.color_text_primary! : '#1a1917';
-  const textMuted   = branding?.color_text_muted ?? 'rgba(26,25,23,0.55)';
+  const accent      = isValidHex(branding?.accent)   ? branding!.accent!   : '#2d6a4f';
+  const bg          = isValidHex(branding?.background) ? branding!.background! : '#f9f8f5';
+  const textPrimary = isValidHex(branding?.heading)  ? branding!.heading!  : '#1a1917';
+  const textMuted   = branding?.lede ?? 'rgba(26,25,23,0.55)';
 
   return createTheme({
     // ── Colors ──────────────────────────────────────────────────────────────────
