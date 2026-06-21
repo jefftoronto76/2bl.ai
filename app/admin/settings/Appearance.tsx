@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   Group,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Skeleton,
@@ -27,7 +28,7 @@ interface BrandingRow {
   font_primary:   string;
   font_secondary: string;
   font_mono:      string;
-  paper_effect:   boolean;
+  paper_effect:   'warm' | 'lift' | 'flat';
   accent_buttons: boolean;
 }
 
@@ -40,7 +41,7 @@ const EMPTY: BrandingRow = {
   font_primary:   '',
   font_secondary: '',
   font_mono:      '',
-  paper_effect:   false,
+  paper_effect:   'lift',
   accent_buttons: true,
 };
 
@@ -55,7 +56,7 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
     font_primary:   (row.font_primary   as string  | null) ?? '',
     font_secondary: (row.font_secondary as string  | null) ?? '',
     font_mono:      (row.font_mono      as string  | null) ?? '',
-    paper_effect:   (row.paper_effect   as boolean | null) ?? false,
+    paper_effect:   (row.paper_effect   as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
     accent_buttons: (row.accent_buttons as boolean | null) ?? true,
   };
 }
@@ -392,14 +393,24 @@ export function Appearance() {
                 value={values.background}
                 onChange={v => set('background', v)}
               />
-              <Switch
-                label="Paper effect"
-                description="Adds a subtle paper texture to the background."
-                checked={values.paper_effect}
-                onChange={e => set('paper_effect', e.currentTarget.checked)}
-                disabled={saving}
-                size="sm"
-              />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Paper effect</div>
+                <SegmentedControl
+                  data={[
+                    { value: 'warm', label: 'Warm' },
+                    { value: 'lift', label: 'Lift' },
+                    { value: 'flat', label: 'Flat' },
+                  ]}
+                  value={values.paper_effect}
+                  onChange={v => set('paper_effect', v as 'warm' | 'lift' | 'flat')}
+                  disabled={saving}
+                  size="sm"
+                  fullWidth
+                />
+                <div style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)', marginTop: 4 }}>
+                  Surface depth: warm amber, white lift, or flat.
+                </div>
+              </div>
               <ColorRow
                 label="Accent"
                 description="Links and highlights use this color."
