@@ -10,7 +10,7 @@ export interface TenantBranding {
   font_primary:   string | null;
   font_secondary: string | null;
   font_mono:      string | null;
-  paper_effect:   boolean | null;
+  paper_effect:   'warm' | 'lift' | 'flat' | null;
   accent_buttons: boolean | null;
 }
 

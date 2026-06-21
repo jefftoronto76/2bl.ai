@@ -118,3 +118,34 @@ export function deriveSurface(background: string, paperEffect: boolean): string 
   if (!paperEffect) return background;
   return mix(background, '#ffffff', 0.4);
 }
+
+export type PaperEffectMode = 'warm' | 'lift' | 'flat';
+
+/**
+ * Unified entry point for the new `paper_effect` enum.
+ * Bridges the three named modes to the existing derivation strategies
+ * without modifying `derivePaperStack` or `deriveSurface`.
+ *
+ * 'warm' → amber-stack (same as derivePaperStack with effect on)
+ * 'lift' → white-lift stack (single elevated surface, the other levels stay at bg)
+ * 'flat' → no tonal steps (same as derivePaperStack with effect off)
+ */
+export function resolvePaperStack(
+  background: string,
+  mode: PaperEffectMode,
+  ink = '#1a1917',
+): PaperStack {
+  switch (mode) {
+    case 'warm':
+      return derivePaperStack(background, true, ink);
+    case 'lift':
+      return {
+        paper:   background,
+        surface: deriveSurface(background, true),
+        sunken:  background,
+        line:    mix(background, ink, 0.1),
+      };
+    case 'flat':
+      return derivePaperStack(background, false, ink);
+  }
+}
