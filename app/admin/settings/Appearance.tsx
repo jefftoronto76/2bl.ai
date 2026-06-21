@@ -4,71 +4,78 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Card,
-  ColorInput,
   Group,
   Select,
   SimpleGrid,
   Skeleton,
   Stack,
+  Switch,
   Text,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { AppearanceHistory } from './AppearanceHistory';
 import type { AppearanceChange } from './types';
-import { DISPLAY_FONTS, BODY_FONTS, MONO_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
+import { DISPLAY_FONTS, BODY_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
 
 interface BrandingRow {
-  color_background: string | null;
-  color_accent: string | null;
-  color_text_primary: string | null;
-  color_text_muted: string | null;
-  font_display: string | null;
-  font_body: string | null;
-  font_mono: string | null;
+  background:     string;
+  accent:         string;
+  lede:           string;
+  heading:        string;
+  body:           string;
+  font_primary:   string;
+  font_secondary: string;
+  font_mono:      string;
+  paper_effect:   boolean;
+  accent_buttons: boolean;
 }
 
-type EditableField = keyof BrandingRow;
-
 const EMPTY: BrandingRow = {
-  color_background: '',
-  color_accent: '',
-  color_text_primary: '',
-  color_text_muted: '',
-  font_display: '',
-  font_body: '',
-  font_mono: '',
+  background:     '',
+  accent:         '',
+  lede:           '',
+  heading:        '',
+  body:           '',
+  font_primary:   '',
+  font_secondary: '',
+  font_mono:      '',
+  paper_effect:   false,
+  accent_buttons: true,
 };
 
-function rowToForm(row: BrandingRow | null): BrandingRow {
+function rowToForm(row: Record<string, unknown> | null): BrandingRow {
   if (!row) return EMPTY;
   return {
-    color_background:   row.color_background   ?? '',
-    color_accent:       row.color_accent        ?? '',
-    color_text_primary: row.color_text_primary  ?? '',
-    color_text_muted:   row.color_text_muted    ?? '',
-    font_display:       row.font_display        ?? '',
-    font_body:          row.font_body           ?? '',
-    font_mono:          row.font_mono           ?? '',
+    background:     (row.background     as string  | null) ?? '',
+    accent:         (row.accent         as string  | null) ?? '',
+    lede:           (row.lede           as string  | null) ?? '',
+    heading:        (row.heading        as string  | null) ?? '',
+    body:           (row.body           as string  | null) ?? '',
+    font_primary:   (row.font_primary   as string  | null) ?? '',
+    font_secondary: (row.font_secondary as string  | null) ?? '',
+    font_mono:      (row.font_mono      as string  | null) ?? '',
+    paper_effect:   (row.paper_effect   as boolean | null) ?? false,
+    accent_buttons: (row.accent_buttons as boolean | null) ?? true,
   };
 }
 
 function isDirty(saved: BrandingRow, current: BrandingRow): boolean {
-  return (Object.keys(saved) as EditableField[]).some((k) => saved[k] !== current[k]);
+  return (Object.keys(saved) as Array<keyof BrandingRow>).some(k => saved[k] !== current[k]);
 }
 
-function extractDirtyFields(saved: BrandingRow, current: BrandingRow): Partial<BrandingRow> {
-  const patch: Partial<BrandingRow> = {};
-  for (const k of Object.keys(saved) as EditableField[]) {
+function extractDirtyFields(saved: BrandingRow, current: BrandingRow): Record<string, string | boolean> {
+  const patch: Record<string, string | boolean> = {};
+  for (const k of Object.keys(saved) as Array<keyof BrandingRow>) {
     if (saved[k] !== current[k]) {
-      patch[k] = current[k];
+      patch[k] = current[k] as string | boolean;
     }
   }
   return patch;
 }
 
 // ---------------------------------------------------------------------------
-// Google Fonts loader (DOM-dependent — stays client-only)
+// Google Fonts loader (DOM-only — stays client-side)
 // ---------------------------------------------------------------------------
 
 const _loadedFonts = new Set<string>();
@@ -83,69 +90,161 @@ function loadGoogleFont(googleFamily: string): void {
 }
 
 function loadFontForValue(value: string): void {
-  const entry = ALL_FONTS.find((f) => f.value === value);
+  const entry = ALL_FONTS.find(f => f.value === value);
   if (entry?.googleFamily) loadGoogleFont(entry.googleFamily);
 }
 
 // ---------------------------------------------------------------------------
-// Live preview
+// Native color row — swatch + hex text input (no Mantine ColorInput)
+// ---------------------------------------------------------------------------
+
+function ColorRow({
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <label
+          style={{
+            display: 'inline-block',
+            width: 28,
+            height: 28,
+            borderRadius: 4,
+            background: value || '#cccccc',
+            border: '1px solid rgba(0,0,0,0.15)',
+            cursor: 'pointer',
+            position: 'relative',
+            flexShrink: 0,
+          }}
+        >
+          <input
+            type="color"
+            value={value || '#ffffff'}
+            onChange={e => onChange(e.target.value)}
+            aria-label={label}
+            style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
+          />
+        </label>
+        <input
+          value={value}
+          onChange={e => {
+            let v = e.target.value;
+            if (v && v[0] !== '#') v = '#' + v;
+            onChange(v);
+          }}
+          spellCheck={false}
+          style={{
+            fontFamily: 'var(--mantine-font-family-monospace)',
+            fontSize: 13,
+            width: 140,
+            border: '1px solid var(--mantine-color-gray-3)',
+            borderRadius: 4,
+            padding: '4px 8px',
+            background: 'transparent',
+            textTransform: 'lowercase',
+          }}
+        />
+      </div>
+      {description && (
+        <div style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)', marginTop: 4 }}>
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Live preview — matches prototype exactly
 // ---------------------------------------------------------------------------
 
 function AppearancePreview({ values }: { values: BrandingRow }) {
-  const bg      = values.color_background   || '#f9f8f5';
-  const accent  = values.color_accent       || '#2d6a4f';
-  const primary = values.color_text_primary || '#1a1917';
-  const muted   = values.color_text_muted   || '#7e7d7b';
-  const serif   = values.font_display       || 'Georgia, serif';
-  const sans    = values.font_body          || 'system-ui, sans-serif';
-  const mono    = values.font_mono          || 'monospace';
+  const bg       = values.background     || '#f9f8f5';
+  const accent   = values.accent         || '#2d6a4f';
+  const lede     = values.lede           || '#7e7d7b';
+  const heading  = values.heading        || '#1a1917';
+  const body     = values.body           || '#1a1917';
+  const headFont = `"${values.font_primary  || 'Playfair Display'}", serif`;
+  const bodyFont = `"${values.font_secondary || 'DM Sans'}", sans-serif`;
+  const btnBg    = values.accent_buttons ? accent : '#1a1917';
 
   return (
     <Card
       withBorder
       radius="md"
       p="md"
-      style={{ background: bg, minHeight: 180, display: 'flex', flexDirection: 'column', gap: 12 }}
+      style={{ background: bg, fontFamily: bodyFont }}
     >
-      <div style={{ fontFamily: serif, fontSize: 18, fontWeight: 700, color: primary }}>
-        Heading preview
-      </div>
-      <div style={{ fontFamily: sans, fontSize: 14, color: primary, lineHeight: 1.6 }}>
-        Body copy in your selected font. The quick brown fox jumps over the lazy dog.
-      </div>
-      <div style={{ fontFamily: sans, fontSize: 12, color: muted }}>
-        Muted text — used for labels, timestamps, and secondary copy.
-      </div>
-      <div style={{ fontFamily: mono, fontSize: 11, color: muted }}>
-        mono — code, IDs, tokens
-      </div>
-      <Group gap="xs" mt="auto">
+      <h1
+        style={{
+          fontFamily: headFont,
+          color: heading,
+          fontSize: 30,
+          lineHeight: 1.12,
+          margin: 0,
+          fontWeight: 500,
+        }}
+      >
+        Build a second brain that talks.
+      </h1>
+      <p style={{ color: lede, fontSize: 16, margin: '14px 0 0', lineHeight: 1.5 }}>
+        Sage answers your visitors in your voice, around the clock — and books the ones who are ready.
+      </p>
+      <p style={{ color: body, fontSize: 14, margin: '14px 0 0', lineHeight: 1.6 }}>
+        Every conversation is grounded in the notes, prompts, and parameters you control here.{' '}
+        <a
+          href="#"
+          onClick={e => e.preventDefault()}
+          style={{ color: accent, textDecoration: 'underline', textUnderlineOffset: 2 }}
+        >
+          See how it works
+        </a>
+        .
+      </p>
+      <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
         <span
           style={{
-            background: accent,
+            display: 'inline-flex',
+            alignItems: 'center',
+            height: 40,
+            padding: '0 18px',
+            borderRadius: 6,
+            background: btnBg,
             color: '#fff',
-            padding: '4px 12px',
-            borderRadius: 6,
-            fontSize: 13,
-            fontFamily: sans,
+            fontSize: 14,
             fontWeight: 600,
+            fontFamily: bodyFont,
           }}
         >
-          Accent button
+          Start a chat
         </span>
         <span
           style={{
-            border: `1.5px solid ${accent}`,
-            color: accent,
-            padding: '4px 12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            height: 40,
+            padding: '0 18px',
             borderRadius: 6,
-            fontSize: 13,
-            fontFamily: sans,
+            background: 'transparent',
+            color: accent,
+            border: `1px solid ${accent}`,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: bodyFont,
           }}
         >
-          Outlined
+          Learn more
         </span>
-      </Group>
+      </div>
     </Card>
   );
 }
@@ -155,11 +254,11 @@ function AppearancePreview({ values }: { values: BrandingRow }) {
 // ---------------------------------------------------------------------------
 
 export function Appearance() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<BrandingRow>(EMPTY);
-  const [values, setValues] = useState<BrandingRow>(EMPTY);
-  const [history, setHistory] = useState<AppearanceChange[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState<BrandingRow>(EMPTY);
+  const [values, setValues]     = useState<BrandingRow>(EMPTY);
+  const [history, setHistory]   = useState<AppearanceChange[]>([]);
 
   const fetchSettings = useCallback(async () => {
     console.log('[Appearance] fetching settings');
@@ -174,14 +273,13 @@ export function Appearance() {
         });
         return;
       }
-      const json: { data: BrandingRow | null } = await res.json();
+      const json: { data: Record<string, unknown> | null } = await res.json();
       const form = rowToForm(json.data);
       setSaved(form);
       setValues(form);
-      // Pre-load any Google Fonts that are already set.
-      if (form.font_display) loadFontForValue(form.font_display);
-      if (form.font_body)    loadFontForValue(form.font_body);
-      if (form.font_mono)    loadFontForValue(form.font_mono);
+      if (form.font_primary)   loadFontForValue(form.font_primary);
+      if (form.font_secondary) loadFontForValue(form.font_secondary);
+      if (form.font_mono)      loadFontForValue(form.font_mono);
     } catch (err) {
       console.error('[Appearance] settings fetch threw:', err);
       notifications.show({
@@ -211,11 +309,15 @@ export function Appearance() {
     fetchHistory();
   }, [fetchSettings, fetchHistory]);
 
-  function set(field: EditableField, value: string) {
-    setValues((v) => ({ ...v, [field]: value }));
+  function set<K extends keyof BrandingRow>(field: K, value: BrandingRow[K]) {
+    setValues(v => ({ ...v, [field]: value }));
   }
 
   const dirty = isDirty(saved, values);
+
+  function handleReset() {
+    setValues({ ...saved });
+  }
 
   async function handleSave() {
     const patch = extractDirtyFields(saved, values);
@@ -231,17 +333,17 @@ export function Appearance() {
       });
 
       if (!res.ok) {
-        const body: unknown = await res.json().catch(() => null);
+        const errBody: unknown = await res.json().catch(() => null);
         const msg =
-          typeof body === 'object' && body !== null && 'error' in body
-            ? String((body as { error: unknown }).error)
+          typeof errBody === 'object' && errBody !== null && 'error' in errBody
+            ? String((errBody as { error: unknown }).error)
             : 'Failed to save appearance.';
         console.error('[Appearance] PATCH failed:', msg);
         notifications.show({ color: 'red', title: 'Save failed', message: msg });
         return;
       }
 
-      const json: { data: BrandingRow } = await res.json();
+      const json: { data: Record<string, unknown> } = await res.json();
       const form = rowToForm(json.data);
       console.log('[Appearance] PATCH success:', form);
       setSaved(form);
@@ -251,8 +353,6 @@ export function Appearance() {
         title: 'Appearance saved',
         message: 'Branding tokens updated.',
       });
-
-      // Re-fetch history so the new rows appear immediately.
       await fetchHistory();
     } catch (err) {
       console.error('[Appearance] PATCH threw:', err);
@@ -280,114 +380,121 @@ export function Appearance() {
     <Stack gap="md">
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
         {/* ── Left column: editor ── */}
-        <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
-          <Stack gap="sm">
-            <Title order={6} fw={600}>
-              Colors
-            </Title>
-            <ColorInput
-              label="Background"
-              description="Page and surface background."
-              value={values.color_background ?? ''}
-              onChange={(v) => set('color_background', v)}
-              format="hex"
-              size="sm"
-              disabled={saving}
-            />
-            <ColorInput
-              label="Accent"
-              description="Primary brand color — buttons, links, highlights."
-              value={values.color_accent ?? ''}
-              onChange={(v) => set('color_accent', v)}
-              format="hex"
-              size="sm"
-              disabled={saving}
-            />
-            <ColorInput
-              label="Text primary"
-              description="Main body and heading text."
-              value={values.color_text_primary ?? ''}
-              onChange={(v) => set('color_text_primary', v)}
-              format="hex"
-              size="sm"
-              disabled={saving}
-            />
-            <ColorInput
-              label="Text muted"
-              description="Secondary, label, and caption text."
-              value={values.color_text_muted ?? ''}
-              onChange={(v) => set('color_text_muted', v)}
-              format="hex"
-              size="sm"
-              disabled={saving}
-            />
+        <Stack gap="md">
+          {/* Colors card */}
+          <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+            <Stack gap="sm">
+              <Title order={6} fw={600}>Colors</Title>
 
-            <Title order={6} fw={600} mt="xs">
-              Fonts
-            </Title>
-            <Text size="xs" c="dimmed" mt={-4}>
-              Select from the curated list. The preview updates live.
-            </Text>
-            <Select
-              label="Display font"
-              description="Used for headings and display text."
-              data={DISPLAY_FONTS}
-              value={values.font_display ?? ''}
-              onChange={(v) => {
-                const val = v ?? '';
-                set('font_display', val);
-                if (val) loadFontForValue(val);
-              }}
-              size="sm"
-              disabled={saving}
-            />
-            <Select
-              label="Body font"
-              description="Used for body copy and UI text."
-              data={BODY_FONTS}
-              value={values.font_body ?? ''}
-              onChange={(v) => {
-                const val = v ?? '';
-                set('font_body', val);
-                if (val) loadFontForValue(val);
-              }}
-              size="sm"
-              disabled={saving}
-            />
-            <Select
-              label="Mono font"
-              description="Used for code, IDs, and monospace contexts."
-              data={MONO_FONTS}
-              value={values.font_mono ?? ''}
-              onChange={(v) => {
-                const val = v ?? '';
-                set('font_mono', val);
-                if (val) loadFontForValue(val);
-              }}
-              size="sm"
-              disabled={saving}
-            />
-
-            <Group justify="flex-end" mt="xs">
-              <Button
-                variant="filled"
-                color="green"
+              <ColorRow
+                label="Background"
+                description="Page canvas behind all content."
+                value={values.background}
+                onChange={v => set('background', v)}
+              />
+              <Switch
+                label="Paper effect"
+                description="Adds a subtle paper texture to the background."
+                checked={values.paper_effect}
+                onChange={e => set('paper_effect', e.currentTarget.checked)}
+                disabled={saving}
                 size="sm"
-                onClick={handleSave}
-                loading={saving}
-                disabled={!dirty}
-              >
-                Save
-              </Button>
-            </Group>
-          </Stack>
-        </Card>
+              />
+              <ColorRow
+                label="Accent"
+                description="Links and highlights use this color."
+                value={values.accent}
+                onChange={v => set('accent', v)}
+              />
+              <Switch
+                label="Apply accent to buttons"
+                description="When off, primary buttons stay neutral (ink)."
+                checked={values.accent_buttons}
+                onChange={e => set('accent_buttons', e.currentTarget.checked)}
+                disabled={saving}
+                size="sm"
+              />
+              <ColorRow
+                label="Lede"
+                description="Intro / subtitle text under headings."
+                value={values.lede}
+                onChange={v => set('lede', v)}
+              />
+              <ColorRow
+                label="Heading (H1)"
+                description="Top-level page titles."
+                value={values.heading}
+                onChange={v => set('heading', v)}
+              />
+              <ColorRow
+                label="Body copy"
+                description="Default paragraph text."
+                value={values.body}
+                onChange={v => set('body', v)}
+              />
+            </Stack>
+          </Card>
+
+          {/* Typography card */}
+          <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+            <Stack gap="sm">
+              <Title order={6} fw={600}>Typography</Title>
+              <Select
+                label="Primary font"
+                description="Used for headings."
+                data={DISPLAY_FONTS}
+                value={values.font_primary || null}
+                onChange={v => {
+                  const val = v ?? '';
+                  set('font_primary', val);
+                  if (val) loadFontForValue(val);
+                }}
+                size="sm"
+                disabled={saving}
+              />
+              <Select
+                label="Secondary font"
+                description="Used for lede and body copy."
+                data={BODY_FONTS}
+                value={values.font_secondary || null}
+                onChange={v => {
+                  const val = v ?? '';
+                  set('font_secondary', val);
+                  if (val) loadFontForValue(val);
+                }}
+                size="sm"
+                disabled={saving}
+              />
+            </Stack>
+          </Card>
+
+          {/* Action row */}
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={handleReset}
+              disabled={saving || !dirty}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="filled"
+              color="green"
+              size="sm"
+              onClick={handleSave}
+              loading={saving}
+              disabled={!dirty}
+            >
+              Save
+            </Button>
+          </Group>
+        </Stack>
 
         {/* ── Right column: live preview ── */}
         <Stack gap="xs">
-          <Text size="sm" fw={600} c="dimmed">
-            Preview
-          </Text>
+          <Text size="sm" fw={600} c="dimmed">Preview</Text>
           <AppearancePreview values={values} />
         </Stack>
       </SimpleGrid>

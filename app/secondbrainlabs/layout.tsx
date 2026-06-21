@@ -4,6 +4,7 @@ import "./globals.css";
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
+import { derivePaperStack, paperStackVars } from '@/services/branding/paper-stack';
 
 const SBL_TENANT_ID = '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb';
 
@@ -39,37 +40,42 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
 
   // Build :root color overrides
   const colorLines: string[] = [];
-  if (isValidHex(branding?.color_background)) {
-    const rgb = hexToRgbTriplet(branding!.color_background!);
-    colorLines.push(`  --color-paper: ${branding!.color_background!};`);
+  if (isValidHex(branding?.background)) {
+    const stack = derivePaperStack(branding!.background!, branding?.paper_effect ?? true);
+    const vars  = paperStackVars(stack);
+    colorLines.push(`  --color-paper:   ${vars['--color-paper']};`);
+    colorLines.push(`  --color-paper-2: ${vars['--color-paper-2']};`);
+    colorLines.push(`  --color-paper-3: ${vars['--color-paper-3']};`);
+    colorLines.push(`  --color-line:    ${vars['--color-line']};`);
+    const rgb = hexToRgbTriplet(stack.paper);
     if (rgb) colorLines.push(`  --color-paper-rgb: ${rgb};`);
   }
-  if (isValidHex(branding?.color_accent)) {
-    const rgb = hexToRgbTriplet(branding!.color_accent!);
+  if (isValidHex(branding?.accent)) {
+    const rgb = hexToRgbTriplet(branding!.accent!);
     if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
   }
-  if (isValidHex(branding?.color_text_primary)) {
-    colorLines.push(`  --color-ink: ${branding!.color_text_primary!};`);
+  if (isValidHex(branding?.heading)) {
+    colorLines.push(`  --color-ink: ${branding!.heading!};`);
   }
-  if (isValidHex(branding?.color_text_muted)) {
-    colorLines.push(`  --color-muted: ${branding!.color_text_muted!};`);
+  if (isValidHex(branding?.lede)) {
+    colorLines.push(`  --color-muted: ${branding!.lede!};`);
   }
 
   // Font overrides on [data-brand="sbl"] — validate against registry to prevent CSS injection
   const fontLines: string[] = [];
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
 
-  const fontDisplay = branding?.font_display;
-  const fontBody    = branding?.font_body;
-  const fontMono    = branding?.font_mono;
+  const fontPrimary   = branding?.font_primary;
+  const fontSecondary = branding?.font_secondary;
+  const fontMono      = branding?.font_mono;
 
   // SBL uses --font-serif / --font-sans instead of --font-display / --font-body
-  if (fontDisplay && allowedFontValues.has(fontDisplay)) fontLines.push(`  --font-serif: ${fontDisplay};`);
-  if (fontBody    && allowedFontValues.has(fontBody))    fontLines.push(`  --font-sans: ${fontBody};`);
-  if (fontMono    && allowedFontValues.has(fontMono))    fontLines.push(`  --font-mono: ${fontMono};`);
+  if (fontPrimary   && allowedFontValues.has(fontPrimary))   fontLines.push(`  --font-serif: ${fontPrimary};`);
+  if (fontSecondary && allowedFontValues.has(fontSecondary)) fontLines.push(`  --font-sans: ${fontSecondary};`);
+  if (fontMono      && allowedFontValues.has(fontMono))      fontLines.push(`  --font-mono: ${fontMono};`);
 
   // Inject Google Fonts <link> tags for any custom font that has a googleFamily
-  const fontEntriesToLoad = [fontDisplay, fontBody, fontMono]
+  const fontEntriesToLoad = [fontPrimary, fontSecondary, fontMono]
     .filter(Boolean)
     .map(v => ALL_FONTS.find(f => f.value === v))
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);
