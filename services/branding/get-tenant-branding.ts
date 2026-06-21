@@ -1,3 +1,4 @@
+import { unstable_noStore } from 'next/cache';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 
 export interface TenantBranding {
@@ -16,6 +17,7 @@ export interface TenantBranding {
 
 /** Fetches the tenant_branding row for `tenantId`. Returns null on miss or error. */
 export async function getTenantBranding(tenantId: string): Promise<TenantBranding | null> {
+  unstable_noStore();
   try {
     const supabase = getAdminClient();
     const { data, error } = await supabase

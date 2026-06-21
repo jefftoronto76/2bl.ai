@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { getAuthContext } from '@/services/auth';
 import { logEvent, AuditAction } from '@/services/audit';
@@ -266,6 +267,10 @@ export async function PATCH(req: Request) {
       },
     });
   }
+
+  revalidatePath('/');
+  revalidatePath('/secondbrainlabs');
+  revalidatePath('/heirloom');
 
   return Response.json({ data: updated });
 }
