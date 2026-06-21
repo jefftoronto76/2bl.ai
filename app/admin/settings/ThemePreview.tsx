@@ -32,18 +32,33 @@ interface PaperStackResult {
   line: string;
 }
 
-function paperStack(bg: string, effect: boolean, ink?: string): PaperStackResult {
-  if (!effect) return { surface: bg, sunken: bg, line: mixHex(bg, ink || '#1a1917', 0.10) };
-  return {
-    surface: mixHex(bg, PAPER_WARM, 0.10),
-    sunken:  mixHex(bg, PAPER_WARM, 0.20),
-    line:    mixHex(bg, PAPER_WARM, 0.42),
-  };
+function paperStack(bg: string, effect: 'warm' | 'lift' | 'flat', ink?: string): PaperStackResult {
+  const inkColor = ink || '#1a1917';
+  switch (effect) {
+    case 'warm':
+      return {
+        surface: mixHex(bg, PAPER_WARM, 0.10),
+        sunken:  mixHex(bg, PAPER_WARM, 0.20),
+        line:    mixHex(bg, PAPER_WARM, 0.42),
+      };
+    case 'lift':
+      return {
+        surface: mixHex(bg, '#ffffff', 0.40),
+        sunken:  bg,
+        line:    mixHex(bg, inkColor, 0.10),
+      };
+    case 'flat':
+      return {
+        surface: bg,
+        sunken:  bg,
+        line:    mixHex(bg, inkColor, 0.10),
+      };
+  }
 }
 
 export interface ThemeTokens {
   background:     string;
-  paper_effect:   boolean;
+  paper_effect:   'warm' | 'lift' | 'flat';
   accent:         string;
   accent_buttons: boolean;
   lede:           string;
