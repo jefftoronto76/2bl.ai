@@ -4,6 +4,7 @@ import "./globals.css";
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
+import { derivePaperStack, paperStackVars } from '@/services/branding/paper-stack';
 
 const SBL_TENANT_ID = '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb';
 
@@ -40,8 +41,13 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
   // Build :root color overrides
   const colorLines: string[] = [];
   if (isValidHex(branding?.background)) {
-    const rgb = hexToRgbTriplet(branding!.background!);
-    colorLines.push(`  --color-paper: ${branding!.background!};`);
+    const stack = derivePaperStack(branding!.background!, branding?.paper_effect ?? true);
+    const vars  = paperStackVars(stack);
+    colorLines.push(`  --color-paper:   ${vars['--color-paper']};`);
+    colorLines.push(`  --color-paper-2: ${vars['--color-paper-2']};`);
+    colorLines.push(`  --color-paper-3: ${vars['--color-paper-3']};`);
+    colorLines.push(`  --color-line:    ${vars['--color-line']};`);
+    const rgb = hexToRgbTriplet(stack.paper);
     if (rgb) colorLines.push(`  --color-paper-rgb: ${rgb};`);
   }
   if (isValidHex(branding?.accent)) {

@@ -4,6 +4,7 @@ import './globals.css'
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
+import { deriveSurface } from '@/services/branding/paper-stack';
 
 const JEFF_TENANT_ID = 'e07334a0-2afd-4544-898b-edb124d2dd33';
 
@@ -31,6 +32,9 @@ export default async function JeffLougheedLayout({ children }: { children: React
   if (isValidHex(branding?.background)) {
     const rgb = hexToRgbTriplet(branding!.background!);
     if (rgb) colorLines.push(`  --color-bg: ${rgb};`);
+    const surface = deriveSurface(branding!.background!, branding?.paper_effect ?? true);
+    const surfaceRgb = hexToRgbTriplet(surface);
+    if (surfaceRgb) colorLines.push(`  --color-surface: ${surfaceRgb};`);
   }
   if (isValidHex(branding?.accent)) {
     const rgb = hexToRgbTriplet(branding!.accent!);

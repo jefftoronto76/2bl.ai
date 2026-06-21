@@ -4,6 +4,7 @@ import './globals.css';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
+import { deriveSurface } from '@/services/branding/paper-stack';
 
 const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56';
 
@@ -63,6 +64,9 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
   if (isValidHex(branding?.background)) {
     const rgb = hexToRgbTriplet(branding!.background!);
     if (rgb) colorLines.push(`  --hl-bg: ${rgb};`);
+    const surface = deriveSurface(branding!.background!, branding?.paper_effect ?? true);
+    const surfaceRgb = hexToRgbTriplet(surface);
+    if (surfaceRgb) colorLines.push(`  --color-surface: ${surfaceRgb};`);
   }
   if (isValidHex(branding?.accent)) {
     const rgb = hexToRgbTriplet(branding!.accent!);
