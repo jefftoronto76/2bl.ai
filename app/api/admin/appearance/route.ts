@@ -2,6 +2,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin';
 import { getAuthContext } from '@/services/auth';
 import { logEvent, AuditAction } from '@/services/audit';
 import type { AppearanceChangeKind } from '@/app/admin/settings/types';
+import { hexToRgbTriplet } from '@/services/branding/hex-utils';
 
 // Per-tenant CSS defaults — returned when tenant_branding has no row yet.
 // Colors are solid-hex approximations of the CSS palette values (including
@@ -35,13 +36,13 @@ const TENANT_BRAND_DEFAULTS: Record<string, {
     font_body: 'Manrope, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
   },
-  // heirloom.2bl.ai
+  // heirloom.2bl.ai — warm light palette (keep in sync with app/heirloom/globals.css)
   '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
-    color_background: '#1C0F06',
-    color_accent: '#C9A96E',
-    color_text_primary: '#F5EFE6',
-    color_text_muted: '#938A81',
-    font_display: 'Cormorant Garamond, serif',
+    color_background: '#ECE3D2',   // --hl-bg: 236 227 210
+    color_accent: '#2E854D',       // --color-accent: 46 133 77
+    color_text_primary: '#2E2417', // --hl-text-primary: 46 36 23
+    color_text_muted: '#8C7E6E',   // rgba(46,36,23,0.62) on #ECE3D2 — precomputed
+    font_display: 'Cormorant Garamond, Georgia, serif',
     font_body: 'DM Sans, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
   },
@@ -70,11 +71,6 @@ const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
   font_mono:          'font',
 };
 
-/** Converts a 6-char hex string (#RRGGBB or RRGGBB) to "R G B" triplet for CSS vars. */
-function hexToRgbTriplet(hex: string): string | null {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
-  return m ? `${parseInt(m[1], 16)} ${parseInt(m[2], 16)} ${parseInt(m[3], 16)}` : null;
-}
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string };

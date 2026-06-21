@@ -7,10 +7,11 @@ import '@mantine/notifications/styles.css';
 // (jefflougheed) route group, so import them explicitly here.
 import '../(jefflougheed)/globals.css';
 
-import { adminTheme } from '@/components/admin/theme/mantine-theme';
+import { buildAdminTheme } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
-import { syncUser, getTenantName, getCurrentUser, getTenantType } from '@/services/auth';
+import { syncUser, getTenantName, getCurrentUser, getTenantType, getAuthContext } from '@/services/auth';
+import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const [supabaseUserId, user, tenantName, tenantType] = await Promise.all([
@@ -19,6 +20,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     getTenantName(),
     getTenantType(),
   ])
+
+  // Build a dynamic Mantine theme from the tenant's saved branding.
+  // Falls back to the inkwell default theme if auth or DB fails.
+  let adminTheme = buildAdminTheme();
+  try {
+    const authCtx = await getAuthContext();
+    const branding = await getTenantBranding(authCtx.tenant_id);
+    adminTheme = buildAdminTheme(branding);
+  } catch {
+    // Non-fatal — default theme is already set above.
+  }
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
