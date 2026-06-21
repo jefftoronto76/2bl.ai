@@ -1,5 +1,3 @@
-'use client';
-
 import { createTheme, MantineColorsTuple } from '@mantine/core';
 import { isValidHex } from '@/services/branding/hex-utils';
 
