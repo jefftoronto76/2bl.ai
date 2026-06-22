@@ -67,7 +67,7 @@ export default async function JeffLougheedLayout({ children }: { children: React
     .map(v => ALL_FONTS.find(f => f.value === v))
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);
 
-  const cssString = colorLines.length > 0 ? `:root {\n${colorLines.join('\n')}\n}` : '';
+  const cssString = colorLines.length > 0 ? `html[data-palette="inkwell"] {\n${colorLines.join('\n')}\n}` : '';
 
   return (
     <>
