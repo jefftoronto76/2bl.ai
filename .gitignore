@@ -6,6 +6,9 @@ dist
 tsconfig.tsbuildinfo
 tsconfig.sw.tsbuildinfo
 
+# Generated reference files
+*.csv
+
 # Serwist service worker build output
 public/sw.js
 
