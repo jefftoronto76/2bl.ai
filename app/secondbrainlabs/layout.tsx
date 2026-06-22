@@ -44,7 +44,7 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
     const effectMode = branding?.paper_effect ?? 'flat';
     const stack = derivePaperStack(branding!.background!, effectMode !== 'flat');
     const vars  = paperStackVars(stack);
-    colorLines.push(`  --color-paper:   ${vars['--color-paper']};`);
+    colorLines.push(`  --color-bg:      ${vars['--color-paper']};`);
     colorLines.push(`  --color-paper-2: ${vars['--color-paper-2']};`);
     colorLines.push(`  --color-paper-3: ${vars['--color-paper-3']};`);
     colorLines.push(`  --color-line:    ${vars['--color-line']};`);
@@ -56,24 +56,22 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
     if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
   }
   if (isValidHex(branding?.heading)) {
-    colorLines.push(`  --color-ink: ${branding!.heading!};`);
+    colorLines.push(`  --color-text-primary: ${branding!.heading!};`);
   }
   if (isValidHex(branding?.lede)) {
-    colorLines.push(`  --color-muted: ${branding!.lede!};`);
+    colorLines.push(`  --color-text-muted: ${branding!.lede!};`);
   }
 
-  // Font overrides on [data-brand="sbl"] — validate against registry to prevent CSS injection
-  const fontLines: string[] = [];
+  // Font overrides in :root — validate against registry to prevent CSS injection
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
 
   const fontPrimary   = branding?.font_primary;
   const fontSecondary = branding?.font_secondary;
   const fontMono      = branding?.font_mono;
 
-  // SBL uses --font-serif / --font-sans instead of --font-display / --font-body
-  if (fontPrimary   && allowedFontValues.has(fontPrimary))   fontLines.push(`  --font-serif: ${fontPrimary};`);
-  if (fontSecondary && allowedFontValues.has(fontSecondary)) fontLines.push(`  --font-sans: ${fontSecondary};`);
-  if (fontMono      && allowedFontValues.has(fontMono))      fontLines.push(`  --font-mono: ${fontMono};`);
+  if (fontPrimary   && allowedFontValues.has(fontPrimary))   colorLines.push(`  --font-display: ${fontPrimary};`);
+  if (fontSecondary && allowedFontValues.has(fontSecondary)) colorLines.push(`  --font-body: ${fontSecondary};`);
+  if (fontMono      && allowedFontValues.has(fontMono))      colorLines.push(`  --font-mono: ${fontMono};`);
 
   // Inject Google Fonts <link> tags for any custom font that has a googleFamily
   const fontEntriesToLoad = [fontPrimary, fontSecondary, fontMono]
@@ -81,10 +79,7 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
     .map(v => ALL_FONTS.find(f => f.value === v))
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);
 
-  const cssBlocks: string[] = [];
-  if (colorLines.length > 0) cssBlocks.push(`:root {\n${colorLines.join('\n')}\n}`);
-  if (fontLines.length > 0)  cssBlocks.push(`[data-brand="sbl"] {\n${fontLines.join('\n')}\n}`);
-  const cssString = cssBlocks.join('\n');
+  const cssString = colorLines.length > 0 ? `:root {\n${colorLines.join('\n')}\n}` : '';
 
   return (
     <>
