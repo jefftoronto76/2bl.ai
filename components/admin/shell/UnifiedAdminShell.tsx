@@ -145,7 +145,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
 
       <AppShell.Main
         style={{
-          backgroundColor: 'var(--mantine-color-white)',
+          backgroundColor: 'var(--mantine-color-body)',
         }}
       >
         {children}
