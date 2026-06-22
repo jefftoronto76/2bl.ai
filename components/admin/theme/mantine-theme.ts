@@ -1,4 +1,4 @@
-import { createTheme, MantineColorsTuple } from '@mantine/core';
+import { createTheme, type CSSVariablesResolver, MantineColorsTuple } from '@mantine/core';
 import { isValidHex } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
 
@@ -159,6 +159,16 @@ export function buildAdminTheme(branding?: BrandingForTheme | null) {
         },
       },
     },
+  });
+}
+
+/** Wires theme.other.bodyBackground into --mantine-color-body so AppShell.Main picks it up. */
+export function buildCssVariablesResolver(branding?: BrandingForTheme | null): CSSVariablesResolver {
+  const bg = isValidHex(branding?.background) ? branding!.background! : '#f9f8f5';
+  return () => ({
+    variables: { '--mantine-color-body': bg },
+    light: {},
+    dark: {},
   });
 }
 

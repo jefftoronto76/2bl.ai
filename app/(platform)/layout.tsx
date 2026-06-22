@@ -9,7 +9,7 @@ import '@mantine/notifications/styles.css';
 // (jefflougheed) route group, so import them explicitly here.
 import '../(jefflougheed)/globals.css';
 
-import { buildAdminTheme } from '@/components/admin/theme/mantine-theme';
+import { buildAdminTheme, buildCssVariablesResolver } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { ALL_FONTS, type FontEntry } from '@/services/branding/font-registry';
@@ -36,11 +36,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   console.log('[platform layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
   let platformTheme = buildAdminTheme();
+  let cssResolver = buildCssVariablesResolver();
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
     platformTheme = buildAdminTheme(branding);
+    cssResolver = buildCssVariablesResolver(branding);
     console.log('[platform layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       font_primary: branding?.font_primary,
@@ -69,7 +71,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           href={`https://fonts.googleapis.com/css2?family=${entry.googleFamily}&display=swap`}
         />
       ))}
-      <MantineProvider theme={platformTheme}>
+      <MantineProvider theme={platformTheme} cssVariablesResolver={cssResolver}>
         <ColorSchemeScript defaultColorScheme="light" />
         <Notifications position="top-right" />
         <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>

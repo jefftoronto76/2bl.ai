@@ -7,7 +7,7 @@ import '@mantine/notifications/styles.css';
 // (jefflougheed) route group, so import them explicitly here.
 import '../(jefflougheed)/globals.css';
 
-import { buildAdminTheme } from '@/components/admin/theme/mantine-theme';
+import { buildAdminTheme, buildCssVariablesResolver } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
 import { syncUser, getTenantName, getCurrentUser, getTenantType, getAuthContext } from '@/services/auth';
@@ -25,11 +25,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Build a dynamic Mantine theme from the tenant's saved branding.
   // Falls back to the inkwell default theme if auth or DB fails.
   let adminTheme = buildAdminTheme();
+  let cssResolver = buildCssVariablesResolver();
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
     adminTheme = buildAdminTheme(branding);
+    cssResolver = buildCssVariablesResolver(branding);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       font_primary: branding?.font_primary,
@@ -61,7 +63,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         />
       ))}
       <AdminUserProvider supabaseUserId={supabaseUserId}>
-        <MantineProvider theme={adminTheme}>
+        <MantineProvider theme={adminTheme} cssVariablesResolver={cssResolver}>
           <ColorSchemeScript defaultColorScheme="light" />
           <Notifications position="top-right" />
           <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>

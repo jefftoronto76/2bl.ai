@@ -10,8 +10,8 @@ const navLinkStyle = (active: boolean) =>
     borderRadius: 'var(--mantine-radius-sm)',
     color: active ? 'var(--mantine-color-white)' : 'var(--mantine-color-gray-4)',
     '--nl-color': 'var(--mantine-color-white)',
-    '--nl-bg': 'var(--mantine-color-green-filled)',
-    '--nl-hover': 'var(--mantine-color-green-filled-hover)',
+    '--nl-bg': 'var(--mantine-color-brand-filled)',
+    '--nl-hover': 'var(--mantine-color-brand-filled-hover)',
   }) as React.CSSProperties;
 
 const sectionLabelStyle = {
