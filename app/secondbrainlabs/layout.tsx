@@ -41,7 +41,8 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
   // Build :root color overrides
   const colorLines: string[] = [];
   if (isValidHex(branding?.background)) {
-    const stack = derivePaperStack(branding!.background!, branding?.paper_effect ?? true);
+    const effectMode = branding?.paper_effect ?? 'flat';
+    const stack = derivePaperStack(branding!.background!, effectMode !== 'flat');
     const vars  = paperStackVars(stack);
     colorLines.push(`  --color-paper:   ${vars['--color-paper']};`);
     colorLines.push(`  --color-paper-2: ${vars['--color-paper-2']};`);

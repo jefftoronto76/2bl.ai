@@ -1,5 +1,6 @@
 import { createTheme, MantineColorsTuple } from '@mantine/core';
 import { isValidHex } from '@/services/branding/hex-utils';
+import { ALL_FONTS } from '@/services/branding/font-registry';
 
 /**
  * Mantine theme bridge for the Natural Resource admin interface.
@@ -48,13 +49,13 @@ function hexToMantineScale(hex: string): MantineColorsTuple {
   };
 
   return [
-    shade(0.90),  // 0 — 90% toward white
-    shade(0.75),  // 1
-    shade(0.60),  // 2
-    shade(0.45),  // 3
-    shade(0.30),  // 4
-    shade(0.15),  // 5
-    hex,          // 6 — base
+    shade(0.90),       // 0 — 90% toward white
+    shade(0.75),       // 1
+    shade(0.60),       // 2
+    shade(0.45),       // 3
+    shade(0.30),       // 4
+    shade(0.15),       // 5
+    hex,               // 6 — base
     shade(0.15, true), // 7 — 15% toward black
     shade(0.30, true), // 8
     shade(0.45, true), // 9
@@ -62,38 +63,55 @@ function hexToMantineScale(hex: string): MantineColorsTuple {
 }
 
 interface BrandingForTheme {
-  background?:  string | null;
-  accent?:      string | null;
-  heading?:     string | null;
-  lede?:        string | null;
+  background?:     string | null;
+  accent?:         string | null;
+  heading?:        string | null;
+  lede?:           string | null;
+  body?:           string | null;
+  font_primary?:   string | null;
+  font_secondary?: string | null;
+  font_mono?:      string | null;
+  accent_buttons?: boolean | null;
 }
 
 /** Builds a dynamic Mantine theme from tenant_branding values. Falls back to inkwell defaults. */
 export function buildAdminTheme(branding?: BrandingForTheme | null) {
-  const accent      = isValidHex(branding?.accent)   ? branding!.accent!   : '#2d6a4f';
-  const bg          = isValidHex(branding?.background) ? branding!.background! : '#f9f8f5';
-  const textPrimary = isValidHex(branding?.heading)  ? branding!.heading!  : '#1a1917';
+  const accent      = isValidHex(branding?.accent)      ? branding!.accent!      : '#2d6a4f';
+  const bg          = isValidHex(branding?.background)  ? branding!.background!  : '#f9f8f5';
+  const textPrimary = isValidHex(branding?.heading)     ? branding!.heading!     : '#1a1917';
   const textMuted   = branding?.lede ?? 'rgba(26,25,23,0.55)';
+  const bodyText    = isValidHex(branding?.body)        ? branding!.body!        : '#1a1917';
+  const ink         = isValidHex(branding?.heading)     ? branding!.heading!     : '#1a1917';
+
+  const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
+  const resolveFont = (v: string | null | undefined, fallback: string) =>
+    (v && allowedFontValues.has(v)) ? v : fallback;
+
+  const headingFont   = resolveFont(branding?.font_primary,   '"Playfair Display", serif');
+  const bodyFont      = resolveFont(branding?.font_secondary, '"DM Sans", ui-sans-serif, system-ui, sans-serif');
+  const monoFont      = resolveFont(branding?.font_mono,      '"DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
+  const accentButtons = branding?.accent_buttons ?? true;
 
   return createTheme({
     // ── Colors ──────────────────────────────────────────────────────────────────
     primaryColor: 'brand',
     colors: {
       brand: hexToMantineScale(accent),
+      ink:   hexToMantineScale(ink),
     },
 
     other: {
       bodyBackground: bg,
       textPrimary,
       textMuted,
+      bodyText,
     },
 
     // ── Typography ──────────────────────────────────────────────────────────────
-    // CLAUDE.md: Font body = DM Sans, Font display = Playfair Display, Font mono = DM Mono
-    fontFamily: '"DM Sans", ui-sans-serif, system-ui, sans-serif',
-    fontFamilyMonospace: '"DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontFamily:          bodyFont,
+    fontFamilyMonospace: monoFont,
     headings: {
-      fontFamily: '"Playfair Display", serif',
+      fontFamily: headingFont,
     },
 
     // Font sizes from tokens.typography.size (xs through xl)
@@ -131,6 +149,15 @@ export function buildAdminTheme(branding?: BrandingForTheme | null) {
       md: '0 4px 6px rgba(0, 0, 0, 0.06)',
       lg: '0 10px 15px rgba(0, 0, 0, 0.06)',
       xl: '0 20px 25px rgba(0, 0, 0, 0.06)',
+    },
+
+    // ── Component defaults ───────────────────────────────────────────────────────
+    components: {
+      Button: {
+        defaultProps: {
+          color: accentButtons ? 'brand' : 'ink',
+        },
+      },
     },
   });
 }

@@ -32,7 +32,10 @@ export default async function JeffLougheedLayout({ children }: { children: React
   if (isValidHex(branding?.background)) {
     const rgb = hexToRgbTriplet(branding!.background!);
     if (rgb) colorLines.push(`  --color-bg: ${rgb};`);
-    const surface = deriveSurface(branding!.background!, branding?.paper_effect ?? true);
+    const effectMode = branding?.paper_effect ?? 'flat';
+    const surface = (effectMode === 'lift' || effectMode === 'warm')
+      ? deriveSurface(branding!.background!, true)
+      : branding!.background!;
     const surfaceRgb = hexToRgbTriplet(surface);
     if (surfaceRgb) colorLines.push(`  --color-surface: ${surfaceRgb};`);
   }

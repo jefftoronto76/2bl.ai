@@ -5,18 +5,20 @@ import {
   Button,
   Card,
   Group,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Skeleton,
   Stack,
   Switch,
-  Text,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { AppearanceHistory } from './AppearanceHistory';
 import type { AppearanceChange } from './types';
 import { DISPLAY_FONTS, BODY_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
+import { ThemePreview } from './ThemePreview';
+import './appearance.css';
 
 interface BrandingRow {
   background:     string;
@@ -27,7 +29,7 @@ interface BrandingRow {
   font_primary:   string;
   font_secondary: string;
   font_mono:      string;
-  paper_effect:   boolean;
+  paper_effect:   'warm' | 'lift' | 'flat';
   accent_buttons: boolean;
 }
 
@@ -40,7 +42,7 @@ const EMPTY: BrandingRow = {
   font_primary:   '',
   font_secondary: '',
   font_mono:      '',
-  paper_effect:   false,
+  paper_effect:   'lift',
   accent_buttons: true,
 };
 
@@ -55,7 +57,7 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
     font_primary:   (row.font_primary   as string  | null) ?? '',
     font_secondary: (row.font_secondary as string  | null) ?? '',
     font_mono:      (row.font_mono      as string  | null) ?? '',
-    paper_effect:   (row.paper_effect   as boolean | null) ?? false,
+    paper_effect:   (row.paper_effect   as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
     accent_buttons: (row.accent_buttons as boolean | null) ?? true,
   };
 }
@@ -160,92 +162,6 @@ function ColorRow({
         </div>
       )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Live preview — matches prototype exactly
-// ---------------------------------------------------------------------------
-
-function AppearancePreview({ values }: { values: BrandingRow }) {
-  const bg       = values.background     || '#f9f8f5';
-  const accent   = values.accent         || '#2d6a4f';
-  const lede     = values.lede           || '#7e7d7b';
-  const heading  = values.heading        || '#1a1917';
-  const body     = values.body           || '#1a1917';
-  const headFont = `"${values.font_primary  || 'Playfair Display'}", serif`;
-  const bodyFont = `"${values.font_secondary || 'DM Sans'}", sans-serif`;
-  const btnBg    = values.accent_buttons ? accent : '#1a1917';
-
-  return (
-    <Card
-      withBorder
-      radius="md"
-      p="md"
-      style={{ background: bg, fontFamily: bodyFont }}
-    >
-      <h1
-        style={{
-          fontFamily: headFont,
-          color: heading,
-          fontSize: 30,
-          lineHeight: 1.12,
-          margin: 0,
-          fontWeight: 500,
-        }}
-      >
-        Build a second brain that talks.
-      </h1>
-      <p style={{ color: lede, fontSize: 16, margin: '14px 0 0', lineHeight: 1.5 }}>
-        Sage answers your visitors in your voice, around the clock — and books the ones who are ready.
-      </p>
-      <p style={{ color: body, fontSize: 14, margin: '14px 0 0', lineHeight: 1.6 }}>
-        Every conversation is grounded in the notes, prompts, and parameters you control here.{' '}
-        <a
-          href="#"
-          onClick={e => e.preventDefault()}
-          style={{ color: accent, textDecoration: 'underline', textUnderlineOffset: 2 }}
-        >
-          See how it works
-        </a>
-        .
-      </p>
-      <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: 40,
-            padding: '0 18px',
-            borderRadius: 6,
-            background: btnBg,
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 600,
-            fontFamily: bodyFont,
-          }}
-        >
-          Start a chat
-        </span>
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: 40,
-            padding: '0 18px',
-            borderRadius: 6,
-            background: 'transparent',
-            color: accent,
-            border: `1px solid ${accent}`,
-            fontSize: 14,
-            fontWeight: 600,
-            fontFamily: bodyFont,
-          }}
-        >
-          Learn more
-        </span>
-      </div>
-    </Card>
   );
 }
 
@@ -392,14 +308,24 @@ export function Appearance() {
                 value={values.background}
                 onChange={v => set('background', v)}
               />
-              <Switch
-                label="Paper effect"
-                description="Adds a subtle paper texture to the background."
-                checked={values.paper_effect}
-                onChange={e => set('paper_effect', e.currentTarget.checked)}
-                disabled={saving}
-                size="sm"
-              />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Paper effect</div>
+                <SegmentedControl
+                  data={[
+                    { value: 'warm', label: 'Warm' },
+                    { value: 'lift', label: 'Lift' },
+                    { value: 'flat', label: 'Flat' },
+                  ]}
+                  value={values.paper_effect}
+                  onChange={v => set('paper_effect', v as 'warm' | 'lift' | 'flat')}
+                  disabled={saving}
+                  size="sm"
+                  fullWidth
+                />
+                <div style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)', marginTop: 4 }}>
+                  Surface depth: warm amber, white lift, or flat.
+                </div>
+              </div>
               <ColorRow
                 label="Accent"
                 description="Links and highlights use this color."
@@ -493,10 +419,7 @@ export function Appearance() {
         </Stack>
 
         {/* ── Right column: live preview ── */}
-        <Stack gap="xs">
-          <Text size="sm" fw={600} c="dimmed">Preview</Text>
-          <AppearancePreview values={values} />
-        </Stack>
+        <ThemePreview t={values} />
       </SimpleGrid>
 
       <AppearanceHistory log={history} />

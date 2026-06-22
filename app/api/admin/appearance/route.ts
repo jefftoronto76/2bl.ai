@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { getAuthContext } from '@/services/auth';
 import { logEvent, AuditAction } from '@/services/audit';
@@ -14,7 +15,7 @@ const TENANT_BRAND_DEFAULTS: Record<string, {
   font_primary:   string;
   font_secondary: string;
   font_mono:      string;
-  paper_effect:   boolean;
+  paper_effect:   'warm' | 'lift' | 'flat';
   accent_buttons: boolean;
 }> = {
   // jefflougheed.ca
@@ -27,7 +28,7 @@ const TENANT_BRAND_DEFAULTS: Record<string, {
     font_primary:   'Playfair Display, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   false,
+    paper_effect:   'lift',
     accent_buttons: true,
   },
   // 2bl.ai (SBL)
@@ -40,7 +41,7 @@ const TENANT_BRAND_DEFAULTS: Record<string, {
     font_primary:   'Newsreader, serif',
     font_secondary: 'Manrope, sans-serif',
     font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   false,
+    paper_effect:   'lift',
     accent_buttons: true,
   },
   // heirloom.2bl.ai — warm light palette
@@ -53,12 +54,12 @@ const TENANT_BRAND_DEFAULTS: Record<string, {
     font_primary:   'Cormorant Garamond, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   false,
+    paper_effect:   'lift',
     accent_buttons: true,
   },
 };
 
-// User-controllable string columns
+// User-controllable string columns (includes enum fields like paper_effect)
 const STRING_FIELDS = [
   'background',
   'accent',
@@ -68,11 +69,11 @@ const STRING_FIELDS = [
   'font_primary',
   'font_secondary',
   'font_mono',
+  'paper_effect',
 ] as const;
 
 // User-controllable boolean columns (excluded from string validation)
 const BOOL_FIELDS = [
-  'paper_effect',
   'accent_buttons',
 ] as const;
 
@@ -266,6 +267,10 @@ export async function PATCH(req: Request) {
       },
     });
   }
+
+  revalidatePath('/');
+  revalidatePath('/secondbrainlabs');
+  revalidatePath('/heirloom');
 
   return Response.json({ data: updated });
 }

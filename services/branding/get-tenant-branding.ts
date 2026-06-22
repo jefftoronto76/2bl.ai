@@ -1,3 +1,4 @@
+import { unstable_noStore } from 'next/cache';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 
 export interface TenantBranding {
@@ -10,12 +11,13 @@ export interface TenantBranding {
   font_primary:   string | null;
   font_secondary: string | null;
   font_mono:      string | null;
-  paper_effect:   boolean | null;
+  paper_effect:   'warm' | 'lift' | 'flat' | null;
   accent_buttons: boolean | null;
 }
 
 /** Fetches the tenant_branding row for `tenantId`. Returns null on miss or error. */
 export async function getTenantBranding(tenantId: string): Promise<TenantBranding | null> {
+  unstable_noStore();
   try {
     const supabase = getAdminClient();
     const { data, error } = await supabase
