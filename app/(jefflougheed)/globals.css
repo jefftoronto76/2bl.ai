@@ -30,7 +30,7 @@
 }
 
 /* ─── Inkwell palette ──────────────────────────── */
-html[data-palette="inkwell"] {
+html[data-brand="jefflougheed"] {
   --color-bg: 24 32 41;
   --color-surface: 42 56 69;
   --color-accent: 168 200 168;
@@ -43,9 +43,9 @@ html[data-palette="inkwell"] {
   --color-border-hover: rgb(234 231 220 / 0.25);
 }
 
-html[data-palette="inkwell"] #outcomes,
-html[data-palette="inkwell"] #how-it-works,
-html[data-palette="inkwell"] #testimonials {
+html[data-brand="jefflougheed"] #outcomes,
+html[data-brand="jefflougheed"] #how-it-works,
+html[data-brand="jefflougheed"] #testimonials {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
@@ -61,12 +61,12 @@ html[data-palette="inkwell"] #testimonials {
 
 /* The how-it-works section sits on a light surface, so its accent buttons
    need the deep-green :root accent rather than the inkwell mint. */
-html[data-palette="inkwell"] #how-it-works {
+html[data-brand="jefflougheed"] #how-it-works {
   --color-accent: 45 106 79;
   --color-accent-hover: 30 77 57;
 }
 
-html[data-palette="inkwell"] .bone-card {
+html[data-brand="jefflougheed"] .bone-card {
   --ink-rgb: 24 32 41;
   --color-text-primary: rgb(24 32 41);
   --color-text-muted:   rgb(24 32 41 / 0.70);
@@ -76,7 +76,7 @@ html[data-palette="inkwell"] .bone-card {
   color: rgb(var(--ink-rgb));
 }
 
-html[data-palette="inkwell"] body {
+html[data-brand="jefflougheed"] body {
   background:
     radial-gradient(800px 360px at 0% 0%,
       rgb(var(--color-accent) / 0.10), transparent 70%),
@@ -85,7 +85,7 @@ html[data-palette="inkwell"] body {
     rgb(var(--color-bg));
 }
 
-html[data-palette="inkwell"] #chat {
+html[data-brand="jefflougheed"] #chat {
   position: relative;
   background:
     radial-gradient(800px 360px at 0% 0%,
@@ -95,41 +95,41 @@ html[data-palette="inkwell"] #chat {
     rgb(var(--color-bg));
 }
 
-html[data-palette="inkwell"] section {
+html[data-brand="jefflougheed"] section {
   border-bottom-color: rgb(var(--ink-rgb) / 0.08);
 }
 
-html[data-palette="inkwell"] #problems .career-card,
-html[data-palette="inkwell"] #process .career-card {
+html[data-brand="jefflougheed"] #problems .career-card,
+html[data-brand="jefflougheed"] #process .career-card {
   box-shadow: 0 4px 24px rgba(24, 32, 41, 0.06);
 }
 
-html[data-palette="inkwell"] .career-card {
+html[data-brand="jefflougheed"] .career-card {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
 }
 
-html[data-palette="inkwell"] #process .way .book {
+html[data-brand="jefflougheed"] #process .way .book {
   background: rgb(var(--ink-rgb));
   color: rgb(var(--color-bg));
 }
-html[data-palette="inkwell"] #process .way .book:hover {
+html[data-brand="jefflougheed"] #process .way .book:hover {
   background: rgb(var(--ink-rgb) / 0.9);
 }
 
-html[data-palette="inkwell"] .msg.user .bubble {
+html[data-brand="jefflougheed"] .msg.user .bubble {
   background: rgb(var(--ink-rgb));
   color: rgb(var(--color-bg));
 }
 
-html[data-palette="inkwell"] .hilite {
+html[data-brand="jefflougheed"] .hilite {
   background-image: none;
   background-color: rgb(var(--color-accent) / 0.22);
   border-radius: 2px;
 }
 
-html[data-palette="inkwell"] .btn-green,
-html[data-palette="inkwell"] .composer .send,
-html[data-palette="inkwell"] .nav-dock .send-mini,
-html[data-palette="inkwell"] .avatar.sage {
+html[data-brand="jefflougheed"] .btn-green,
+html[data-brand="jefflougheed"] .composer .send,
+html[data-brand="jefflougheed"] .nav-dock .send-mini,
+html[data-brand="jefflougheed"] .avatar.sage {
   color: rgb(var(--color-bg));
 }

@@ -10,7 +10,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Brand is resolved in middleware (host/path) and passed via the x-sbl / x-heirloom
   // / x-admin headers. jefflougheed.ca keeps the inkwell palette; the SBL and Heirloom
-  // storefronts and the (light) admin UI opt out so the `html[data-palette="inkwell"]`
+  // storefronts and the (light) admin UI opt out so the `html[data-brand="jefflougheed"]`
   // rules don't bleed in.
   const headerList = await headers()
   const isSbl = headerList.get('x-sbl') === '1'
@@ -18,7 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const isAdmin = headerList.get('x-admin') === '1'
 
   return (
-    <html lang="en" data-palette={isSbl || isHeirloom || isAdmin ? undefined : 'inkwell'}>
+    <html lang="en" data-brand={isSbl || isHeirloom || isAdmin ? undefined : 'jefflougheed'}>
       <body>
         {/* Auth provider mount point — must stay inside <body>, not wrapping
             <html> (provider requirement). AuthProvider is the boundary's
