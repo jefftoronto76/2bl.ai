@@ -31,7 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     const branding = await getTenantBranding(authCtx.tenant_id);
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
-    adminTheme = buildAdminTheme(useDbBranding ? branding : null);
+    adminTheme = buildAdminTheme(branding, authCtx.tenant_id);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       use_db_branding: useDbBranding,

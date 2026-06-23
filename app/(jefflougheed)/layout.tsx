@@ -49,6 +49,8 @@ export default async function JeffLougheedLayout({ children }: { children: React
     }
     if (isValidHex(branding?.heading)) {
       colorLines.push(`  --color-text-primary: ${branding!.heading!};`);
+      const rgb = hexToRgbTriplet(branding!.heading!);
+      if (rgb) colorLines.push(`  --ink-rgb: ${rgb};`);
     }
     if (isValidHex(branding?.lede)) {
       colorLines.push(`  --color-text-muted: ${branding!.lede!};`);
