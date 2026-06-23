@@ -7,55 +7,59 @@ import { hexToRgbTriplet } from '@/services/branding/hex-utils';
 
 // Per-tenant CSS defaults — returned when tenant_branding has no row yet.
 const TENANT_BRAND_DEFAULTS: Record<string, {
-  background:     string;
-  accent:         string;
-  lede:           string;
-  heading:        string;
-  body:           string;
-  font_primary:   string;
-  font_secondary: string;
-  font_mono:      string;
-  paper_effect:   'warm' | 'lift' | 'flat';
-  accent_buttons: boolean;
+  background:      string;
+  accent:          string;
+  lede:            string;
+  heading:         string;
+  body:            string;
+  font_primary:    string;
+  font_secondary:  string;
+  font_mono:       string;
+  paper_effect:    'warm' | 'lift' | 'flat';
+  accent_buttons:  boolean;
+  use_db_branding: boolean;
 }> = {
   // jefflougheed.ca
   'e07334a0-2afd-4544-898b-edb124d2dd33': {
-    background:     '#f9f8f5',
-    accent:         '#2d6a4f',
-    lede:           '#7e7d7b',
-    heading:        '#1a1917',
-    body:           '#1a1917',
-    font_primary:   'Playfair Display, Georgia, serif',
-    font_secondary: 'DM Sans, sans-serif',
-    font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   'lift',
-    accent_buttons: true,
+    background:      '#f9f8f5',
+    accent:          '#2d6a4f',
+    lede:            '#7e7d7b',
+    heading:         '#1a1917',
+    body:            '#1a1917',
+    font_primary:    'Playfair Display, Georgia, serif',
+    font_secondary:  'DM Sans, sans-serif',
+    font_mono:       'DM Mono, Courier New, monospace',
+    paper_effect:    'lift',
+    accent_buttons:  true,
+    use_db_branding: false,
   },
   // 2bl.ai (SBL)
   '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
-    background:     '#FAF6EE',
-    accent:         '#C8542E',
-    lede:           '#6B6256',
-    heading:        '#1F1A14',
-    body:           '#1F1A14',
-    font_primary:   'Newsreader, serif',
-    font_secondary: 'Manrope, sans-serif',
-    font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   'lift',
-    accent_buttons: true,
+    background:      '#FAF6EE',
+    accent:          '#C8542E',
+    lede:            '#6B6256',
+    heading:         '#1F1A14',
+    body:            '#1F1A14',
+    font_primary:    'Newsreader, serif',
+    font_secondary:  'Manrope, sans-serif',
+    font_mono:       'DM Mono, Courier New, monospace',
+    paper_effect:    'lift',
+    accent_buttons:  true,
+    use_db_branding: false,
   },
-  // heirloom.2bl.ai — warm light palette
+  // heirloom.2bl.ai
   '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
-    background:     '#ECE3D2',
-    accent:         '#2E854D',
-    lede:           '#8C7E6E',
-    heading:        '#2E2417',
-    body:           '#2E2417',
-    font_primary:   'Cormorant Garamond, Georgia, serif',
-    font_secondary: 'DM Sans, sans-serif',
-    font_mono:      'DM Mono, Courier New, monospace',
-    paper_effect:   'lift',
-    accent_buttons: true,
+    background:      '#1C0F06',
+    accent:          '#C9A96E',
+    lede:            'rgba(245, 239, 230, 0.55)',
+    heading:         '#F5EFE6',
+    body:            '#F5EFE6',
+    font_primary:    'Cormorant Garamond, Georgia, serif',
+    font_secondary:  'DM Sans, sans-serif',
+    font_mono:       'DM Mono, Courier New, monospace',
+    paper_effect:    'lift',
+    accent_buttons:  true,
+    use_db_branding: false,
   },
 };
 
@@ -75,6 +79,7 @@ const STRING_FIELDS = [
 // User-controllable boolean columns (excluded from string validation)
 const BOOL_FIELDS = [
   'accent_buttons',
+  'use_db_branding',
 ] as const;
 
 type StringField   = (typeof STRING_FIELDS)[number];
@@ -82,20 +87,21 @@ type BoolField     = (typeof BOOL_FIELDS)[number];
 type EditableField = StringField | BoolField;
 
 const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
-  background:     'color',
-  accent:         'color',
-  lede:           'color',
-  heading:        'color',
-  body:           'color',
-  font_primary:   'font',
-  font_secondary: 'font',
-  font_mono:      'font',
-  paper_effect:   'toggle',
-  accent_buttons: 'toggle',
+  background:      'color',
+  accent:          'color',
+  lede:            'color',
+  heading:         'color',
+  body:            'color',
+  font_primary:    'font',
+  font_secondary:  'font',
+  font_mono:       'font',
+  paper_effect:    'toggle',
+  accent_buttons:  'toggle',
+  use_db_branding: 'toggle',
 };
 
 const GET_SELECT =
-  'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, brand_name, logo_url, favicon_folder';
+  'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder';
 
 export async function GET() {
   let authCtx: { owner_id: string; tenant_id: string };

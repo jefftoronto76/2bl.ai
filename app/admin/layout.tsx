@@ -29,22 +29,26 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
-    adminTheme = buildAdminTheme(branding);
+    const useDbBranding = branding?.use_db_branding === true;
+    adminTheme = buildAdminTheme(useDbBranding ? branding : null);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
+      use_db_branding: useDbBranding,
       font_primary: branding?.font_primary,
       font_secondary: branding?.font_secondary,
       accent: branding?.accent,
     });
-    const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
-    brandingFontEntries = [
-      branding?.font_primary,
-      branding?.font_secondary,
-      branding?.font_mono,
-    ]
-      .filter((v): v is string => !!v && allowedFontValues.has(v))
-      .map(v => ALL_FONTS.find(f => f.value === v)!)
-      .filter(e => !!e?.googleFamily);
+    if (useDbBranding) {
+      const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
+      brandingFontEntries = [
+        branding?.font_primary,
+        branding?.font_secondary,
+        branding?.font_mono,
+      ]
+        .filter((v): v is string => !!v && allowedFontValues.has(v))
+        .map(v => ALL_FONTS.find(f => f.value === v)!)
+        .filter(e => !!e?.googleFamily);
+    }
   } catch (err) {
     console.error('[admin layout] branding fetch failed:', err instanceof Error ? err.message : err);
   }
