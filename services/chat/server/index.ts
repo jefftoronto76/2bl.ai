@@ -71,8 +71,11 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const memberId =
     typeof req.memberId === 'string' && req.memberId.length > 0 ? req.memberId : null
 
+  const promptType =
+    typeof req.promptType === 'string' && req.promptType.length > 0 ? req.promptType : null
+
   const [basePrompt, bookingSection, config, memberPrimer, mediaContext] = await Promise.all([
-    getSystemPrompt(tenantId),
+    getSystemPrompt(tenantId, promptType),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
     (sessionId || memberId)

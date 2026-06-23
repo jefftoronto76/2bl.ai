@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     mode?: string | null
     session_id?: string | null
     member_id?: string | null
+    prompt_type?: string | null
     media_items?: { mediaItemId: string; type: string; filename: string }[] | null
   }
   try {
@@ -49,6 +50,9 @@ export async function POST(req: Request) {
       ? body.member_id
       : null,
     tenant: { tenantId },
+    promptType: typeof body.prompt_type === 'string' && body.prompt_type.length > 0
+      ? body.prompt_type
+      : null,
     mediaItems,
   })
 }

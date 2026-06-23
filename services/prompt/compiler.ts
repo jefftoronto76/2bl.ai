@@ -24,22 +24,35 @@ export const QUESTION_MODE_CONTEXT =
 
 /**
  * Resolve the base system prompt for a tenant: the highest-version
- * master_prompt row, or DEFAULT_SYSTEM_PROMPT when there is no tenant, no row,
- * or any error. Behavior is identical to the prior inline route logic.
+ * master_prompt row for the given slot, or DEFAULT_SYSTEM_PROMPT on any miss.
+ *
+ * When `promptTypeKey` is absent or null, selects the default slot
+ * (prompt_type_key IS NULL). When provided, selects the matching named slot.
+ * All existing callers omit the argument and continue hitting the default slot.
  */
-export async function getSystemPrompt(tenantId: string | null): Promise<string> {
+export async function getSystemPrompt(
+  tenantId: string | null,
+  promptTypeKey?: string | null,
+): Promise<string> {
   if (!tenantId) {
     console.log('[chat/prompt] no tenant_id — using DEFAULT_SYSTEM_PROMPT')
     return DEFAULT_SYSTEM_PROMPT
   }
   try {
-    const { data, error } = await getAdminClient()
+    let query = getAdminClient()
       .from('master_prompt')
       .select('content')
       .eq('tenant_id', tenantId)
       .order('version', { ascending: false })
       .limit(1)
-      .maybeSingle()
+
+    if (promptTypeKey) {
+      query = query.eq('prompt_type_key', promptTypeKey)
+    } else {
+      query = query.is('prompt_type_key', null)
+    }
+
+    const { data, error } = await query.maybeSingle()
 
     if (error) {
       console.error('[chat/prompt] master_prompt query failed:', error.message)
@@ -50,12 +63,14 @@ export async function getSystemPrompt(tenantId: string | null): Promise<string> 
       console.log(
         '[chat/prompt] no master_prompt row for tenant_id:',
         tenantId,
+        'promptTypeKey:',
+        promptTypeKey ?? null,
         '— falling back to DEFAULT_SYSTEM_PROMPT',
       )
       return DEFAULT_SYSTEM_PROMPT
     }
 
-    console.log('[chat/prompt] using master_prompt for tenant_id:', tenantId)
+    console.log('[chat/prompt] using master_prompt for tenant_id:', tenantId, 'promptTypeKey:', promptTypeKey ?? null)
     return data.content
   } catch (err) {
     console.error(

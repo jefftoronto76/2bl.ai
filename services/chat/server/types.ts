@@ -42,6 +42,9 @@ export interface ChatStreamRequest {
    *  looks up the member directly by id rather than via chat_sessions.user_id. */
   memberId?: string | null
   tenant: ChatTenantContext
+  /** Routes getSystemPrompt to the named master_prompt slot. Null selects the
+   *  default slot (prompt_type_key IS NULL). */
+  promptType?: string | null
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
 }
