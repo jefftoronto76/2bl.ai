@@ -3,8 +3,7 @@
   "version": "2.0.0",
   "scripts": {
     "dev": "next dev",
-    "prebuild": "tsx scripts/sync-branding.ts",
-    "build": "next build",
+    "build": "tsx scripts/sync-branding.ts && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
