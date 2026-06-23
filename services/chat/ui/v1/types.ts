@@ -9,7 +9,7 @@
 // (jefflougheed) and a useReducer context (Heirloom) can share one
 // implementation.
 
-import type { ChatMessage, ChatMode, ChatRole } from '@/services/chat/server/types'
+import type { ChatMessage, ChatMode, ChatRole, MediaAttachmentInput } from '@/services/chat/server/types'
 
 // ── Canonical UI message ────────────────────────────────────────────────────
 
@@ -130,6 +130,10 @@ export interface ChatEngineAccessors {
    *  When provided, /api/sage passes it to getMemberPrimer so the primer
    *  can be looked up without chat_sessions.user_id being set. */
   getMemberId?(): string | null
+  /** Optional — media items associated with the current session. When provided,
+   *  resolveMediaContext fetches derived_content for ready items and injects an
+   *  ATTACHED MEDIA section into the system prompt. */
+  getMediaItems?(): MediaAttachmentInput[]
 }
 
 /** Options passed into the useChatTurn hook. */
