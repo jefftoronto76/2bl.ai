@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useChatTurn } from '../useChatTurn'
 import type { ChatEngineAccessors, UIMessage } from '../types'
-import type { ChatMode } from '@/services/chat/server/types'
+import type { ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import { createUIMessage } from '../message'
 import { createChatSessionStore, type ChatSessionStore, type HydrateInput } from './store'
 import { getSingletonStore } from './store-registry'
@@ -45,6 +45,12 @@ export interface ChatSessionConfig {
    * chat_sessions.user_id. Only relevant for Heirloom invite-holder paths.
    */
   getMemberId?: () => string | null
+  /**
+   * Optional accessor for media items associated with the current session.
+   * When provided, resolveMediaContext fetches derived_content for ready items
+   * and injects an ATTACHED MEDIA section into the system prompt.
+   */
+  getMediaItems?: () => MediaAttachmentInput[]
 }
 
 /** The session value every surface consumes (via context). */
@@ -66,7 +72,7 @@ export interface ChatSession {
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
-  const { instanceKey, getMemberId } = config
+  const { instanceKey, getMemberId, getMediaItems } = config
 
   // Resolve the backing store. Singleton mode uses the client registry; on the
   // server (where a client component still renders for initial HTML) we never
@@ -110,8 +116,9 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
       getSessionId: () => store.getState().sessionId,
       getMode: () => store.getState().mode,
       getMemberId,
+      getMediaItems,
     }),
-    [store, getMemberId],
+    [store, getMemberId, getMediaItems],
   )
 
   const turn = useChatTurn({ accessors })

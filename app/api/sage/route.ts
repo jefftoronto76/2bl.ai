@@ -1,6 +1,7 @@
 import { getTenantFromRequest } from '@/services/auth'
 import { streamChat } from '@/services/chat/server'
 import type { ChatMessage, ChatMode } from '@/services/chat/server'
+import type { MediaAttachmentInput } from '@/services/chat/server/types'
 
 // Thin HTTP adapter over the chat service (services/chat/server). Owns only
 // the HTTP concerns: the ANTHROPIC_API_KEY guard, host→tenant resolution, and
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
     mode?: string | null
     session_id?: string | null
     member_id?: string | null
+    prompt_type?: string | null
+    media_items?: { mediaItemId: string; type: string; filename: string }[] | null
   }
   try {
     body = await req.json()
@@ -34,6 +37,11 @@ export async function POST(req: Request) {
   }))
   const mode: ChatMode = body.mode === 'question' ? 'question' : null
 
+  const mediaItems: MediaAttachmentInput[] | null =
+    Array.isArray(body.media_items) && body.media_items.length > 0
+      ? (body.media_items as MediaAttachmentInput[])
+      : null
+
   return streamChat({
     messages,
     mode,
@@ -42,5 +50,9 @@ export async function POST(req: Request) {
       ? body.member_id
       : null,
     tenant: { tenantId },
+    promptType: typeof body.prompt_type === 'string' && body.prompt_type.length > 0
+      ? body.prompt_type
+      : null,
+    mediaItems,
   })
 }

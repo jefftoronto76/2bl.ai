@@ -1,37 +1,24 @@
 // services/prompt/composer.ts
 //
-// Streaming composer flows for the admin prompt-building surface. Owns the
-// system-prompt construction + the streamText invocation for two routes:
+// Pure prompt-assembly for the admin prompt-building surface. Returns system
+// prompt strings; the route handlers own the runChatStream call and the 502
+// error catch.
 //
-//   - POST /api/admin/blocks/chat  → streamBlocksComposer
-//   - POST /api/admin/prompt-chat  → streamPromptChat
-//
-// Each returns the Vercel AI SDK data-stream Response (toDataStreamResponse) so
-// the wire format consumed by the admin composer clients is byte-for-byte
-// preserved. The route handlers stay thin: ANTHROPIC_API_KEY guard + JSON parse
-// only. The 502 upstream-error catch (and its exact log strings) lives here,
-// with the streamText call it wraps.
-
-import { streamText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
-
-interface ChatMessage {
-  role: string
-  content: string
-}
+//   - buildBlocksComposerSystem  → system string for POST /api/admin/blocks/chat
+//   - buildPromptChatSystem      → system string for POST /api/admin/prompt-chat
 
 export interface BlocksComposerInput {
   type: string
   topic: string
   content_type: string
   content: string
-  messages: ChatMessage[]
+  messages: { role: string; content: string }[]
   documentContext?: string
   existingBlocks?: { title: string; type: string; body: string }[]
 }
 
 export interface PromptChatInput {
-  messages: ChatMessage[]
+  messages: { role: string; content: string }[]
   systemContext: string
 }
 
@@ -63,43 +50,26 @@ Rules:
 - Always suggest the block type and topic — the owner can override in the metadata sidebar
 - You have a maximum of 10 exchanges per session`
 
-/** POST /api/admin/blocks/chat — streaming block-composer reply. */
-export async function streamBlocksComposer(input: BlocksComposerInput): Promise<Response> {
-  const { messages, documentContext, existingBlocks } = input
+/** Returns the assembled system prompt string for the block composer. */
+export function buildBlocksComposerSystem(input: BlocksComposerInput): string {
+  const { documentContext, existingBlocks } = input
 
   const documentSection = documentContext
     ? `\n\nThe owner has uploaded a document. Here is its content:\n\n${documentContext}\n\nUse this to suggest relevant blocks.`
     : ''
 
-  const blocksSection = existingBlocks && existingBlocks.length > 0
-    ? `\n\nHere are the owner's existing blocks:\n\n${existingBlocks.map(b => `- [${b.type}] ${b.title}: ${b.body}`).join('\n')}\n\nDo not duplicate existing blocks. Suggest blocks that fill gaps or complement what exists.`
-    : ''
+  const blocksSection =
+    existingBlocks && existingBlocks.length > 0
+      ? `\n\nHere are the owner's existing blocks:\n\n${existingBlocks.map(b => `- [${b.type}] ${b.title}: ${b.body}`).join('\n')}\n\nDo not duplicate existing blocks. Suggest blocks that fill gaps or complement what exists.`
+      : ''
 
-  const conversationMessages = messages.map(m => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content,
-  }))
-
-  try {
-    const result = await streamText({
-      model: anthropic('claude-sonnet-4-6'),
-      system: BLOCKS_COMPOSER_SYSTEM + documentSection + blocksSection,
-      messages: conversationMessages,
-      maxTokens: 4000,
-    })
-    return result.toDataStreamResponse()
-  } catch (error) {
-    console.error('[blocks/chat/route] streamText error:', error)
-    const message = error instanceof Error ? error.message : String(error)
-    return new Response(`Upstream error: ${message}`, { status: 502 })
-  }
+  return BLOCKS_COMPOSER_SYSTEM + documentSection + blocksSection
 }
 
-/** POST /api/admin/prompt-chat — streaming prompt-builder assistant reply. */
-export async function streamPromptChat(input: PromptChatInput): Promise<Response> {
-  const { messages, systemContext } = input
-
-  const systemPrompt = `You are a helpful AI assistant for the Natural Resource Prompt Builder — an admin tool used to build and manage the system prompt for Sage, an AI assistant on jefflougheed.ca.
+/** Returns the assembled system prompt string for the prompt-builder chat. */
+export function buildPromptChatSystem(input: PromptChatInput): string {
+  const { systemContext } = input
+  return `You are a helpful AI assistant for the Natural Resource Prompt Builder — an admin tool used to build and manage the system prompt for Sage, an AI assistant on jefflougheed.ca.
 
 Your job: help the admin understand, improve, and add content to their prompt blocks. Answer questions about prompt engineering, suggest improvements, and help draft new block content.
 
@@ -112,23 +82,4 @@ Be concise and direct. Professional tone.
 
 Current prompt builder contents:
 ${systemContext}`
-
-  const conversationMessages = messages.map(m => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content,
-  }))
-
-  try {
-    const result = await streamText({
-      model: anthropic('claude-sonnet-4-6'),
-      system: systemPrompt,
-      messages: conversationMessages,
-      maxTokens: 800,
-    })
-    return result.toDataStreamResponse()
-  } catch (error) {
-    console.error('[prompt-chat/route] streamText error:', error)
-    const message = error instanceof Error ? error.message : String(error)
-    return new Response(`Upstream error: ${message}`, { status: 502 })
-  }
 }

@@ -21,8 +21,8 @@ export type { AuthScope, BlocksResult, BlockUpdate, CreateBlockInput } from './b
 export { reviewBlockBody, reviewMasterPrompt } from './safety'
 export type { CheckResult, CheckIssue } from './safety'
 
-// Streaming composer flows (admin prompt-building surface)
-export { streamBlocksComposer, streamPromptChat } from './composer'
+// Prompt-assembly for admin composer surfaces
+export { buildBlocksComposerSystem, buildPromptChatSystem } from './composer'
 export type { BlocksComposerInput, PromptChatInput } from './composer'
 
 // Block taxonomy + ordering / token helpers (moved from src/lib)

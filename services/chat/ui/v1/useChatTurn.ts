@@ -16,7 +16,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { readDataStream } from '@/services/chat/server/stream-utils'
-import type { ChatMessage, ChatMode } from '@/services/chat/server/types'
+import type { ChatMessage, ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import type { UseChatTurnOptions, UseChatTurnReturn } from './types'
 
 async function streamTurn(
@@ -25,6 +25,7 @@ async function streamTurn(
   sessionId: string | null,
   onChunk: (accumulated: string) => void,
   memberId?: string | null,
+  mediaItems?: MediaAttachmentInput[] | null,
 ): Promise<void> {
   const response = await fetch('/api/sage', {
     method: 'POST',
@@ -34,6 +35,7 @@ async function streamTurn(
       mode: mode ?? null,
       session_id: sessionId ?? null,
       member_id: memberId ?? null,
+      media_items: mediaItems?.length ? mediaItems : null,
     }),
   })
 
@@ -53,6 +55,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   const streamingRef = useRef(false)
   const retryMsgsRef = useRef<ChatMessage[]>([])
   const retrySessionIdRef = useRef<string | null>(null)
+  const retryMediaItemsRef = useRef<MediaAttachmentInput[] | null>(null)
 
   // Drive both the local mirror and the consumer's store (so other readers of
   // streaming state — e.g. the Nav status pip — stay in sync).
@@ -117,13 +120,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         }
       }
 
+      const currentMediaItems = accessors.getMediaItems?.() ?? null
       retryMsgsRef.current = msgsToSend
       retrySessionIdRef.current = activeSessionId
+      retryMediaItemsRef.current = currentMediaItems
 
       try {
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
           accessors.getMemberId?.() ?? null,
+          currentMediaItems,
         )
       } catch {
         accessors.updateLastMessage('')
@@ -199,6 +205,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         retrySessionIdRef.current,
         chunk => accessors.updateLastMessage(chunk),
         accessors.getMemberId?.() ?? null,
+        retryMediaItemsRef.current,
       )
     } catch {
       accessors.updateLastMessage('')

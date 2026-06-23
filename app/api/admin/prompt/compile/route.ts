@@ -12,7 +12,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const result = await compilePrompt(authCtx.tenant_id)
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>
+  const promptTypeKey: string | null =
+    typeof body.prompt_type_key === 'string' && body.prompt_type_key.length > 0
+      ? body.prompt_type_key
+      : null
+
+  const result = await compilePrompt(authCtx.tenant_id, promptTypeKey)
   if (!result.ok) {
     void logEvent({
       action: AuditAction.PROMPT_COMPILE,

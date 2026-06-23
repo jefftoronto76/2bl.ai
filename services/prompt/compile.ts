@@ -23,6 +23,7 @@ interface BlockForCompile {
   type: string
   body: string
   order: number | null
+  prompt_type_key: string | null
 }
 
 export interface CompileSuccess {
@@ -40,19 +41,39 @@ export type CompileResult =
 /**
  * Compile and persist the master prompt for a tenant. Returns the success
  * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
- * status the route should surface. Behavior is identical to the prior inline
- * route logic.
+ * status the route should surface.
+ *
+ * When `promptTypeKey` is absent or null, compiles the default slot (blocks
+ * where prompt_type_key IS NULL) and writes prompt_type_key = NULL on the saved
+ * master_prompt row. When provided, includes blocks matching that key plus
+ * shared blocks (prompt_type_key IS NULL) and writes the key on the row.
  */
-export async function compilePrompt(tenantId: string): Promise<CompileResult> {
+export async function compilePrompt(
+  tenantId: string,
+  promptTypeKey?: string | null,
+): Promise<CompileResult> {
   const supabase = getAdminClient()
 
-  // 1. Fetch every active block for this tenant.
-  console.log('[prompt/compile] fetching active blocks for tenant_id:', tenantId)
-  const { data: blocks, error: blocksError } = await supabase
+  // 1. Fetch active runtime/platform blocks for this tenant. Excludes
+  //    scope='composer' blocks (Prompt Studio action pills). When promptTypeKey
+  //    is provided, includes blocks with that key plus shared blocks (null key);
+  //    when absent, includes only shared blocks (the default slot).
+  const typeKeyLabel = promptTypeKey ?? 'null (default)'
+  console.log('[prompt/compile] fetching active blocks for tenant_id:', tenantId, 'promptTypeKey:', typeKeyLabel)
+  let blocksQuery = supabase
     .from('blocks')
-    .select('id, title, type, body, order')
+    .select('id, title, type, body, order, prompt_type_key')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
+    .in('scope', ['runtime', 'platform'])
+
+  if (promptTypeKey) {
+    blocksQuery = blocksQuery.or(`prompt_type_key.is.null,prompt_type_key.eq.${promptTypeKey}`)
+  } else {
+    blocksQuery = blocksQuery.is('prompt_type_key', null)
+  }
+
+  const { data: blocks, error: blocksError } = await blocksQuery
 
   if (blocksError) {
     console.error('[prompt/compile] blocks fetch failed:', blocksError.message)
@@ -104,16 +125,23 @@ export async function compilePrompt(tenantId: string): Promise<CompileResult> {
     return { ok: false, status: 400, error: 'No active blocks to compile' }
   }
 
-  // 4. Save to master_prompt — find existing row for this tenant, archive to
-  //    history, then update. Matches the save route's contract exactly.
+  // 4. Save to master_prompt — find existing row for this tenant+slot, archive
+  //    to history, then update. promptTypeKey (or null) scopes the slot.
   const now = new Date().toISOString()
 
-  const { data: existing } = await supabase
+  let existingQuery = supabase
     .from('master_prompt')
     .select('id, version, content')
     .eq('tenant_id', tenantId)
     .limit(1)
-    .maybeSingle()
+
+  if (promptTypeKey) {
+    existingQuery = existingQuery.eq('prompt_type_key', promptTypeKey)
+  } else {
+    existingQuery = existingQuery.is('prompt_type_key', null)
+  }
+
+  const { data: existing } = await existingQuery.maybeSingle()
 
   let newVersion: number
 
@@ -161,6 +189,7 @@ export async function compilePrompt(tenantId: string): Promise<CompileResult> {
         content,
         version: newVersion,
         updated_at: now,
+        prompt_type_key: promptTypeKey ?? null,
       })
 
     if (insertError) {

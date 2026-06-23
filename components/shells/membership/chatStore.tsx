@@ -13,6 +13,7 @@ import React, {
 import { useAuthUser } from '@/services/auth/client';
 import { createClient } from '@/services/auth/supabase';
 import type { MediaItem } from '@/services/media/types';
+import type { MediaAttachmentInput } from '@/services/chat/server/types';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
 export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
@@ -241,7 +242,14 @@ export function ChatProvider({
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
   // The conversation engine + state, isolated to this provider (no instanceKey).
-  const session = useChatSession({ getMemberId: () => memberIdRef.current });
+  const session = useChatSession({
+    getMemberId: () => memberIdRef.current,
+    getMediaItems: (): MediaAttachmentInput[] => mediaItemsRef.current.map(m => ({
+      mediaItemId: m.id,
+      type: m.type,
+      filename: m.original_filename,
+    })),
+  });
   const { messages, sessionId, isStreaming, isError, send, sendHidden, hydrate, reset } = session;
 
   // Latest-value mirror refs, assigned during render, so event handlers
@@ -286,6 +294,11 @@ export function ChatProvider({
   // Stable ref for the pre-auth member id — threaded into every /api/sage
   // request so getMemberPrimer can look up the primer without user_id.
   const memberIdRef = useRef<string | null>(memberId ?? null);
+
+  // Ref mirror for mediaItems state — updated every render so the getMediaItems
+  // closure passed to useChatSession always reads the current array without
+  // needing to be recreated (same pattern as memberIdRef above).
+  const mediaItemsRef = useRef<ClientMediaItem[]>([]);
 
   // Last sessionId the buffering effect acted on. Lets clearDraft + re-buffer
   // fire only on a genuine null→id transition (a live send creating a session) —
@@ -782,6 +795,9 @@ export function ChatProvider({
 
   // ── Media items — Realtime subscription + catch-up hydration ──────────────
   const [mediaItems, setMediaItems] = useState<ClientMediaItem[]>([]);
+  // Keep the ref current so getMediaItems (passed to useChatSession above) always
+  // reads the latest value without the closure needing to be recreated each render.
+  mediaItemsRef.current = mediaItems;
 
   const addMediaItem = useCallback((item: ClientMediaItem) => {
     setMediaItems(prev => {
