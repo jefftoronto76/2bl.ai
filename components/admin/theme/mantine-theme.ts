@@ -74,23 +74,68 @@ interface BrandingForTheme {
   accent_buttons?: boolean | null;
 }
 
-/** Builds a dynamic Mantine theme from tenant_branding values. Falls back to inkwell defaults. */
-export function buildAdminTheme(branding?: BrandingForTheme | null) {
-  const accent      = isValidHex(branding?.accent)      ? branding!.accent!      : '#2d6a4f';
-  const bg          = isValidHex(branding?.background)  ? branding!.background!  : '#f9f8f5';
-  const textPrimary = isValidHex(branding?.heading)     ? branding!.heading!     : '#1a1917';
-  const textMuted   = branding?.lede ?? 'rgba(26,25,23,0.55)';
-  const bodyText    = isValidHex(branding?.body)        ? branding!.body!        : '#1a1917';
-  const ink         = isValidHex(branding?.heading)     ? branding!.heading!     : '#1a1917';
+// ── Per-tenant design token fallbacks ─────────────────────────────────────────
+// Used when branding is null or a field is missing so each tenant's admin
+// interface renders with its storefront palette rather than generic inkwell
+// defaults. The jefflougheed tenant is also the system default when no
+// tenant-specific fallback is matched.
+const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
+  // jefflougheed.ca
+  'e07334a0-2afd-4544-898b-edb124d2dd33': {
+    background: '#181820', accent: '#a8c8a8', heading: '#eae7dc',
+    lede: 'rgba(234,231,220,0.70)', body: '#eae7dc',
+    font_primary: 'Playfair Display, Georgia, serif',
+    font_secondary: 'DM Sans, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+    accent_buttons: true,
+  },
+  // 2bl.ai — Second Brain Labs
+  '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
+    background: '#FAF6EE', accent: '#C8542E', heading: '#1F1A14',
+    lede: '#6B6256', body: '#1F1A14',
+    font_primary: 'Newsreader, serif',
+    font_secondary: 'Manrope, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+    accent_buttons: true,
+  },
+  // heirloom.2bl.ai — Heirloom
+  '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
+    background: '#ECE3D2', accent: '#2E854D', heading: '#2E2417',
+    lede: 'rgba(46,36,23,0.62)', body: '#2E2417',
+    font_primary: 'Cormorant Garamond, Georgia, serif',
+    font_secondary: 'DM Sans, sans-serif',
+    font_mono: 'DM Mono, Courier New, monospace',
+    accent_buttons: true,
+  },
+};
+
+/** Builds a dynamic Mantine theme from tenant_branding values. Falls back to per-tenant defaults. */
+export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: string) {
+  const fallback = (tenantId && TENANT_FALLBACKS[tenantId]) ?? TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'];
+
+  console.log('[admin-theme] tenant:', tenantId);
+  console.log('[admin-theme] branding from DB:', JSON.stringify(branding));
+  console.log('[admin-theme] using fallback:', !branding);
+
+  const accent      = isValidHex(branding?.accent)      ? branding!.accent!      : fallback.accent!;
+  const bg          = isValidHex(branding?.background)  ? branding!.background!  : fallback.background!;
+  const textPrimary = isValidHex(branding?.heading)     ? branding!.heading!     : fallback.heading!;
+  const textMuted   = branding?.lede ?? fallback.lede!;
+  const bodyText    = isValidHex(branding?.body)        ? branding!.body!        : fallback.body!;
+  const ink         = isValidHex(branding?.heading)     ? branding!.heading!     : fallback.heading!;
 
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
-  const resolveFont = (v: string | null | undefined, fallback: string) =>
-    (v && allowedFontValues.has(v)) ? v : fallback;
+  const resolveFont = (v: string | null | undefined, fb: string) =>
+    (v && allowedFontValues.has(v)) ? v : fb;
 
-  const headingFont   = resolveFont(branding?.font_primary,   '"Playfair Display", serif');
-  const bodyFont      = resolveFont(branding?.font_secondary, '"DM Sans", ui-sans-serif, system-ui, sans-serif');
-  const monoFont      = resolveFont(branding?.font_mono,      '"DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
-  const accentButtons = branding?.accent_buttons ?? true;
+  const headingFont   = resolveFont(branding?.font_primary,   fallback.font_primary!);
+  const bodyFont      = resolveFont(branding?.font_secondary, fallback.font_secondary!);
+  const monoFont      = resolveFont(branding?.font_mono,      fallback.font_mono!);
+  const accentButtons = branding?.accent_buttons ?? fallback.accent_buttons ?? true;
+
+  console.log('[admin-theme] resolved accent:', accent);
+  console.log('[admin-theme] resolved background:', bg);
+  console.log('[admin-theme] resolved fonts:', { headingFont, bodyFont, monoFont });
 
   return createTheme({
     // ── Colors ──────────────────────────────────────────────────────────────────
