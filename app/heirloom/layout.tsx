@@ -105,6 +105,7 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
   if (colorLines.length > 0) cssBlocks.push(`:root {\n${colorLines.join('\n')}\n}`);
   if (fontLines.length > 0)  cssBlocks.push(`[data-brand="heirloom"] {\n${fontLines.join('\n')}\n}`);
   const cssString = cssBlocks.join('\n');
+  console.log('[branding:heirloom]', JSON.stringify({ branding, cssString }));
 
   return (
     <>

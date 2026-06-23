@@ -40,6 +40,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
+    console.log('[branding:platform]', JSON.stringify({ branding }));
     platformTheme = buildAdminTheme(branding);
     console.log('[platform layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,

@@ -68,6 +68,7 @@ export default async function JeffLougheedLayout({ children }: { children: React
     .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);
 
   const cssString = colorLines.length > 0 ? `:root {\n${colorLines.join('\n')}\n}` : '';
+  console.log('[branding:jefflougheed]', JSON.stringify({ branding, cssString }));
 
   return (
     <>
