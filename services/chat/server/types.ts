@@ -23,6 +23,16 @@ export interface ChatTenantContext {
   tenantId: string | null
 }
 
+/**
+ * A single media attachment reference sent by the client alongside a message.
+ * The server resolves derived_content from media_items where status='ready'.
+ */
+export interface MediaAttachmentInput {
+  mediaItemId: string
+  type: 'audio' | 'image' | 'document'
+  filename: string
+}
+
 /** Everything the chat service needs to stream one assistant turn. */
 export interface ChatStreamRequest {
   messages: ChatMessage[]
@@ -32,6 +42,8 @@ export interface ChatStreamRequest {
    *  looks up the member directly by id rather than via chat_sessions.user_id. */
   memberId?: string | null
   tenant: ChatTenantContext
+  /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
+  mediaItems?: MediaAttachmentInput[] | null
 }
 
 /** Model provider abstraction (Amendment 4). */

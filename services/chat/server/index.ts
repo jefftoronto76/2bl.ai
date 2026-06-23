@@ -12,6 +12,7 @@ import { runChatStream, resolveModelConfig } from './stream'
 import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
 import { getBookingCardSection } from './booking'
 import { getMemberPrimer } from './member-context'
+import { resolveMediaContext, stripMediaMarkers } from './media-context'
 import { handleSessionFinish } from '@/services/crm/session'
 import type { ChatMessage, ChatStreamRequest } from './types'
 
@@ -70,13 +71,14 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const memberId =
     typeof req.memberId === 'string' && req.memberId.length > 0 ? req.memberId : null
 
-  const [basePrompt, bookingSection, config, memberPrimer] = await Promise.all([
+  const [basePrompt, bookingSection, config, memberPrimer, mediaContext] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
     (sessionId || memberId)
       ? getMemberPrimer(sessionId, tenantId, memberId)
       : Promise.resolve(null),
+    resolveMediaContext(req.mediaItems, tenantId),
   ])
 
   console.log('[chat] memberPrimer', memberPrimer !== null
@@ -88,16 +90,19 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     basePrompt,
     bookingSection,
     memberPrimer ? `MEMBER CONTEXT:\n${memberPrimer}` : '',
+    mediaContext,
     questionMode ? QUESTION_MODE_CONTEXT : '',
   ]
     .filter(segment => segment.length > 0)
     .join('\n\n')
 
+  const messagesForModel = stripMediaMarkers(conversationMessages)
+
   try {
     return await runChatStream({
       config,
       system: systemPrompt,
-      messages: conversationMessages,
+      messages: messagesForModel,
       onFinish: async ({ text, usage }) => {
         await handleSessionFinish({ sessionId, text, usage, visitorText: lastVisitorText })
       },
