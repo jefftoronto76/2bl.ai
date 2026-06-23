@@ -52,6 +52,6 @@
   50%      { opacity: 1;    transform: scaleX(1);   }
 }
 @keyframes sb-dot {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(200, 84, 46, 0.18); }
-  50%      { box-shadow: 0 0 0 6px rgba(200, 84, 46, 0.05); }
+  0%, 100% { box-shadow: 0 0 0 3px rgb(var(--color-accent) / 0.18); }
+  50%      { box-shadow: 0 0 0 6px rgb(var(--color-accent) / 0.05); }
 }
