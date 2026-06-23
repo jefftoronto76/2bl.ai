@@ -111,7 +111,7 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
 
 /** Builds a dynamic Mantine theme from tenant_branding values. Falls back to per-tenant defaults. */
 export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: string) {
-  const fallback = (tenantId && TENANT_FALLBACKS[tenantId]) ?? TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'];
+  const fallback: BrandingForTheme = TENANT_FALLBACKS[tenantId ?? ''] ?? TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'];
 
   console.log('[admin-theme] tenant:', tenantId);
   console.log('[admin-theme] branding from DB:', JSON.stringify(branding));
