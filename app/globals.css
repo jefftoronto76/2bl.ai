@@ -26,7 +26,7 @@ body {
   overflow-x: hidden;
 }
 
-::selection { background: rgba(45,106,79,0.15); }
+::selection { background: rgb(var(--color-accent) / 0.15); }
 
 /* ─── Scroll-reveal animation ───────────────────────────── */
 .reveal {
@@ -43,10 +43,11 @@ body {
 /* ─── Scrollbar ───────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: rgb(var(--color-bg)); }
-::-webkit-scrollbar-thumb { background: rgba(26,25,23,0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--ink-rgb) / 0.15); border-radius: 2px; }
 
 /* ─── Utility ─────────────────────────────────────── */
 .highlight-marker {
+  /* Warm parchment tint — not derivable from current tokens; intentionally brand-neutral */
   background: #E8E1CF;
   padding: 2px 8px;
   display: inline-block;
@@ -56,8 +57,8 @@ body {
   background-image: linear-gradient(
     180deg,
     transparent 58%,
-    rgba(198, 217, 196, 0.32) 58%,
-    rgba(198, 217, 196, 0.32) 92%,
+    rgb(var(--color-accent) / 0.32) 58%,
+    rgb(var(--color-accent) / 0.32) 92%,
     transparent 92%
   );
   padding: 0 2px;
@@ -70,8 +71,8 @@ body {
   background-image: linear-gradient(
     180deg,
     transparent 60%,
-    rgba(198, 217, 196, 0.32) 60%,
-    rgba(198, 217, 196, 0.32) 92%,
+    rgb(var(--color-accent) / 0.32) 60%,
+    rgb(var(--color-accent) / 0.32) 92%,
     transparent 92%
   );
   padding: 0 2px;
@@ -104,6 +105,7 @@ body {
 /* Nav chat pill — migrated from src/index.css */
 .nav-chat-pill {
   background: rgb(var(--color-accent));
+  /* Invariant white — must always contrast against the accent background regardless of palette */
   color: #ffffff !important;
   border-radius: 999px;
   transition: background 0.2s ease;
@@ -303,6 +305,7 @@ body {
 .composer{
   background:rgb(var(--color-surface));border:1px solid var(--color-border);border-radius:18px;
   padding:14px 14px 10px;
+  /* Generic black shadow — not token-derived; neutral across all brand palettes */
   box-shadow:0 8px 32px rgba(0,0,0,.05);
   transition:border-color .15s ease, box-shadow .15s ease;
 }
@@ -395,7 +398,7 @@ body {
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(26,25,23,0.15) transparent;
+  scrollbar-color: rgb(var(--ink-rgb) / 0.15) transparent;
 }
 
 .stage.engaged .hero-conversation {
@@ -408,7 +411,7 @@ body {
 
 .hero-conversation::-webkit-scrollbar { width: 4px; }
 .hero-conversation::-webkit-scrollbar-track { background: transparent; }
-.hero-conversation::-webkit-scrollbar-thumb { background: rgba(26,25,23,0.15); border-radius: 2px; }
+.hero-conversation::-webkit-scrollbar-thumb { background: rgb(var(--ink-rgb) / 0.15); border-radius: 2px; }
 
 .messages-end {
   scroll-margin-bottom: 80px;
@@ -419,6 +422,7 @@ body {
   position: relative;
   display: inline-block;
   padding: 0 4px;
+  /* %232d6a4f is #2d6a4f URL-encoded — CSS vars cannot be interpolated inside data URIs */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cpath d='M2,14 C20,8 80,6 98,12 C99,16 95,20 80,21 C50,23 15,22 2,18 Z' fill='%232d6a4f' fill-opacity='0.2'/%3E%3C/svg%3E");
   background-size: 100% 100%;
   background-repeat: no-repeat;

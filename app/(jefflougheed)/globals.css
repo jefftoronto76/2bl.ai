@@ -81,7 +81,7 @@ html[data-palette="inkwell"] body {
     radial-gradient(800px 360px at 0% 0%,
       rgb(var(--color-accent) / 0.10), transparent 70%),
     radial-gradient(900px 420px at 100% 0%,
-      rgb(80 140 110 / 0.12), transparent 70%),
+      rgb(var(--color-accent) / 0.12), transparent 70%),
     rgb(var(--color-bg));
 }
 
@@ -91,7 +91,7 @@ html[data-palette="inkwell"] #chat {
     radial-gradient(800px 360px at 0% 0%,
       rgb(var(--color-accent) / 0.10), transparent 70%),
     radial-gradient(900px 420px at 100% 0%,
-      rgb(80 140 110 / 0.12), transparent 70%),
+      rgb(var(--color-accent) / 0.12), transparent 70%),
     rgb(var(--color-bg));
 }
 
@@ -101,10 +101,11 @@ html[data-palette="inkwell"] section {
 
 html[data-palette="inkwell"] #problems .career-card,
 html[data-palette="inkwell"] #process .career-card {
-  box-shadow: 0 4px 24px rgba(24, 32, 41, 0.06);
+  box-shadow: 0 4px 24px rgb(var(--color-bg) / 0.06);
 }
 
 html[data-palette="inkwell"] .career-card {
+  /* Generic black shadow — not token-derived; inkwell and light surfaces both have dark drop shadows */
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
 }
 
