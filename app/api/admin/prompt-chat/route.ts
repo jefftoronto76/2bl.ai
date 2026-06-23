@@ -1,4 +1,14 @@
-import { streamPromptChat, type PromptChatInput } from '@/services/prompt/composer'
+import { buildPromptChatSystem, type PromptChatInput } from '@/services/prompt/composer'
+import { runChatStream } from '@/services/chat/server/stream'
+import type { ModelConfig } from '@/services/chat/server/types'
+
+const ADMIN_PROMPT_CHAT_CONFIG: ModelConfig = {
+  provider: 'anthropic',
+  chatModel: 'claude-sonnet-4-6',
+  fallbackModel: 'gpt-4o',
+  maxTokens: 800,
+  rateLimitRequestsPerHour: 100,
+}
 
 export async function POST(req: Request) {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -13,5 +23,17 @@ export async function POST(req: Request) {
     return new Response('Invalid JSON body', { status: 400 })
   }
 
-  return streamPromptChat(body)
+  const system = buildPromptChatSystem(body)
+  const messages = body.messages.map(m => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }))
+
+  try {
+    return await runChatStream({ config: ADMIN_PROMPT_CHAT_CONFIG, system, messages })
+  } catch (error) {
+    console.error('[prompt-chat/route] streamText error:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    return new Response(`Upstream error: ${message}`, { status: 502 })
+  }
 }
