@@ -29,6 +29,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
+    console.log('[branding:admin]', JSON.stringify({ branding }));
     adminTheme = buildAdminTheme(branding);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,

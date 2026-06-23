@@ -85,6 +85,7 @@ export default async function SBLLayout({ children }: { children: React.ReactNod
   if (colorLines.length > 0) cssBlocks.push(`:root {\n${colorLines.join('\n')}\n}`);
   if (fontLines.length > 0)  cssBlocks.push(`[data-brand="sbl"] {\n${fontLines.join('\n')}\n}`);
   const cssString = cssBlocks.join('\n');
+  console.log('[branding:sbl]', JSON.stringify({ branding, cssString }));
 
   return (
     <>
