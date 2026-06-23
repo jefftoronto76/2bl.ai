@@ -26,46 +26,52 @@ export const metadata: Metadata = {
 
 export default async function JeffLougheedLayout({ children }: { children: React.ReactNode }) {
   const branding = await getTenantBranding(JEFF_TENANT_ID);
+  const useDbBranding = branding?.use_db_branding === true;
 
-  // Build :root color overrides (rgb triplets for vars used with alpha in globals.css)
+  // Build :root color + font overrides only when the tenant has opted in to DB branding.
   const colorLines: string[] = [];
-  if (isValidHex(branding?.background)) {
-    const rgb = hexToRgbTriplet(branding!.background!);
-    if (rgb) colorLines.push(`  --color-bg: ${rgb};`);
-    const effectMode = branding?.paper_effect ?? 'flat';
-    const surface = (effectMode === 'lift' || effectMode === 'warm')
-      ? deriveSurface(branding!.background!, true)
-      : branding!.background!;
-    const surfaceRgb = hexToRgbTriplet(surface);
-    if (surfaceRgb) colorLines.push(`  --color-surface: ${surfaceRgb};`);
-  }
-  if (isValidHex(branding?.accent)) {
-    const rgb = hexToRgbTriplet(branding!.accent!);
-    if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
-  }
-  if (isValidHex(branding?.heading)) {
-    colorLines.push(`  --color-text-primary: ${branding!.heading!};`);
-  }
-  if (isValidHex(branding?.lede)) {
-    colorLines.push(`  --color-text-muted: ${branding!.lede!};`);
-  }
+  const fontEntriesToLoad: (typeof ALL_FONTS)[number][] = [];
 
-  // Font overrides in :root — validate against registry to prevent CSS injection
-  const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
+  if (useDbBranding) {
+    if (isValidHex(branding?.background)) {
+      const rgb = hexToRgbTriplet(branding!.background!);
+      if (rgb) colorLines.push(`  --color-bg: ${rgb};`);
+      const effectMode = branding?.paper_effect ?? 'flat';
+      const surface = (effectMode === 'lift' || effectMode === 'warm')
+        ? deriveSurface(branding!.background!, true)
+        : branding!.background!;
+      const surfaceRgb = hexToRgbTriplet(surface);
+      if (surfaceRgb) colorLines.push(`  --color-surface: ${surfaceRgb};`);
+    }
+    if (isValidHex(branding?.accent)) {
+      const rgb = hexToRgbTriplet(branding!.accent!);
+      if (rgb) colorLines.push(`  --color-accent: ${rgb};`);
+    }
+    if (isValidHex(branding?.heading)) {
+      colorLines.push(`  --color-text-primary: ${branding!.heading!};`);
+    }
+    if (isValidHex(branding?.lede)) {
+      colorLines.push(`  --color-text-muted: ${branding!.lede!};`);
+    }
 
-  const fontPrimary   = branding?.font_primary;
-  const fontSecondary = branding?.font_secondary;
-  const fontMono      = branding?.font_mono;
+    // Font overrides in :root — validate against registry to prevent CSS injection
+    const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
 
-  if (fontPrimary   && allowedFontValues.has(fontPrimary))   colorLines.push(`  --font-display: ${fontPrimary};`);
-  if (fontSecondary && allowedFontValues.has(fontSecondary)) colorLines.push(`  --font-body: ${fontSecondary};`);
-  if (fontMono      && allowedFontValues.has(fontMono))      colorLines.push(`  --font-mono: ${fontMono};`);
+    const fontPrimary   = branding?.font_primary;
+    const fontSecondary = branding?.font_secondary;
+    const fontMono      = branding?.font_mono;
 
-  // Inject Google Fonts <link> tags for any custom font that has a googleFamily
-  const fontEntriesToLoad = [fontPrimary, fontSecondary, fontMono]
-    .filter(Boolean)
-    .map(v => ALL_FONTS.find(f => f.value === v))
-    .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily);
+    if (fontPrimary   && allowedFontValues.has(fontPrimary))   colorLines.push(`  --font-display: ${fontPrimary};`);
+    if (fontSecondary && allowedFontValues.has(fontSecondary)) colorLines.push(`  --font-body: ${fontSecondary};`);
+    if (fontMono      && allowedFontValues.has(fontMono))      colorLines.push(`  --font-mono: ${fontMono};`);
+
+    fontEntriesToLoad.push(
+      ...[fontPrimary, fontSecondary, fontMono]
+        .filter(Boolean)
+        .map(v => ALL_FONTS.find(f => f.value === v))
+        .filter((e): e is NonNullable<typeof e> => !!e?.googleFamily)
+    );
+  }
 
   const cssString = colorLines.length > 0 ? `:root {\n${colorLines.join('\n')}\n}` : '';
   console.log('[branding:jefflougheed]', JSON.stringify({ branding, cssString }));

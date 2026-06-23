@@ -29,36 +29,39 @@ interface BrandingRow {
   font_primary:   string;
   font_secondary: string;
   font_mono:      string;
-  paper_effect:   'warm' | 'lift' | 'flat';
-  accent_buttons: boolean;
+  paper_effect:    'warm' | 'lift' | 'flat';
+  accent_buttons:  boolean;
+  use_db_branding: boolean;
 }
 
 const EMPTY: BrandingRow = {
-  background:     '',
-  accent:         '',
-  lede:           '',
-  heading:        '',
-  body:           '',
-  font_primary:   '',
-  font_secondary: '',
-  font_mono:      '',
-  paper_effect:   'lift',
-  accent_buttons: true,
+  background:      '',
+  accent:          '',
+  lede:            '',
+  heading:         '',
+  body:            '',
+  font_primary:    '',
+  font_secondary:  '',
+  font_mono:       '',
+  paper_effect:    'lift',
+  accent_buttons:  true,
+  use_db_branding: false,
 };
 
 function rowToForm(row: Record<string, unknown> | null): BrandingRow {
   if (!row) return EMPTY;
   return {
-    background:     (row.background     as string  | null) ?? '',
-    accent:         (row.accent         as string  | null) ?? '',
-    lede:           (row.lede           as string  | null) ?? '',
-    heading:        (row.heading        as string  | null) ?? '',
-    body:           (row.body           as string  | null) ?? '',
-    font_primary:   (row.font_primary   as string  | null) ?? '',
-    font_secondary: (row.font_secondary as string  | null) ?? '',
-    font_mono:      (row.font_mono      as string  | null) ?? '',
-    paper_effect:   (row.paper_effect   as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
-    accent_buttons: (row.accent_buttons as boolean | null) ?? true,
+    background:      (row.background      as string  | null) ?? '',
+    accent:          (row.accent          as string  | null) ?? '',
+    lede:            (row.lede            as string  | null) ?? '',
+    heading:         (row.heading         as string  | null) ?? '',
+    body:            (row.body            as string  | null) ?? '',
+    font_primary:    (row.font_primary    as string  | null) ?? '',
+    font_secondary:  (row.font_secondary  as string  | null) ?? '',
+    font_mono:       (row.font_mono       as string  | null) ?? '',
+    paper_effect:    (row.paper_effect    as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
+    accent_buttons:  (row.accent_buttons  as boolean | null) ?? true,
+    use_db_branding: (row.use_db_branding as boolean | null) ?? false,
   };
 }
 
@@ -294,6 +297,18 @@ export function Appearance() {
 
   return (
     <Stack gap="md">
+      {/* Live-site gate — off by default; globals.css static tokens win when off */}
+      <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+        <Switch
+          label="Apply to live site"
+          description="When on, these stored values override the design-system defaults on the live storefront. Off by default — save settings here first, then flip this on."
+          checked={values.use_db_branding}
+          onChange={e => set('use_db_branding', e.currentTarget.checked)}
+          disabled={saving}
+          size="md"
+        />
+      </Card>
+
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
         {/* ── Left column: editor ── */}
         <Stack gap="md">
