@@ -3,16 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-import { Select, TextInput, Textarea, Collapse, ActionIcon, Checkbox, Stack, Group, Badge, SimpleGrid, Menu, Progress, Skeleton, Alert, Button as MantineButton, Tooltip } from '@mantine/core'
-import {
-  IconFile,
-  IconBrandGoogleDrive,
-  IconBrandDropbox,
-  IconBox,
-  IconScreenshot,
-  IconCheck,
-  IconPencil,
-} from '@tabler/icons-react'
+import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton } from '@mantine/core'
 import { useAuthUser } from '@/services/auth/client'
 import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
@@ -20,6 +11,7 @@ import { Text } from '@/components/admin/primitives/Text'
 import { useAdminUserId } from '@/services/auth/admin-user-context'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 import { DraftCard } from '@/components/admin/prompt-builder/DraftCard'
+import { Composer, type ComposerPill, UploadSavedRow } from '@/components/admin/prompt-builder/Composer'
 import {
   type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
   type DraftCardMeta, type CheckIssue, type CheckResult,
@@ -67,10 +59,8 @@ export default function PromptBuilderPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
   const [existingBlocks, setExistingBlocks] = useState<ExistingBlock[]>([])
-  const [hasOpeningChoice, setHasOpeningChoice] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Exchange counter — counts user messages in the current session only
   const exchangeCount = chatMessages.slice(sessionStartIndex).filter(m => m.role === 'user').length
@@ -150,32 +140,6 @@ export default function PromptBuilderPage() {
     sendChatMessage([triggerMsg])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoTrigger, uploadedRaw])
-
-  function handleOpeningChoice(choice: 'summarize' | 'opportunities' | 'new') {
-    setHasOpeningChoice(true)
-    if (choice === 'new') {
-      setChatMessages([{
-        role: 'assistant',
-        content: "Sounds great — to get started, just type in what you're thinking for the block.",
-        timestamp: Date.now(),
-      }])
-      textareaRef.current?.focus()
-      return
-    }
-    let trigger: string
-    if (choice === 'summarize') {
-      const hasCustom = existingBlocks.some(b => !b.is_default)
-      if (hasCustom) {
-        const types = [...new Set(existingBlocks.map(b => b.type))]
-        trigger = `The owner has ${existingBlocks.length} existing blocks covering: ${types.join(', ')}. Write a short opening message summarizing what's covered, identifying any missing block types, and suggesting what to build next. Do NOT output the done JSON. Do NOT draft any new blocks.`
-      } else {
-        trigger = 'The owner only has default starter blocks — no custom blocks yet. Write a short opening message acknowledging the foundation is set and suggesting they customize or add blocks specific to their business. Do NOT output the done JSON. Do NOT draft any new blocks.'
-      }
-    } else {
-      trigger = 'The owner wants to know how to improve their current prompt. Based on the existing blocks listed above, identify gaps (missing block types, weak coverage, potential conflicts) and suggest 2-3 specific improvements. Do NOT output the done JSON. Do NOT draft any new blocks.'
-    }
-    sendChatMessage([], trigger)
-  }
 
   function resetChat() {
     setChatMessages([])
@@ -434,7 +398,6 @@ export default function PromptBuilderPage() {
     const userMsg: ChatMessage = { role: 'user', content: text, timestamp: Date.now() }
     const updated = [...chatMessages, userMsg]
     await sendChatMessage(updated)
-    textareaRef.current?.focus()
   }
 
   function updateDraftMeta(index: number, updates: Partial<DraftCardMeta>) {
@@ -552,7 +515,6 @@ export default function PromptBuilderPage() {
       if (draftBlocks.length <= 1) {
         setChatMessages(prev => [...prev, { role: 'assistant', content: 'Block saved! What would you like to build next?', timestamp: Date.now() }])
         setSessionStartIndex(chatMessages.length + 1)
-        textareaRef.current?.focus()
       }
       return true
     } catch (err) {
@@ -629,174 +591,43 @@ export default function PromptBuilderPage() {
 
   const hasMessages = chatMessages.length > 0
 
-  /* Shared composer container — bordered box with textarea + button row */
-  const composerContainer = (
-    <div
-      className="mx-auto w-full max-w-[800px]"
-      style={{
-        border: '1px solid var(--mantine-color-gray-3)',
-        borderRadius: 'var(--mantine-radius-md)',
-        boxShadow: hasMessages ? undefined : '0 2px 8px rgba(0,0,0,0.04)',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Textarea — unstyled, no border */}
-      <Textarea
-        ref={textareaRef}
-        value={chatInput}
-        onChange={e => setChatInput(e.currentTarget.value)}
-        placeholder={isAtLimit ? 'Exchange limit reached' : 'Type or paste content...'}
-        autosize
-        minRows={hasMessages ? 1 : 2}
-        maxRows={4}
-        disabled={isAtLimit}
-        variant="unstyled"
-        styles={{
-          input: {
-            padding: hasMessages ? '12px 16px' : '16px 20px',
-            fontSize: '16px',
-            lineHeight: 1.5,
-          },
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            handleSend()
-          }
-        }}
-      />
+  const pills: ComposerPill[] = [
+    {
+      label: 'Summarize my prompt',
+      disabled: existingBlocks.length === 0,
+      onClick: () => {
+        const hasCustom = existingBlocks.some(b => !b.is_default)
+        const types = [...new Set(existingBlocks.map(b => b.type))]
+        const trigger = hasCustom
+          ? `The owner has ${existingBlocks.length} existing blocks covering: ${types.join(', ')}. Write a short opening message summarizing what's covered, identifying any missing block types, and suggesting what to build next. Do NOT output the done JSON. Do NOT draft any new blocks.`
+          : 'The owner only has default starter blocks — no custom blocks yet. Write a short opening message acknowledging the foundation is set and suggesting they customize or add blocks specific to their business. Do NOT output the done JSON. Do NOT draft any new blocks.'
+        sendChatMessage([], trigger)
+      },
+    },
+    {
+      label: 'Identify opportunities',
+      disabled: existingBlocks.length === 0,
+      onClick: () => sendChatMessage([], 'The owner wants to know how to improve their current prompt. Based on the existing blocks listed above, identify gaps (missing block types, weak coverage, potential conflicts) and suggest 2-3 specific improvements. Do NOT output the done JSON. Do NOT draft any new blocks.'),
+    },
+    {
+      label: 'Create a new block',
+      onClick: () => setChatMessages([{ role: 'assistant', content: "Sounds great — to get started, just type in what you're thinking for the block.", timestamp: Date.now() }]),
+    },
+  ]
 
-      {/* Button row — inside container */}
-      <Group
-        justify="space-between"
-        style={{ padding: hasMessages ? '4px 8px 8px' : '8px 12px 12px' }}
-      >
-        {/* Left: upload menu */}
-        <Menu position="top-start" withinPortal shadow="md">
-          <Menu.Target>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="lg"
-              aria-label="Add content"
-              disabled={isAtLimit}
-            >
-              <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 3v10M3 8h10" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item
-              leftSection={<IconFile size={16} />}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Add files
-            </Menu.Item>
-            <Menu.Item leftSection={<IconBrandGoogleDrive size={16} />} disabled>
-              Google Drive
-            </Menu.Item>
-            <Menu.Item leftSection={<IconBrandDropbox size={16} />} disabled>
-              Dropbox
-            </Menu.Item>
-            <Menu.Item leftSection={<IconBox size={16} />} disabled>
-              Box
-            </Menu.Item>
-            <Menu.Item leftSection={<IconScreenshot size={16} />} disabled>
-              Take a screenshot
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.docx,.txt"
-          onChange={e => {
-            const f = e.target.files?.[0] ?? null
-            if (f) handleFileUpload(f)
-            e.target.value = ''
-          }}
-          style={{ display: 'none' }}
-        />
-
-        {/* Right: send */}
-        <ActionIcon
-          variant="filled"
-          size="lg"
-          onClick={handleSend}
-          disabled={chatLoading || isAtLimit || !chatInput.trim()}
-          aria-label="Send message"
-        >
-          <svg viewBox="0 0 16 16" width={16} height={16} fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M3 8h10M9 4l4 4-4 4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </ActionIcon>
-      </Group>
-
-      {/* File upload status */}
-      {fileUploading && (
-        <Stack gap={4} px="sm" pb="xs" mt={-4}>
-          <span
-            style={{
-              color: 'var(--mantine-color-dimmed)',
-              fontFamily: 'var(--mantine-font-family)',
-              fontSize: 'var(--mantine-font-size-xs)',
-            }}
-          >
-            Processing your document...
-          </span>
-          <Progress size="xs" animated value={100} />
-        </Stack>
-      )}
-      {uploadedFileName && !fileUploading && (
-        <Group gap="xs" px="sm" pb="xs" mt={-4}>
-          <span
-            style={{
-              color: 'var(--mantine-color-green-6)',
-              fontFamily: 'var(--mantine-font-family)',
-              fontSize: 'var(--mantine-font-size-xs)',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <IconCheck size={12} style={{ marginRight: 4 }} />
-            Saved to assets.
-          </span>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="xs"
-            onClick={() => { setUploadedFileName(null); setContentId(null); setUploadedRaw(null) }}
-            aria-label="Remove file"
-          >
-            ✕
-          </ActionIcon>
-        </Group>
-      )}
-      {uploadError && !fileUploading && (
-        <Group gap="xs" px="sm" pb="xs" mt={-4}>
-          <span
-            style={{
-              color: 'var(--mantine-color-red-6)',
-              fontFamily: 'var(--mantine-font-family)',
-              fontSize: 'var(--mantine-font-size-xs)',
-            }}
-          >
-            {uploadError}
-          </span>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="xs"
-            onClick={() => setUploadError(null)}
-            aria-label="Dismiss error"
-          >
-            ✕
-          </ActionIcon>
-        </Group>
-      )}
+  const uploadStatus = fileUploading ? (
+    <div style={{ padding: '0 14px 8px', fontSize: 12, color: 'var(--mantine-color-dimmed)' }}>
+      Processing your document...
+      <Progress size="xs" animated value={100} mt={4} />
     </div>
-  )
+  ) : uploadedFileName && !fileUploading ? (
+    <UploadSavedRow name={uploadedFileName} onClear={() => { setUploadedFileName(null); setContentId(null); setUploadedRaw(null) }} />
+  ) : uploadError ? (
+    <div style={{ padding: '0 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 12, color: 'var(--mantine-color-red-6)' }}>{uploadError}</span>
+      <button onClick={() => setUploadError(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--mantine-color-gray-5)' }}>✕</button>
+    </div>
+  ) : undefined
 
   /* Shared metadata trigger + collapsible fields */
   const metadataSection = (
@@ -896,6 +727,18 @@ export default function PromptBuilderPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <style>{`@keyframes thinkingPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.txt"
+        onChange={e => {
+          const f = e.target.files?.[0] ?? null
+          if (f) handleFileUpload(f)
+          e.target.value = ''
+        }}
+        style={{ display: 'none' }}
+      />
       {/* Header */}
       <div className="flex shrink-0 items-center border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
         <Text variant="title">Composer</Text>
@@ -906,98 +749,34 @@ export default function PromptBuilderPage() {
         <div className="flex min-h-0 flex-1 flex-col items-center px-4 sm:px-6">
           {/* Top spacer — 38% of available height (golden ratio) */}
           <div style={{ flex: '0 0 38%' }} />
-
-          {!hasOpeningChoice ? (
-            <>
-              <p
-                className="select-none text-center"
-                style={{
-                  fontFamily: 'var(--mantine-font-family-headings)',
-                  fontSize: 'clamp(1.125rem, 2.5vw, 1.5rem)',
-                  color: 'var(--mantine-color-gray-6)',
-                  fontWeight: 500,
-                  letterSpacing: '-0.02em',
-                  maxWidth: '400px',
-                  lineHeight: 1.4,
-                  marginBottom: '20px',
-                }}
-              >
-                Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
-              </p>
-              <Stack gap="xs" style={{ width: '100%', maxWidth: 400, marginBottom: 24 }}>
-                <Tooltip
-                  label="Add blocks first to use this option."
-                  disabled={existingBlocks.length > 0}
-                  events={{ hover: true, focus: true, touch: true }}
-                >
-                  <MantineButton
-                    variant="light"
-                    color="green"
-                    size="md"
-                    fullWidth
-                    disabled={existingBlocks.length === 0}
-                    data-disabled={existingBlocks.length === 0 || undefined}
-                    onClick={(e) => {
-                      if (existingBlocks.length === 0) { e.preventDefault(); return }
-                      handleOpeningChoice('summarize')
-                    }}
-                  >
-                    Summarize my prompt
-                  </MantineButton>
-                </Tooltip>
-                <Tooltip
-                  label="Add blocks first to use this option."
-                  disabled={existingBlocks.length > 0}
-                  events={{ hover: true, focus: true, touch: true }}
-                >
-                  <MantineButton
-                    variant="light"
-                    color="green"
-                    size="md"
-                    fullWidth
-                    disabled={existingBlocks.length === 0}
-                    data-disabled={existingBlocks.length === 0 || undefined}
-                    onClick={(e) => {
-                      if (existingBlocks.length === 0) { e.preventDefault(); return }
-                      handleOpeningChoice('opportunities')
-                    }}
-                  >
-                    Identify opportunities to improve
-                  </MantineButton>
-                </Tooltip>
-                <MantineButton
-                  variant="light"
-                  color="green"
-                  size="md"
-                  fullWidth
-                  onClick={() => handleOpeningChoice('new')}
-                >
-                  Create a new block
-                </MantineButton>
-              </Stack>
-            </>
-          ) : (
-            <p
-              className="select-none text-center"
-              style={{
-                fontFamily: 'var(--mantine-font-family-headings)',
-                fontSize: 'clamp(1.125rem, 2.5vw, 1.5rem)',
-                color: 'var(--mantine-color-gray-6)',
-                fontWeight: 500,
-                letterSpacing: '-0.02em',
-                maxWidth: '400px',
-                lineHeight: 1.4,
-                marginBottom: '20px',
-              }}
-            >
-              What would you like to add to your prompt?
-            </p>
-          )}
-          {composerContainer}
+          <p
+            className="select-none text-center"
+            style={{
+              fontFamily: 'var(--mantine-font-family-headings)',
+              fontSize: 'clamp(1.125rem, 2.5vw, 1.5rem)',
+              color: 'var(--mantine-color-gray-6)',
+              fontWeight: 500,
+              letterSpacing: '-0.02em',
+              maxWidth: '400px',
+              lineHeight: 1.4,
+              marginBottom: '20px',
+            }}
+          >
+            Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
+          </p>
+          <Composer
+            input={chatInput}
+            onInputChange={setChatInput}
+            onSend={handleSend}
+            onPickFile={() => fileInputRef.current?.click()}
+            loading={chatLoading}
+            atLimit={isAtLimit}
+            pills={pills}
+            uploadStatus={uploadStatus}
+          />
           <div className="mt-2">
             {metadataSection}
           </div>
-
           {/* Bottom spacer — absorbs remaining space */}
           <div style={{ flex: '1 1 0%' }} />
         </div>
@@ -1113,7 +892,11 @@ export default function PromptBuilderPage() {
                         msg.content ? (
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
                         ) : chatLoading ? (
-                          <span className="text-gray-400">Thinking...</span>
+                          <span className="flex gap-1 items-center px-1 py-1">
+                            {[0, 1, 2].map(i => (
+                              <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mantine-color-gray-4)', display: 'inline-block', animation: 'thinkingPulse 1.4s ease-in-out infinite', animationDelay: `${i * 0.2}s` }} />
+                            ))}
+                          </span>
                         ) : null
                       ) : (
                         msg.content
@@ -1198,7 +981,16 @@ export default function PromptBuilderPage() {
 
           {/* Composer — pinned at bottom */}
           <div className="shrink-0 border-t border-gray-200 px-4 py-3 sm:px-6">
-            {composerContainer}
+            <Composer
+              input={chatInput}
+              onInputChange={setChatInput}
+              onSend={handleSend}
+              onPickFile={() => fileInputRef.current?.click()}
+              loading={chatLoading}
+              atLimit={isAtLimit}
+              pills={pills}
+              uploadStatus={uploadStatus}
+            />
             <div className="mt-2">
               {metadataSection}
             </div>
