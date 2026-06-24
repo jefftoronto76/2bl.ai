@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsx scripts/sync-branding.ts && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
@@ -47,6 +47,7 @@
     "postcss": "^8.4.0",
     "postcss-preset-mantine": "^1.18.0",
     "tailwindcss": "^3.4.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   }
