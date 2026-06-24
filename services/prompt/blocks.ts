@@ -37,6 +37,8 @@ export interface CreateBlockInput {
   body: string
   source_id?: string | null
   is_default?: boolean
+  prompt_set_id?: string | null
+  conversation_id?: string | null
   messages?: { role: string; content: string }[]
 }
 
@@ -105,7 +107,7 @@ export async function createBlock(
   scope: AuthScope,
   input: CreateBlockInput,
 ): Promise<BlocksResult<unknown>> {
-  const { type, topic_id, title, body: blockBody, is_default, messages } = input
+  const { type, topic_id, title, body: blockBody, is_default, prompt_set_id, conversation_id, messages } = input
   let source_id = input.source_id
 
   const supabase = getAdminClient()
@@ -148,6 +150,11 @@ export async function createBlock(
       tenant_id: scope.tenant_id,
       active: true,
       is_default: is_default ?? false,
+      // prompt_set_id is only written when it is a real UUID referencing
+      // prompt_sets.id — client-local / placeholder ids are sent as null
+      // and must not reach this FK column.
+      ...(prompt_set_id ? { prompt_type_key: prompt_set_id } : {}),
+      ...(conversation_id ? { conversation_id } : {}),
       // Stamp updated_by on create for consistency with the PATCH route
       // (Step 3 of PR 2). updated_at is auto-set by the
       // blocks_updated_at_trigger Postgres trigger.

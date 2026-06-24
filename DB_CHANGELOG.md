@@ -1,5 +1,51 @@
 # DB Changelog
 
+## 2026-06-24
+
+### Create `prompt_conversations` table
+```sql
+CREATE TABLE prompt_conversations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id),
+  owner_id uuid NOT NULL REFERENCES users(id),
+  title text NOT NULL DEFAULT 'New conversation',
+  preview text,
+  messages jsonb NOT NULL DEFAULT '[]',
+  prompt_set_id uuid REFERENCES prompt_sets(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX prompt_conversations_tenant_id_idx ON prompt_conversations(tenant_id);
+CREATE INDEX prompt_conversations_owner_id_idx ON prompt_conversations(owner_id);
+CREATE INDEX prompt_conversations_updated_at_idx ON prompt_conversations(updated_at DESC);
+```
+
+### Add `updated_at` trigger on `prompt_conversations`
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER prompt_conversations_updated_at
+BEFORE UPDATE ON prompt_conversations
+FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+```
+
+### Add `conversation_id` to `blocks`
+```sql
+ALTER TABLE blocks
+ADD COLUMN conversation_id uuid REFERENCES prompt_conversations(id);
+
+CREATE INDEX blocks_conversation_id_idx ON blocks(conversation_id);
+```
+
+---
+
 ## 2026-06-18
 
 ### Create `prompt_types` table

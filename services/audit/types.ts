@@ -59,6 +59,9 @@ export const AuditAction = {
   MEMBER_INVITE_REVOKED: 'member.invite_revoked',
   MEMBER_INVITE_ACCEPTED: 'member.invite_accepted',
   MEMBER_HARD_DELETED: 'user.hard_deleted',
+  // Conversations (Composer history)
+  CONVERSATION_CREATE: 'conversation.create',
+  CONVERSATION_UPDATE: 'conversation.update',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

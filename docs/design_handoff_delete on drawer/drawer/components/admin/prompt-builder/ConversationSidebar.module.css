@@ -1,0 +1,194 @@
+/* ConversationSidebar — UPDATED. Overlay history drawer + per-row Rename/Delete.
+   Literal hex inlined from the approved prototype; swap for var(--mantine-color-*)
+   where the theme already defines them. */
+
+.side {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  z-index: 30;
+  width: 280px;
+  max-width: 84vw;
+  background: var(--mantine-color-gray-0, #f8f9fa);
+  border-right: 1px solid var(--mantine-color-gray-2, #e9ecef);
+  box-shadow: 8px 0 28px -14px rgba(26, 25, 23, 0.32);
+  transform: translateX(0);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.collapsed {
+  transform: translateX(-100%);
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.inner {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+
+.head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 16px 12px 10px 14px;
+}
+.headActions { display: flex; align-items: center; gap: 4px; }
+.title {
+  font-family: var(--mantine-font-family-headings, 'Playfair Display', serif);
+  font-weight: 600; font-size: 16px;
+  color: var(--mantine-color-text, #1a1917);
+}
+
+.newBtn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 30px; padding: 0 12px 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6);
+  background: #fff;
+  color: var(--mantine-color-green-7, #245741);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.newBtn:hover {
+  background: rgba(45, 106, 79, 0.07);
+  border-color: rgba(45, 106, 79, 0.35);
+}
+
+.close {
+  display: grid; place-items: center;
+  width: 28px; height: 28px;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  color: var(--mantine-color-gray-6, #868e96);
+  flex: 0 0 auto; cursor: pointer;
+}
+.close:hover {
+  background: var(--mantine-color-gray-2, #e9ecef);
+  color: var(--mantine-color-gray-8, #343a40);
+}
+.flip { transform: rotate(180deg); }
+
+.threads {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 14px;
+  display: flex; flex-direction: column;
+}
+.empty {
+  padding: 16px 10px;
+  color: var(--mantine-color-dimmed, rgba(26, 25, 23, 0.55));
+  font-size: 13px;
+}
+
+.groupLabel {
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mantine-color-gray-6, #868e96);
+  padding: 14px 8px 5px;
+}
+
+/* Row container (was the button itself; now wraps main + actions) */
+.thread {
+  position: relative;
+  display: flex; align-items: stretch;
+  border-radius: var(--mantine-radius-sm, 4px);
+  transition: background-color 110ms ease;
+}
+.thread:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.active { background: rgba(45, 106, 79, 0.10); }
+
+.threadMain {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 8px 34px 8px 10px;   /* right room for the kebab */
+  cursor: pointer;
+}
+
+.row { display: flex; align-items: baseline; gap: 8px; }
+.threadTitle {
+  flex: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 500;
+  color: var(--mantine-color-text, #1a1917);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.active .threadTitle { color: var(--mantine-color-green-7, #245741); }
+.time {
+  flex: 0 0 auto;
+  font-family: var(--mantine-font-family-monospace, 'DM Mono', monospace);
+  font-size: 10.5px;
+  color: var(--mantine-color-gray-5, #adb5bd);
+}
+.sub {
+  font-size: 12px;
+  color: var(--mantine-color-dimmed, rgba(26, 25, 23, 0.55));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Row actions: kebab + menu + delete-confirm + inline rename ───────────── */
+.kebab {
+  position: absolute; top: 6px; right: 6px;
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  color: var(--mantine-color-gray-6, #868e96);
+  cursor: pointer; opacity: 0;
+  transition: opacity 110ms ease, background-color 110ms ease;
+}
+.thread:hover .kebab, .menuOpen .kebab { opacity: 1; }
+.kebab:hover { background: var(--mantine-color-gray-2, #e9ecef); color: var(--mantine-color-gray-8, #343a40); }
+
+.menu {
+  position: absolute; top: 32px; right: 6px; z-index: 40;
+  min-width: 170px;
+  background: #fff;
+  border: 1px solid var(--mantine-color-gray-2, #e9ecef);
+  border-radius: var(--mantine-radius-md, 8px);
+  box-shadow: 0 12px 30px -12px rgba(26, 25, 23, 0.34);
+  padding: 5px;
+}
+.menuItem {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 8px 10px;
+  font-size: 13px; color: var(--mantine-color-text, #1a1917);
+  cursor: pointer;
+}
+.menuItem:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.danger { color: var(--mantine-color-red-6, #e03131); }
+.danger:hover { background: rgba(224, 49, 49, 0.08); }
+
+.confirm { padding: 12px; min-width: 204px; }
+.confirmQ { display: block; font-size: 12.5px; color: var(--mantine-color-text, #1a1917); margin-bottom: 10px; }
+.confirmActions { display: flex; justify-content: flex-end; gap: 6px; }
+.confirmBtn {
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6);
+  background: #fff;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 5px 11px;
+  font-size: 12.5px; color: var(--mantine-color-text, #1a1917);
+  cursor: pointer;
+}
+.confirmBtn:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.confirmDanger { border-color: transparent; background: var(--mantine-color-red-6, #e03131); color: #fff; }
+.confirmDanger:hover { background: var(--mantine-color-red-7, #c92a2a); }
+
+.rename {
+  flex: 1; min-width: 0;
+  margin: 5px 6px; padding: 6px 8px;
+  border: 1px solid var(--mantine-color-green-5, #4fa574);
+  border-radius: var(--mantine-radius-sm, 4px);
+  font-size: 13.5px; font-family: inherit;
+  color: var(--mantine-color-text, #1a1917);
+  background: #fff; outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 165, 116, 0.18);
+}
+
+@media (max-width: 860px) {
+  .side { width: 300px; }
+}
