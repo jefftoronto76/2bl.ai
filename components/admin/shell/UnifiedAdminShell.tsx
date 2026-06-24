@@ -71,6 +71,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         breakpoint: 'md',
       }}
       padding="lg"
+      style={{ height: '100dvh' }}
     >
       <AppShell.Header
         hiddenFrom="md"
@@ -146,6 +147,8 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
       <AppShell.Main
         style={{
           backgroundColor: 'var(--mantine-color-body)',
+          height: '100%',
+          overflow: 'auto',
         }}
       >
         {children}
