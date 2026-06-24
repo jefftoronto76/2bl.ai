@@ -650,6 +650,8 @@ export default function PromptBuilderPage() {
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   const hasMessages = chatMessages.length > 0
+  const activeConversation = conversations.find(c => c.id === activeConversationId) ?? null
+  const topBarTitle = activeConversation && !activeConversation.draft ? activeConversation.title : 'Composer'
 
   const pills: ComposerPill[] = [
     {
@@ -818,18 +820,25 @@ export default function PromptBuilderPage() {
           />
         )}
 
-        {/* Header */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
+        {/* Header — single top bar, both states */}
+        <div className="flex shrink-0 items-center gap-3 border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
           <button
             type="button"
             onClick={() => setSidebarOpen(o => !o)}
             aria-label="Toggle conversations"
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: 'var(--mantine-color-gray-6)', display: 'flex', alignItems: 'center' }}
+            aria-expanded={sidebarOpen}
+            title="Conversations"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--mantine-color-gray-6)', display: 'flex', alignItems: 'center' }}
           >
             <HamburgerIcon />
           </button>
-          <Text variant="title">Composer</Text>
-          <div style={{ flex: 1 }} />
+
+          <Text variant="title" style={{ margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {topBarTitle}
+          </Text>
+
+          <div style={{ marginLeft: 'auto' }} />
+
           {promptSets.length > 0 && activePromptSetId && (
             <PromptSetPicker
               sets={promptSets}
@@ -838,43 +847,73 @@ export default function PromptBuilderPage() {
               onCreate={createPromptSet}
             />
           )}
+
+          {exchangeCount > 0 && (
+            <Badge
+              variant="outline"
+              color={exchangeCount >= MAX_EXCHANGES ? 'red' : exchangeCount >= WARN_THRESHOLD ? 'yellow' : 'gray'}
+              radius="xl"
+              size="sm"
+              style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+            >
+              {exchangeCount} of {MAX_EXCHANGES} exchanges
+            </Badge>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCopyAll}
+            disabled={!hasMessages}
+            className="border-none bg-transparent px-0 py-0"
+            style={{
+              color: copiedAll ? 'var(--mantine-color-green-6)' : 'var(--mantine-color-dimmed)',
+              fontFamily: 'var(--mantine-font-family)',
+              fontSize: 12,
+              cursor: hasMessages ? 'pointer' : 'not-allowed',
+              opacity: hasMessages ? 1 : 0.4,
+              transition: 'color 150ms ease',
+            }}
+          >
+            {copiedAll ? 'Copied!' : 'Copy all'}
+          </button>
         </div>
 
-      {/* ── Empty state: golden ratio positioning ── */}
+      {/* ── Empty state ── */}
       {!hasMessages && (
-        <div className="flex min-h-0 flex-1 flex-col items-center px-4 sm:px-6">
-          {/* Top spacer — 38% of available height (golden ratio) */}
-          <div style={{ flex: '0 0 38%' }} />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-6 sm:px-6">
           <p
             className="select-none text-center"
             style={{
               fontFamily: 'var(--mantine-font-family-headings)',
-              fontSize: 'clamp(1.125rem, 2.5vw, 1.5rem)',
-              color: 'var(--mantine-color-gray-6)',
+              fontSize: 'clamp(1.25rem, 2.5vw, 1.6rem)',
+              color: 'var(--mantine-color-gray-7)',
               fontWeight: 500,
               letterSpacing: '-0.02em',
-              maxWidth: '400px',
-              lineHeight: 1.4,
-              marginBottom: '20px',
+              maxWidth: 440,
+              lineHeight: 1.35,
+              margin: 0,
             }}
           >
             Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
+            <br />
+            <span style={{ display: 'inline-block', marginTop: 8, fontFamily: 'var(--mantine-font-family)', fontSize: 14, fontWeight: 400, color: 'var(--mantine-color-dimmed)' }}>
+              Build a block, or pick a starting point below.
+            </span>
           </p>
-          <Composer
-            input={chatInput}
-            onInputChange={setChatInput}
-            onSend={handleSend}
-            onPickFile={() => fileInputRef.current?.click()}
-            loading={chatLoading}
-            atLimit={isAtLimit}
-            pills={pills}
-            uploadStatus={uploadStatus}
-          />
-          <div className="mt-2">
+
+          <div className="mt-5 flex w-full flex-col items-center gap-2">
+            <Composer
+              input={chatInput}
+              onInputChange={setChatInput}
+              onSend={handleSend}
+              onPickFile={() => fileInputRef.current?.click()}
+              loading={chatLoading}
+              atLimit={isAtLimit}
+              pills={pills}
+              uploadStatus={uploadStatus}
+            />
             {metadataSection}
           </div>
-          {/* Bottom spacer — absorbs remaining space */}
-          <div style={{ flex: '1 1 0%' }} />
         </div>
       )}
 
@@ -882,34 +921,6 @@ export default function PromptBuilderPage() {
       {hasMessages && (
         <>
           <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-            {/* Top bar: Copy all + Exchange counter */}
-            <div className="sticky top-0 z-10 flex items-center justify-end gap-2 px-4 py-2 sm:px-6">
-              <button
-                type="button"
-                onClick={handleCopyAll}
-                className="border-none bg-transparent cursor-pointer px-0 py-0"
-                style={{
-                  color: copiedAll ? 'var(--mantine-color-green-6)' : 'var(--mantine-color-dimmed)',
-                  fontFamily: 'var(--mantine-font-family)',
-                  fontSize: '12px',
-                  transition: 'color 150ms ease',
-                }}
-              >
-                {copiedAll ? 'Copied!' : 'Copy all'}
-              </button>
-              {exchangeCount > 0 && (
-                <Badge
-                  variant="outline"
-                  color={exchangeCount >= MAX_EXCHANGES ? 'red' : exchangeCount >= WARN_THRESHOLD ? 'yellow' : 'gray'}
-                  radius="xl"
-                  size="sm"
-                  style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
-                >
-                  {exchangeCount} of {MAX_EXCHANGES} exchanges
-                </Badge>
-              )}
-            </div>
-
             {/* Chat thread */}
             <div className="mx-auto flex w-full max-w-[800px] flex-col gap-4 px-4 py-4 sm:px-6">
               {draftBlocks.length > 0 ? (
