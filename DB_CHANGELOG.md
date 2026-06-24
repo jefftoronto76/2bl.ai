@@ -1,5 +1,88 @@
 # DB Changelog
 
+## 2026-06-23
+
+### Change `blocks.prompt_type_key` from `text` to `uuid`, add FK to `prompt_sets`
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+ALTER TABLE blocks
+  ALTER COLUMN prompt_type_key TYPE uuid USING prompt_type_key::uuid,
+  ADD CONSTRAINT blocks_prompt_type_key_fkey
+    FOREIGN KEY (prompt_type_key) REFERENCES prompt_sets(id);
+```
+
+**Purpose:** Tighten referential integrity — `prompt_type_key` on `blocks` now
+references `prompt_sets.id` directly rather than storing a loose text key.
+Ensures every non-null value on a block points to a real prompt set row;
+orphaned references are caught at the DB layer rather than in application code.
+
+**Notes:**
+- The `USING prompt_type_key::uuid` cast is valid because all existing non-null
+  values were already valid UUID strings (see backfill entry below)
+- Nullable — existing blocks with `prompt_type_key = null` are unaffected
+
+---
+
+### Change `master_prompt.prompt_type_key` from `text` to `uuid`, add FK to `prompt_sets`
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+```sql
+ALTER TABLE master_prompt
+  ALTER COLUMN prompt_type_key TYPE uuid USING prompt_type_key::uuid,
+  ADD CONSTRAINT master_prompt_prompt_type_key_fkey
+    FOREIGN KEY (prompt_type_key) REFERENCES prompt_sets(id);
+```
+
+**Purpose:** Same referential integrity tightening as the `blocks` change above,
+applied to compiled master prompts. A compiled prompt now hard-references its
+prompt set row rather than carrying a text key that could drift out of sync.
+
+**Notes:**
+- Nullable — existing master prompt rows with `prompt_type_key = null` are
+  unaffected and continue to represent the default (untyped) compiled prompt
+- `master_prompt_history` rows are not altered — archived versions retain their
+  shape at the time of archival
+
+---
+
+### Create default prompt sets for Heirloom and Sage
+**Type:** Data insert
+**Executed by:** Jeff in Supabase Studio
+
+**Records inserted:** `prompt_sets` table
+
+| id | tenant | name |
+|----|--------|------|
+| `3956b25d-…` | Heirloom | *(default prompt set for the Heirloom product tenant)* |
+| `dacb051b-…` | Sage | *(default prompt set for the Sage product tenant)* |
+
+**Purpose:** Establish the canonical prompt sets for each product tenant so that
+`blocks.prompt_type_key` and `master_prompt.prompt_type_key` FK values can
+reference real rows.
+
+---
+
+### Backfill `blocks.prompt_type_key` for all existing blocks
+**Type:** Data backfill
+**Executed by:** Jeff in Supabase Studio
+
+**Purpose:** Populate `blocks.prompt_type_key` (now a `uuid` FK) on all
+pre-existing blocks that previously held a null or text value. After the
+type change above, every block that belongs to a specific prompt type must
+reference its `prompt_sets.id` UUID rather than a text key.
+
+**Notes:**
+- Blocks intentionally shared across all prompt types remain `null`
+- The backfill ran after both the FK constraint and the prompt-set inserts
+  above, so all inserted UUIDs resolve to valid `prompt_sets` rows
+
+---
+
 ## 2026-06-18
 
 ### Create `prompt_types` table
