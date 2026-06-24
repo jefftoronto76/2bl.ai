@@ -35,13 +35,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[platform layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
-  let platformTheme = buildAdminTheme();
+  let platformResult = buildAdminTheme();
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
     console.log('[branding:platform]', JSON.stringify({ branding }));
-    platformTheme = buildAdminTheme(branding);
+    platformResult = buildAdminTheme(branding);
     console.log('[platform layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       font_primary: branding?.font_primary,
@@ -61,11 +61,12 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     console.error('[platform layout] branding fetch failed:', err instanceof Error ? err.message : err);
   }
 
+  const { theme: platformTheme, textMuted } = platformResult;
   const bodyBg = (platformTheme.other?.bodyBackground as string) ?? '#f9f8f5';
 
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg}}`}</style>
+      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted}}`}</style>
       {brandingFontEntries.map(entry => (
         <link
           key={entry.googleFamily}

@@ -137,14 +137,16 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
   console.log('[admin-theme] resolved background:', bg);
   console.log('[admin-theme] resolved fonts:', { headingFont, bodyFont, monoFont });
 
-  return createTheme({
+  const theme = createTheme({
     // ── Colors ──────────────────────────────────────────────────────────────────
     primaryColor: 'brand',
     colors: {
-      brand: hexToMantineScale(accent),
-      ink:   hexToMantineScale(ink),
+      brand:      hexToMantineScale(accent),
+      ink:        hexToMantineScale(ink),
+      background: hexToMantineScale(bg),
     },
 
+    // Kept for backward compat — being phased out in favour of theme.colors.*
     other: {
       bodyBackground: bg,
       textPrimary,
@@ -205,7 +207,9 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
       },
     },
   });
+
+  return { theme, textMuted };
 }
 
 // Static export kept for any existing imports that haven't switched to buildAdminTheme.
-export const adminTheme = buildAdminTheme();
+export const adminTheme = buildAdminTheme().theme;
