@@ -11,7 +11,7 @@ const navLinkStyle = (active: boolean) =>
     color: active ? 'var(--mantine-color-white)' : 'var(--mantine-color-ink-2)',
     '--nl-color': 'var(--mantine-color-white)',
     '--nl-bg': 'var(--mantine-color-brand-filled)',
-    '--nl-hover': 'var(--mantine-color-brand-filled-hover)',
+    '--nl-hover': 'var(--admin-accent-hover, var(--mantine-color-brand-filled-hover))',
   }) as React.CSSProperties;
 
 const sectionLabelStyle = {

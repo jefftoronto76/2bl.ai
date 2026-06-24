@@ -19,6 +19,7 @@ import { ALL_FONTS } from '@/services/branding/font-registry';
 interface BrandingForTheme {
   background?:     string | null;
   accent?:         string | null;
+  accent_hover?:   string | null;
   heading?:        string | null;
   lede?:           string | null;
   body?:           string | null;
@@ -36,7 +37,7 @@ interface BrandingForTheme {
 const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   // jefflougheed.ca
   'e07334a0-2afd-4544-898b-edb124d2dd33': {
-    background: '#181820', accent: '#a8c8a8', heading: '#eae7dc',
+    background: '#181820', accent: '#a8c8a8', accent_hover: '#7da87d', heading: '#eae7dc',
     lede: 'rgba(234,231,220,0.70)', body: '#eae7dc',
     font_primary: 'Playfair Display, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
@@ -45,7 +46,7 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   },
   // 2bl.ai — Second Brain Labs
   '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
-    background: '#FAF6EE', accent: '#C8542E', heading: '#1F1A14',
+    background: '#FAF6EE', accent: '#C8542E', accent_hover: '#a03d1e', heading: '#1F1A14',
     lede: '#6B6256', body: '#1F1A14',
     font_primary: 'Newsreader, serif',
     font_secondary: 'Manrope, sans-serif',
@@ -54,7 +55,7 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   },
   // heirloom.2bl.ai — Heirloom
   '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
-    background: '#ECE3D2', accent: '#2E854D', heading: '#2E2417',
+    background: '#ECE3D2', accent: '#2E854D', accent_hover: '#1e6035', heading: '#2E2417',
     lede: 'rgba(46,36,23,0.62)', body: '#2E2417',
     font_primary: 'Cormorant Garamond, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
@@ -71,8 +72,9 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
   console.log('[admin-theme] branding from DB:', JSON.stringify(branding));
   console.log('[admin-theme] using fallback:', !branding);
 
-  const accent      = isValidHex(branding?.accent)      ? branding!.accent!      : fallback.accent!;
-  const bg          = isValidHex(branding?.background)  ? branding!.background!  : fallback.background!;
+  const accent      = isValidHex(branding?.accent)       ? branding!.accent!       : fallback.accent!;
+  const accentHover = isValidHex(branding?.accent_hover) ? branding!.accent_hover! : (fallback.accent_hover ?? accent);
+  const bg          = isValidHex(branding?.background)   ? branding!.background!   : fallback.background!;
   const textPrimary = isValidHex(branding?.heading)     ? branding!.heading!     : fallback.heading!;
   const textMuted   = branding?.lede ?? fallback.lede!;
   const bodyText    = isValidHex(branding?.body)        ? branding!.body!        : fallback.body!;
@@ -162,7 +164,7 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
     },
   });
 
-  return { theme, textMuted };
+  return { theme, textMuted, accentHover };
 }
 
 // Static export kept for any existing imports that haven't switched to buildAdminTheme.
