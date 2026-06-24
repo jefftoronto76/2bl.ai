@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton, Modal, Checkbox, Text as MantineText } from '@mantine/core'
+import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton, Modal, Checkbox, Text as MantineText, Button as MantineButton } from '@mantine/core'
 import { useAuthUser } from '@/services/auth/client'
 import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
@@ -1214,7 +1214,7 @@ export default function PromptBuilderPage() {
             onChange={e => setSkipNewConvConfirm(e.currentTarget.checked)}
           />
           <Group justify="flex-end" gap="sm">
-            <Button variant="subtle" onClick={() => setShowNewConvDialog(false)}>Cancel</Button>
+            <MantineButton variant="subtle" onClick={() => setShowNewConvDialog(false)}>Cancel</MantineButton>
             <Button onClick={confirmNewConversation}>Start fresh</Button>
           </Group>
         </Stack>
