@@ -39,7 +39,13 @@ export default createAuthMiddleware(async (auth, req) => {
   // through to the root /admin route, which resolves the tenant from the host.
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/')
 
-  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath) {
+  // API routes must never be rewritten under a product segment — they live at the
+  // app root and resolve the tenant from the host header. Without this guard,
+  // 2bl.ai/api/admin/appearance rewrites to /secondbrainlabs/api/admin/appearance
+  // (404), causing all admin settings fetches to fail on the SBL host.
+  const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
+
+  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
     requestHeaders.set('x-correlation-id', correlationId)
@@ -61,12 +67,6 @@ export default createAuthMiddleware(async (auth, req) => {
   // the same tag without a rewrite.
   const isHeirloomHost = HEIRLOOM_HOSTS.has(host)
   const isHeirloomPath = pathname === '/heirloom' || pathname.startsWith('/heirloom/')
-
-  // API routes (e.g. /api/sage) must never be rewritten under /heirloom — they
-  // live at the app root and resolve the tenant from the host header. Without
-  // this guard, heirloom.2bl.ai/api/sage rewrites to /heirloom/api/sage (404).
-  // Let API paths pass through so they hit the real route on the original host.
-  const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
 
   if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
