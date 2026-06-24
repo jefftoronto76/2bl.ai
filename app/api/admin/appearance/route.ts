@@ -5,6 +5,20 @@ import { logEvent, AuditAction } from '@/services/audit';
 import type { AppearanceChangeKind } from '@/app/admin/settings/types';
 import { hexToRgbTriplet } from '@/services/branding/hex-utils';
 
+// `target` query param ('storefront' | 'admin', default 'storefront') selects
+// which tenant_branding row to read/write. Rows are keyed by (tenant_id, target);
+// the upsert conflict target is 'tenant_id,target'.
+// GET_SELECT includes the two read-only sync columns: defaults_synced_at,
+// branding_warnings. They are NOT editable (excluded from STRING/BOOL fields).
+// Audit metadata carries `target` so per-target history can be filtered.
+
+type BrandingTarget = 'storefront' | 'admin';
+
+function parseTarget(req: Request): BrandingTarget {
+  const t = new URL(req.url).searchParams.get('target');
+  return t === 'admin' ? 'admin' : 'storefront';
+}
+
 // Per-tenant CSS defaults — returned when tenant_branding has no row yet.
 const TENANT_BRAND_DEFAULTS: Record<string, {
   background:      string;
@@ -100,10 +114,15 @@ const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
   use_db_branding: 'toggle',
 };
 
+// defaults_synced_at + branding_warnings are read-only sync columns surfaced
+// to the SyncStatus card. They are NOT in STRING/BOOL fields so they can never
+// be written via PATCH.
 const GET_SELECT =
-  'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder';
+  'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder, defaults_synced_at, branding_warnings';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const target = parseTarget(req);
+
   let authCtx: { owner_id: string; tenant_id: string };
   try {
     authCtx = await getAuthContext();
@@ -118,6 +137,7 @@ export async function GET() {
     .from('tenant_branding')
     .select(GET_SELECT)
     .eq('tenant_id', authCtx.tenant_id)
+    .eq('target', target)
     .maybeSingle();
 
   if (error) {
@@ -129,13 +149,15 @@ export async function GET() {
     const defaults =
       TENANT_BRAND_DEFAULTS[authCtx.tenant_id] ??
       TENANT_BRAND_DEFAULTS['e07334a0-2afd-4544-898b-edb124d2dd33'];
-    return Response.json({ data: defaults });
+    return Response.json({ data: { ...defaults, target, defaults_synced_at: null, branding_warnings: null } });
   }
 
   return Response.json({ data });
 }
 
 export async function PATCH(req: Request) {
+  const target = parseTarget(req);
+
   let authCtx: { owner_id: string; tenant_id: string };
   try {
     authCtx = await getAuthContext();
@@ -184,6 +206,7 @@ export async function PATCH(req: Request) {
     .from('tenant_branding')
     .select([...STRING_FIELDS, ...BOOL_FIELDS].join(', '))
     .eq('tenant_id', authCtx.tenant_id)
+    .eq('target', target)
     .maybeSingle();
 
   if (fetchErr) {
@@ -194,7 +217,10 @@ export async function PATCH(req: Request) {
   const currentRow = (current ?? {}) as Record<string, string | boolean | null>;
 
   // Build upsert payload with only changed fields.
-  const upsertPayload: Record<string, string | boolean | null> = { tenant_id: authCtx.tenant_id };
+  const upsertPayload: Record<string, string | boolean | null> = {
+    tenant_id: authCtx.tenant_id,
+    target,
+  };
   const changedFields: EditableField[] = [];
 
   for (const field of STRING_FIELDS) {
@@ -233,7 +259,7 @@ export async function PATCH(req: Request) {
 
   const { data: updated, error: upsertErr } = await supabase
     .from('tenant_branding')
-    .upsert(upsertPayload, { onConflict: 'tenant_id' })
+    .upsert(upsertPayload, { onConflict: 'tenant_id,target' })
     .select(GET_SELECT)
     .single();
 
@@ -244,6 +270,7 @@ export async function PATCH(req: Request) {
 
   console.log('[appearance] PATCH', {
     tenant_id: authCtx.tenant_id,
+    target,
     changed: changedFields,
   });
 
@@ -265,6 +292,7 @@ export async function PATCH(req: Request) {
       target_id:   authCtx.tenant_id,
       correlation_id: correlationId,
       metadata: {
+        target,
         field,
         old_value: oldVal,
         new_value: newVal,

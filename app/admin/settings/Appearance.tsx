@@ -11,13 +11,16 @@ import {
   Skeleton,
   Stack,
   Switch,
+  Text,
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { AppearanceHistory } from './AppearanceHistory';
-import type { AppearanceChange } from './types';
+import { SyncStatus } from './SyncStatus';
+import type { AppearanceChange, BrandingTarget, BrandingSync } from './types';
 import { DISPLAY_FONTS, BODY_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
 import { ThemePreview } from './ThemePreview';
+import { AdminPreview } from './AdminPreview';
 import './appearance.css';
 
 interface BrandingRow {
@@ -48,6 +51,14 @@ const EMPTY: BrandingRow = {
   use_db_branding: false,
 };
 
+const EMPTY_SYNC: BrandingSync = { defaults_synced_at: null, branding_warnings: null };
+
+// Per-target subtitle shown under the Storefront/Admin switch.
+const TARGET_META: Record<BrandingTarget, { description: string }> = {
+  storefront: { description: 'Colors, fonts, and brand tokens for your public storefront — what visitors see.' },
+  admin:      { description: 'Colors, fonts, and brand tokens for this admin console — the sidebar, navigation, and buttons your team sees.' },
+};
+
 function rowToForm(row: Record<string, unknown> | null): BrandingRow {
   if (!row) return EMPTY;
   return {
@@ -62,6 +73,28 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
     paper_effect:    (row.paper_effect    as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
     accent_buttons:  (row.accent_buttons  as boolean | null) ?? true,
     use_db_branding: (row.use_db_branding as boolean | null) ?? false,
+  };
+}
+
+// Read-only sync fields ride along on the same GET row; they are never part of
+// dirty-tracking or the PATCH payload.
+function rowToSync(row: Record<string, unknown> | null): BrandingSync {
+  if (!row) return EMPTY_SYNC;
+  const raw = row.branding_warnings;
+  const warnings =
+    Array.isArray(raw) && raw.length > 0
+      ? raw.map((w) =>
+          typeof w === 'string'
+            ? { token: w, message: '' }
+            : {
+                token: String((w as Record<string, unknown>)?.token ?? ''),
+                message: String((w as Record<string, unknown>)?.message ?? ''),
+              },
+        )
+      : null;
+  return {
+    defaults_synced_at: (row.defaults_synced_at as string | null) ?? null,
+    branding_warnings: warnings,
   };
 }
 
@@ -169,22 +202,23 @@ function ColorRow({
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// BrandingEditor — the per-target editor (was the body of Appearance()).
+// Fetches, edits, and saves ONE target's tenant_branding row. Remounted on
+// target switch via `key`, so all state resets cleanly to the new target.
 // ---------------------------------------------------------------------------
 
-export function Appearance() {
+function BrandingEditor({ target }: { target: BrandingTarget }) {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState<BrandingRow>(EMPTY);
   const [values, setValues]     = useState<BrandingRow>(EMPTY);
+  const [sync, setSync]         = useState<BrandingSync>(EMPTY_SYNC);
   const [history, setHistory]   = useState<AppearanceChange[]>([]);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[Appearance] fetching settings');
     try {
-      const res = await fetch('/api/admin/appearance');
+      const res = await fetch(`/api/admin/appearance?target=${target}`);
       if (!res.ok) {
-        console.error('[Appearance] settings fetch failed:', res.status);
         notifications.show({
           color: 'red',
           title: 'Failed to load appearance',
@@ -196,32 +230,27 @@ export function Appearance() {
       const form = rowToForm(json.data);
       setSaved(form);
       setValues(form);
+      setSync(rowToSync(json.data));
       if (form.font_primary)   loadFontForValue(form.font_primary);
       if (form.font_secondary) loadFontForValue(form.font_secondary);
       if (form.font_mono)      loadFontForValue(form.font_mono);
-    } catch (err) {
-      console.error('[Appearance] settings fetch threw:', err);
-      notifications.show({
-        color: 'red',
-        title: 'Network error',
-        message: 'Could not reach the server.',
-      });
+    } catch {
+      notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [target]);
 
   const fetchHistory = useCallback(async () => {
-    console.log('[Appearance] fetching history');
     try {
-      const res = await fetch('/api/admin/appearance/history');
+      const res = await fetch(`/api/admin/appearance/history?target=${target}`);
       if (!res.ok) return;
       const json: { history: AppearanceChange[] } = await res.json();
       setHistory(json.history);
     } catch {
       // History is non-critical — fail silently.
     }
-  }, []);
+  }, [target]);
 
   useEffect(() => {
     fetchSettings();
@@ -242,10 +271,9 @@ export function Appearance() {
     const patch = extractDirtyFields(saved, values);
     if (Object.keys(patch).length === 0) return;
 
-    console.log('[Appearance] PATCH dispatch:', patch);
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/appearance', {
+      const res = await fetch(`/api/admin/appearance?target=${target}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -257,29 +285,19 @@ export function Appearance() {
           typeof errBody === 'object' && errBody !== null && 'error' in errBody
             ? String((errBody as { error: unknown }).error)
             : 'Failed to save appearance.';
-        console.error('[Appearance] PATCH failed:', msg);
         notifications.show({ color: 'red', title: 'Save failed', message: msg });
         return;
       }
 
       const json: { data: Record<string, unknown> } = await res.json();
       const form = rowToForm(json.data);
-      console.log('[Appearance] PATCH success:', form);
       setSaved(form);
       setValues(form);
-      notifications.show({
-        color: 'green',
-        title: 'Appearance saved',
-        message: 'Branding tokens updated.',
-      });
+      setSync(rowToSync(json.data));
+      notifications.show({ color: 'green', title: 'Appearance saved', message: 'Branding tokens updated.' });
       await fetchHistory();
-    } catch (err) {
-      console.error('[Appearance] PATCH threw:', err);
-      notifications.show({
-        color: 'red',
-        title: 'Network error',
-        message: 'Could not reach the server.',
-      });
+    } catch {
+      notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' });
     } finally {
       setSaving(false);
     }
@@ -300,8 +318,12 @@ export function Appearance() {
       {/* Live-site gate — off by default; globals.css static tokens win when off */}
       <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
         <Switch
-          label="Apply to live site"
-          description="When on, these stored values override the design-system defaults on the live storefront. Off by default — save settings here first, then flip this on."
+          label={target === 'admin' ? 'Apply to admin console' : 'Apply to live site'}
+          description={
+            target === 'admin'
+              ? 'When on, these stored values theme this admin console. Off by default — save settings here first, then flip this on.'
+              : 'When on, these stored values override the design-system defaults on the live storefront. Off by default — save settings here first, then flip this on.'
+          }
           checked={values.use_db_branding}
           onChange={e => set('use_db_branding', e.currentTarget.checked)}
           disabled={saving}
@@ -411,33 +433,53 @@ export function Appearance() {
 
           {/* Action row */}
           <Group justify="flex-end" gap="sm">
-            <Button
-              variant="subtle"
-              color="gray"
-              size="sm"
-              onClick={handleReset}
-              disabled={saving || !dirty}
-            >
+            <Button variant="subtle" color="gray" size="sm" onClick={handleReset} disabled={saving || !dirty}>
               Reset
             </Button>
-            <Button
-              variant="filled"
-              color="green"
-              size="sm"
-              onClick={handleSave}
-              loading={saving}
-              disabled={!dirty}
-            >
+            <Button variant="filled" color="green" size="sm" onClick={handleSave} loading={saving} disabled={!dirty}>
               Save
             </Button>
           </Group>
         </Stack>
 
-        {/* ── Right column: live preview ── */}
-        <ThemePreview t={values} />
+        {/* ── Right column: live preview (storefront vs admin console) ── */}
+        {target === 'admin' ? <AdminPreview t={values} /> : <ThemePreview t={values} />}
       </SimpleGrid>
 
+      {/* Read-only branding sync status */}
+      <SyncStatus sync={sync} />
+
       <AppearanceHistory log={history} />
+    </Stack>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Appearance — nests two branding targets: Storefront + Admin.
+// The SegmentedControl picks the target; BrandingEditor is keyed on it so a
+// switch fully remounts (refetch + fresh state) rather than leaking values
+// across targets.
+// ---------------------------------------------------------------------------
+
+export function Appearance() {
+  const [target, setTarget] = useState<BrandingTarget>('storefront');
+
+  return (
+    <Stack gap="md">
+      <Stack gap={8}>
+        <SegmentedControl
+          value={target}
+          onChange={v => setTarget(v as BrandingTarget)}
+          data={[
+            { label: 'Storefront', value: 'storefront' },
+            { label: 'Admin', value: 'admin' },
+          ]}
+          style={{ alignSelf: 'flex-start' }}
+        />
+        <Text size="sm" c="dimmed">{TARGET_META[target].description}</Text>
+      </Stack>
+
+      <BrandingEditor key={target} target={target} />
     </Stack>
   );
 }
