@@ -20,7 +20,7 @@ export const adminTheme = createTheme({
   primaryColor: 'green',
   colors: {
     // Base: #2d6a4f (CLAUDE.md "Accent green"). Index 6 = base; 0–5 = tints; 7–9 = shades.
-    green: colorsTuple(
+    green: colorsTuple([
       '#f0faf4',
       '#ddf1e5',
       '#b7dec6',
@@ -31,7 +31,7 @@ export const adminTheme = createTheme({
       '#245741',
       '#1b4433',
       '#133126',
-    ),
+    ]),
   },
 
   // CLAUDE.md: Background #f9f8f5, Text primary #1a1917
