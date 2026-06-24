@@ -123,17 +123,18 @@ export default function PromptBuilderPage() {
 
   useEffect(() => {
     async function fetchPromptSets() {
-      const placeholder: PromptSet[] = [{ id: 'default', label: 'Default', version: 1, status: 'Draft' }]
       try {
         const res = await fetch('/api/admin/prompt-sets')
-        if (!res.ok) { setPromptSets(placeholder); setActivePromptSetId('default'); return }
-        const data: PromptSet[] = await res.json()
-        if (data.length === 0) { setPromptSets(placeholder); setActivePromptSetId('default'); return }
+        if (res.status === 404 || !res.ok) { setPromptSets([]); setActivePromptSetId(null); return }
+        const body = await res.json()
+        const data: PromptSet[] = body.promptSets ?? []
+        if (data.length === 0) { setPromptSets([]); setActivePromptSetId(null); return }
         setPromptSets(data)
-        setActivePromptSetId(data[0].id)
+        const liveSet = data.find(s => s.status === 'Live')
+        setActivePromptSetId((liveSet ?? data[0]).id)
       } catch {
-        setPromptSets(placeholder)
-        setActivePromptSetId('default')
+        setPromptSets([])
+        setActivePromptSetId(null)
       }
     }
     fetchPromptSets()
