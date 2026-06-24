@@ -26,9 +26,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Falls back to the inkwell default theme if auth or DB fails.
   let adminResult = buildAdminTheme();
   let brandingFontEntries: FontEntry[] = [];
+  let faviconBase: string | null = null;
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
+    faviconBase = branding?.favicon_base_path ?? null;
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
     adminResult = buildAdminTheme(branding, authCtx.tenant_id);
@@ -62,6 +64,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
       <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted}}`}</style>
+      {faviconBase && (
+        <>
+          <link rel="icon" href={`${faviconBase}/favicon.ico`} sizes="any" />
+          <link rel="icon" href={`${faviconBase}/favicon.svg`} type="image/svg+xml" />
+          <link rel="icon" href={`${faviconBase}/favicon-96x96.png`} sizes="96x96" type="image/png" />
+          <link rel="apple-touch-icon" href={`${faviconBase}/apple-touch-icon.png`} />
+          <link rel="manifest" href={`${faviconBase}/site.webmanifest`} />
+        </>
+      )}
       {brandingFontEntries.map(entry => (
         <link
           key={entry.googleFamily}
