@@ -13,9 +13,10 @@ import { readDataStream } from '@/services/chat/server/stream-utils'
 import { DraftCard } from '@/components/admin/prompt-builder/DraftCard'
 import { Composer, type ComposerPill, UploadSavedRow } from '@/components/admin/prompt-builder/Composer'
 import { ConversationSidebar } from '@/components/admin/prompt-builder/ConversationSidebar'
+import { PromptSetPicker } from '@/components/admin/prompt-builder/PromptSetPicker'
 import {
   type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
-  type DraftCardMeta, type CheckIssue, type CheckResult, type Conversation,
+  type DraftCardMeta, type CheckIssue, type CheckResult, type Conversation, type PromptSet,
   TYPES, VALID_TYPES, MAX_EXCHANGES, WARN_THRESHOLD, formatTime,
 } from '@/components/admin/prompt-builder/types'
 
@@ -63,6 +64,8 @@ export default function PromptBuilderPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [promptSets, setPromptSets] = useState<PromptSet[]>([])
+  const [activePromptSetId, setActivePromptSetId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -116,6 +119,24 @@ export default function PromptBuilderPage() {
       }
     }
     fetchConversations()
+  }, [])
+
+  useEffect(() => {
+    async function fetchPromptSets() {
+      const placeholder: PromptSet[] = [{ id: 'default', label: 'Default', version: 1, status: 'Draft' }]
+      try {
+        const res = await fetch('/api/admin/prompt-sets')
+        if (!res.ok) { setPromptSets(placeholder); setActivePromptSetId('default'); return }
+        const data: PromptSet[] = await res.json()
+        if (data.length === 0) { setPromptSets(placeholder); setActivePromptSetId('default'); return }
+        setPromptSets(data)
+        setActivePromptSetId(data[0].id)
+      } catch {
+        setPromptSets(placeholder)
+        setActivePromptSetId('default')
+      }
+    }
+    fetchPromptSets()
   }, [])
 
   useEffect(() => {
@@ -186,6 +207,12 @@ export default function PromptBuilderPage() {
   function startNewConversation() {
     resetChat()
     setSidebarOpen(false)
+  }
+
+  function createPromptSet(label: string) {
+    const newSet: PromptSet = { id: String(promptSets.length + 1 + Date.now()), label, version: 1, status: 'Draft' }
+    setPromptSets(prev => [...prev, newSet])
+    setActivePromptSetId(newSet.id)
   }
 
   async function handleFileUpload(f: File) {
@@ -515,6 +542,9 @@ export default function PromptBuilderPage() {
       }
 
       console.log('[PromptBuilder] card save dispatch:', { index, title: meta.blockName })
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      const promptSetId = activePromptSetId && UUID_RE.test(activePromptSetId) ? activePromptSetId : null
+
       const res = await fetch('/api/admin/blocks/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -526,6 +556,7 @@ export default function PromptBuilderPage() {
           source_id: contentId,
           owner_id: ownerId,
           is_default: meta.isDefault,
+          prompt_set_id: promptSetId,
           messages: chatMessages.slice(sessionStartIndex).map(m => ({ role: m.role, content: m.content })),
         }),
       })
@@ -798,6 +829,15 @@ export default function PromptBuilderPage() {
             <HamburgerIcon />
           </button>
           <Text variant="title">Composer</Text>
+          <div style={{ flex: 1 }} />
+          {promptSets.length > 0 && activePromptSetId && (
+            <PromptSetPicker
+              sets={promptSets}
+              activeId={activePromptSetId}
+              onSelect={setActivePromptSetId}
+              onCreate={createPromptSet}
+            />
+          )}
         </div>
 
       {/* ── Empty state: golden ratio positioning ── */}
