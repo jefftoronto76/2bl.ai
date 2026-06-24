@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "next build",
+  "buildCommand": "tsx scripts/sync-branding.ts && next build",
   "outputDirectory": ".next",
   "devCommand": "next dev",
   "installCommand": "npm install",
