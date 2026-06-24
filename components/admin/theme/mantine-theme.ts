@@ -1,6 +1,6 @@
 'use client';
 
-import { createTheme, MantineColorsTuple } from '@mantine/core';
+import { createTheme, colorsTuple } from '@mantine/core';
 
 /**
  * Mantine theme bridge for the Natural Resource admin interface.
@@ -15,27 +15,23 @@ import { createTheme, MantineColorsTuple } from '@mantine/core';
  * Phase 2 replaces them with Mantine equivalents.
  */
 
-// ── Primary color scale ───────────────────────────────────────────────────────
-// Base: #2d6a4f (CLAUDE.md "Accent green")
-// 10-shade scale for Mantine's tuple requirement.
-const primaryGreen: MantineColorsTuple = [
-  '#f0faf4',   // 0 - lightest tint
-  '#ddf1e5',   // 1
-  '#b7dec6',   // 2
-  '#8ec9a5',   // 3
-  '#6ab688',   // 4
-  '#4fa574',   // 5
-  '#2d6a4f',   // 6 - base (brand green)
-  '#245741',   // 7
-  '#1b4433',   // 8
-  '#133126',   // 9 - darkest shade
-];
-
 export const adminTheme = createTheme({
   // ── Colors ──────────────────────────────────────────────────────────────────
   primaryColor: 'green',
   colors: {
-    green: primaryGreen,
+    // Base: #2d6a4f (CLAUDE.md "Accent green"). Index 6 = base; 0–5 = tints; 7–9 = shades.
+    green: colorsTuple(
+      '#f0faf4',
+      '#ddf1e5',
+      '#b7dec6',
+      '#8ec9a5',
+      '#6ab688',
+      '#4fa574',
+      '#2d6a4f',
+      '#245741',
+      '#1b4433',
+      '#133126',
+    ),
   },
 
   // CLAUDE.md: Background #f9f8f5, Text primary #1a1917
