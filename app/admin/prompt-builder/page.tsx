@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 
-import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton } from '@mantine/core'
+import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton, Modal, Checkbox, Text as MantineText } from '@mantine/core'
 import { useAuthUser } from '@/services/auth/client'
 import { Button } from '@/components/admin/primitives/Button'
 import { Card } from '@/components/admin/primitives/Card'
@@ -64,6 +64,8 @@ export default function PromptBuilderPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [showNewConvDialog, setShowNewConvDialog] = useState(false)
+  const [skipNewConvConfirm, setSkipNewConvConfirm] = useState(false)
   const [promptSets, setPromptSets] = useState<PromptSet[]>([])
   const [activePromptSetId, setActivePromptSetId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -206,8 +208,85 @@ export default function PromptBuilderPage() {
   }
 
   function startNewConversation() {
+    if (chatMessages.length === 0 || localStorage.getItem('composer:skip-new-confirm') === 'true') {
+      resetChat()
+      setActiveConversationId(null)
+      setSidebarOpen(false)
+    } else {
+      setSkipNewConvConfirm(false)
+      setShowNewConvDialog(true)
+    }
+  }
+
+  function confirmNewConversation() {
+    if (skipNewConvConfirm) {
+      localStorage.setItem('composer:skip-new-confirm', 'true')
+    }
+    setShowNewConvDialog(false)
     resetChat()
+    setActiveConversationId(null)
     setSidebarOpen(false)
+  }
+
+  async function handleSelectConversation(id: string) {
+    if (id === activeConversationId) { setSidebarOpen(false); return }
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`)
+      if (!res.ok) return
+      const convo: {
+        id: string
+        messages: { role: 'user' | 'assistant'; content: string; timestamp: number }[]
+        promptSetId: string | null
+      } = await res.json()
+      resetChat()
+      setChatMessages(convo.messages ?? [])
+      setActiveConversationId(convo.id)
+      setSessionStartIndex(0)
+      if (convo.promptSetId) setActivePromptSetId(convo.promptSetId)
+      setSidebarOpen(false)
+    } catch (err) {
+      console.error('[conversations] hydrate failed:', err)
+    }
+  }
+
+  function deriveTitle(messages: ChatMessage[]): string {
+    const firstUser = messages.find(m => m.role === 'user')
+    const t = (firstUser?.content ?? '').trim().replace(/\s+/g, ' ')
+    return t ? (t.length > 48 ? t.slice(0, 48) + '…' : t) : 'New conversation'
+  }
+
+  async function persistConversation(finalMessages: ChatMessage[]) {
+    if (finalMessages.length === 0) return
+    const lastAssistant = [...finalMessages].reverse().find(m => m.role === 'assistant')
+    const preview = (lastAssistant?.content ?? '').trim().slice(0, 140) || null
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const promptSetId = activePromptSetId && UUID_RE.test(activePromptSetId) ? activePromptSetId : null
+
+    try {
+      if (!activeConversationId) {
+        const res = await fetch('/api/admin/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: deriveTitle(finalMessages), preview, messages: finalMessages, promptSetId }),
+        })
+        if (!res.ok) return
+        const row = await res.json()
+        setActiveConversationId(row.id)
+        setConversations(prev => [row, ...prev])
+      } else {
+        const id = activeConversationId
+        const res = await fetch(`/api/admin/conversations/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preview, messages: finalMessages }),
+        })
+        if (!res.ok) return
+        const row = await res.json()
+        setConversations(prev => [row, ...prev.filter(c => c.id !== id)])
+      }
+    } catch (err) {
+      console.error('[conversations] persist failed:', err)
+    }
   }
 
   function createPromptSet(label: string) {
@@ -434,6 +513,11 @@ export default function PromptBuilderPage() {
           warning: d.warning ?? null,
         })))
       }
+      const finalThread: ChatMessage[] = [
+        ...messages,
+        { role: 'assistant', content: displayText, timestamp: placeholderMsg.timestamp },
+      ]
+      void persistConversation(finalThread)
     } catch (err) {
       console.error('[chat] request failed:', err)
       setChatMessages(messages)
@@ -807,7 +891,7 @@ export default function PromptBuilderPage() {
         open={sidebarOpen}
         conversations={conversations}
         activeId={activeConversationId}
-        onSelect={() => {}}
+        onSelect={handleSelectConversation}
         onNew={startNewConversation}
         onClose={() => setSidebarOpen(false)}
       />
@@ -1112,6 +1196,28 @@ export default function PromptBuilderPage() {
         </>
       )}
       </div>
+
+      <Modal
+        opened={showNewConvDialog}
+        onClose={() => setShowNewConvDialog(false)}
+        title="Start a new conversation?"
+        size="sm"
+      >
+        <Stack gap="md">
+          <MantineText size="sm" c="dimmed">
+            Your current conversation will stay saved in the history. You can come back to it any time.
+          </MantineText>
+          <Checkbox
+            label="Don't ask again"
+            checked={skipNewConvConfirm}
+            onChange={e => setSkipNewConvConfirm(e.currentTarget.checked)}
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="subtle" onClick={() => setShowNewConvDialog(false)}>Cancel</Button>
+            <Button onClick={confirmNewConversation}>Start fresh</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </div>
   )
 }
