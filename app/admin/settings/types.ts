@@ -1,8 +1,7 @@
 // app/admin/settings/types.ts
 //
-// Shared types for the Appearance change-history (audit trail) on the Settings
-// › Appearance tab. Read-only: these rows are produced by the audit log that the
-// Appearance "Save" handler already writes — this UI only renders them.
+// Shared types for the Appearance change-history (audit trail) AND the
+// Storefront/Admin branding-target nesting + read-only Sync status.
 
 /** Drives how a before/after value is displayed. */
 export type AppearanceChangeKind = 'color' | 'font' | 'toggle';
@@ -22,4 +21,17 @@ export interface AppearanceChange {
   to: string;
   /** ISO timestamp; the UI formats it (see utils.formatAuditTime). */
   at: string;
+}
+
+export type BrandingTarget = 'storefront' | 'admin';
+
+/** One token flagged by the nightly defaults sync. `message` may be empty. */
+export interface BrandingWarning {
+  token: string;
+  message: string;
+}
+
+export interface BrandingSync {
+  defaults_synced_at: string | null;
+  branding_warnings: BrandingWarning[] | null;
 }

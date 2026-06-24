@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
-    const branding = await getTenantBranding(authCtx.tenant_id);
+    const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
     adminResult = buildAdminTheme(branding, authCtx.tenant_id);

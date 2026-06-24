@@ -39,9 +39,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
-    const branding = await getTenantBranding(authCtx.tenant_id);
+    const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
     console.log('[branding:platform]', JSON.stringify({ branding }));
-    platformResult = buildAdminTheme(branding);
+    platformResult = buildAdminTheme(branding, authCtx.tenant_id);
     console.log('[platform layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       font_primary: branding?.font_primary,

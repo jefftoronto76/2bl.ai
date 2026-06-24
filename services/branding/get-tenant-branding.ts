@@ -16,8 +16,11 @@ export interface TenantBranding {
   use_db_branding: boolean | null;
 }
 
-/** Fetches the tenant_branding row for `tenantId`. Returns null on miss or error. */
-export async function getTenantBranding(tenantId: string): Promise<TenantBranding | null> {
+/** Fetches the tenant_branding row for `tenantId` and `target`. Returns null on miss or error. */
+export async function getTenantBranding(
+  tenantId: string,
+  target: 'storefront' | 'admin' = 'storefront',
+): Promise<TenantBranding | null> {
   unstable_noStore();
   try {
     const supabase = getAdminClient();
@@ -27,6 +30,7 @@ export async function getTenantBranding(tenantId: string): Promise<TenantBrandin
         'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding'
       )
       .eq('tenant_id', tenantId)
+      .eq('target', target)
       .maybeSingle();
 
     if (error) {

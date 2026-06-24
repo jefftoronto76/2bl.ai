@@ -50,7 +50,7 @@ export default function SettingsPage() {
           <Accordion.Item value="appearance">
             <Accordion.Control>
               <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>Appearance</span>
-              <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>Colors, fonts, and brand tokens for your storefront.</span>
+              <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>Colors, fonts, and brand tokens for your storefront and admin console.</span>
             </Accordion.Control>
             <Accordion.Panel>
               <Appearance />
