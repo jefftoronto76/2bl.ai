@@ -12,9 +12,10 @@ import { useAdminUserId } from '@/services/auth/admin-user-context'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 import { DraftCard } from '@/components/admin/prompt-builder/DraftCard'
 import { Composer, type ComposerPill, UploadSavedRow } from '@/components/admin/prompt-builder/Composer'
+import { ConversationSidebar } from '@/components/admin/prompt-builder/ConversationSidebar'
 import {
   type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
-  type DraftCardMeta, type CheckIssue, type CheckResult,
+  type DraftCardMeta, type CheckIssue, type CheckResult, type Conversation,
   TYPES, VALID_TYPES, MAX_EXCHANGES, WARN_THRESHOLD, formatTime,
 } from '@/components/admin/prompt-builder/types'
 
@@ -59,6 +60,9 @@ export default function PromptBuilderPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [copiedAll, setCopiedAll] = useState(false)
   const [existingBlocks, setExistingBlocks] = useState<ExistingBlock[]>([])
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -98,6 +102,26 @@ export default function PromptBuilderPage() {
       }
     }
     fetchBlocks()
+  }, [])
+
+  useEffect(() => {
+    async function fetchConversations() {
+      try {
+        const res = await fetch('/api/admin/conversations')
+        if (!res.ok) { setConversations([]); return }
+        const data: Conversation[] = await res.json()
+        setConversations(data)
+      } catch {
+        setConversations([])
+      }
+    }
+    fetchConversations()
+  }, [])
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setSidebarOpen(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
   }, [])
 
   useEffect(() => {
@@ -157,6 +181,11 @@ export default function PromptBuilderPage() {
     setUploadedFileName(null)
     setUploadedRaw(null)
     setPendingAutoTrigger(false)
+  }
+
+  function startNewConversation() {
+    resetChat()
+    setSidebarOpen(false)
   }
 
   async function handleFileUpload(f: File) {
@@ -726,7 +755,7 @@ export default function PromptBuilderPage() {
   )
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full min-h-0 flex-row overflow-hidden">
       <style>{`@keyframes thinkingPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
       <input
         ref={fileInputRef}
@@ -739,10 +768,37 @@ export default function PromptBuilderPage() {
         }}
         style={{ display: 'none' }}
       />
-      {/* Header */}
-      <div className="flex shrink-0 items-center border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
-        <Text variant="title">Composer</Text>
-      </div>
+
+      <ConversationSidebar
+        open={sidebarOpen}
+        conversations={conversations}
+        activeId={activeConversationId}
+        onSelect={() => {}}
+        onNew={startNewConversation}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Scrim */}
+        {sidebarOpen && (
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{ position: 'absolute', inset: 0, zIndex: 25, background: 'rgba(26,25,23,0.18)' }}
+          />
+        )}
+
+        {/* Header */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(o => !o)}
+            aria-label="Toggle conversations"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '4px', color: 'var(--mantine-color-gray-6)', display: 'flex', alignItems: 'center' }}
+          >
+            <HamburgerIcon />
+          </button>
+          <Text variant="title">Composer</Text>
+        </div>
 
       {/* ── Empty state: golden ratio positioning ── */}
       {!hasMessages && (
@@ -997,6 +1053,15 @@ export default function PromptBuilderPage() {
           </div>
         </>
       )}
+      </div>
     </div>
+  )
+}
+
+function HamburgerIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
   )
 }
