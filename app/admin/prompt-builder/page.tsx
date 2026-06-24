@@ -642,6 +642,7 @@ export default function PromptBuilderPage() {
           owner_id: ownerId,
           is_default: meta.isDefault,
           prompt_set_id: promptSetId,
+          conversation_id: activeConversationId,
           messages: chatMessages.slice(sessionStartIndex).map(m => ({ role: m.role, content: m.content })),
         }),
       })

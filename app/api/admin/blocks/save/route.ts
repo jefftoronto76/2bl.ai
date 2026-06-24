@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     source_id?: string | null
     is_default?: boolean
     prompt_set_id?: string | null
+    conversation_id?: string | null
     messages?: { role: string; content: string }[]
   }
 
