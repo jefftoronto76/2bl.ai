@@ -24,14 +24,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   // Build a dynamic Mantine theme from the tenant's saved branding.
   // Falls back to the inkwell default theme if auth or DB fails.
-  let adminTheme = buildAdminTheme();
+  let adminResult = buildAdminTheme();
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
     const branding = await getTenantBranding(authCtx.tenant_id);
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
-    adminTheme = buildAdminTheme(branding, authCtx.tenant_id);
+    adminResult = buildAdminTheme(branding, authCtx.tenant_id);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       use_db_branding: useDbBranding,
@@ -56,11 +56,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
+  const { theme: adminTheme, textMuted } = adminResult;
   const bodyBg = (adminTheme.other?.bodyBackground as string) ?? '#f9f8f5';
 
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg}}`}</style>
+      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted}}`}</style>
       {brandingFontEntries.map(entry => (
         <link
           key={entry.googleFamily}
