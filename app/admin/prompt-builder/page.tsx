@@ -51,6 +51,7 @@ export default function PromptBuilderPage() {
   const [editingCardBody, setEditingCardBody] = useState('')
   const [closingMessage, setClosingMessage] = useState<string | null>(null)
   const [loadingStatusIndex, setLoadingStatusIndex] = useState(0)
+  const [isBlockDraftingTurn, setIsBlockDraftingTurn] = useState(false)
   const [contentId, setContentId] = useState<string | null>(null)
   const [fileUploading, setFileUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -459,6 +460,7 @@ export default function PromptBuilderPage() {
 
   async function sendChatMessage(messages: ChatMessage[], hiddenPrompt?: string) {
     setChatLoading(true)
+    setIsBlockDraftingTurn(false)
     setClosingMessage(null)
     const placeholderMsg: ChatMessage = { role: 'assistant', content: '', timestamp: Date.now() }
     setChatMessages([...messages, placeholderMsg])
@@ -750,12 +752,16 @@ export default function PromptBuilderPage() {
           ? `The owner has ${existingBlocks.length} existing blocks covering: ${types.join(', ')}. Write a short opening message summarizing what's covered, identifying any missing block types, and suggesting what to build next. Do NOT output the done JSON. Do NOT draft any new blocks.`
           : 'The owner only has default starter blocks — no custom blocks yet. Write a short opening message acknowledging the foundation is set and suggesting they customize or add blocks specific to their business. Do NOT output the done JSON. Do NOT draft any new blocks.'
         sendChatMessage([], trigger)
+        setIsBlockDraftingTurn(true)
       },
     },
     {
       label: 'Identify opportunities',
       disabled: existingBlocks.length === 0,
-      onClick: () => sendChatMessage([], 'The owner wants to know how to improve their current prompt. Based on the existing blocks listed above, identify gaps (missing block types, weak coverage, potential conflicts) and suggest 2-3 specific improvements. Do NOT output the done JSON. Do NOT draft any new blocks.'),
+      onClick: () => {
+        sendChatMessage([], 'The owner wants to know how to improve their current prompt. Based on the existing blocks listed above, identify gaps (missing block types, weak coverage, potential conflicts) and suggest 2-3 specific improvements. Do NOT output the done JSON. Do NOT draft any new blocks.')
+        setIsBlockDraftingTurn(true)
+      },
     },
     {
       label: 'Create a new block',
@@ -1026,7 +1032,7 @@ export default function PromptBuilderPage() {
                 >
                   Here {draftBlocks.length === 1 ? 'is 1 block' : `are ${draftBlocks.length} blocks`} based on your input.
                 </Text>
-              ) : chatLoading && chatMessages.some(m => m.role === 'user') ? (
+              ) : chatLoading && isBlockDraftingTurn ? (
                 <>
                   <Text
                     variant="muted"
