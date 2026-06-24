@@ -42,8 +42,6 @@ function paperStack(bg: string, effect: 'warm' | 'lift' | 'flat', ink?: string) 
   }
 }
 
-// Admin sidebar is the dark Mantine surface (--mantine-color-background-9).
-const SIDEBAR_BG = '#101113';
 const MONO = 'var(--mantine-font-family-monospace)';
 const NAV_ITEMS = ['Inbound', 'Members', 'Composer', 'Settings'];
 
@@ -59,10 +57,10 @@ export function AdminPreview({ t }: { t: ThemeTokens }) {
       <span style={{ fontFamily: MONO, textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 10, color: 'var(--mantine-color-gray-6)' }}>
         Live preview
       </span>
-      <div className="theme-preview" style={{ padding: 0, overflow: 'hidden', background: t.background, fontFamily: bodyFont }}>
+      <div className="theme-preview" style={{ padding: 0, overflow: 'hidden', background: '#f9f8f5', fontFamily: bodyFont }}>
         <div style={{ display: 'flex', minHeight: 344 }}>
           {/* ── Sidebar ── */}
-          <div style={{ width: 140, flex: '0 0 140px', background: SIDEBAR_BG, padding: '15px 11px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ width: 140, flex: '0 0 140px', background: t.background, padding: '15px 11px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ marginBottom: 13, padding: '0 5px' }}>
               <div style={{ fontFamily: headFont, color: '#fff', fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Second Brain</div>
               <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.18em', textTransform: 'uppercase', color: t.accent, marginTop: 3 }}>Admin</div>
