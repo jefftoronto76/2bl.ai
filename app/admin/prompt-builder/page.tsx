@@ -828,7 +828,9 @@ export default function PromptBuilderPage() {
             aria-label="Toggle conversations"
             aria-expanded={sidebarOpen}
             title="Conversations"
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--mantine-color-gray-6)', display: 'flex', alignItems: 'center' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--mantine-color-gray-1)'; e.currentTarget.style.borderColor = 'var(--mantine-color-gray-4)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = 'var(--mantine-color-gray-3)' }}
+            style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, flex: '0 0 auto', border: '1px solid var(--mantine-color-gray-3)', background: '#fff', borderRadius: 'var(--mantine-radius-sm)', color: 'var(--mantine-color-gray-7)', cursor: 'pointer', transition: 'background 120ms ease, border-color 120ms ease' }}
           >
             <HamburgerIcon />
           </button>
@@ -880,28 +882,32 @@ export default function PromptBuilderPage() {
 
       {/* ── Empty state ── */}
       {!hasMessages && (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-6 sm:px-6">
-          <p
-            className="select-none text-center"
-            style={{
-              fontFamily: 'var(--mantine-font-family-headings)',
-              fontSize: 'clamp(1.25rem, 2.5vw, 1.6rem)',
-              color: 'var(--mantine-color-gray-7)',
-              fontWeight: 500,
-              letterSpacing: '-0.02em',
-              maxWidth: 440,
-              lineHeight: 1.35,
-              margin: 0,
-            }}
-          >
-            Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
-            <br />
-            <span style={{ display: 'inline-block', marginTop: 8, fontFamily: 'var(--mantine-font-family)', fontSize: 14, fontWeight: 400, color: 'var(--mantine-color-dimmed)' }}>
-              Build a block, or pick a starting point below.
-            </span>
-          </p>
+        <div className="flex min-h-0 flex-1 flex-col px-4 py-6 sm:px-6">
+          {/* Welcome — centered in the space above the composer */}
+          <div className="flex flex-1 flex-col items-center justify-center">
+            <p
+              className="select-none text-center"
+              style={{
+                fontFamily: 'var(--mantine-font-family-headings)',
+                fontSize: 'clamp(1.25rem, 2.5vw, 1.6rem)',
+                color: 'var(--mantine-color-gray-7)',
+                fontWeight: 500,
+                letterSpacing: '-0.02em',
+                maxWidth: 440,
+                lineHeight: 1.35,
+                margin: 0,
+              }}
+            >
+              Welcome back{authUser?.name ? `, ${authUser.name.split(' ')[0]}` : ''}.
+              <br />
+              <span style={{ display: 'inline-block', marginTop: 8, fontFamily: 'var(--mantine-font-family)', fontSize: 14, fontWeight: 400, color: 'var(--mantine-color-dimmed)' }}>
+                Build a block, or pick a starting point below.
+              </span>
+            </p>
+          </div>
 
-          <div className="mt-5 flex w-full flex-col items-center gap-2">
+          {/* Composer — pinned toward the bottom (matches the approved prototype) */}
+          <div className="flex w-full flex-col items-center gap-2">
             <Composer
               input={chatInput}
               onInputChange={setChatInput}
