@@ -145,3 +145,20 @@ export async function updateConversation(authCtx: AuthScope, id: string, input: 
   }
   return { ok: true, data: { id: data.id, title: data.title, preview: data.preview, updatedAt: toMs(data.updated_at) } }
 }
+
+// ── DELETE /api/admin/conversations/:id ───────────────────────────────────────
+export async function deleteConversation(authCtx: AuthScope, id: string): Promise<Result<{ id: string }>> {
+  const supabase = getAdminClient()
+  const { error } = await supabase
+    .from('prompt_conversations')
+    .delete()
+    .eq('tenant_id', authCtx.tenant_id)
+    .eq('owner_id', authCtx.owner_id)
+    .eq('id', id)
+
+  if (error) {
+    console.error('[conversations] delete failed:', error.message)
+    return { ok: false, status: 500, error: error.message }
+  }
+  return { ok: true, data: { id } }
+}

@@ -250,6 +250,34 @@ export default function PromptBuilderPage() {
     }
   }
 
+  async function handleRenameConversation(id: string, title: string) {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title: trimmed } : c))
+    try {
+      await fetch(`/api/admin/conversations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: trimmed }),
+      })
+    } catch (err) {
+      console.error('[conversations] rename failed:', err)
+    }
+  }
+
+  async function handleDeleteConversation(id: string) {
+    setConversations(prev => prev.filter(c => c.id !== id))
+    if (activeConversationId === id) {
+      resetChat()
+      setActiveConversationId(null)
+    }
+    try {
+      await fetch(`/api/admin/conversations/${id}`, { method: 'DELETE' })
+    } catch (err) {
+      console.error('[conversations] delete failed:', err)
+    }
+  }
+
   function deriveTitle(messages: ChatMessage[]): string {
     const firstUser = messages.find(m => m.role === 'user')
     const t = (firstUser?.content ?? '').trim().replace(/\s+/g, ' ')
@@ -901,6 +929,8 @@ export default function PromptBuilderPage() {
         onSelect={handleSelectConversation}
         onNew={startNewConversation}
         onClose={() => setSidebarOpen(false)}
+        onRename={handleRenameConversation}
+        onDelete={handleDeleteConversation}
       />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

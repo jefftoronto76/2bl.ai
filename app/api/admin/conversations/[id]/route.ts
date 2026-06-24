@@ -4,7 +4,7 @@
 // drawer. Same auth/parse/delegate pattern as the sibling routes.
 
 import { getAuthContext } from '@/services/auth'
-import { getConversation, updateConversation } from '@/services/prompt/conversations'
+import { getConversation, updateConversation, deleteConversation } from '@/services/prompt/conversations'
 import { logEvent, AuditAction } from '@/services/audit'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -65,5 +65,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     correlation_id: req.headers.get('x-correlation-id'),
   })
 
+  return Response.json(result.data)
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  let authCtx: { owner_id: string; tenant_id: string }
+  try {
+    authCtx = await getAuthContext()
+  } catch (err) {
+    console.error('[conversations/:id] auth failed:', err instanceof Error ? err.message : err)
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const { id } = await params
+  const result = await deleteConversation(authCtx, id)
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
+  }
   return Response.json(result.data)
 }

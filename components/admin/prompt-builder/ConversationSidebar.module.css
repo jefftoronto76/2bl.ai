@@ -1,4 +1,4 @@
-/* ConversationSidebar — NEW. Overlay history drawer for the Composer screen.
+/* ConversationSidebar — UPDATED. Overlay history drawer + per-row Rename/Delete.
    Literal hex inlined from the approved prototype; swap for var(--mantine-color-*)
    where the theme already defines them. */
 
@@ -87,17 +87,25 @@
   padding: 14px 8px 5px;
 }
 
+/* Row container (was the button itself; now wraps main + actions) */
 .thread {
-  display: flex; flex-direction: column; gap: 2px;
-  width: 100%; text-align: left;
-  border: none; background: transparent;
+  position: relative;
+  display: flex; align-items: stretch;
   border-radius: var(--mantine-radius-sm, 4px);
-  padding: 8px 10px;
-  cursor: pointer;
   transition: background-color 110ms ease;
 }
 .thread:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
 .active { background: rgba(45, 106, 79, 0.10); }
+
+.threadMain {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  text-align: left;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 8px 34px 8px 10px;   /* right room for the kebab */
+  cursor: pointer;
+}
 
 .row { display: flex; align-items: baseline; gap: 8px; }
 .threadTitle {
@@ -117,6 +125,68 @@
   font-size: 12px;
   color: var(--mantine-color-dimmed, rgba(26, 25, 23, 0.55));
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Row actions: kebab + menu + delete-confirm + inline rename ───────────── */
+.kebab {
+  position: absolute; top: 6px; right: 6px;
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  color: var(--mantine-color-gray-6, #868e96);
+  cursor: pointer; opacity: 0;
+  transition: opacity 110ms ease, background-color 110ms ease;
+}
+.thread:hover .kebab, .menuOpen .kebab { opacity: 1; }
+.kebab:hover { background: var(--mantine-color-gray-2, #e9ecef); color: var(--mantine-color-gray-8, #343a40); }
+
+.menu {
+  position: absolute; top: 32px; right: 6px; z-index: 40;
+  min-width: 170px;
+  background: #fff;
+  border: 1px solid var(--mantine-color-gray-2, #e9ecef);
+  border-radius: var(--mantine-radius-md, 8px);
+  box-shadow: 0 12px 30px -12px rgba(26, 25, 23, 0.34);
+  padding: 5px;
+}
+.menuItem {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  border: none; background: transparent;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 8px 10px;
+  font-size: 13px; color: var(--mantine-color-text, #1a1917);
+  cursor: pointer;
+}
+.menuItem:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.danger { color: var(--mantine-color-red-6, #e03131); }
+.danger:hover { background: rgba(224, 49, 49, 0.08); }
+
+.confirm { padding: 12px; min-width: 204px; }
+.confirmQ { display: block; font-size: 12.5px; color: var(--mantine-color-text, #1a1917); margin-bottom: 10px; }
+.confirmActions { display: flex; justify-content: flex-end; gap: 6px; }
+.confirmBtn {
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6);
+  background: #fff;
+  border-radius: var(--mantine-radius-sm, 4px);
+  padding: 5px 11px;
+  font-size: 12.5px; color: var(--mantine-color-text, #1a1917);
+  cursor: pointer;
+}
+.confirmBtn:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.confirmDanger { border-color: transparent; background: var(--mantine-color-red-6, #e03131); color: #fff; }
+.confirmDanger:hover { background: var(--mantine-color-red-7, #c92a2a); }
+
+.rename {
+  flex: 1; min-width: 0;
+  margin: 5px 6px; padding: 6px 8px;
+  border: 1px solid var(--mantine-color-green-5, #4fa574);
+  border-radius: var(--mantine-radius-sm, 4px);
+  font-size: 13.5px; font-family: inherit;
+  color: var(--mantine-color-text, #1a1917);
+  background: #fff; outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 165, 116, 0.18);
 }
 
 @media (max-width: 860px) {
