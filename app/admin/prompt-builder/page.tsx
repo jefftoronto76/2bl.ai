@@ -16,7 +16,7 @@ import { ConversationSidebar } from '@/components/admin/prompt-builder/Conversat
 import { PromptSetPicker } from '@/components/admin/prompt-builder/PromptSetPicker'
 import {
   type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
-  type DraftCardMeta, type CheckIssue, type CheckResult, type Conversation, type PromptSet,
+  type DraftCardMeta, type CheckResult, type Conversation, type PromptSet,
   TYPES, VALID_TYPES, MAX_EXCHANGES, WARN_THRESHOLD, formatTime,
 } from '@/components/admin/prompt-builder/types'
 
