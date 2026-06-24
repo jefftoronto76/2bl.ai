@@ -64,7 +64,7 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
           onClick={() => setOpen(o => !o)}
         >
           <span className={styles.name}>{active.label}</span>
-          <span className={`${styles.badge} ${active.status === 'Live' ? styles.live : styles.draft}`}>
+          <span className={`${styles.badge} ${active.status?.toLowerCase() === 'live' ? styles.live : styles.draft}`}>
             {active.status}
           </span>
           <ChevronRight className={`${styles.caret} ${open ? styles.caretOpen : ''}`} />
@@ -83,7 +83,7 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
               >
                 <span className={styles.itemName}>{s.label}</span>
                 <span className={styles.itemMeta}>v{s.version}</span>
-                <span className={`${styles.badge} ${s.status === 'Live' ? styles.live : styles.draft}`}>
+                <span className={`${styles.badge} ${s.status?.toLowerCase() === 'live' ? styles.live : styles.draft}`}>
                   {s.status}
                 </span>
                 <span className={styles.itemCheck}>{s.id === activeId ? <Check /> : null}</span>
