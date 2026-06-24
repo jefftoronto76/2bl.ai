@@ -58,12 +58,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
-  const { theme: adminTheme, textMuted } = adminResult;
+  const { theme: adminTheme, textMuted, accentHover } = adminResult;
   const bodyBg = (adminTheme.other?.bodyBackground as string) ?? '#f9f8f5';
 
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted}}`}</style>
+      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted};--admin-accent-hover:${accentHover}}`}</style>
       {faviconBase && (
         <>
           <link rel="icon" href={`${faviconBase}/favicon.ico`} sizes="any" />

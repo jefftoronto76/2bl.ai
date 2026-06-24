@@ -61,12 +61,12 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     console.error('[platform layout] branding fetch failed:', err instanceof Error ? err.message : err);
   }
 
-  const { theme: platformTheme, textMuted } = platformResult;
+  const { theme: platformTheme, textMuted, accentHover } = platformResult;
   const bodyBg = (platformTheme.other?.bodyBackground as string) ?? '#f9f8f5';
 
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted}}`}</style>
+      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted};--admin-accent-hover:${accentHover}}`}</style>
       {brandingFontEntries.map(entry => (
         <link
           key={entry.googleFamily}

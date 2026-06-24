@@ -26,6 +26,7 @@ import './appearance.css';
 interface BrandingRow {
   background:     string;
   accent:         string;
+  accent_hover:   string;
   lede:           string;
   heading:        string;
   body:           string;
@@ -40,6 +41,7 @@ interface BrandingRow {
 const EMPTY: BrandingRow = {
   background:      '',
   accent:          '',
+  accent_hover:    '',
   lede:            '',
   heading:         '',
   body:            '',
@@ -64,6 +66,7 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
   return {
     background:      (row.background      as string  | null) ?? '',
     accent:          (row.accent          as string  | null) ?? '',
+    accent_hover:    (row.accent_hover    as string  | null) ?? '',
     lede:            (row.lede            as string  | null) ?? '',
     heading:         (row.heading         as string  | null) ?? '',
     body:            (row.body            as string  | null) ?? '',
@@ -369,6 +372,14 @@ function BrandingEditor({ target }: { target: BrandingTarget }) {
                 value={values.accent}
                 onChange={v => set('accent', v)}
               />
+              {target === 'admin' && (
+                <ColorRow
+                  label="Accent hover"
+                  description="Nav item hover color. Defaults to accent when empty."
+                  value={values.accent_hover}
+                  onChange={v => set('accent_hover', v)}
+                />
+              )}
               <Switch
                 label="Apply accent to buttons"
                 description="When off, primary buttons stay neutral (ink)."
