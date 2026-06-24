@@ -19,77 +19,12 @@ import { Card } from '@/components/admin/primitives/Card'
 import { Text } from '@/components/admin/primitives/Text'
 import { useAdminUserId } from '@/services/auth/admin-user-context'
 import { readDataStream } from '@/services/chat/server/stream-utils'
-
-// ─── Types & constants ───────────────────────────────────────────────────────
-
-type BlockType = 'identity' | 'knowledge' | 'guardrail' | 'process' | 'escalation'
-
-interface Topic {
-  id: string
-  name: string
-  type: string
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-}
-
-interface DraftBlock {
-  title: string
-  content: string
-  suggestedType?: BlockType
-  suggestedTopic?: string
-  warning?: string
-}
-
-interface ExistingBlock {
-  id: string
-  title: string
-  type: string
-  body: string
-  is_default: boolean
-}
-
-interface DraftCardMeta {
-  blockName: string
-  type: BlockType | ''
-  topicName: string
-  isDefault: boolean
-  saveError: string | null
-  isSaving: boolean
-  isChecking: boolean
-  issues: CheckIssue[]
-  warning: string | null
-}
-
-interface CheckIssue {
-  description: string
-  offendingText: string | null
-}
-
-interface CheckResult {
-  ok: boolean
-  issues: CheckIssue[]
-}
-
-const TYPES: { value: BlockType; label: string }[] = [
-  { value: 'identity', label: 'Identity & Voice' },
-  { value: 'knowledge', label: 'Knowledge' },
-  { value: 'guardrail', label: 'Guardrail' },
-  { value: 'process', label: 'Process' },
-  { value: 'escalation', label: 'Escalation' },
-]
-
-const VALID_TYPES = new Set<string>(TYPES.map(t => t.value))
-
-const MAX_EXCHANGES = 10
-const WARN_THRESHOLD = 8
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
+import { DraftCard } from '@/components/admin/prompt-builder/DraftCard'
+import {
+  type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
+  type DraftCardMeta, type CheckIssue, type CheckResult,
+  TYPES, VALID_TYPES, MAX_EXCHANGES, WARN_THRESHOLD, formatTime,
+} from '@/components/admin/prompt-builder/types'
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -1199,175 +1134,26 @@ export default function PromptBuilderPage() {
               {draftBlocks.map((draft, cardIndex) => {
                 const meta = draftMetas[cardIndex]
                 if (!meta) return null
-                const isEditingCard = editingCardIndex === cardIndex
-                const hasIssues = meta.issues.length > 0
-                const busy = meta.isChecking || meta.isSaving
                 return (
-                  <Card key={cardIndex} variant="outlined">
-                    <Stack gap="sm">
-                      <Group justify="space-between" wrap="nowrap">
-                        <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Block ready{draftBlocks.length > 1 ? ` (${cardIndex + 1} of ${draftBlocks.length})` : ''}
-                        </Text>
-                        {!isEditingCard && (
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            size="sm"
-                            onClick={() => handleEditCard(cardIndex)}
-                            aria-label="Edit block content"
-                          >
-                            <IconPencil size={14} />
-                          </ActionIcon>
-                        )}
-                      </Group>
-                      {isEditingCard ? (
-                        <Stack gap="xs">
-                          <Textarea
-                            value={editingCardBody}
-                            onChange={e => setEditingCardBody(e.currentTarget.value)}
-                            autosize
-                            minRows={4}
-                            maxRows={16}
-                            size="sm"
-                            styles={{
-                              input: {
-                                fontSize: 'var(--mantine-font-size-sm)',
-                                lineHeight: 1.6,
-                              },
-                            }}
-                          />
-                          <Group gap="xs">
-                            <Button variant="primary" size="sm" onClick={() => handleSaveEditCard(cardIndex)}>
-                              Save
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={handleCancelEditCard}>
-                              Cancel
-                            </Button>
-                          </Group>
-                        </Stack>
-                      ) : (
-                        <Text variant="muted" style={{ whiteSpace: 'pre-wrap', fontSize: 'var(--mantine-font-size-sm)', lineHeight: 1.6 }}>
-                          {draft.content}
-                        </Text>
-                      )}
-                      {meta.warning && (
-                        <Alert color="yellow" variant="light" radius="sm" p="sm">
-                          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-yellow-9)' }}>
-                            {meta.warning}
-                          </Text>
-                        </Alert>
-                      )}
-                      {hasIssues && (
-                        <Alert
-                          color="yellow"
-                          variant="light"
-                          radius="sm"
-                          title="Safety check flagged this block"
-                        >
-                          <Stack gap="xs">
-                            {meta.issues.map((issue, i) => (
-                              <Stack key={i} gap={4}>
-                                <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-                                  {issue.description}
-                                </Text>
-                                {issue.offendingText && (
-                                  <Stack gap={4}>
-                                    <Text
-                                      variant="muted"
-                                      style={{
-                                        fontFamily: 'var(--mantine-font-family-monospace)',
-                                        fontSize: 'var(--mantine-font-size-xs)',
-                                        backgroundColor: 'var(--mantine-color-yellow-0)',
-                                        padding: '2px 6px',
-                                        borderRadius: 'var(--mantine-radius-sm)',
-                                        wordBreak: 'break-word',
-                                      }}
-                                    >
-                                      {issue.offendingText}
-                                    </Text>
-                                    <MantineButton
-                                      variant="subtle"
-                                      color="yellow"
-                                      size="xs"
-                                      onClick={() => handleRemoveOffendingFromCard(cardIndex, issue.offendingText!)}
-                                      disabled={busy}
-                                      style={{ alignSelf: 'flex-start' }}
-                                    >
-                                      Remove
-                                    </MantineButton>
-                                  </Stack>
-                                )}
-                              </Stack>
-                            ))}
-                          </Stack>
-                        </Alert>
-                      )}
-                      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                        <TextInput
-                          label="Block name"
-                          value={meta.blockName}
-                          onChange={e => updateDraftMeta(cardIndex, { blockName: e.currentTarget.value })}
-                          placeholder="e.g. Curious Mindset"
-                          size="sm"
-                        />
-                        <Select
-                          label="Type"
-                          placeholder="Select a type..."
-                          data={TYPES}
-                          value={meta.type || null}
-                          onChange={v => updateDraftMeta(cardIndex, { type: (v ?? '') as BlockType | '' })}
-                          allowDeselect={false}
-                          size="sm"
-                        />
-                        <TextInput
-                          label="Topic"
-                          value={meta.topicName}
-                          onChange={e => updateDraftMeta(cardIndex, { topicName: e.currentTarget.value })}
-                          placeholder="e.g. About, Services..."
-                          size="sm"
-                        />
-                      </SimpleGrid>
-                      {isPlatformAdmin && (
-                        <Checkbox
-                          label="Mark as default block"
-                          checked={meta.isDefault}
-                          onChange={(e) => updateDraftMeta(cardIndex, { isDefault: e.currentTarget.checked })}
-                          size="sm"
-                        />
-                      )}
-                      {meta.saveError && (
-                        <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-red-6)' }}>
-                          {meta.saveError}
-                        </Text>
-                      )}
-                      <Group gap="xs">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleCheckAndSaveBlock(cardIndex)}
-                          disabled={busy}
-                        >
-                          {meta.isChecking ? 'Checking...' : meta.isSaving ? 'Saving...' : 'Check & Save'}
-                        </Button>
-                        {hasIssues && (
-                          <MantineButton
-                            variant="default"
-                            color="yellow"
-                            size="sm"
-                            onClick={() => handleSaveAnywayBlock(cardIndex)}
-                            disabled={meta.isChecking}
-                            loading={meta.isSaving}
-                          >
-                            Save Anyway
-                          </MantineButton>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => removeDraft(cardIndex)} disabled={busy}>
-                          Discard
-                        </Button>
-                      </Group>
-                    </Stack>
-                  </Card>
+                  <DraftCard
+                    key={cardIndex}
+                    draft={draft}
+                    meta={meta}
+                    index={cardIndex}
+                    count={draftBlocks.length}
+                    isPlatformAdmin={isPlatformAdmin}
+                    isEditing={editingCardIndex === cardIndex}
+                    editingBody={editingCardBody}
+                    onEditingBodyChange={setEditingCardBody}
+                    onStartEdit={() => handleEditCard(cardIndex)}
+                    onSaveEdit={() => handleSaveEditCard(cardIndex)}
+                    onCancelEdit={handleCancelEditCard}
+                    onMetaChange={updates => updateDraftMeta(cardIndex, updates)}
+                    onCheckAndSave={() => handleCheckAndSaveBlock(cardIndex)}
+                    onSaveAnyway={() => handleSaveAnywayBlock(cardIndex)}
+                    onRemove={() => removeDraft(cardIndex)}
+                    onRemoveOffending={text => handleRemoveOffendingFromCard(cardIndex, text)}
+                  />
                 )
               })}
 
