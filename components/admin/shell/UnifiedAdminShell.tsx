@@ -20,7 +20,7 @@ function Wordmark({ tenantName }: { tenantName: string }) {
       <Text
         size="md"
         fw={400}
-        c="gray.1"
+        c="ink.1"
         style={{
           fontFamily: 'var(--mantine-font-family-headings)',
           letterSpacing: '-0.01em',
@@ -30,7 +30,7 @@ function Wordmark({ tenantName }: { tenantName: string }) {
       </Text>
       <Text
         size="xs"
-        c="green.6"
+        c="brand.6"
         style={{
           fontFamily: 'var(--mantine-font-family-monospace)',
           fontSize: '9px',
@@ -46,7 +46,7 @@ function Wordmark({ tenantName }: { tenantName: string }) {
 
 function NavContent({ tenantName, isPlatformAdmin, onNavigate }: { tenantName: string; isPlatformAdmin: boolean; onNavigate?: () => void }) {
   return (
-    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-dark-9)' }}>
+    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-background-9)' }}>
       <Wordmark tenantName={tenantName} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
@@ -75,8 +75,8 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
       <AppShell.Header
         hiddenFrom="md"
         style={{
-          backgroundColor: 'var(--mantine-color-white)',
-          borderBottom: '1px solid var(--mantine-color-gray-2)',
+          backgroundColor: 'var(--mantine-color-body)',
+          borderBottom: '1px solid var(--mantine-color-background-7)',
         }}
       >
         <Group h="100%" px="md" gap={12}>
@@ -93,7 +93,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
               style={{
                 fontFamily: 'var(--mantine-font-family-headings)',
                 fontSize: '15px',
-                color: 'var(--mantine-color-dark-9)',
+                color: 'var(--mantine-color-ink-6)',
               }}
             >
               {title}
@@ -109,8 +109,8 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         visibleFrom="md"
         data-mantine-color-scheme="dark"
         style={{
-          backgroundColor: 'var(--mantine-color-dark-9)',
-          borderRight: '1px solid var(--mantine-color-dark-6)',
+          backgroundColor: 'var(--mantine-color-background-9)',
+          borderRight: '1px solid var(--mantine-color-background-7)',
         }}
       >
         <AppShell.Section>
@@ -137,7 +137,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         transitionProps={{ duration: 400 }}
         styles={{
           body: { padding: 0, height: '100%' },
-          content: { backgroundColor: 'var(--mantine-color-dark-9)' },
+          content: { backgroundColor: 'var(--mantine-color-background-9)' },
         }}
       >
         <NavContent tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={close} />
