@@ -1,4 +1,4 @@
-import { createTheme, MantineColorsTuple } from '@mantine/core';
+import { createTheme, colorsTuple } from '@mantine/core';
 import { isValidHex } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
 
@@ -15,52 +15,6 @@ import { ALL_FONTS } from '@/services/branding/font-registry';
  * Phase 2 replaces them with Mantine equivalents.
  */
 
-// Fallback 10-shade green scale (base: #2d6a4f, CLAUDE.md "Accent green").
-const primaryGreen: MantineColorsTuple = [
-  '#f0faf4',   // 0 - lightest tint
-  '#ddf1e5',   // 1
-  '#b7dec6',   // 2
-  '#8ec9a5',   // 3
-  '#6ab688',   // 4
-  '#4fa574',   // 5
-  '#2d6a4f',   // 6 - base (brand green)
-  '#245741',   // 7
-  '#1b4433',   // 8
-  '#133126',   // 9 - darkest shade
-];
-
-/**
- * Generates a 10-shade Mantine color tuple from a single hex color.
- * Index 6 = base color; 0–5 = tints (blended toward white);
- * 7–9 = shades (blended toward black).
- */
-function hexToMantineScale(hex: string): MantineColorsTuple {
-  if (!isValidHex(hex)) return primaryGreen;
-
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-
-  const toHex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
-  const blend = (base: number, target: number, t: number) => base + (target - base) * t;
-  const shade = (t: number, dark = false) => {
-    const target = dark ? 0 : 255;
-    return `#${toHex(blend(r, target, t))}${toHex(blend(g, target, t))}${toHex(blend(b, target, t))}`;
-  };
-
-  return [
-    shade(0.90),       // 0 — 90% toward white
-    shade(0.75),       // 1
-    shade(0.60),       // 2
-    shade(0.45),       // 3
-    shade(0.30),       // 4
-    shade(0.15),       // 5
-    hex,               // 6 — base
-    shade(0.15, true), // 7 — 15% toward black
-    shade(0.30, true), // 8
-    shade(0.45, true), // 9
-  ] as MantineColorsTuple;
-}
 
 interface BrandingForTheme {
   background?:     string | null;
@@ -141,9 +95,9 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
     // ── Colors ──────────────────────────────────────────────────────────────────
     primaryColor: 'brand',
     colors: {
-      brand:      hexToMantineScale(accent),
-      ink:        hexToMantineScale(ink),
-      background: hexToMantineScale(bg),
+      brand:      colorsTuple(accent),
+      ink:        colorsTuple(ink),
+      background: colorsTuple(bg),
     },
 
     // Kept for backward compat — being phased out in favour of theme.colors.*
