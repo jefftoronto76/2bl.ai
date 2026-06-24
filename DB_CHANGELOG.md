@@ -44,6 +44,13 @@ ADD COLUMN conversation_id uuid REFERENCES prompt_conversations(id);
 CREATE INDEX blocks_conversation_id_idx ON blocks(conversation_id);
 ```
 
+### Add `is_master` to `prompt_sets`
+```sql
+ALTER TABLE prompt_sets
+ADD COLUMN is_master boolean NOT NULL DEFAULT false;
+```
+Platform-level flag. One row across all tenants has `is_master = true` — designates the system prompt used by all tenant Composers when building blocks. Falls back to hardcoded `BLOCKS_COMPOSER_SYSTEM` constant when no row is flagged.
+
 ---
 
 ## 2026-06-18
