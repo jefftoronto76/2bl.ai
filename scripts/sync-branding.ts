@@ -288,6 +288,7 @@ async function main(): Promise<void> {
       .from('tenant_branding')
       .select('background,accent,heading,lede,body,font_primary,font_secondary,font_mono,use_db_branding')
       .eq('tenant_id', tenant.tenantId)
+      .eq('target', 'storefront')
       .single<TenantBrandingRow>();
 
     if (fetchError || !branding) {
@@ -316,7 +317,8 @@ async function main(): Promise<void> {
           defaults_synced_at: new Date().toISOString(),
           branding_warnings:  warnings.length > 0 ? JSON.stringify(warnings) : null,
         })
-        .eq('tenant_id', tenant.tenantId);
+        .eq('tenant_id', tenant.tenantId)
+        .eq('target', 'storefront');
 
       if (writeError) {
         log(`  [ERROR]  DB write-back failed: ${writeError.message}`);
