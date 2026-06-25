@@ -38,6 +38,12 @@ export const TYPE_COMPILE_ORDER: Record<BlockType, number> = {
   escalation: 5,
 }
 
+// Stable left-to-right order matching TYPE_COMPILE_ORDER — consumed by the
+// segmented meter, token donut, and overview legend so they all agree.
+export const ORDERED_TYPES: BlockType[] = [...BLOCK_TYPES].sort(
+  (a, b) => TYPE_COMPILE_ORDER[a] - TYPE_COMPILE_ORDER[b],
+)
+
 const ORDINAL_SUFFIX: Record<number, string> = {
   1: '1st',
   2: '2nd',

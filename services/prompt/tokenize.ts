@@ -1,5 +1,7 @@
 export const CHARS_PER_TOKEN = 4
 
+export const TOKEN_LIMIT = 8000
+
 /**
  * Approximate token count for a given content string. Uses the
  * 4-chars-per-token heuristic that's been the convention across

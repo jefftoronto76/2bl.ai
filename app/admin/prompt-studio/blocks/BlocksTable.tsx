@@ -14,7 +14,9 @@ import {
 import { useMediaQuery } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { Text } from '@/components/admin/primitives/Text'
-import { SegmentedTokenMeter } from '@/components/admin/content/SegmentedTokenMeter'
+import { BlocksOverview } from './BlocksOverview'
+import { SummarySection } from './SummarySection'
+import layout from './BlocksLayout.module.css'
 import { BulkActionsBar } from '@/components/admin/content/BulkActionsBar'
 import { BlockRow as DesktopBlockRow } from '@/components/admin/content/BlockRow'
 import { BlockCard } from '@/components/admin/content/BlockCard'
@@ -61,7 +63,13 @@ type DuplicateResponse = {
   updated_at: string
 }
 
-export function BlocksTable({ rows }: { rows: BlockRow[] }) {
+export function BlocksTable({
+  rows,
+  overview,
+}: {
+  rows: BlockRow[]
+  overview?: { version?: number | null; status?: string | null }
+}) {
   const [items, setItems] = useState<BlockRow[]>(rows)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -362,15 +370,6 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
     setDeleteTargetId(null)
   }
 
-  const activeMeterBlocks = items
-    .filter(b => b.status === 'active')
-    .map(b => ({
-      id: b.id,
-      title: b.title,
-      type: b.type as BlockType,
-      body: b.body ?? '',
-    }))
-
   // View-level filter. Runs synchronously on every render — `query` is
   // local to useBlocksFilters (instant keystroke feedback), and the
   // three filter guards short-circuit in cheapest-first order. The
@@ -396,6 +395,15 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
   const maxVisibleTokens = filtered.length > 0
     ? Math.max(0, ...filtered.map(b => tokensFor(b.body)))
     : 0
+
+  // Summary recall stats — shown in the collapsed bar when the summary is hidden.
+  // Active-only, matching BlocksOverview (the meter measures reality, not the view).
+  const activeBlocks = items.filter(b => b.status === 'active')
+  const summaryStats = {
+    status: overview?.status ?? null,
+    count: activeBlocks.length,
+    tokens: activeBlocks.reduce((sum, b) => sum + tokensFor(b.body), 0),
+  }
 
   // Select-all is scoped to the currently-visible (filtered) set.
   // Bulk actions still operate on all selectedIds — so selections
@@ -446,10 +454,13 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
 
   return (
     <>
-      {/* Segmented token meter — one segment per active block, colored by type */}
-      <Box mb="md">
-        <SegmentedTokenMeter blocks={activeMeterBlocks} />
-      </Box>
+      <SummarySection stats={summaryStats}>
+        <BlocksOverview
+          blocks={items}
+          version={overview?.version}
+          status={overview?.status}
+        />
+      </SummarySection>
 
       {items.length === 0 ? (
         <Center h={200}>
@@ -466,7 +477,7 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
               redesign rescoped to page rework, so the gate is removed.
               Step 9 of the rework swaps the SegmentedControls for
               Chip.Group, which wraps cleanly at narrow viewports. */}
-          <Box mb="md">
+          <Box className={layout.stickyToolbar}>
             <BlocksToolbar
               query={query}
               onQueryChange={setQuery}
