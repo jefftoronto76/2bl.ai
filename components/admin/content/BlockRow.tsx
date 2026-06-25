@@ -14,6 +14,7 @@ import {
   Stack,
   Switch,
   Table,
+  Tooltip,
 } from '@mantine/core'
 import { IconCheck, IconChevronRight, IconClipboard, IconCopy, IconPencil, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
@@ -370,21 +371,23 @@ export function BlockRow({
         />
       </Table.Td>
       <Table.Td style={{ width: 28 }}>
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          size="sm"
-          onClick={() => onToggleExpand?.(block.id)}
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
-        >
-          <IconChevronRight
-            size={14}
-            style={{
-              transform: isExpanded ? 'rotate(90deg)' : 'none',
-              transition: 'transform 120ms ease',
-            }}
-          />
-        </ActionIcon>
+        <Tooltip label={isExpanded ? 'Collapse' : 'Expand'} openDelay={300} withArrow>
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            onClick={() => onToggleExpand?.(block.id)}
+            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            <IconChevronRight
+              size={14}
+              style={{
+                transform: isExpanded ? 'rotate(90deg)' : 'none',
+                transition: 'transform 120ms ease',
+              }}
+            />
+          </ActionIcon>
+        </Tooltip>
       </Table.Td>
       <Table.Td>
         <Stack gap={2}>
@@ -514,26 +517,30 @@ export function BlockRow({
       </Table.Td>
       <Table.Td>
         <Group gap="xs" wrap="nowrap">
-          <ActionIcon
-            variant="subtle"
-            color={copied ? 'green' : 'gray'}
-            size="md"
-            onClick={handleCopyBody}
-            disabled={isSaving}
-            aria-label="Copy block body"
-          >
-            {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
-          </ActionIcon>
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            size="md"
-            onClick={handleEdit}
-            disabled={isSaving}
-            aria-label="Edit block"
-          >
-            <IconPencil size={16} />
-          </ActionIcon>
+          <Tooltip label={copied ? 'Copied!' : 'Copy block body'} openDelay={300} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color={copied ? 'green' : 'gray'}
+              size="md"
+              onClick={handleCopyBody}
+              disabled={isSaving}
+              aria-label="Copy block body"
+            >
+              {copied ? <IconCheck size={16} /> : <IconClipboard size={16} />}
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Edit block" openDelay={300} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="md"
+              onClick={handleEdit}
+              disabled={isSaving}
+              aria-label="Edit block"
+            >
+              <IconPencil size={16} />
+            </ActionIcon>
+          </Tooltip>
           <Popover
             opened={dupPopoverOpen}
             onClose={() => setDupPopoverOpen(false)}
@@ -543,16 +550,18 @@ export function BlockRow({
             width={220}
           >
             <Popover.Target>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="md"
-                onClick={handleDuplicateClick}
-                disabled={isSaving}
-                aria-label="Duplicate block"
-              >
-                <IconCopy size={16} />
-              </ActionIcon>
+              <Tooltip label="Duplicate block" openDelay={300} withArrow disabled={dupPopoverOpen}>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="md"
+                  onClick={handleDuplicateClick}
+                  disabled={isSaving}
+                  aria-label="Duplicate block"
+                >
+                  <IconCopy size={16} />
+                </ActionIcon>
+              </Tooltip>
             </Popover.Target>
             <Popover.Dropdown>
               <DupConfirmContent
@@ -561,16 +570,18 @@ export function BlockRow({
               />
             </Popover.Dropdown>
           </Popover>
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            size="md"
-            onClick={handleDelete}
-            disabled={isSaving}
-            aria-label="Delete block"
-          >
-            <IconTrash size={16} />
-          </ActionIcon>
+          <Tooltip label="Delete block" openDelay={300} withArrow>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              size="md"
+              onClick={handleDelete}
+              disabled={isSaving}
+              aria-label="Delete block"
+            >
+              <IconTrash size={16} />
+            </ActionIcon>
+          </Tooltip>
         </Group>
       </Table.Td>
     </Table.Tr>
