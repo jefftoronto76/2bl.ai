@@ -3,15 +3,13 @@
 import { Badge, Group, Progress, Stack, Tooltip } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import {
-  BLOCK_TYPES,
+  ORDERED_TYPES,
   TYPE_COLORS,
-  TYPE_COMPILE_ORDER,
   TYPE_LABELS,
   type BlockType,
 } from '@/services/prompt/block-types'
-import { tokensFor } from '@/services/prompt/tokenize'
+import { tokensFor, TOKEN_LIMIT } from '@/services/prompt/tokenize'
 
-const TOKEN_LIMIT = 8000
 const YELLOW_THRESHOLD = 5000
 
 export interface SegmentedTokenMeterBlock {
@@ -24,13 +22,6 @@ export interface SegmentedTokenMeterBlock {
 export interface SegmentedTokenMeterProps {
   blocks: SegmentedTokenMeterBlock[]
 }
-
-// Stable left-to-right order — matches TYPE_COMPILE_ORDER everywhere
-// in the admin (badges, filter chips, compile route, edit drawer Type
-// select). Computed once at module scope.
-const ORDERED_TYPES: BlockType[] = [...BLOCK_TYPES].sort(
-  (a, b) => TYPE_COMPILE_ORDER[a] - TYPE_COMPILE_ORDER[b],
-)
 
 /**
  * Segmented progress meter for the Blocks page header.
