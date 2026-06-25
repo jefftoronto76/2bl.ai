@@ -14,7 +14,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { Text } from '@/components/admin/primitives/Text'
-import { SegmentedTokenMeter } from '@/components/admin/content/SegmentedTokenMeter'
+import { BlocksOverview } from './BlocksOverview'
 import { BulkActionsBar } from '@/components/admin/content/BulkActionsBar'
 import { BlockRow as DesktopBlockRow } from '@/components/admin/content/BlockRow'
 import { BlockCard } from '@/components/admin/content/BlockCard'
@@ -61,7 +61,13 @@ type DuplicateResponse = {
   updated_at: string
 }
 
-export function BlocksTable({ rows }: { rows: BlockRow[] }) {
+export function BlocksTable({
+  rows,
+  overview,
+}: {
+  rows: BlockRow[]
+  overview?: { version?: number | null; status?: string | null }
+}) {
   const [items, setItems] = useState<BlockRow[]>(rows)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -362,15 +368,6 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
     setDeleteTargetId(null)
   }
 
-  const activeMeterBlocks = items
-    .filter(b => b.status === 'active')
-    .map(b => ({
-      id: b.id,
-      title: b.title,
-      type: b.type as BlockType,
-      body: b.body ?? '',
-    }))
-
   // View-level filter. Runs synchronously on every render — `query` is
   // local to useBlocksFilters (instant keystroke feedback), and the
   // three filter guards short-circuit in cheapest-first order. The
@@ -446,9 +443,12 @@ export function BlocksTable({ rows }: { rows: BlockRow[] }) {
 
   return (
     <>
-      {/* Segmented token meter — one segment per active block, colored by type */}
       <Box mb="md">
-        <SegmentedTokenMeter blocks={activeMeterBlocks} />
+        <BlocksOverview
+          blocks={items}
+          version={overview?.version}
+          status={overview?.status}
+        />
       </Box>
 
       {items.length === 0 ? (
