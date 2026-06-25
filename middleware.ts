@@ -9,6 +9,7 @@ const isAdminRoute = createRouteMatcher(['/admin(.*)'])
 
 const SBL_HOSTS = new Set(['2bl.ai', 'www.2bl.ai'])
 const HEIRLOOM_HOSTS = new Set(['heirloom.2bl.ai'])
+const LEGACY_HOSTS = new Set(['legacy.2bl.ai'])
 
 export default createAuthMiddleware(async (auth, req) => {
   // ─── Correlation ID ───
@@ -76,6 +77,28 @@ export default createAuthMiddleware(async (auth, req) => {
     if (isHeirloomHost && !isHeirloomPath) {
       const url = req.nextUrl.clone()
       url.pathname = pathname === '/' ? '/heirloom' : `/heirloom${pathname}`
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // ─── Legacy storefront routing ───
+  // legacy.2bl.ai serves the Legacy product storefront. Rewrite to the
+  // /legacy segment and tag with x-legacy so the root layout drops the
+  // inkwell palette. Direct hits to /legacy (e.g. preview URLs) get
+  // the same tag without a rewrite.
+  const isLegacyHost = LEGACY_HOSTS.has(host)
+  const isLegacyPath = pathname === '/legacy' || pathname.startsWith('/legacy/')
+
+  if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath) {
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set('x-legacy', '1')
+    requestHeaders.set('x-correlation-id', correlationId)
+
+    if (isLegacyHost && !isLegacyPath) {
+      const url = req.nextUrl.clone()
+      url.pathname = pathname === '/' ? '/legacy' : `/legacy${pathname}`
       return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
     }
 
