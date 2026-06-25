@@ -7,15 +7,12 @@ import { NewBlockButton } from '@/components/admin/content/NewBlockButton'
 import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { BlocksTable, type BlockRow } from './BlocksTable'
 import { PublishButton } from './PublishButton'
+import { PromptSetSelect } from './PromptSetSelect'
+import { getPromptSets } from './getPromptSets'
+import { resolveActiveSet } from './promptSets'
 
 export const dynamic = 'force-dynamic'
 
-// Inline-style supplements for layout primitives Mantine v7 doesn't
-// expose as props on Flex/Stack/Box. Hoisted for readability and
-// reuse between the auth-fail and main render branches.
-//
-// Long-term: AppShell handles flex-1 + overflow-auto naturally; revisit
-// in a separate refactor session.
 const HEADER_FRAME_STYLE: CSSProperties = {
   flexShrink: 0,
   borderBottom: '1px solid var(--mantine-color-gray-2)',
@@ -31,7 +28,13 @@ const FALLBACK_CONTENT_STYLE: CSSProperties = {
   flex: 1,
 }
 
-export default async function BlocksPage() {
+export default async function BlocksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ set?: string }>
+}) {
+  const { set: requestedSet } = await searchParams
+
   let tenantId: string
   try {
     const authCtx = await getAuthContext()
@@ -61,16 +64,24 @@ export default async function BlocksPage() {
 
   const supabase = getAdminClient()
 
-  // Fetch blocks and topics in parallel — topics feed the New block
-  // drawer's topic Select; pre-fetching avoids a network round-trip
-  // every time the user opens the drawer.
+  // Prompt sets feed the picker; the active set scopes the blocks query.
+  // Falls back to all non-deleted blocks when no prompt_types rows exist.
+  const sets = await getPromptSets(tenantId)
+  const activeSet = resolveActiveSet(sets, requestedSet ?? null)
+
+  let blocksQuery = supabase
+    .from('blocks')
+    .select(
+      'id, title, type, body, status, is_default, order, created_at, updated_at, topics(name), author:users!blocks_updated_by_fkey(name)',
+    )
+    .eq('tenant_id', tenantId)
+    .neq('status', 'deleted')
+  if (activeSet) {
+    blocksQuery = blocksQuery.eq('prompt_type_key', activeSet.key)
+  }
+
   const [blocksResult, topicsResult] = await Promise.all([
-    supabase
-      .from('blocks')
-      .select('id, title, type, body, status, is_default, order, created_at, updated_at, topics(name), author:users!blocks_updated_by_fkey(name)')
-      .eq('tenant_id', tenantId)
-      .neq('status', 'deleted')
-      .order('created_at', { ascending: false }),
+    blocksQuery.order('created_at', { ascending: false }),
     supabase
       .from('topics')
       .select('id, name, type')
@@ -93,19 +104,25 @@ export default async function BlocksPage() {
       <Flex
         direction={{ base: 'column', sm: 'row' }}
         justify="space-between"
-        align={{ base: 'stretch', sm: 'center' }}
+        align={{ base: 'stretch', sm: 'flex-start' }}
         gap="md"
         px={{ base: 16, sm: 24 }}
         py={{ base: 12, sm: 16 }}
         style={HEADER_FRAME_STYLE}
       >
-        <Stack gap={4}>
-          <Title order={1} fz="lg" fw={600}>
-            Blocks
-          </Title>
-          <Text variant="muted">
-            Reusable prompt blocks — compiled into your system prompt.
-          </Text>
+        <Stack gap="sm">
+          <Stack gap={4}>
+            <Title order={1} fz="lg" fw={600}>
+              Blocks
+            </Title>
+            <Text variant="muted">
+              Reusable prompt blocks — compiled into your system prompt.
+            </Text>
+          </Stack>
+
+          {sets.length > 0 && activeSet && (
+            <PromptSetSelect sets={sets} activeId={activeSet.id} />
+          )}
         </Stack>
 
         <Flex direction={{ base: 'column', sm: 'row' }} gap="sm" align="flex-start">
@@ -115,7 +132,13 @@ export default async function BlocksPage() {
       </Flex>
 
       <Box style={SCROLL_AREA_STYLE} p={{ base: 'md', sm: 'lg' }}>
-        <BlocksTable rows={rows} />
+        <BlocksTable
+          rows={rows}
+          overview={{
+            version: activeSet?.version ?? null,
+            status: activeSet?.status ?? null,
+          }}
+        />
       </Box>
     </Stack>
   )
