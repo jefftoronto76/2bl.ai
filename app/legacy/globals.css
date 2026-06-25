@@ -1,0 +1,36 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Legacy storefront tokens.
+
+   Imported by app/legacy/layout.tsx, so these styles only load on the
+   /legacy (legacy.2bl.ai) routes. Colour tokens are promoted to :root —
+   they cannot collide with the inkwell or SBL palettes, which ship in their
+   own route-scoped globals.css files.
+
+   The flat base ships: solid #FAF6EE page, pure-white #FFFFFF surfaces,
+   no radial glow, no grain. Accent is terracotta #C8542E.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Override shared generic tokens for this route (rgb triplets) */
+  --color-surface: 255 255 255;       /* #FFFFFF */
+  --color-accent:  200 84 46;         /* #C8542E terracotta */
+
+  /* Legacy-only tokens */
+  --lg-bg:           250 246 238;     /* #FAF6EE egg-shell */
+  --lg-text-primary: 26 21 15;        /* #1A150F dark ink */
+  --lg-text-muted:   rgba(26, 21, 15, 0.55);
+  --lg-accent-hover: #A93F1D;
+  --lg-border:       #E6DCC8;
+
+  background-color: rgb(var(--lg-bg));
+  color: rgb(var(--lg-text-primary));
+}
+
+/* Font remaps stay scoped to the [data-brand="legacy"] wrapper <div>:
+   next/font defines --font-legacy-serif / --font-legacy-sans / --font-legacy-mono
+   on that wrapper via the className, so the var() references only resolve there. */
+[data-brand="legacy"] {
+  --font-display: var(--font-legacy-serif);
+  --font-serif:   var(--font-legacy-serif);
+  --font-body:    var(--font-legacy-sans);
+  --font-mono:    var(--font-legacy-mono);
+}

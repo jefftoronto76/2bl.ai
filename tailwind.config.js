@@ -28,6 +28,13 @@ export default {
         'text-muted': 'var(--hl-text-muted)',
         'accent-hover': 'var(--hl-accent-hover)',
         border: 'var(--hl-border)',
+        // Legacy storefront tokens — values are scoped to /legacy routes via
+        // app/legacy/globals.css; inert everywhere else.
+        'lg-background':   'rgb(var(--lg-bg) / <alpha-value>)',
+        'lg-text-primary': 'rgb(var(--lg-text-primary) / <alpha-value>)',
+        'lg-text-muted':   'var(--lg-text-muted)',
+        'lg-accent-hover': 'var(--lg-accent-hover)',
+        'lg-border':       'var(--lg-border)',
       },
       fontFamily: {
         display: 'var(--font-display)',
