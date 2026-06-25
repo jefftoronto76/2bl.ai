@@ -1,0 +1,85 @@
+/* MasterPromptPicker — NEW. Cross-tenant prompt-set selector for Platform Settings.
+   Literal hex inlined from the approved prototype (Combined Admin · Platform · Settings);
+   swap for var(--mantine-color-*) where the theme already defines them. The base trigger,
+   badge, and menu rules mirror the Composer's PromptSetPicker `ps-*` slice exactly so the
+   two controls stay in visual lockstep — the deltas here are: a left-aligned, full-width
+   trigger, a tenant column per row, a search box, and a "Master" badge + double-check on
+   the live master. See handover §4/§9. */
+
+/* ── Trigger ─────────────────────────────────────────────────────────────────── */
+.select { display: block; position: relative; min-width: 340px; max-width: 460px; }
+
+.trigger {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; height: 40px; padding: 0 9px 0 14px;
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6); border-radius: 8px; background: #fff;
+  color: #1a1917; font-size: 14px; font-weight: 600;
+  transition: border-color 120ms ease, background-color 120ms ease;
+  cursor: pointer;
+}
+.trigger:hover { border-color: var(--mantine-color-gray-4, #ced4da); background: var(--mantine-color-gray-0, #f8f9fa); }
+.trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.trigLabel { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { color: var(--mantine-color-gray-4, #ced4da); }
+.tenant { color: rgba(26, 25, 23, 0.6); font-weight: 500; }
+.placeholder { color: var(--mantine-color-gray-5, #adb5bd); font-weight: 500; }
+
+.caret { color: var(--mantine-color-gray-6, #868e96); transition: transform 150ms ease; flex: 0 0 auto; }
+.caretOpen { transform: rotate(90deg); }
+
+/* ── Badges ──────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; height: 19px; padding: 0 8px;
+  border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+}
+.live { background: rgba(45, 106, 79, 0.12); color: #2d6a4f; }
+.draft { background: rgba(245, 159, 0, 0.14); color: #e67700; }
+
+/* ── Menu ────────────────────────────────────────────────────────────────────── */
+.menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+  background: #fff;
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6); border-radius: 8px;
+  box-shadow: 0 14px 38px -18px rgba(26, 25, 23, 0.34); padding: 4px;
+  animation: mpFade 100ms ease;
+}
+@keyframes mpFade { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* Search — present here, absent in the Composer's single-tenant picker. */
+.search { position: relative; display: flex; align-items: center; gap: 6px; padding: 4px 8px 8px; color: var(--mantine-color-gray-5, #adb5bd); }
+.search input {
+  flex: 1 1 auto; min-width: 0; height: 32px; padding: 0 10px;
+  border: 1px solid var(--mantine-color-gray-3, #dee2e6); border-radius: 8px;
+  font-family: inherit; font-size: 13px; color: #1a1917; outline: none;
+}
+.search input:focus { border-color: #4fa574; }
+
+.list { max-height: 300px; overflow-y: auto; }
+.noMatch { padding: 14px 10px; font-size: 13px; color: rgba(26, 25, 23, 0.6); text-align: center; }
+
+.item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  border: none; background: transparent; border-radius: 8px; padding: 9px 10px;
+  font-size: 13.5px; color: #1a1917; cursor: pointer;
+}
+.item:hover { background: var(--mantine-color-gray-1, #f1f3f5); }
+.on { background: rgba(45, 106, 79, 0.07); }
+
+.itemName { font-weight: 500; white-space: nowrap; }
+.sep { color: var(--mantine-color-gray-4, #ced4da); }
+.itemTenant { color: rgba(26, 25, 23, 0.6); white-space: nowrap; }
+.itemVersion { font-family: var(--mantine-font-family-monospace); font-size: 11px; color: rgba(26, 25, 23, 0.55); }
+
+/* Badge + master flag pushed to the right edge of the row. */
+.badge { margin-left: auto; }
+.masterBadge {
+  display: inline-flex; align-items: center; height: 19px; padding: 0 8px;
+  border-radius: 999px; background: #2d6a4f; color: #fff;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap;
+}
+.itemCheck { display: inline-flex; width: 14px; color: #2d6a4f; flex: 0 0 auto; }
+.checkMaster { width: 16px; }
+
+@media (max-width: 640px) { .select { min-width: 0; width: 100%; max-width: none; } }
