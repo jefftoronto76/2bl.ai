@@ -131,7 +131,7 @@ export default async function BlocksPage({
         </Flex>
       </Flex>
 
-      <Box style={SCROLL_AREA_STYLE} p={{ base: 'md', sm: 'lg' }}>
+      <Box style={SCROLL_AREA_STYLE} px={{ base: 'md', sm: 'lg' }} pb={{ base: 'md', sm: 'lg' }} pt={0}>
         <BlocksTable
           rows={rows}
           overview={{

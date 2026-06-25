@@ -5,7 +5,7 @@
       `.blocks-sticky` (position: sticky; top: 0). The negative inline margins bleed
       the bar out to the scroll container's padding edges so content scrolls UNDER
       it edge-to-edge — the values track BlocksPage's scroll padding
-      (`p={{ base: 'md', sm: 'lg' }}`); keep them in sync if that padding changes.
+      (`px/pb={{ base: 'md', sm: 'lg' }}`); keep them in sync if that padding changes.
 
    2) .summary* — the collapsible summary + "Hide summary" button + compact recall
       bar (the `header` control variant from the prototype).
@@ -16,7 +16,13 @@
 /* ── 1. Sticky filter toolbar ─────────────────────────────────────────────────── */
 .stickyToolbar {
   position: sticky;
-  top: calc(var(--mantine-spacing-md) * -1);
+  /* Pins flush because BlocksPage's scroll container drops its TOP padding
+     (`pt={0}`). With no top padding on the scroller, `top: 0` locks the bar to
+     the visible top with no gap, independent of any spacing-token value. (A
+     negative `top` matched to the padding also works, but it must track the md/lg
+     breakpoint exactly or a thin sliver remains — the pt:0 approach is the robust
+     one and matches the prototype.) */
+  top: 0;
   z-index: 6;
   background: var(--mantine-color-body);
   border-bottom: 1px solid var(--mantine-color-gray-2);
@@ -25,10 +31,9 @@
   padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
 }
 
-/* ≥ sm: BlocksPage scroll padding becomes `lg` — match the top cancel, bleed + inset. */
+/* ≥ sm: BlocksPage scroll padding becomes `lg` — match the bleed + inset. */
 @media (min-width: 48em) {
   .stickyToolbar {
-    top: calc(var(--mantine-spacing-lg) * -1);
     margin-inline: calc(var(--mantine-spacing-lg) * -1);
     padding-inline: var(--mantine-spacing-lg);
   }
@@ -37,7 +42,14 @@
 /* ── 2. Collapsible summary ───────────────────────────────────────────────────── */
 .summarySection {
   position: relative;
+  /* BlocksPage's scroll container drops its top padding (`pt={0}`) so the sticky
+     toolbar pins flush; this margin restores the breathing room above the summary.
+     It scrolls away with the summary, so the pin stays flush. */
+  margin-top: var(--mantine-spacing-md);
   margin-bottom: var(--mantine-spacing-md);
+}
+@media (min-width: 48em) {
+  .summarySection { margin-top: var(--mantine-spacing-lg); }
 }
 
 .summaryCollapse {
