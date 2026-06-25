@@ -15,6 +15,8 @@ import { useMediaQuery } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { Text } from '@/components/admin/primitives/Text'
 import { BlocksOverview } from './BlocksOverview'
+import { SummarySection } from './SummarySection'
+import layout from './BlocksLayout.module.css'
 import { BulkActionsBar } from '@/components/admin/content/BulkActionsBar'
 import { BlockRow as DesktopBlockRow } from '@/components/admin/content/BlockRow'
 import { BlockCard } from '@/components/admin/content/BlockCard'
@@ -394,6 +396,15 @@ export function BlocksTable({
     ? Math.max(0, ...filtered.map(b => tokensFor(b.body)))
     : 0
 
+  // Summary recall stats — shown in the collapsed bar when the summary is hidden.
+  // Active-only, matching BlocksOverview (the meter measures reality, not the view).
+  const activeBlocks = items.filter(b => b.status === 'active')
+  const summaryStats = {
+    status: overview?.status ?? null,
+    count: activeBlocks.length,
+    tokens: activeBlocks.reduce((sum, b) => sum + tokensFor(b.body), 0),
+  }
+
   // Select-all is scoped to the currently-visible (filtered) set.
   // Bulk actions still operate on all selectedIds — so selections
   // made outside the current filter persist when filters change.
@@ -443,13 +454,13 @@ export function BlocksTable({
 
   return (
     <>
-      <Box mb="md">
+      <SummarySection stats={summaryStats}>
         <BlocksOverview
           blocks={items}
           version={overview?.version}
           status={overview?.status}
         />
-      </Box>
+      </SummarySection>
 
       {items.length === 0 ? (
         <Center h={200}>
@@ -466,7 +477,7 @@ export function BlocksTable({
               redesign rescoped to page rework, so the gate is removed.
               Step 9 of the rework swaps the SegmentedControls for
               Chip.Group, which wraps cleanly at narrow viewports. */}
-          <Box mb="md">
+          <Box className={layout.stickyToolbar}>
             <BlocksToolbar
               query={query}
               onQueryChange={setQuery}
