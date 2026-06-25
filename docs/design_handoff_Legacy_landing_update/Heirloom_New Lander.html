@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Legacy — Stories</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* Paper (default) — Second Brain Labs warm paper; terracotta accent */
+    --hl-bg: #FAF6EE;
+    --hl-bg-2: #F2ECDF;
+    --hl-surface: #FFFCF6;
+    --hl-surface-2: #F2ECDF;
+    --hl-accent: #C8542E;
+    --hl-accent-hover: #A93F1D;
+    --hl-accent-soft: color-mix(in srgb, #C8542E 16%, transparent);
+    --hl-accent-line: color-mix(in srgb, #C8542E 32%, transparent);
+    --hl-text: #1F1A14;
+    --hl-muted: #6B6256;
+    --hl-faint: #9A917F;
+    --hl-border: color-mix(in srgb, #C8542E 28%, transparent);
+    --hl-border-strong: color-mix(in srgb, #C8542E 48%, transparent);
+    --hl-glow-1: #F2E7CF;
+    --hl-glow-2: #ECE0C6;
+    --hl-on-accent: #FAF6EE;
+    --hl-danger: #A93F1D;
+    --hl-shadow: rgba(0,0,0,0.55);
+
+    --font-display: 'Cormorant Garamond', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'DM Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--hl-bg);
+    color: var(--hl-text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+  #root { min-height: 100vh; }
+
+  ::selection { background: var(--hl-accent-soft); color: var(--hl-text); }
+
+  /* ─────────── FOOTER (Second Brain Labs) ─────────── */
+  .hl-foot {
+    position: relative; z-index: 2;
+    background: transparent;
+    color: var(--hl-text);
+    border-top: 1px solid var(--hl-accent);
+    padding: 64px 24px 36px;
+  }
+  .hl-foot-wrap { max-width: 1180px; margin: 0 auto; }
+  .hl-foot-top {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 56px;
+  }
+  .hl-foot-mark {
+    font-family: var(--font-display);
+    font-size: 28px; font-weight: 500;
+    margin: 0 0 14px; color: var(--hl-text);
+    letter-spacing: -0.005em;
+  }
+  .hl-foot-mark em { font-style: italic; color: var(--hl-accent); font-weight: 400; }
+  .hl-foot-blurb {
+    color: var(--hl-muted);
+    font-size: 14px; max-width: 36ch; line-height: 1.5; margin: 0;
+  }
+  .hl-foot h5 {
+    font-family: var(--font-body);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--hl-faint); margin: 0 0 16px;
+  }
+  .hl-foot-links { display: flex; flex-direction: column; gap: 9px; font-size: 14px; }
+  .hl-foot-links a { color: var(--hl-muted); text-decoration: none; transition: color .15s ease; }
+  .hl-foot-links a:hover { color: var(--hl-text); }
+  .hl-foot-bottom {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+    padding-top: 28px;
+    border-top: 1px solid var(--hl-border);
+    font-size: 12.5px; color: var(--hl-faint);
+  }
+  .hl-foot-bottom .hl-foot-markline {
+    font-family: var(--font-display); font-style: italic; font-size: 15px;
+    color: var(--hl-muted);
+  }
+  @media (max-width: 760px) {
+    .hl-foot-top { grid-template-columns: 1fr 1fr; gap: 32px; }
+  }
+  @media (max-width: 460px) {
+    .hl-foot-top { grid-template-columns: 1fr; gap: 28px; }
+    .hl-foot { padding: 48px 22px 32px; }
+    .hl-foot-bottom { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+
+  /* Paper grain overlay — subtle fibrous texture for the memoir feel */
+  .paper-grain::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: var(--grain-opacity, 0.05);
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Gold cross/plus pattern (from the real globals.css) */
+  .bg-pattern-dots {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23C9A96E' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .scroll-area { scrollbar-width: thin; scrollbar-color: var(--hl-border-strong) transparent; }
+  .scroll-area::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--hl-border-strong); border-radius: 8px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+
+  @keyframes hl-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
+  @keyframes hl-dot { 0%,80%,100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-4px); opacity: 1; } }
+  @keyframes hl-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes hl-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes hl-wave { 0%,100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+  @keyframes hl-recdot { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes hl-menu-in { from { opacity: 0; transform: scale(0.96) translateY(-5px); } to { opacity: 1; transform: none; } }
+  @keyframes hl-toast-in { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+  @keyframes hl-modal-in { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes hl-edgepulse { 0%,100% { opacity: .5; transform: scaleY(1); } 50% { opacity: 1; transform: scaleY(1.18); } }
+  @keyframes hl-coach-in { from { opacity: 0; transform: translateY(-50%) translateX(-10px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } }
+  @keyframes hl-orb { 0%,100% { transform: scale(0.82); opacity: .55; } 50% { transform: scale(1.08); opacity: .2; } }
+
+  .reveal { opacity: 0; }
+  .reveal.in { animation: hl-rise 0.8s cubic-bezier(0.22,1,0.36,1) forwards; }
+
+  button { font-family: inherit; cursor: pointer; }
+  textarea { font-family: inherit; }
+
+  @media (max-width: 920px) {
+    .hero-cover-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
+    .hero-cover-grid > div:last-child { display: none !important; }
+    .how-grid { grid-template-columns: repeat(2,1fr) !important; }
+  }
+  @media (max-width: 820px) {
+    .book-feature { grid-template-columns: 1fr !important; text-align: center; gap: 36px !important; }
+    .book-feature > div:first-child > div { justify-content: center; }
+    .book-feature p { margin-left: auto !important; margin-right: auto !important; }
+  }
+  @media (max-width: 768px) {
+    .nav-links { display: none !important; }
+    .nav-login { display: none !important; }
+    .nav-burger { display: flex !important; }
+    .nav-mobile-menu { display: block !important; }
+    .whatis-grid { grid-template-columns: 1fr !important; }
+    /* Taglines that sit on one line for desktop drama wrap freely on phones. */
+    .hero-tagline { white-space: normal !important; }
+  }
+  @media (max-width: 560px) {
+    .how-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+</head>
+<body>
+  <template id="__bundler_thumbnail" data-bg-color="#FAF6EE">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#FAF6EE"/>
+      <g transform="translate(600 360)" fill="none" stroke="#C8542E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M70 -110 C 10 -110, -70 -50, -70 40 C -70 90, -40 110, 0 110 L 70 110 Z"/>
+        <path d="M40 -70 L -40 90" stroke-width="10"/>
+      </g>
+      <text x="600" y="560" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="88" fill="#1F1A14">Legacy</text>
+    </svg>
+  </template>
+
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="landing.jsx"></script>
+  <script type="text/babel" src="chat-v2.jsx"></script>
+  <script type="text/babel" src="main-v2.jsx"></script>
+</body>
+</html>
