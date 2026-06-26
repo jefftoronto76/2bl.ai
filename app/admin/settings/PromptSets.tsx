@@ -388,7 +388,7 @@ export function PromptSets() {
   )
 }
 
-// ── Status / Master / type badges ──────────────────────────────────────────────
+// ── Status / Composer / type badges ─────────────────────────────────────────────
 function StatusBadge({ status }: { status: PromptSetStatus }) {
   return status === 'live' ? (
     <Badge color="green" variant="light" radius="sm">
@@ -407,7 +407,7 @@ function PromptSetBadges({ set, typeName }: { set: PromptSet; typeName: string |
       <StatusBadge status={set.status} />
       {set.is_composer_prompt && (
         <Badge color="green" variant="filled" radius="sm">
-          Master
+          Composer
         </Badge>
       )}
       {set.status === 'live' && typeName && (
@@ -451,11 +451,11 @@ function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
           }
         />
         <MetaRow
-          label="Master"
+          label="Composer"
           value={
             set?.is_composer_prompt ? (
               <Badge color="green" variant="filled" radius="sm">
-                Master
+                Composer
               </Badge>
             ) : (
               dim('—')
