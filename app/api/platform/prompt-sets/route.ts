@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { logEvent, AuditAction } from '@/services/audit'
 
 // GET /api/platform/prompt-sets  — EXTENDED (was: lightweight MasterPromptOption[])
 //
@@ -75,4 +76,125 @@ export async function GET() {
 
   console.log('[platform/prompt-sets] GET', { count: rows.length })
   return Response.json(rows)
+}
+
+// PATCH /api/platform/prompt-sets — cross-tenant upsert for Tenant Prompts.
+// Platform-admin only. With an id → update (any tenant); without → insert (tenant_id
+// required). ⚠️ CROSS-TENANT WRITE via the service-role client, gated only by
+// isPlatformAdmin — confirm RLS + audit before prod (handover §6).
+//
+// Server-owned, NEVER written here: version / is_composer_prompt / is_default /
+// timestamps / the derived compile metadata. Only label / description / status /
+// prompt_type_id (and tenant_id on insert) are client-supplied.
+const VALID_STATUS = ['live', 'draft'] as const
+type PatchStatus = (typeof VALID_STATUS)[number]
+const isStatus = (v: unknown): v is PatchStatus => typeof v === 'string' && (VALID_STATUS as readonly string[]).includes(v)
+
+export async function PATCH(req: Request) {
+  const user = await getCurrentUser()
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
+
+  let body: {
+    id?: unknown
+    tenant_id?: unknown
+    label?: unknown
+    description?: unknown
+    status?: unknown
+    prompt_type_id?: unknown
+  }
+  try {
+    body = await req.json()
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  const id = typeof body.id === 'string' ? body.id : undefined
+  if (typeof body.label !== 'string' || body.label.trim().length === 0) {
+    return Response.json({ error: 'Label is required' }, { status: 400 })
+  }
+  if (!isStatus(body.status)) {
+    return Response.json({ error: `Invalid status (expected one of: ${VALID_STATUS.join(', ')})` }, { status: 400 })
+  }
+  const label = body.label.trim()
+  const description = typeof body.description === 'string' ? body.description.trim() : ''
+  const status: PatchStatus = body.status
+  // A type can be assigned regardless of status (kept for drafts too); required only when live.
+  const promptTypeId: string | null =
+    typeof body.prompt_type_id === 'string' && body.prompt_type_id.length > 0 ? body.prompt_type_id : null
+  if (status === 'live' && !promptTypeId) {
+    return Response.json({ error: 'A live set must be assigned a prompt type' }, { status: 400 })
+  }
+
+  const supabase = getAdminClient()
+
+  // Resolve the owning tenant: existing row's tenant on update, explicit tenant_id on insert.
+  let tenantId: string
+  if (id) {
+    const { data: existing, error } = await supabase.from('prompt_sets').select('tenant_id').eq('id', id).maybeSingle()
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    if (!existing) return Response.json({ error: 'Prompt set not found' }, { status: 404 })
+    tenantId = existing.tenant_id as string
+  } else {
+    if (typeof body.tenant_id !== 'string' || !body.tenant_id) {
+      return Response.json({ error: 'tenant_id is required to create a prompt set' }, { status: 400 })
+    }
+    tenantId = body.tenant_id
+  }
+
+  // A non-null prompt_type_id must be assigned to the owning tenant.
+  // prompt_types.tenant_id was dropped — assignments live in prompt_type_tenants.
+  if (promptTypeId) {
+    const { data: assignment, error: typeErr } = await supabase
+      .from('prompt_type_tenants')
+      .select('prompt_type_id')
+      .eq('prompt_type_id', promptTypeId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    if (typeErr) return Response.json({ error: typeErr.message }, { status: 500 })
+    if (!assignment) return Response.json({ error: 'Prompt type not found for that tenant' }, { status: 400 })
+  }
+
+  // version / is_composer_prompt / is_default / timestamps are server-owned — never written.
+  const writeId = id
+    ? await supabase.from('prompt_sets').update({ label, description, status, prompt_type_id: promptTypeId }).eq('id', id).select('id').maybeSingle()
+    : await supabase.from('prompt_sets').insert({ tenant_id: tenantId, label, description, status, prompt_type_id: promptTypeId }).select('id').single()
+
+  if (writeId.error) {
+    console.error('[platform/prompt-sets] upsert failed:', writeId.error.message)
+    return Response.json({ error: writeId.error.message }, { status: 500 })
+  }
+  if (!writeId.data) {
+    return Response.json({ error: 'Prompt set not found' }, { status: 404 })
+  }
+
+  // Re-read the enriched row (compile meta) + tenant name for the response.
+  const savedId = (writeId.data as { id: string }).id
+  const [rowRes, tenantRes] = await Promise.all([
+    supabase.from('prompt_sets_with_compile_meta').select(SELECT_COLUMNS).eq('id', savedId).single(),
+    supabase.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+  ])
+  if (rowRes.error) return Response.json({ error: rowRes.error.message }, { status: 500 })
+
+  const tenantName = (tenantRes.data?.name as string) ?? 'Unknown tenant'
+  const result: PlatformPromptSet = {
+    ...(rowRes.data as Omit<PlatformPromptSet, 'tenant_name' | 'tenantId' | 'tenantName'>),
+    tenant_name: tenantName,
+    tenantId,
+    tenantName,
+  }
+
+  console.log('[platform/prompt-sets] PATCH', { id: result.id, tenant_id: tenantId, created: !id })
+  void logEvent({
+    action: AuditAction.PROMPT_SET_UPSERT,
+    tenant_id: tenantId,
+    actor_id: null,
+    actor_type: 'user',
+    clerk_user_id: user.providerUserId,
+    target_type: 'prompt_set',
+    target_id: result.id,
+    correlation_id: req.headers.get('x-correlation-id'),
+    metadata: { status: result.status, has_prompt_type: Boolean(result.prompt_type_id), created: !id, cross_tenant: true },
+  })
+  return Response.json(result)
 }

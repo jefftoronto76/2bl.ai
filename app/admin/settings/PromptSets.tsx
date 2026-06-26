@@ -2,50 +2,31 @@
 
 // PromptSets — Settings accordion panel (app/admin/settings).
 //
-// ░░ THIS IS THE ENHANCED DROP-IN ░░  Diff vs the shipping file is limited to the
-// items below; everything else is byte-for-byte the current component so it reviews
-// cleanly. Search "// NEW:" to find every change.
+// Mirrors SageParameters.tsx (fetch → notifications → view/edit Card split → delete
+// Modal → Add New). Cards render via the SHARED <PromptSetViewCard/> so this surface
+// and Platform → Tenant Prompts stay identical.
 //
-//   1. TYPE ON ADD-NEW (was: only when Live)
-//      The "Used as" prompt-type Select (and inline ＋ New type…) now renders for
-//      DRAFTS too, so a type can be assigned at creation. Still REQUIRED only when
-//      Live. `normalizeType` no longer nulls a draft's type — the matching API change
-//      (persist prompt_type_id for drafts) is in api/admin.prompt-sets.GET.enriched.md.
+// What's NEW vs the original shipping file (search "// NEW:"):
+//   1. Type on Add-New — the Type ("Used as") control renders for DRAFTS too (was Live-
+//      only); still required only when Live. `normalizeType` keeps a draft's type. The
+//      matching API change is in api/admin/prompt-sets/route.GET-PATCH.md.
+//   2. Compile metadata + stale flag on the card (block_count / last_compiled_at /
+//      compiled_version + isStale) — all in the shared card.
+//   3. View compiled prompt — eye → <CompiledPromptModal/>.
+//   4. Open in Composer — jumps to the Composer with this set preselected.
 //
-//   2. COMPILE METADATA ON THE VIEW CARD (all read-only, server-derived)
-//      • Blocks            — block_count
-//      • Last compiled     — last_compiled_at
-//      • Compiled version  — compiled_version (the version stamped by the compiler)
-//      • Stale badge + Alert when updated_at > last_compiled_at  (isStale())
-//
-//   3. VIEW COMPILED PROMPT
-//      An eye ActionIcon opens <CompiledPromptModal/> (fetches the authoritative
-//      compiled output for the set; does not reassemble blocks client-side).
-//
-// Shared types/helpers live in @/lib/promptSet (shared/promptSet.ts in this bundle).
-// The modal lives in @/components/admin/settings/CompiledPromptModal
-// (shared/CompiledPromptModal.tsx in this bundle).
+// Shared bits: @/lib/promptSet, @/components/admin/settings/PromptSetCard,
+// @/components/admin/settings/CompiledPromptModal.
 
 import { useCallback, useEffect, useState } from 'react'
-import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Group,
-  Modal,
-  Select,
-  Skeleton,
-  Stack,
-  Textarea,
-  TextInput,
-} from '@mantine/core'
+import { useRouter } from 'next/navigation'
+import { Button, Card, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconAlertTriangle, IconEye, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconPlus } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
-import { type PromptSet, type PromptSetStatus, formatDate, isStale } from '@/lib/promptSet'
+import { PromptSetMetaStrip, PromptSetViewCard } from '@/components/admin/settings/PromptSetCard'
+import { type PromptSet, type PromptSetStatus } from '@/lib/promptSet'
 
 interface PromptType {
   id: string
@@ -55,9 +36,6 @@ interface PromptType {
   sort_order: number | null
 }
 
-// Only the editable fields travel in the draft / PATCH body. Everything else is
-// server-owned (tenant_id, version, is_composer_prompt, is_default, timestamps,
-// and the derived compile metadata).
 interface DraftFields {
   label: string
   description: string
@@ -66,7 +44,7 @@ interface DraftFields {
 }
 
 interface PatchPayload {
-  id?: string // omit to insert
+  id?: string
   label: string
   description: string
   status: PromptSetStatus
@@ -79,24 +57,18 @@ const NEW_TYPE_SENTINEL = '__new_type__'
 function emptyDraft(): DraftFields {
   return { label: '', description: '', status: 'draft', prompt_type_id: null }
 }
-
 function draftFromSet(s: PromptSet): DraftFields {
   return { label: s.label, description: s.description ?? '', status: s.status, prompt_type_id: s.prompt_type_id }
 }
-
 function extractErrorMessage(body: unknown, fallback: string): string {
-  if (
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    typeof (body as { error: unknown }).error === 'string'
-  ) {
+  if (typeof body === 'object' && body && 'error' in body && typeof (body as { error: unknown }).error === 'string') {
     return (body as { error: string }).error
   }
   return fallback
 }
 
 export function PromptSets() {
+  const router = useRouter()
   const [sets, setSets] = useState<PromptSet[]>([])
   const [promptTypes, setPromptTypes] = useState<PromptType[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,7 +78,7 @@ export function PromptSets() {
   const [deleteTarget, setDeleteTarget] = useState<PromptSet | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showNewCard, setShowNewCard] = useState(false)
-  const [viewTarget, setViewTarget] = useState<PromptSet | null>(null) // NEW: compiled-prompt viewer
+  const [viewTarget, setViewTarget] = useState<PromptSet | null>(null)
 
   const fetchSets = useCallback(async () => {
     try {
@@ -115,8 +87,7 @@ export function PromptSets() {
         notifications.show({ color: 'red', title: 'Failed to load prompt sets', message: 'Could not load prompt sets.' })
         return
       }
-      const data: PromptSet[] = await res.json()
-      setSets(data)
+      setSets(await res.json())
     } catch (err) {
       console.error('[PromptSets] fetch failed:', err)
       notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })
@@ -129,8 +100,7 @@ export function PromptSets() {
     try {
       const res = await fetch('/api/admin/prompt-types')
       if (!res.ok) return
-      const data: PromptType[] = await res.json()
-      setPromptTypes(data)
+      setPromptTypes(await res.json())
     } catch (err) {
       console.error('[PromptSets] prompt-types fetch failed:', err)
     }
@@ -142,15 +112,10 @@ export function PromptSets() {
   }, [fetchSets, fetchTypes])
 
   const typeNameById = useCallback(
-    (id: string | null): string | null => {
-      if (!id) return null
-      return promptTypes.find((t) => t.id === id)?.name ?? id
-    },
+    (id: string | null): string | null => (id ? promptTypes.find((t) => t.id === id)?.name ?? id : null),
     [promptTypes],
   )
 
-  // Upsert: PATCH with an id updates; without an id inserts. The server resolves
-  // tenant_id from the session and ignores any client-sent version/is_composer_prompt/is_default/dates/compile-meta.
   async function patchSet(payload: PatchPayload): Promise<PromptSet> {
     const res = await fetch('/api/admin/prompt-sets', {
       method: 'PATCH',
@@ -164,7 +129,6 @@ export function PromptSets() {
     return res.json()
   }
 
-  // Mint a new prompt type inline; appends it to the local list and returns it.
   async function createPromptType(name: string): Promise<PromptType> {
     const res = await fetch('/api/admin/prompt-types', {
       method: 'POST',
@@ -187,18 +151,34 @@ export function PromptSets() {
     setEditingId(s.id)
     setDrafts((prev) => ({ ...prev, [s.id]: draftFromSet(s) }))
   }
-
   function cancelEdit(id: string) {
-    setEditingId((current) => (current === id ? null : current))
+    setEditingId((cur) => (cur === id ? null : cur))
     setDrafts((prev) => {
       const next = { ...prev }
       delete next[id]
       return next
     })
   }
-
   function updateDraft(id: string, patch: Partial<DraftFields>) {
     setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] ?? emptyDraft()), ...patch } }))
+  }
+  function startAddNew() {
+    setEditingId(null)
+    setShowNewCard(true)
+    setDrafts((prev) => ({ ...prev, [NEW_CARD_ID]: emptyDraft() }))
+  }
+  function cancelNew() {
+    setShowNewCard(false)
+    setDrafts((prev) => {
+      const next = { ...prev }
+      delete next[NEW_CARD_ID]
+      return next
+    })
+  }
+
+  // NEW: jump to the Composer with this set preselected (it reads ?promptSet=<id>).
+  function openInComposer(s: PromptSet) {
+    router.push(`/admin/prompt-builder?promptSet=${encodeURIComponent(s.id)}`)
   }
 
   function validateDraft(d: DraftFields): string | null {
@@ -207,8 +187,7 @@ export function PromptSets() {
     return null
   }
 
-  // NEW: a set's prompt_type_id is now persisted for drafts too (was: nulled unless live),
-  // so a type can be chosen at creation. Required validation for Live is unchanged.
+  // NEW: keep a draft's type too (was nulled unless live). Live still requires one.
   function normalizeType(d: DraftFields): string | null {
     return d.prompt_type_id || null
   }
@@ -231,42 +210,18 @@ export function PromptSets() {
         prompt_type_id: normalizeType(draft),
       })
       setSets((prev) => (existing ? prev.map((s) => (s.id === saved.id ? saved : s)) : [saved, ...prev]))
-      if (existing) setEditingId(null)
-      else setShowNewCard(false)
+      existing ? setEditingId(null) : setShowNewCard(false)
       setDrafts((prev) => {
         const next = { ...prev }
         delete next[draftKey]
         return next
       })
-      notifications.show({
-        color: 'green',
-        title: existing ? 'Prompt set saved' : 'Prompt set added',
-        message: saved.label,
-      })
+      notifications.show({ color: 'green', title: existing ? 'Prompt set saved' : 'Prompt set added', message: saved.label })
     } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Save failed',
-        message: err instanceof Error ? err.message : 'Failed to save.',
-      })
+      notifications.show({ color: 'red', title: 'Save failed', message: err instanceof Error ? err.message : 'Failed to save.' })
     } finally {
       setSavingId(null)
     }
-  }
-
-  function startAddNew() {
-    setEditingId(null)
-    setShowNewCard(true)
-    setDrafts((prev) => ({ ...prev, [NEW_CARD_ID]: emptyDraft() }))
-  }
-
-  function cancelNew() {
-    setShowNewCard(false)
-    setDrafts((prev) => {
-      const next = { ...prev }
-      delete next[NEW_CARD_ID]
-      return next
-    })
   }
 
   async function handleConfirmDelete() {
@@ -293,14 +248,7 @@ export function PromptSets() {
   return (
     <Stack gap="md">
       <Group justify="flex-end">
-        <Button
-          variant="filled"
-          color="green"
-          size="sm"
-          leftSection={<IconPlus size={14} />}
-          onClick={startAddNew}
-          disabled={showNewCard}
-        >
+        <Button variant="filled" color="green" size="sm" leftSection={<IconPlus size={14} />} onClick={startAddNew} disabled={showNewCard}>
           Add New
         </Button>
       </Group>
@@ -348,7 +296,8 @@ export function PromptSets() {
                   key={set.id}
                   set={set}
                   typeName={typeNameById(set.prompt_type_id)}
-                  onView={() => setViewTarget(set)} // NEW
+                  onOpenInComposer={() => openInComposer(set)}
+                  onView={() => setViewTarget(set)}
                   onEdit={() => startEdit(set)}
                   onDelete={() => setDeleteTarget(set)}
                 />
@@ -358,7 +307,6 @@ export function PromptSets() {
         </Stack>
       )}
 
-      {/* NEW: view compiled prompt */}
       {viewTarget && (
         <CompiledPromptModal
           set={viewTarget}
@@ -368,15 +316,7 @@ export function PromptSets() {
         />
       )}
 
-      <Modal
-        opened={deleteTarget !== null}
-        onClose={() => {
-          if (!deleting) setDeleteTarget(null)
-        }}
-        title="Delete prompt set?"
-        centered
-        size="sm"
-      >
+      <Modal opened={deleteTarget !== null} onClose={() => { if (!deleting) setDeleteTarget(null) }} title="Delete prompt set?" centered size="sm">
         <Stack gap="md">
           <Text variant="muted">Delete this prompt set? This cannot be undone.</Text>
           <Group gap="xs" justify="flex-end">
@@ -393,195 +333,6 @@ export function PromptSets() {
   )
 }
 
-// ── Status / Composer / type / stale badges ─────────────────────────────────────
-function StatusBadge({ status }: { status: PromptSetStatus }) {
-  return status === 'live' ? (
-    <Badge color="green" variant="light" radius="sm">
-      Live
-    </Badge>
-  ) : (
-    <Badge color="yellow" variant="light" radius="sm">
-      Draft
-    </Badge>
-  )
-}
-
-function PromptSetBadges({ set, typeName }: { set: PromptSet; typeName: string | null }) {
-  return (
-    <Group gap={6} wrap="wrap">
-      <StatusBadge status={set.status} />
-      {set.is_composer_prompt && (
-        <Badge color="green" variant="filled" radius="sm">
-          Composer
-        </Badge>
-      )}
-      {/* NEW: type chip now shows whenever a type is assigned (was: only when Live) */}
-      {typeName && (
-        <Badge color="gray" variant="light" radius="sm">
-          {typeName}
-        </Badge>
-      )}
-      {/* NEW: stale flag */}
-      {isStale(set) && (
-        <Badge color="yellow" variant="filled" radius="sm" leftSection={<IconAlertTriangle size={11} />}>
-          Stale
-        </Badge>
-      )}
-    </Group>
-  )
-}
-
-// ── Read-only / calculated strip ───────────────────────────────────────────────
-function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
-  const dim = (s: string) => (
-    <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-      {s}
-    </Text>
-  )
-  const body = (s: string) => (
-    <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-      {s}
-    </Text>
-  )
-  const mono = (s: string) => (
-    <Text
-      variant="body"
-      style={{
-        fontSize: 'var(--mantine-font-size-sm)',
-        fontFamily: 'var(--mantine-font-family-monospace)',
-        wordBreak: 'break-all',
-      }}
-    >
-      {s}
-    </Text>
-  )
-  return (
-    <Card withBorder radius="sm" p="sm" style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
-      <Stack gap={6}>
-        <MetaRow
-          label="Version"
-          value={
-            <Group gap={6} wrap="wrap" align="baseline">
-              {mono(`v${set?.version ?? 1}`)}
-              {dim('· auto-increments on compile')}
-            </Group>
-          }
-        />
-        <MetaRow
-          label="Composer"
-          value={
-            set?.is_composer_prompt ? (
-              <Badge color="green" variant="filled" radius="sm">
-                Composer
-              </Badge>
-            ) : (
-              dim('—')
-            )
-          }
-        />
-        {/* NEW: compile metadata (read-only, derived server-side) */}
-        <MetaRow label="Blocks" value={isNew ? dim('on compile') : body(String(set?.block_count ?? 0))} />
-        <MetaRow
-          label="Last compiled"
-          value={isNew ? dim('on compile') : set?.last_compiled_at ? body(formatDate(set.last_compiled_at)) : dim('Never compiled')}
-        />
-        <MetaRow
-          label="Compiled version"
-          value={
-            isNew ? (
-              dim('on compile')
-            ) : set?.compiled_version != null ? (
-              <Group gap={6} wrap="wrap" align="baseline">
-                {mono(`v${set.compiled_version}`)}
-                {set && isStale(set) ? dim('· out of date') : null}
-              </Group>
-            ) : (
-              dim('—')
-            )
-          }
-        />
-        <MetaRow label="ID" value={isNew ? dim('generated on save') : mono(set?.id ?? '')} />
-        <MetaRow label="Tenant ID" value={isNew ? dim('from session') : mono(set?.tenant_id ?? '')} />
-        <MetaRow label="Created" value={isNew ? dim('on save') : body(set ? formatDate(set.created_at) : '—')} />
-        <MetaRow label="Updated" value={isNew ? dim('on save') : body(set ? formatDate(set.updated_at) : '—')} />
-      </Stack>
-    </Card>
-  )
-}
-
-function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <Group gap="xs" wrap="wrap" align="baseline">
-      <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', minWidth: 96 }}>
-        {label}
-      </Text>
-      <div style={{ flex: 1, minWidth: 0 }}>{value}</div>
-    </Group>
-  )
-}
-
-// ── View card ──────────────────────────────────────────────────────────────────
-function PromptSetViewCard({
-  set,
-  typeName,
-  onView,
-  onEdit,
-  onDelete,
-}: {
-  set: PromptSet
-  typeName: string | null
-  onView: () => void // NEW
-  onEdit: () => void
-  onDelete: () => void
-}) {
-  return (
-    <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
-      <Stack gap="xs">
-        <Group justify="space-between" align="flex-start" gap="sm" wrap="nowrap">
-          <Group gap="sm" align="center" wrap="wrap" style={{ minWidth: 0 }}>
-            <Text variant="label" style={{ fontSize: 'var(--mantine-font-size-md)' }}>
-              {set.label}
-            </Text>
-            <Text
-              variant="muted"
-              style={{ fontSize: 'var(--mantine-font-size-xs)', fontFamily: 'var(--mantine-font-family-monospace)' }}
-            >
-              v{set.version}
-            </Text>
-            <PromptSetBadges set={set} typeName={typeName} />
-          </Group>
-          <Group gap={4} wrap="nowrap">
-            {/* NEW: view compiled prompt */}
-            <ActionIcon variant="subtle" color="gray" size="md" onClick={onView} aria-label={`View compiled prompt for ${set.label}`}>
-              <IconEye size={16} />
-            </ActionIcon>
-            <ActionIcon variant="subtle" color="gray" size="md" onClick={onEdit} aria-label={`Edit ${set.label}`}>
-              <IconPencil size={16} />
-            </ActionIcon>
-            <ActionIcon variant="subtle" color="red" size="md" onClick={onDelete} aria-label={`Delete ${set.label}`}>
-              <IconTrash size={16} />
-            </ActionIcon>
-          </Group>
-        </Group>
-        {set.description && (
-          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-            {set.description}
-          </Text>
-        )}
-        {/* NEW: stale warning */}
-        {isStale(set) && (
-          <Alert color="yellow" variant="light" radius="sm" icon={<IconAlertTriangle size={16} />} p="xs">
-            <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-              Edited since last compile — recompile to apply changes.
-            </Text>
-          </Alert>
-        )}
-        <MetaStrip set={set} />
-      </Stack>
-    </Card>
-  )
-}
-
 // ── Edit / new card ────────────────────────────────────────────────────────────
 interface EditCardProps {
   draft: DraftFields
@@ -595,23 +346,12 @@ interface EditCardProps {
   isNew?: boolean
 }
 
-function PromptSetEditCard({
-  draft,
-  meta,
-  promptTypes,
-  onChange,
-  onCreateType,
-  onSave,
-  onCancel,
-  saving,
-  isNew,
-}: EditCardProps) {
+function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, onSave, onCancel, saving, isNew }: EditCardProps) {
   const [creatingType, setCreatingType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
   const [creatingTypeBusy, setCreatingTypeBusy] = useState(false)
   const isLive = draft.status === 'live'
 
-  // Surface the currently-selected type even if it isn't in the list yet.
   const typeData = [
     ...promptTypes.map((t) => ({ value: t.id, label: t.name })),
     ...(draft.prompt_type_id && !promptTypes.some((t) => t.id === draft.prompt_type_id)
@@ -630,18 +370,13 @@ function PromptSetEditCard({
       setCreatingType(false)
       setNewTypeName('')
     } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Could not create type',
-        message: err instanceof Error ? err.message : 'Failed to create prompt type.',
-      })
+      notifications.show({ color: 'red', title: 'Could not create type', message: err instanceof Error ? err.message : 'Failed to create prompt type.' })
     } finally {
       setCreatingTypeBusy(false)
     }
   }
 
-  const saveDisabled =
-    saving || creatingType || draft.label.trim().length === 0 || (isLive && !(draft.prompt_type_id ?? '').trim())
+  const saveDisabled = saving || creatingType || draft.label.trim().length === 0 || (isLive && !(draft.prompt_type_id ?? '').trim())
 
   return (
     <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
@@ -684,8 +419,7 @@ function PromptSetEditCard({
           disabled={saving}
         />
 
-        {/* NEW: the Type control renders for drafts too (was wrapped in `isLive && …`).
-            Required only when Live; optional otherwise. */}
+        {/* NEW: Type renders for drafts too; required only when Live. */}
         {creatingType ? (
           <TextInput
             label="New prompt type"
@@ -709,26 +443,10 @@ function PromptSetEditCard({
             rightSectionWidth={120}
             rightSection={
               <Group gap={4} wrap="nowrap">
-                <Button
-                  variant="subtle"
-                  color="gray"
-                  size="compact-xs"
-                  onClick={() => {
-                    setCreatingType(false)
-                    setNewTypeName('')
-                  }}
-                  disabled={creatingTypeBusy}
-                >
+                <Button variant="subtle" color="gray" size="compact-xs" onClick={() => { setCreatingType(false); setNewTypeName('') }} disabled={creatingTypeBusy}>
                   Cancel
                 </Button>
-                <Button
-                  variant="light"
-                  color="green"
-                  size="compact-xs"
-                  onClick={handleCreateType}
-                  loading={creatingTypeBusy}
-                  disabled={!newTypeName.trim()}
-                >
+                <Button variant="light" color="green" size="compact-xs" onClick={handleCreateType} loading={creatingTypeBusy} disabled={!newTypeName.trim()}>
                   Create
                 </Button>
               </Group>
@@ -756,7 +474,7 @@ function PromptSetEditCard({
           />
         )}
 
-        <MetaStrip set={meta} isNew={isNew} />
+        <PromptSetMetaStrip set={meta} isNew={isNew} />
 
         <Group gap="xs" justify="flex-end" wrap="wrap">
           <Button variant="subtle" color="gray" size="sm" onClick={onCancel} disabled={saving}>

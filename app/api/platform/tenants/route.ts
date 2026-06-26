@@ -1,4 +1,5 @@
 import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -8,6 +9,27 @@ import { logEvent, AuditAction } from '@/services/audit'
 // re-checked here so the service-role INSERT can never run for a non-admin,
 // independent of any client-side routing. Validation + data-access live in
 // services/tenant.
+
+// GET /api/platform/tenants — minimal tenant list for the Platform Settings →
+// Tenant Prompts "Add New" tenant picker. Platform-admin only. Returns [{ id, name }]
+// ordered by name. (The cross-tenant create/update/delete surfaces gate the same way.)
+export async function GET() {
+  const user = await getCurrentUser()
+  if (!user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!user.isPlatformAdmin) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const supabase = getAdminClient()
+  const { data, error } = await supabase.from('tenants').select('id, name').order('name', { ascending: true })
+  if (error) {
+    console.error('[platform/tenants] fetch failed:', error.message)
+    return Response.json({ error: error.message }, { status: 500 })
+  }
+  return Response.json(data ?? [])
+}
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()

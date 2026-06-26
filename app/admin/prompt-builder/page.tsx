@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
 import { Select, TextInput, Collapse, Stack, Group, Badge, SimpleGrid, Progress, Skeleton, Modal, Checkbox, Text as MantineText, Button as MantineButton } from '@mantine/core'
@@ -22,8 +23,13 @@ import {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+// Reads ?promptSet=<id> (the "Open in Composer" deep-link) — opt out of static
+// generation so useSearchParams resolves without a CSR bailout at build.
+export const dynamic = 'force-dynamic'
+
 export default function PromptBuilderPage() {
   const ownerId = useAdminUserId()
+  const searchParams = useSearchParams()
   const { user: authUser } = useAuthUser()
   const isPlatformAdmin = authUser?.isPlatformAdmin === true
 
@@ -72,6 +78,7 @@ export default function PromptBuilderPage() {
   const [promptTypes, setPromptTypes] = useState<{ id: string; name: string }[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const promptSetParamApplied = useRef(false)
 
   // Exchange counter — counts user messages in the current session only
   const exchangeCount = chatMessages.slice(sessionStartIndex).filter(m => m.role === 'user').length
@@ -143,6 +150,17 @@ export default function PromptBuilderPage() {
     }
     fetchPromptSets()
   }, [])
+
+  // "Open in Composer" deep-link: honor ?promptSet=<id> once, after the sets load.
+  // No-op if the id isn't in this tenant's list (e.g. a cross-tenant link).
+  useEffect(() => {
+    if (promptSetParamApplied.current) return
+    const requested = searchParams.get('promptSet')
+    if (requested && promptSets.some((s) => s.id === requested)) {
+      setActivePromptSetId(requested)
+      promptSetParamApplied.current = true
+    }
+  }, [searchParams, promptSets])
 
   useEffect(() => {
     fetch('/api/admin/prompt-types')
