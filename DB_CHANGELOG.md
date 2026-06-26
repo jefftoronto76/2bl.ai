@@ -1,5 +1,27 @@
 # DB Changelog
 
+## 2026-06-26
+
+### Refactor `prompt_types` — drop `tenant_id`, add `prompt_type_tenants` join table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Changes:**
+- Created `prompt_type_tenants` join table (prompt_type_id, tenant_id, created_at) with unique constraint on (prompt_type_id, tenant_id)
+- Migrated existing `prompt_types.tenant_id` values into `prompt_type_tenants`
+- Dropped `tenant_id` column and index from `prompt_types`
+- Dropped `is_default` column from `prompt_types` — fallback logic belongs in application code, not taxonomy
+- Deleted `default` type — wrong concept for a taxonomy table
+- `base` is the baseline type (sort_order 0); `sales`, `onboarding`, `editor` round out the platform taxonomy
+
+**Why:**
+A type is a definition, not a possession. Separating definition (prompt_types) from assignment (prompt_type_tenants) allows one type to be assigned to multiple tenants without duplicating the definition.
+
+**Current state:**
+Four types in prompt_types: base, sales, onboarding, editor — all assigned to SBL via prompt_type_tenants. No other tenants have type assignments yet.
+
+
 ## 2026-06-25 (rename)
 
 `blocks.prompt_type_key` → `blocks.prompt_set_key` → finally `blocks.prompt_set_id`
