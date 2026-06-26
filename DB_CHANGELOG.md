@@ -1,6 +1,22 @@
 # DB Changelog
 
+
+
 ## 2026-06-26
+
+### Add `blocks_touch_parent_prompt_set` trigger
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Purpose:** Whenever a block is inserted, updated, or deleted, bump the parent
+`prompt_sets.updated_at` to now(). This ensures the stale warning on prompt set
+cards fires correctly when blocks change — not just when set metadata changes.
+
+**SQL:**
+- Created `touch_prompt_set_on_block_change()` trigger function
+- Created `blocks_touch_parent_prompt_set` trigger (AFTER INSERT OR UPDATE OR DELETE
+  ON blocks, FOR EACH ROW)
 
 ### Refactor `prompt_sets` — rename `is_master`, add `is_default`
 
