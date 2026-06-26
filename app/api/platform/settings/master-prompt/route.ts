@@ -2,9 +2,10 @@ import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 
-// Platform master pointer: which prompt set carries is_master=true (the single
-// platform-wide master). Platform-admin only (defense-in-depth). The partial
-// unique index prompt_sets_single_master_idx enforces at most one master row.
+// Platform composer-prompt pointer: which prompt set carries is_composer_prompt=true
+// (the single composer prompt across all tenants). Platform-admin only
+// (defense-in-depth). The partial unique index prompt_sets_single_composer_idx
+// enforces at most one such row.
 
 async function requirePlatformAdmin() {
   const user = await getCurrentUser()
@@ -21,7 +22,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from('prompt_sets')
     .select('id')
-    .eq('is_master', true)
+    .eq('is_composer_prompt', true)
     .maybeSingle()
 
   if (error) {
@@ -65,13 +66,13 @@ export async function PUT(req: Request) {
     return Response.json({ error: 'Prompt set not found' }, { status: 404 })
   }
 
-  // Clear any other master FIRST so the single-master partial unique index never
-  // sees two true rows, then set the target. (REST has no true transaction here;
+  // Clear any other composer prompt FIRST so the single-composer partial unique index
+  // never sees two true rows, then set the target. (REST has no true transaction here;
   // the index is the backstop and this ordering avoids a conflict.)
   const { error: clearErr } = await supabase
     .from('prompt_sets')
-    .update({ is_master: false })
-    .eq('is_master', true)
+    .update({ is_composer_prompt: false })
+    .eq('is_composer_prompt', true)
     .neq('id', promptSetId)
 
   if (clearErr) {
@@ -81,7 +82,7 @@ export async function PUT(req: Request) {
 
   const { error: setErr } = await supabase
     .from('prompt_sets')
-    .update({ is_master: true })
+    .update({ is_composer_prompt: true })
     .eq('id', promptSetId)
 
   if (setErr) {
@@ -99,7 +100,7 @@ export async function PUT(req: Request) {
     target_type: 'prompt_set',
     target_id: promptSetId,
     correlation_id: req.headers.get('x-correlation-id'),
-    metadata: { is_master: true },
+    metadata: { is_composer_prompt: true },
   })
 
   return Response.json({ promptSetId })
