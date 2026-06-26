@@ -8,11 +8,11 @@
 // owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Accordion, Badge, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Accordion, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { MasterPromptPicker } from './MasterPromptPicker'
+import { CurrentSystemPromptPill, MasterPromptPicker } from './MasterPromptPicker'
 import { TenantPrompts } from './TenantPrompts'
-import { type MasterPromptOption, type MasterPromptSetting, statusLabel } from './types'
+import { type MasterPromptOption, type MasterPromptSetting } from './types'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,36 +138,7 @@ export default function PlatformSettingsPage() {
                 </Stack>
               ) : (
                 <>
-                  <Group gap="xs" wrap="wrap" align="center">
-                    <Text size="sm" c="dimmed">
-                      Current System Prompt
-                    </Text>
-                    <Text size="sm" aria-hidden>
-                      ·
-                    </Text>
-                    {current ? (
-                      <>
-                        <Text size="sm" fw={600}>
-                          {current.label}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {current.tenantName}
-                        </Text>
-                        <Badge
-                          size="sm"
-                          radius="sm"
-                          variant="light"
-                          color={current.status.toLowerCase() === 'live' ? 'green' : 'yellow'}
-                        >
-                          {statusLabel(current.status)}
-                        </Badge>
-                      </>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        No System Prompt set yet
-                      </Text>
-                    )}
-                  </Group>
+                  <CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} />
 
                   <MasterPromptPicker
                     options={options}
