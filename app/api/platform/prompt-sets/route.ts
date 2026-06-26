@@ -36,9 +36,10 @@ interface PlatformPromptSet {
   tenantName: string
 }
 
+// Must be a single string literal (not concatenated) — the untyped Supabase client
+// returns GenericStringError[] when the select arg widens to `string`.
 const SELECT_COLUMNS =
-  'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, ' +
-  'created_at, updated_at, block_count, last_compiled_at, compiled_version'
+  'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at, block_count, last_compiled_at, compiled_version'
 
 export async function GET() {
   const user = await getCurrentUser()

@@ -25,9 +25,11 @@ interface PromptSet {
 const SELECT_COLUMNS =
   'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at'
 
-// GET also returns the derived compile metadata (view columns).
+// GET also returns the derived compile metadata (view columns). Must be a single
+// string literal (not concatenated) — the untyped Supabase client returns
+// GenericStringError[] when the select arg widens to `string`.
 const SELECT_COLUMNS_WITH_META =
-  SELECT_COLUMNS + ', block_count, last_compiled_at, compiled_version'
+  'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at, block_count, last_compiled_at, compiled_version'
 
 const VALID_STATUS: readonly PromptSetStatus[] = ['live', 'draft']
 
