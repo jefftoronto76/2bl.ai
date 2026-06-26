@@ -364,7 +364,11 @@ route group / segment and resolved at the edge by `middleware.ts`.
 - **`app/admin/` + `app/(platform)/`** — the Mantine admin and 2BL platform
   admin. They render under `app/layout.tsx` (not under `(jefflougheed)`), so each
   layout imports `app/(jefflougheed)/globals.css` explicitly to keep the shared
-  inkwell tokens its pages consume.
+  inkwell tokens its pages consume. Platform-admin screens live under
+  `app/(platform)/platform/*` (gated in `app/(platform)/layout.tsx`); e.g.
+  `platform/settings` is the Platform Settings → Master Prompt screen (cross-tenant
+  picker that flips `prompt_sets.is_master`; page + `MasterPromptPicker` co-located
+  there, Mantine).
 
 ### Middleware (`middleware.ts`)
 
@@ -934,6 +938,16 @@ All routes gate on `user.isPlatformAdmin` from `getCurrentUser()`. Audit rows wr
 | `/api/platform/members/[userId]` | DELETE | Hard-deletes a users row. DB cascade removes members, chat_sessions, etc. Writes `MEMBER_HARD_DELETED` audit before delete. 204 on success. |
 
 **Retired:** `/api/admin/invites` (GET, POST) and `/api/admin/invites/[id]` (DELETE) are deleted. `/api/heirloom/invites/use` is deleted.
+
+### Platform Settings → Master Prompt (platform admin only)
+
+Backs the `/platform/settings` page. Both routes gate on `getCurrentUser().isPlatformAdmin` (403 else; the `(platform)` layout already redirects non-admins, this is defense-in-depth).
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/platform/prompt-sets` | GET | Cross-tenant superset of prompt sets for the Master Prompt picker: `[{ id, label, tenantId, tenantName, status, version }]` (joins `tenants.name`; status lowercase). Sorted by tenant name then label. |
+| `/api/platform/settings/master-prompt` | GET | Returns `{ promptSetId }` — the `prompt_sets` row with `is_master = true` (or null). |
+| `/api/platform/settings/master-prompt` | PUT | Body `{ promptSetId }`. Sets the single platform master: clears any prior `is_master` row first, then sets the target (404 if the target doesn't exist; the `prompt_sets_single_master_idx` partial unique index is the backstop). Writes `PROMPT_SET_MASTER_SET` audit. |
 
 ### Heirloom Invites
 
