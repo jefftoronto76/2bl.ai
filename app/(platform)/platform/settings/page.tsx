@@ -8,11 +8,11 @@
 // owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Accordion, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { MasterPromptPicker } from './MasterPromptPicker'
+import { CurrentSystemPromptPill, MasterPromptPicker } from './MasterPromptPicker'
 import { TenantPrompts } from './TenantPrompts'
-import { type MasterPromptOption, type MasterPromptSetting, statusLabel } from './types'
+import { type MasterPromptOption, type MasterPromptSetting } from './types'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,7 +90,7 @@ export default function PlatformSettingsPage() {
       const savedSet = options.find((o) => o.id === saved.promptSetId)
       notifications.show({
         color: 'green',
-        title: 'Master prompt updated',
+        title: 'System prompt updated',
         message: savedSet ? `${savedSet.label} — ${savedSet.tenantName}` : 'Saved.',
       })
     } catch (err) {
@@ -114,90 +114,61 @@ export default function PlatformSettingsPage() {
         <Text c="dimmed">Platform-wide configuration.</Text>
       </Stack>
 
-      <Card withBorder radius="md" p="lg">
-        <Stack gap="md">
-          <Stack gap={4}>
-            <Title order={2} size="h4">
-              Master Prompt
-            </Title>
-            <Text c="dimmed" size="sm">
-              The system prompt that powers every tenant&rsquo;s Composer when building blocks. The set you mark here
-              is compiled and sent as the master system prompt platform-wide.
-            </Text>
-          </Stack>
-
-          {loading ? (
-            <Stack gap="sm">
-              <Skeleton height={40} radius="sm" />
-              <Skeleton height={40} radius="sm" />
-            </Stack>
-          ) : isEmpty ? (
-            <Stack gap={4}>
-              <Text fw={500}>No prompt sets yet.</Text>
-              <Text c="dimmed" size="sm">
-                Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform master.
-              </Text>
-            </Stack>
-          ) : (
-            <>
-              <Group gap="xs" wrap="wrap" align="center">
-                <Text size="sm" c="dimmed">
-                  Current master
-                </Text>
-                <Text size="sm" aria-hidden>
-                  ·
-                </Text>
-                {current ? (
-                  <>
-                    <Text size="sm" fw={600}>
-                      {current.label}
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      {current.tenantName}
-                    </Text>
-                    <Badge
-                      size="sm"
-                      radius="sm"
-                      variant="light"
-                      color={current.status.toLowerCase() === 'live' ? 'green' : 'yellow'}
-                    >
-                      {statusLabel(current.status)}
-                    </Badge>
-                  </>
-                ) : (
-                  <Text size="sm" c="dimmed">
-                    No master set yet
+      <Accordion variant="separated" defaultValue="system-prompt">
+        <Accordion.Item value="system-prompt">
+          <Accordion.Control>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>System Prompt</span>
+            <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>
+              The system prompt that powers every tenant&rsquo;s Composer when building blocks. The set you mark here is compiled and sent as the system prompt platform-wide.
+            </span>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Stack gap="md">
+              {loading ? (
+                <Stack gap="sm">
+                  <Skeleton height={40} radius="sm" />
+                  <Skeleton height={40} radius="sm" />
+                </Stack>
+              ) : isEmpty ? (
+                <Stack gap={4}>
+                  <Text fw={500}>No prompt sets yet.</Text>
+                  <Text c="dimmed" size="sm">
+                    Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform System Prompt.
                   </Text>
-                )}
-              </Group>
+                </Stack>
+              ) : (
+                <>
+                  <CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} />
 
-              <MasterPromptPicker
-                options={options}
-                selectedId={pending}
-                masterId={master.promptSetId}
-                onSelect={setPending}
-                disabled={saving}
-              />
+                  <MasterPromptPicker
+                    options={options}
+                    selectedId={pending}
+                    masterId={master.promptSetId}
+                    onSelect={setPending}
+                    disabled={saving}
+                  />
 
-              <Group gap="sm" align="center">
-                <Button color="green" onClick={save} loading={saving} disabled={!dirty || pending == null}>
-                  Save
-                </Button>
-                {dirty && !saving && (
-                  <Button variant="subtle" color="gray" onClick={cancel}>
-                    Cancel
-                  </Button>
-                )}
-                {dirty && !saving && (
-                  <Text size="sm" c="dimmed">
-                    Unsaved change
-                  </Text>
-                )}
-              </Group>
-            </>
-          )}
-        </Stack>
-      </Card>
+                  <Group gap="sm" align="center">
+                    <Button color="green" onClick={save} loading={saving} disabled={!dirty || pending == null}>
+                      Save
+                    </Button>
+                    {dirty && !saving && (
+                      <Button variant="subtle" color="gray" onClick={cancel}>
+                        Cancel
+                      </Button>
+                    )}
+                    {dirty && !saving && (
+                      <Text size="sm" c="dimmed">
+                        Unsaved change
+                      </Text>
+                    )}
+                  </Group>
+                </>
+              )}
+            </Stack>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
 
       <Card withBorder radius="md" p="lg">
         <Stack gap="md">
