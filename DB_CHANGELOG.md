@@ -1,8 +1,9 @@
 # DB Changelog
 
-
-
 ## 2026-06-26
+
+RLS review pending on prompt_sets/prompt_types for cross-tenant platform writes
+Compile metadata shows "Never compiled" for sets not yet compiled under per-set shape — data migration needed
 
 ### Add `blocks_touch_parent_prompt_set` trigger
 
