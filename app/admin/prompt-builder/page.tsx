@@ -69,6 +69,7 @@ export default function PromptBuilderPage() {
   const [skipNewConvConfirm, setSkipNewConvConfirm] = useState(false)
   const [promptSets, setPromptSets] = useState<PromptSet[]>([])
   const [activePromptSetId, setActivePromptSetId] = useState<string | null>(null)
+  const [promptTypes, setPromptTypes] = useState<{ id: string; name: string }[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -141,6 +142,13 @@ export default function PromptBuilderPage() {
       }
     }
     fetchPromptSets()
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/admin/prompt-types')
+      .then(r => (r.ok ? r.json() : []))
+      .then(setPromptTypes)
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -318,10 +326,35 @@ export default function PromptBuilderPage() {
     }
   }
 
-  function createPromptSet(label: string) {
-    const newSet: PromptSet = { id: String(promptSets.length + 1 + Date.now()), label, version: 1, status: 'draft' }
-    setPromptSets(prev => [...prev, newSet])
-    setActivePromptSetId(newSet.id)
+  async function createPromptSet(input: { label: string; promptTypeId: string | null; description: string }) {
+    const name = input.label.trim()
+    if (!name) return
+    const optimistic: PromptSet = { id: 'new-' + Date.now(), label: name, version: 1, status: 'draft' }
+    setPromptSets(prev => [...prev, optimistic])
+    setActivePromptSetId(optimistic.id)
+    try {
+      const res = await fetch('/api/admin/prompt-sets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: name,
+          description: input.description.trim(),
+          status: 'draft', // inline creates are always Draft v1
+          prompt_type_id: input.promptTypeId,
+        }),
+      })
+      if (!res.ok) {
+        setPromptSets(prev => prev.filter(s => s.id !== optimistic.id))
+        if (activePromptSetId === optimistic.id) setActivePromptSetId(null)
+        return
+      }
+      const saved: PromptSet = await res.json()
+      setPromptSets(prev => prev.map(s => (s.id === optimistic.id ? saved : s)))
+      setActivePromptSetId(saved.id)
+    } catch (err) {
+      console.error('[createPromptSet] failed:', err)
+      setPromptSets(prev => prev.filter(s => s.id !== optimistic.id))
+    }
   }
 
   async function handleFileUpload(f: File) {
@@ -967,6 +1000,7 @@ export default function PromptBuilderPage() {
             <PromptSetPicker
               sets={promptSets}
               activeId={activePromptSetId}
+              promptTypes={promptTypes}
               onSelect={setActivePromptSetId}
               onCreate={createPromptSet}
             />

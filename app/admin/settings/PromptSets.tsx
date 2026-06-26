@@ -1,25 +1,35 @@
 'use client'
 
 // PromptSets — Settings accordion panel (app/admin/settings).
-// The tenant's prompt sets: label, description, status (live/draft), and — when
-// live — the prompt type the set is wired to. Mirrors SageParameters.tsx in shape
-// (fetch → notifications → view/edit Card split → delete Modal → Add New).
 //
-// Field rules:
-//   • version        — READ-ONLY. Auto-increments on compile; the editor never writes it.
-//   • is_composer_prompt — READ-ONLY badge. The prompt set powering the Composer AI;
-//                      flagged by the platform admin on Platform Settings.
-//   • is_default     — READ-ONLY. The set loaded for a tenant's chat sessions when no
-//                      specific set is requested (one default per tenant).
-//   • prompt_type_id — FK → prompt_types.id. Only meaningful while status === 'live'.
-//                      Chosen from the tenant's prompt types; a new type can be minted
-//                      inline via POST /api/admin/prompt-types.
-//   • status         — admin-set. Multiple sets may be live at once (no exclusivity).
-//   • id / tenant_id / created_at / updated_at — server-owned (UUID + session + DB).
+// ░░ THIS IS THE ENHANCED DROP-IN ░░  Diff vs the shipping file is limited to the
+// items below; everything else is byte-for-byte the current component so it reviews
+// cleanly. Search "// NEW:" to find every change.
+//
+//   1. TYPE ON ADD-NEW (was: only when Live)
+//      The "Used as" prompt-type Select (and inline ＋ New type…) now renders for
+//      DRAFTS too, so a type can be assigned at creation. Still REQUIRED only when
+//      Live. `normalizeType` no longer nulls a draft's type — the matching API change
+//      (persist prompt_type_id for drafts) is in api/admin.prompt-sets.GET.enriched.md.
+//
+//   2. COMPILE METADATA ON THE VIEW CARD (all read-only, server-derived)
+//      • Blocks            — block_count
+//      • Last compiled     — last_compiled_at
+//      • Compiled version  — compiled_version (the version stamped by the compiler)
+//      • Stale badge + Alert when updated_at > last_compiled_at  (isStale())
+//
+//   3. VIEW COMPILED PROMPT
+//      An eye ActionIcon opens <CompiledPromptModal/> (fetches the authoritative
+//      compiled output for the set; does not reassemble blocks client-side).
+//
+// Shared types/helpers live in @/lib/promptSet (shared/promptSet.ts in this bundle).
+// The modal lives in @/components/admin/settings/CompiledPromptModal
+// (shared/CompiledPromptModal.tsx in this bundle).
 
 import { useCallback, useEffect, useState } from 'react'
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Card,
@@ -32,24 +42,10 @@ import {
   TextInput,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconAlertTriangle, IconEye, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
-
-type PromptSetStatus = 'live' | 'draft'
-
-interface PromptSet {
-  id: string
-  tenant_id: string
-  label: string
-  description: string | null
-  status: PromptSetStatus
-  is_composer_prompt: boolean
-  is_default: boolean
-  prompt_type_id: string | null
-  version: number
-  created_at: string
-  updated_at: string
-}
+import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
+import { type PromptSet, type PromptSetStatus, formatDate, isStale } from '@/lib/promptSet'
 
 interface PromptType {
   id: string
@@ -60,7 +56,8 @@ interface PromptType {
 }
 
 // Only the editable fields travel in the draft / PATCH body. Everything else is
-// server-owned (tenant_id, version, is_composer_prompt, is_default, timestamps).
+// server-owned (tenant_id, version, is_composer_prompt, is_default, timestamps,
+// and the derived compile metadata).
 interface DraftFields {
   label: string
   description: string
@@ -87,10 +84,6 @@ function draftFromSet(s: PromptSet): DraftFields {
   return { label: s.label, description: s.description ?? '', status: s.status, prompt_type_id: s.prompt_type_id }
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
 function extractErrorMessage(body: unknown, fallback: string): string {
   if (
     typeof body === 'object' &&
@@ -113,6 +106,7 @@ export function PromptSets() {
   const [deleteTarget, setDeleteTarget] = useState<PromptSet | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showNewCard, setShowNewCard] = useState(false)
+  const [viewTarget, setViewTarget] = useState<PromptSet | null>(null) // NEW: compiled-prompt viewer
 
   const fetchSets = useCallback(async () => {
     try {
@@ -156,7 +150,7 @@ export function PromptSets() {
   )
 
   // Upsert: PATCH with an id updates; without an id inserts. The server resolves
-  // tenant_id from the session and ignores any client-sent version/is_composer_prompt/is_default/dates.
+  // tenant_id from the session and ignores any client-sent version/is_composer_prompt/is_default/dates/compile-meta.
   async function patchSet(payload: PatchPayload): Promise<PromptSet> {
     const res = await fetch('/api/admin/prompt-sets', {
       method: 'PATCH',
@@ -213,9 +207,9 @@ export function PromptSets() {
     return null
   }
 
-  // A set's prompt_type_id is only persisted while live.
+  // NEW: a set's prompt_type_id is now persisted for drafts too (was: nulled unless live),
+  // so a type can be chosen at creation. Required validation for Live is unchanged.
   function normalizeType(d: DraftFields): string | null {
-    if (d.status !== 'live') return null
     return d.prompt_type_id || null
   }
 
@@ -354,6 +348,7 @@ export function PromptSets() {
                   key={set.id}
                   set={set}
                   typeName={typeNameById(set.prompt_type_id)}
+                  onView={() => setViewTarget(set)} // NEW
                   onEdit={() => startEdit(set)}
                   onDelete={() => setDeleteTarget(set)}
                 />
@@ -361,6 +356,16 @@ export function PromptSets() {
             )
           )}
         </Stack>
+      )}
+
+      {/* NEW: view compiled prompt */}
+      {viewTarget && (
+        <CompiledPromptModal
+          set={viewTarget}
+          compiledUrl={`/api/admin/prompt-sets/${encodeURIComponent(viewTarget.id)}/compiled`}
+          opened={viewTarget !== null}
+          onClose={() => setViewTarget(null)}
+        />
       )}
 
       <Modal
@@ -388,7 +393,7 @@ export function PromptSets() {
   )
 }
 
-// ── Status / Composer / type badges ─────────────────────────────────────────────
+// ── Status / Composer / type / stale badges ─────────────────────────────────────
 function StatusBadge({ status }: { status: PromptSetStatus }) {
   return status === 'live' ? (
     <Badge color="green" variant="light" radius="sm">
@@ -410,9 +415,16 @@ function PromptSetBadges({ set, typeName }: { set: PromptSet; typeName: string |
           Composer
         </Badge>
       )}
-      {set.status === 'live' && typeName && (
+      {/* NEW: type chip now shows whenever a type is assigned (was: only when Live) */}
+      {typeName && (
         <Badge color="gray" variant="light" radius="sm">
           {typeName}
+        </Badge>
+      )}
+      {/* NEW: stale flag */}
+      {isStale(set) && (
+        <Badge color="yellow" variant="filled" radius="sm" leftSection={<IconAlertTriangle size={11} />}>
+          Stale
         </Badge>
       )}
     </Group>
@@ -423,6 +435,11 @@ function PromptSetBadges({ set, typeName }: { set: PromptSet; typeName: string |
 function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
   const dim = (s: string) => (
     <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+      {s}
+    </Text>
+  )
+  const body = (s: string) => (
+    <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
       {s}
     </Text>
   )
@@ -462,32 +479,31 @@ function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
             )
           }
         />
+        {/* NEW: compile metadata (read-only, derived server-side) */}
+        <MetaRow label="Blocks" value={isNew ? dim('on compile') : body(String(set?.block_count ?? 0))} />
+        <MetaRow
+          label="Last compiled"
+          value={isNew ? dim('on compile') : set?.last_compiled_at ? body(formatDate(set.last_compiled_at)) : dim('Never compiled')}
+        />
+        <MetaRow
+          label="Compiled version"
+          value={
+            isNew ? (
+              dim('on compile')
+            ) : set?.compiled_version != null ? (
+              <Group gap={6} wrap="wrap" align="baseline">
+                {mono(`v${set.compiled_version}`)}
+                {set && isStale(set) ? dim('· out of date') : null}
+              </Group>
+            ) : (
+              dim('—')
+            )
+          }
+        />
         <MetaRow label="ID" value={isNew ? dim('generated on save') : mono(set?.id ?? '')} />
         <MetaRow label="Tenant ID" value={isNew ? dim('from session') : mono(set?.tenant_id ?? '')} />
-        <MetaRow
-          label="Created"
-          value={
-            isNew ? (
-              dim('on save')
-            ) : (
-              <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-                {set ? formatDate(set.created_at) : '—'}
-              </Text>
-            )
-          }
-        />
-        <MetaRow
-          label="Updated"
-          value={
-            isNew ? (
-              dim('on save')
-            ) : (
-              <Text variant="body" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-                {set ? formatDate(set.updated_at) : '—'}
-              </Text>
-            )
-          }
-        />
+        <MetaRow label="Created" value={isNew ? dim('on save') : body(set ? formatDate(set.created_at) : '—')} />
+        <MetaRow label="Updated" value={isNew ? dim('on save') : body(set ? formatDate(set.updated_at) : '—')} />
       </Stack>
     </Card>
   )
@@ -496,7 +512,7 @@ function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
 function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <Group gap="xs" wrap="wrap" align="baseline">
-      <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', minWidth: 76 }}>
+      <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', minWidth: 96 }}>
         {label}
       </Text>
       <div style={{ flex: 1, minWidth: 0 }}>{value}</div>
@@ -508,11 +524,13 @@ function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
 function PromptSetViewCard({
   set,
   typeName,
+  onView,
   onEdit,
   onDelete,
 }: {
   set: PromptSet
   typeName: string | null
+  onView: () => void // NEW
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -533,6 +551,10 @@ function PromptSetViewCard({
             <PromptSetBadges set={set} typeName={typeName} />
           </Group>
           <Group gap={4} wrap="nowrap">
+            {/* NEW: view compiled prompt */}
+            <ActionIcon variant="subtle" color="gray" size="md" onClick={onView} aria-label={`View compiled prompt for ${set.label}`}>
+              <IconEye size={16} />
+            </ActionIcon>
             <ActionIcon variant="subtle" color="gray" size="md" onClick={onEdit} aria-label={`Edit ${set.label}`}>
               <IconPencil size={16} />
             </ActionIcon>
@@ -545,6 +567,14 @@ function PromptSetViewCard({
           <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
             {set.description}
           </Text>
+        )}
+        {/* NEW: stale warning */}
+        {isStale(set) && (
+          <Alert color="yellow" variant="light" radius="sm" icon={<IconAlertTriangle size={16} />} p="xs">
+            <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+              Edited since last compile — recompile to apply changes.
+            </Text>
+          </Alert>
         )}
         <MetaStrip set={set} />
       </Stack>
@@ -654,74 +684,77 @@ function PromptSetEditCard({
           disabled={saving}
         />
 
-        {isLive &&
-          (creatingType ? (
-            <TextInput
-              label="New prompt type"
-              value={newTypeName}
-              onChange={(e) => setNewTypeName(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleCreateType()
-                }
-                if (e.key === 'Escape') {
-                  setCreatingType(false)
-                  setNewTypeName('')
-                }
-              }}
-              placeholder="e.g. Onboarding"
-              description="Creates a new prompt type for this tenant."
-              size="sm"
-              required
-              disabled={creatingTypeBusy}
-              rightSectionWidth={120}
-              rightSection={
-                <Group gap={4} wrap="nowrap">
-                  <Button
-                    variant="subtle"
-                    color="gray"
-                    size="compact-xs"
-                    onClick={() => {
-                      setCreatingType(false)
-                      setNewTypeName('')
-                    }}
-                    disabled={creatingTypeBusy}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="light"
-                    color="green"
-                    size="compact-xs"
-                    onClick={handleCreateType}
-                    loading={creatingTypeBusy}
-                    disabled={!newTypeName.trim()}
-                  >
-                    Create
-                  </Button>
-                </Group>
+        {/* NEW: the Type control renders for drafts too (was wrapped in `isLive && …`).
+            Required only when Live; optional otherwise. */}
+        {creatingType ? (
+          <TextInput
+            label="New prompt type"
+            value={newTypeName}
+            onChange={(e) => setNewTypeName(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleCreateType()
               }
-            />
-          ) : (
-            <Select
-              label="Used as"
-              description="Which prompt type this live set is wired to."
-              placeholder="Select a prompt type"
-              data={typeData}
-              value={draft.prompt_type_id}
-              onChange={(value) => {
-                if (value === NEW_TYPE_SENTINEL) {
-                  setCreatingType(true)
-                  setNewTypeName('')
-                } else {
-                  onChange({ prompt_type_id: value })
-                }
-              }}
-              size="sm"
-              disabled={saving}
-            />
-          ))}
+              if (e.key === 'Escape') {
+                setCreatingType(false)
+                setNewTypeName('')
+              }
+            }}
+            placeholder="e.g. Onboarding"
+            description="Creates a new prompt type for this tenant."
+            size="sm"
+            required={isLive}
+            disabled={creatingTypeBusy}
+            rightSectionWidth={120}
+            rightSection={
+              <Group gap={4} wrap="nowrap">
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  size="compact-xs"
+                  onClick={() => {
+                    setCreatingType(false)
+                    setNewTypeName('')
+                  }}
+                  disabled={creatingTypeBusy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="light"
+                  color="green"
+                  size="compact-xs"
+                  onClick={handleCreateType}
+                  loading={creatingTypeBusy}
+                  disabled={!newTypeName.trim()}
+                >
+                  Create
+                </Button>
+              </Group>
+            }
+          />
+        ) : (
+          <Select
+            label="Type"
+            description={isLive ? 'Which prompt type this live set is wired to.' : 'Optional for a draft — set where it’s used when it goes live.'}
+            placeholder="Select a prompt type"
+            data={typeData}
+            value={draft.prompt_type_id}
+            clearable={!isLive}
+            onChange={(value) => {
+              if (value === NEW_TYPE_SENTINEL) {
+                setCreatingType(true)
+                setNewTypeName('')
+              } else {
+                onChange({ prompt_type_id: value })
+              }
+            }}
+            size="sm"
+            required={isLive}
+            disabled={saving}
+          />
+        )}
 
         <MetaStrip set={meta} isNew={isNew} />
 

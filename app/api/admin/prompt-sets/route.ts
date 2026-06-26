@@ -1,25 +1,16 @@
 import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
-
-type PromptSetStatus = 'live' | 'draft'
-
-interface PromptSet {
-  id: string
-  tenant_id: string
-  label: string
-  description: string | null
-  status: PromptSetStatus
-  is_composer_prompt: boolean
-  is_default: boolean
-  prompt_type_id: string | null
-  version: number
-  created_at: string
-  updated_at: string
-}
+import { type BasePromptSet, type PromptSet, type PromptSetStatus } from '@/lib/promptSet'
 
 const SELECT_COLUMNS =
   'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at'
+
+// GET also returns the derived compile metadata (view columns). Must be a single
+// string literal (not concatenated) — the untyped Supabase client returns
+// GenericStringError[] when the select arg widens to `string`.
+const SELECT_COLUMNS_WITH_META =
+  'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at, block_count, last_compiled_at, compiled_version'
 
 const VALID_STATUS: readonly PromptSetStatus[] = ['live', 'draft']
 
@@ -38,8 +29,8 @@ export async function GET() {
 
   const supabase = getAdminClient()
   const { data, error } = await supabase
-    .from('prompt_sets')
-    .select(SELECT_COLUMNS)
+    .from('prompt_sets_with_compile_meta')
+    .select(SELECT_COLUMNS_WITH_META)
     .eq('tenant_id', authCtx.tenant_id)
     .order('created_at', { ascending: false })
 
@@ -103,9 +94,10 @@ export async function PATCH(req: Request) {
   const label = body.label.trim()
   const description = typeof body.description === 'string' ? body.description.trim() : ''
   const status: PromptSetStatus = body.status
-  // prompt_type_id is only meaningful while the set is live; force null otherwise.
+  // A type can be assigned at creation regardless of status (kept for drafts too);
+  // it stays *required* only when the set is live.
   const promptTypeId: string | null =
-    status === 'live' && typeof body.prompt_type_id === 'string' && body.prompt_type_id.length > 0
+    typeof body.prompt_type_id === 'string' && body.prompt_type_id.length > 0
       ? body.prompt_type_id
       : null
 
@@ -151,7 +143,7 @@ export async function PATCH(req: Request) {
       return Response.json({ error: 'Prompt set not found' }, { status: 404 })
     }
 
-    const promptSet: PromptSet = data
+    const promptSet: BasePromptSet = data
     console.log('[prompt-sets] PATCH update', { id: promptSet.id, status: promptSet.status })
     void logEvent({
       action: AuditAction.PROMPT_SET_UPSERT,
@@ -177,7 +169,7 @@ export async function PATCH(req: Request) {
     return Response.json({ error: error.message }, { status: 500 })
   }
 
-  const promptSet: PromptSet = data
+  const promptSet: BasePromptSet = data
   console.log('[prompt-sets] PATCH insert', { id: promptSet.id, status: promptSet.status })
   void logEvent({
     action: AuditAction.PROMPT_SET_UPSERT,

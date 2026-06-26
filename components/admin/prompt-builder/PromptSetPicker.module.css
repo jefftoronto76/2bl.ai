@@ -77,4 +77,25 @@
 }
 .createGo:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* 3-field inline create (Name / Type / Description) */
+.createForm { display: flex; flex-direction: column; gap: 7px; padding: 6px 8px 8px; }
+.cfLabel {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--mantine-color-gray-6, #868e96);
+}
+.cfInput, .cfSelect, .cfTextarea {
+  width: 100%; border: 1px solid var(--mantine-color-gray-3, #dee2e6); border-radius: 8px;
+  font-size: 13px; color: #1a1917; outline: none; font-family: inherit; background: #fff;
+}
+.cfInput, .cfSelect { height: 32px; padding: 0 10px; }
+.cfTextarea { padding: 7px 10px; resize: vertical; min-height: 50px; line-height: 1.45; }
+.cfInput:focus, .cfSelect:focus, .cfTextarea:focus { border-color: #4fa574; }
+.cfActions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 1px; }
+.cfCancel {
+  height: 32px; padding: 0 12px; border: 1px solid var(--mantine-color-gray-3, #dee2e6);
+  border-radius: 8px; background: #fff; color: rgba(26,25,23,0.62); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.cfCancel:hover { background: var(--mantine-color-gray-0, #f8f9fa); }
+
 @media (max-width: 720px) { .label { display: none; } }
