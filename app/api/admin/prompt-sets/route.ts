@@ -107,19 +107,20 @@ export async function PATCH(req: Request) {
 
   const supabase = getAdminClient()
 
-  // Defense-in-depth: a non-null prompt_type_id must belong to this tenant.
+  // Defense-in-depth: a non-null prompt_type_id must be assigned to this tenant.
+  // prompt_types.tenant_id was dropped — assignments now live in prompt_type_tenants.
   if (promptTypeId) {
-    const { data: typeRow, error: typeErr } = await supabase
-      .from('prompt_types')
-      .select('id')
-      .eq('id', promptTypeId)
+    const { data: assignment, error: typeErr } = await supabase
+      .from('prompt_type_tenants')
+      .select('prompt_type_id')
+      .eq('prompt_type_id', promptTypeId)
       .eq('tenant_id', authCtx.tenant_id)
       .maybeSingle()
     if (typeErr) {
       console.error('[prompt-sets] prompt_type lookup failed:', typeErr.message)
       return Response.json({ error: typeErr.message }, { status: 500 })
     }
-    if (!typeRow) {
+    if (!assignment) {
       return Response.json({ error: 'Prompt type not found for this tenant' }, { status: 400 })
     }
   }
