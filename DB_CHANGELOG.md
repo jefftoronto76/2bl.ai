@@ -1,5 +1,12 @@
 # DB Changelog
 
+## June 25 2026:
+
+Added prompt_type_id (UUID FK → prompt_types.id) to prompt_sets
+Created prompt_sets_single_master_idx partial unique index (enforces single platform master)
+Created touch_updated_at() function and prompt_sets_touch_updated_at trigger
+
+
 ## 2026-06-24
 
 ### Create `prompt_conversations` table
