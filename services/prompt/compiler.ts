@@ -24,35 +24,21 @@ export const QUESTION_MODE_CONTEXT =
 
 /**
  * Resolve the base system prompt for a tenant: the highest-version
- * master_prompt row for the given slot, or DEFAULT_SYSTEM_PROMPT on any miss.
- *
- * When `promptSetId` is absent or null, selects the default slot
- * (prompt_set_id IS NULL). When provided, selects the matching named slot.
- * All existing callers omit the argument and continue hitting the default slot.
+ * master_prompt row, or DEFAULT_SYSTEM_PROMPT on any miss.
  */
-export async function getSystemPrompt(
-  tenantId: string | null,
-  promptSetId?: string | null,
-): Promise<string> {
+export async function getSystemPrompt(tenantId: string | null): Promise<string> {
   if (!tenantId) {
     console.log('[chat/prompt] no tenant_id — using DEFAULT_SYSTEM_PROMPT')
     return DEFAULT_SYSTEM_PROMPT
   }
   try {
-    let query = getAdminClient()
+    const { data, error } = await getAdminClient()
       .from('master_prompt')
       .select('content')
       .eq('tenant_id', tenantId)
       .order('version', { ascending: false })
       .limit(1)
-
-    if (promptSetId) {
-      query = query.eq('prompt_set_id', promptSetId)
-    } else {
-      query = query.is('prompt_set_id', null)
-    }
-
-    const { data, error } = await query.maybeSingle()
+      .maybeSingle()
 
     if (error) {
       console.error('[chat/prompt] master_prompt query failed:', error.message)
@@ -63,14 +49,12 @@ export async function getSystemPrompt(
       console.log(
         '[chat/prompt] no master_prompt row for tenant_id:',
         tenantId,
-        'promptSetId:',
-        promptSetId ?? null,
         '— falling back to DEFAULT_SYSTEM_PROMPT',
       )
       return DEFAULT_SYSTEM_PROMPT
     }
 
-    console.log('[chat/prompt] using master_prompt for tenant_id:', tenantId, 'promptSetId:', promptSetId ?? null)
+    console.log('[chat/prompt] using master_prompt for tenant_id:', tenantId)
     return data.content
   } catch (err) {
     console.error(
