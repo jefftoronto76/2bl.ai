@@ -43,23 +43,23 @@ export type CompileResult =
  * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
  * status the route should surface.
  *
- * When `promptTypeKey` is absent or null, compiles the default slot (blocks
+ * When `promptSetId` is absent or null, compiles the default slot (blocks
  * where prompt_set_id IS NULL) and writes prompt_set_id = NULL on the saved
  * master_prompt row. When provided, includes blocks matching that key plus
  * shared blocks (prompt_set_id IS NULL) and writes the key on the row.
  */
 export async function compilePrompt(
   tenantId: string,
-  promptTypeKey?: string | null,
+  promptSetId?: string | null,
 ): Promise<CompileResult> {
   const supabase = getAdminClient()
 
   // 1. Fetch active runtime/platform blocks for this tenant. Excludes
-  //    scope='composer' blocks (Prompt Studio action pills). When promptTypeKey
+  //    scope='composer' blocks (Prompt Studio action pills). When promptSetId
   //    is provided, includes blocks with that key plus shared blocks (null key);
   //    when absent, includes only shared blocks (the default slot).
-  const typeKeyLabel = promptTypeKey ?? 'null (default)'
-  console.log('[prompt/compile] fetching active blocks for tenant_id:', tenantId, 'promptTypeKey:', typeKeyLabel)
+  const typeKeyLabel = promptSetId ?? 'null (default)'
+  console.log('[prompt/compile] fetching active blocks for tenant_id:', tenantId, 'promptSetId:', typeKeyLabel)
   let blocksQuery = supabase
     .from('blocks')
     .select('id, title, type, body, order, prompt_set_id')
@@ -67,8 +67,8 @@ export async function compilePrompt(
     .eq('status', 'active')
     .in('scope', ['runtime', 'platform'])
 
-  if (promptTypeKey) {
-    blocksQuery = blocksQuery.or(`prompt_set_id.is.null,prompt_set_id.eq.${promptTypeKey}`)
+  if (promptSetId) {
+    blocksQuery = blocksQuery.or(`prompt_set_id.is.null,prompt_set_id.eq.${promptSetId}`)
   } else {
     blocksQuery = blocksQuery.is('prompt_set_id', null)
   }
@@ -126,7 +126,7 @@ export async function compilePrompt(
   }
 
   // 4. Save to master_prompt — find existing row for this tenant+slot, archive
-  //    to history, then update. promptTypeKey (or null) scopes the slot.
+  //    to history, then update. promptSetId (or null) scopes the slot.
   const now = new Date().toISOString()
 
   let existingQuery = supabase
@@ -135,8 +135,8 @@ export async function compilePrompt(
     .eq('tenant_id', tenantId)
     .limit(1)
 
-  if (promptTypeKey) {
-    existingQuery = existingQuery.eq('prompt_set_id', promptTypeKey)
+  if (promptSetId) {
+    existingQuery = existingQuery.eq('prompt_set_id', promptSetId)
   } else {
     existingQuery = existingQuery.is('prompt_set_id', null)
   }
@@ -189,7 +189,7 @@ export async function compilePrompt(
         content,
         version: newVersion,
         updated_at: now,
-        prompt_set_id: promptTypeKey ?? null,
+        prompt_set_id: promptSetId ?? null,
       })
 
     if (insertError) {

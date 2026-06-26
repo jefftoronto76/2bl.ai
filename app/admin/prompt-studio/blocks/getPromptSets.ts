@@ -4,10 +4,10 @@ import type { PromptSet, PromptSetStatus } from './promptSets'
 
 /**
  * Fetch the tenant's prompt sets (the real prompt_sets table) for the Blocks
- * picker. Each set carries its prompt_type_id (UUID → prompt_types.id), which
- * the page uses to scope the blocks query (blocks.prompt_set_id is the same
- * UUID FK). Returns [] when no rows exist (picker hides) or on any Supabase
- * error (fails open).
+ * picker. The page scopes the blocks query by the active set's id
+ * (blocks.prompt_set_id is a UUID FK → prompt_sets.id). Each set also carries
+ * its prompt_type_id (informational; not used for the blocks filter). Returns []
+ * when no rows exist (picker hides) or on any Supabase error (fails open).
  */
 export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
   const supabase = getAdminClient()

@@ -13,12 +13,12 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
-  const promptTypeKey: string | null =
+  const promptSetId: string | null =
     typeof body.prompt_set_id === 'string' && body.prompt_set_id.length > 0
       ? body.prompt_set_id
       : null
 
-  const result = await compilePrompt(authCtx.tenant_id, promptTypeKey)
+  const result = await compilePrompt(authCtx.tenant_id, promptSetId)
   if (!result.ok) {
     void logEvent({
       action: AuditAction.PROMPT_COMPILE,
