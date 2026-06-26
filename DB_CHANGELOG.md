@@ -2,6 +2,25 @@
 
 ## June 25 2026:
 
+**Rename `blocks.prompt_type_key` → `blocks.prompt_set_id`**
+- Renamed `prompt_type_key` → `prompt_set_key` (intermediate step)
+- Renamed `prompt_set_key` → `prompt_set_id` (final name)
+- FK → `prompt_sets.id` — 122 rows of data preserved
+
+**Drop `blocks.prompt_set_id` ghost column**
+- Was empty, redundant with the renamed column above
+- Dropped before the rename to avoid conflict
+
+**Clean up `master_prompt.prompt_type_key`**
+- Renamed `prompt_type_key` → `prompt_set_key`
+- Dropped `prompt_set_key` (empty ghost column — `prompt_set_id` already existed on the table)
+- `master_prompt.prompt_set_id` is now the single FK → `prompt_sets.id`
+
+**Naming convention finalized**
+- All FK columns linking to `prompt_sets.id` are now named `prompt_set_id`
+- All FK columns linking to `prompt_types.id` are named `prompt_type_id`
+- No more `_key` suffix anywhere
+
 Added prompt_type_id (UUID FK → prompt_types.id) to prompt_sets
 Created prompt_sets_single_master_idx partial unique index (enforces single platform master)
 Created touch_updated_at() function and prompt_sets_touch_updated_at trigger
