@@ -10,7 +10,8 @@ interface PromptSet {
   label: string
   description: string | null
   status: PromptSetStatus
-  is_master: boolean
+  is_composer_prompt: boolean
+  is_default: boolean
   prompt_type_id: string | null
   version: number
   created_at: string
@@ -18,7 +19,7 @@ interface PromptSet {
 }
 
 const SELECT_COLUMNS =
-  'id, tenant_id, label, description, status, is_master, prompt_type_id, version, created_at, updated_at'
+  'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at'
 
 const VALID_STATUS: readonly PromptSetStatus[] = ['live', 'draft']
 
@@ -131,7 +132,7 @@ export async function PATCH(req: Request) {
     }
   }
 
-  // version / is_master / timestamps are server-owned and never written here.
+  // version / is_composer_prompt / is_default / timestamps are server-owned and never written here.
   if (id) {
     // Update — scoped by tenant so a foreign-tenant id never matches.
     const { data, error } = await supabase
@@ -164,7 +165,7 @@ export async function PATCH(req: Request) {
     return Response.json(promptSet)
   }
 
-  // Insert — version (1) and is_master (false) come from DB column defaults.
+  // Insert — version (1), is_composer_prompt (false) and is_default (false) come from DB column defaults.
   const { data, error } = await supabase
     .from('prompt_sets')
     .insert({ tenant_id: authCtx.tenant_id, label, description, status, prompt_type_id: promptTypeId })
