@@ -357,7 +357,7 @@ const HOW_CARDS = [
     index: '02',
     icon: Sparkles,
     label: 'Shape',
-    body: 'Legacy's storytelling engine helps you uncover what matters most and tell it well.',
+    body: "Legacy's storytelling engine helps you uncover what matters most and tell it well.",
   },
   {
     index: '03',
@@ -441,7 +441,7 @@ const FEATURE_CARDS = [
   {
     icon: Users,
     title: 'Many voices, one story',
-    body: 'Invite the people who were there. Legacy braids everyone's account of the same moment into something fuller and truer than any single memory.',
+    body: "Invite the people who were there. Legacy braids everyone's account of the same moment into something fuller and truer than any single memory.",
   },
   {
     icon: Image,
@@ -451,7 +451,7 @@ const FEATURE_CARDS = [
   {
     icon: Clock,
     title: 'It remembers, even if you don't',
-    body: 'Share the dates that matter and Legacy nudges you when they come around — capturing the story while it's still close.',
+    body: "Share the dates that matter and Legacy nudges you when they come around — capturing the story while it's still close.",
   },
 ]
 
