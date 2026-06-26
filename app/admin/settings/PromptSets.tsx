@@ -181,9 +181,13 @@ export function PromptSets() {
     router.push(`/admin/prompt-builder?promptSet=${encodeURIComponent(s.id)}`)
   }
 
-  function validateDraft(d: DraftFields): string | null {
+  function validateDraft(d: DraftFields, existing?: PromptSet): string | null {
     if (!d.label.trim()) return 'Label is required.'
     if (d.status === 'live' && !(d.prompt_type_id ?? '').trim()) return 'Pick a prompt type for this live set.'
+    // A live set must have blocks to compile — block the transition when the set is empty.
+    if (d.status === 'live' && existing && existing.block_count === 0) {
+      return 'You must add blocks before setting this prompt set to live.'
+    }
     return null
   }
 
@@ -195,7 +199,7 @@ export function PromptSets() {
   async function handleSave(id: string, existing?: PromptSet) {
     const draftKey = existing ? existing.id : NEW_CARD_ID
     const draft = drafts[draftKey] ?? emptyDraft()
-    const error = validateDraft(draft)
+    const error = validateDraft(draft, existing)
     if (error) {
       notifications.show({ color: 'red', title: 'Invalid input', message: error })
       return
