@@ -1,7 +1,8 @@
 'use client'
 
 // Platform Settings — Master Prompt. One screen, one field for now: a cross-tenant
-// picker that marks one prompt set as the platform-wide master (is_master). This
+// picker that marks one prompt set as the platform-wide composer prompt
+// (is_composer_prompt). This
 // page owns all state: it fetches every prompt set across tenants + the current
 // master pointer, holds the PENDING selection (defaults to the live master), and
 // owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
