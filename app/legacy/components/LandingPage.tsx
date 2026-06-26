@@ -450,7 +450,7 @@ const FEATURE_CARDS = [
   },
   {
     icon: Clock,
-    title: 'It remembers, even if you don't',
+    title: "It remembers, even if you don't",
     body: "Share the dates that matter and Legacy nudges you when they come around — capturing the story while it's still close.",
   },
 ]
