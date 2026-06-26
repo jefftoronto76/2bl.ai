@@ -14,9 +14,11 @@
 
 export type PromptSetStatus = 'live' | 'draft'
 
-// The shipping row + the three derived compile fields. Keep this in sync with the
-// SELECT in app/api/admin/prompt-sets/route.ts (and the platform list route).
-export interface PromptSet {
+// The shipping base row — exactly the columns stored on `prompt_sets`. This is the
+// shape the PATCH (write) routes return: a write reads back the base table, which has
+// no derived compile metadata. Keep in sync with SELECT_COLUMNS in
+// app/api/admin/prompt-sets/route.ts.
+export interface BasePromptSet {
   id: string
   tenant_id: string
   label: string
@@ -28,8 +30,12 @@ export interface PromptSet {
   version: number
   created_at: string
   updated_at: string
+}
 
-  // ── NEW: derived compile metadata (read-only) ──
+// The base row + the three derived compile fields, as returned by the GET routes that
+// read the `prompt_sets_with_compile_meta` view. Keep in sync with SELECT_COLUMNS_WITH_META.
+export interface PromptSet extends BasePromptSet {
+  // ── derived compile metadata (read-only) ──
   block_count: number
   last_compiled_at: string | null
   compiled_version: number | null

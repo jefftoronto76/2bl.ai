@@ -1,26 +1,7 @@
 import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
-
-type PromptSetStatus = 'live' | 'draft'
-
-interface PromptSet {
-  id: string
-  tenant_id: string
-  label: string
-  description: string | null
-  status: PromptSetStatus
-  is_composer_prompt: boolean
-  is_default: boolean
-  prompt_type_id: string | null
-  version: number
-  created_at: string
-  updated_at: string
-  // NEW — derived, read-only (from the prompt_sets_with_compile_meta view):
-  block_count: number
-  last_compiled_at: string | null
-  compiled_version: number | null
-}
+import { type BasePromptSet, type PromptSet, type PromptSetStatus } from '@/lib/promptSet'
 
 const SELECT_COLUMNS =
   'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at'
@@ -162,7 +143,7 @@ export async function PATCH(req: Request) {
       return Response.json({ error: 'Prompt set not found' }, { status: 404 })
     }
 
-    const promptSet: PromptSet = data
+    const promptSet: BasePromptSet = data
     console.log('[prompt-sets] PATCH update', { id: promptSet.id, status: promptSet.status })
     void logEvent({
       action: AuditAction.PROMPT_SET_UPSERT,
@@ -188,7 +169,7 @@ export async function PATCH(req: Request) {
     return Response.json({ error: error.message }, { status: 500 })
   }
 
-  const promptSet: PromptSet = data
+  const promptSet: BasePromptSet = data
   console.log('[prompt-sets] PATCH insert', { id: promptSet.id, status: promptSet.status })
   void logEvent({
     action: AuditAction.PROMPT_SET_UPSERT,
