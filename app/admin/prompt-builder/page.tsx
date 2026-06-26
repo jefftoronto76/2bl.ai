@@ -130,10 +130,10 @@ export default function PromptBuilderPage() {
         const res = await fetch('/api/admin/prompt-sets')
         if (res.status === 404 || !res.ok) { setPromptSets([]); setActivePromptSetId(null); return }
         const body = await res.json()
-        const data: PromptSet[] = body.promptSets ?? []
+        const data: PromptSet[] = Array.isArray(body) ? body : []
         if (data.length === 0) { setPromptSets([]); setActivePromptSetId(null); return }
         setPromptSets(data)
-        const liveSet = data.find(s => s.status === 'Live')
+        const liveSet = data.find(s => s.status === 'live')
         setActivePromptSetId((liveSet ?? data[0]).id)
       } catch {
         setPromptSets([])
@@ -319,7 +319,7 @@ export default function PromptBuilderPage() {
   }
 
   function createPromptSet(label: string) {
-    const newSet: PromptSet = { id: String(promptSets.length + 1 + Date.now()), label, version: 1, status: 'Draft' }
+    const newSet: PromptSet = { id: String(promptSets.length + 1 + Date.now()), label, version: 1, status: 'draft' }
     setPromptSets(prev => [...prev, newSet])
     setActivePromptSetId(newSet.id)
   }

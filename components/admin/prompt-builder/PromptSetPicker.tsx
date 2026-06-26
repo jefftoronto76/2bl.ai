@@ -23,6 +23,11 @@ interface PromptSetPickerProps {
   onCreate: (label: string) => void
 }
 
+// DB status is lowercase ('live' | 'draft'); display it capitalized.
+function statusLabel(status: string): string {
+  return status.toLowerCase() === 'live' ? 'Live' : 'Draft'
+}
+
 export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSetPickerProps) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -65,7 +70,7 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
         >
           <span className={styles.name}>{active.label}</span>
           <span className={`${styles.badge} ${active.status?.toLowerCase() === 'live' ? styles.live : styles.draft}`}>
-            {active.status}
+            {statusLabel(active.status)}
           </span>
           <ChevronRight className={`${styles.caret} ${open ? styles.caretOpen : ''}`} />
         </button>
@@ -84,7 +89,7 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
                 <span className={styles.itemName}>{s.label}</span>
                 <span className={styles.itemMeta}>v{s.version}</span>
                 <span className={`${styles.badge} ${s.status?.toLowerCase() === 'live' ? styles.live : styles.draft}`}>
-                  {s.status}
+                  {statusLabel(s.status)}
                 </span>
                 <span className={styles.itemCheck}>{s.id === activeId ? <Check /> : null}</span>
               </button>
