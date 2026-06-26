@@ -181,9 +181,13 @@ export function PromptSets() {
     router.push(`/admin/prompt-builder?promptSet=${encodeURIComponent(s.id)}`)
   }
 
-  function validateDraft(d: DraftFields): string | null {
+  function validateDraft(d: DraftFields, existing?: PromptSet): string | null {
     if (!d.label.trim()) return 'Label is required.'
     if (d.status === 'live' && !(d.prompt_type_id ?? '').trim()) return 'Pick a prompt type for this live set.'
+    // A live set must have blocks to compile — block the transition when the set is empty.
+    if (d.status === 'live' && existing && existing.block_count === 0) {
+      return 'You must add blocks before setting this prompt set to live.'
+    }
     return null
   }
 
@@ -195,7 +199,7 @@ export function PromptSets() {
   async function handleSave(id: string, existing?: PromptSet) {
     const draftKey = existing ? existing.id : NEW_CARD_ID
     const draft = drafts[draftKey] ?? emptyDraft()
-    const error = validateDraft(draft)
+    const error = validateDraft(draft, existing)
     if (error) {
       notifications.show({ color: 'red', title: 'Invalid input', message: error })
       return
@@ -244,6 +248,14 @@ export function PromptSets() {
       setDeleting(false)
     }
   }
+
+  // Delete-guard scenarios, derived from the target + the rest of the tenant's sets:
+  //   • blocked  — the only set AND the default → cannot delete (must keep one default).
+  //   • warning  — the default but other sets exist → confirm before deleting.
+  //   • normal   — not the default → standard confirmation.
+  const deleteOtherSets = deleteTarget ? sets.filter((s) => s.id !== deleteTarget.id) : []
+  const deleteBlocked = deleteTarget ? deleteTarget.is_default && deleteOtherSets.length === 0 : false
+  const deleteDefaultWarning = deleteTarget ? deleteTarget.is_default && deleteOtherSets.length > 0 : false
 
   return (
     <Stack gap="md">
@@ -316,16 +328,36 @@ export function PromptSets() {
         />
       )}
 
-      <Modal opened={deleteTarget !== null} onClose={() => { if (!deleting) setDeleteTarget(null) }} title="Delete prompt set?" centered size="sm">
+      <Modal
+        opened={deleteTarget !== null}
+        onClose={() => { if (!deleting) setDeleteTarget(null) }}
+        title={deleteBlocked ? 'Cannot delete prompt set' : 'Delete prompt set?'}
+        centered
+        size="sm"
+      >
         <Stack gap="md">
-          <Text variant="muted">Delete this prompt set? This cannot be undone.</Text>
+          <Text variant="muted">
+            {deleteBlocked
+              ? 'You cannot delete the only prompt set. Create another prompt set first.'
+              : deleteDefaultWarning
+                ? 'This is your default prompt set. Delete anyway?'
+                : 'Delete this prompt set? This cannot be undone.'}
+          </Text>
           <Group gap="xs" justify="flex-end">
-            <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="filled" color="red" size="sm" onClick={handleConfirmDelete} loading={deleting}>
-              Delete
-            </Button>
+            {deleteBlocked ? (
+              <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)}>
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="filled" color="red" size="sm" onClick={handleConfirmDelete} loading={deleting}>
+                  Delete
+                </Button>
+              </>
+            )}
           </Group>
         </Stack>
       </Modal>
@@ -405,19 +437,22 @@ function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, o
           maxRows={6}
           disabled={saving}
         />
-        <Select
-          label="Status"
-          description="Set by the admin. Multiple sets can be live."
-          data={[
-            { value: 'live', label: 'Live' },
-            { value: 'draft', label: 'Draft' },
-          ]}
-          value={draft.status}
-          onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
-          size="sm"
-          allowDeselect={false}
-          disabled={saving}
-        />
+        {/* Status is a choice only for existing sets — a new set is always a draft. */}
+        {!isNew && (
+          <Select
+            label="Status"
+            description="Set by the admin. Multiple sets can be live."
+            data={[
+              { value: 'live', label: 'Live' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            value={draft.status}
+            onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
+            size="sm"
+            allowDeselect={false}
+            disabled={saving}
+          />
+        )}
 
         {/* NEW: Type renders for drafts too; required only when Live. */}
         {creatingType ? (

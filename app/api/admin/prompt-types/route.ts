@@ -132,6 +132,17 @@ export async function POST(req: Request) {
     if (assignErr.code === '23505') {
       return Response.json({ error: 'A prompt type with that name already exists' }, { status: 409 })
     }
+    // Supabase has no client-side transactions, so the create + assign are two writes.
+    // A non-409 assignment failure after we just created the definition would leave an
+    // orphaned prompt_types row (no tenant ever points at it). Roll it back so the two
+    // writes succeed or fail together. Only when WE created it — a reused shared
+    // definition belongs to other tenants and must not be deleted.
+    if (!existing) {
+      const { error: cleanupErr } = await supabase.from('prompt_types').delete().eq('id', promptType.id)
+      if (cleanupErr) {
+        console.error('[prompt-types] orphan cleanup failed:', cleanupErr.message)
+      }
+    }
     console.error('[prompt-types] assignment failed:', assignErr.message)
     return Response.json({ error: assignErr.message }, { status: 500 })
   }
