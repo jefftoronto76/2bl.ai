@@ -9,6 +9,10 @@ export const AuditAction = {
   // Sage parameters
   SAGE_PARAMETER_UPSERT: 'sage_parameter.upsert',
   SAGE_PARAMETER_DELETE: 'sage_parameter.delete',
+  // Prompt sets
+  PROMPT_SET_UPSERT: 'prompt_set.upsert',
+  PROMPT_SET_DELETE: 'prompt_set.delete',
+  PROMPT_SET_MASTER_SET: 'prompt_set.master_set',
   // Tenant settings
   TENANT_SETTINGS_UPDATE: 'tenant_settings.update',
   // Appearance (tenant_branding)
