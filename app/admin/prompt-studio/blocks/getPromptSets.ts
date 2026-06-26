@@ -1,46 +1,31 @@
 import 'server-only'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import type { PromptSet } from './promptSets'
+import type { PromptSet, PromptSetStatus } from './promptSets'
 
 /**
- * Fetch all prompt types for the tenant and derive version/status from
- * master_prompt. Returns [] when no prompt_types rows exist (picker hides).
- * Fails open — any Supabase error returns [].
+ * Fetch the tenant's prompt sets (the real prompt_sets table) for the Blocks
+ * picker. Each set carries its prompt_type_id (UUID → prompt_types.id), which
+ * the page uses to scope the blocks query (blocks.prompt_type_key is the same
+ * UUID FK). Returns [] when no rows exist (picker hides) or on any Supabase
+ * error (fails open).
  */
 export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
   const supabase = getAdminClient()
 
-  const { data: types, error: typesError } = await supabase
-    .from('prompt_types')
-    .select('id, key, name, sort_order')
+  const { data, error } = await supabase
+    .from('prompt_sets')
+    .select('id, label, version, status, prompt_type_id')
     .eq('tenant_id', tenantId)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
+    .order('status', { ascending: false }) // 'live' sorts before 'draft'
+    .order('label', { ascending: true })
 
-  if (typesError || !types || types.length === 0) return []
+  if (error || !data) return []
 
-  const { data: prompts } = await supabase
-    .from('master_prompt')
-    .select('prompt_type_key, version')
-    .eq('tenant_id', tenantId)
-    .order('version', { ascending: false })
-
-  // Build highest-version map: key → version
-  const versionByKey: Record<string, number> = {}
-  for (const p of prompts ?? []) {
-    if (p.prompt_type_key && !(p.prompt_type_key in versionByKey)) {
-      versionByKey[p.prompt_type_key] = p.version
-    }
-  }
-
-  return types.map((t) => {
-    const version = versionByKey[t.key] ?? 0
-    return {
-      id: t.id,
-      key: t.key,
-      label: t.name,
-      version,
-      status: version > 0 ? 'Live' : 'Draft',
-    }
-  })
+  return data.map((row) => ({
+    id: row.id as string,
+    promptTypeId: (row.prompt_type_id as string | null) ?? null,
+    label: row.label as string,
+    version: (row.version as number | null) ?? 0,
+    status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
+  }))
 }
