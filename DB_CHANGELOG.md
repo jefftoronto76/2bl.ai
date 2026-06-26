@@ -1,5 +1,13 @@
 # DB Changelog
 
+## 2026-06-25 (rename)
+
+Renamed `blocks.prompt_type_key` → `blocks.prompt_set_key` and
+`master_prompt.prompt_type_key` → `master_prompt.prompt_set_key` (Jeff, Studio).
+`pills.prompt_type_key` and `session_tokens.prompt_type_key` are unchanged.
+Application code updated to the new names (the older "ADD COLUMN prompt_type_key"
+entries below remain as historical record of the original adds).
+
 ## June 25 2026:
 
 Added prompt_type_id (UUID FK → prompt_types.id) to prompt_sets

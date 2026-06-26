@@ -43,7 +43,7 @@ export interface ChatStreamRequest {
   memberId?: string | null
   tenant: ChatTenantContext
   /** Routes getSystemPrompt to the named master_prompt slot. Null selects the
-   *  default slot (prompt_type_key IS NULL). */
+   *  default slot (prompt_set_key IS NULL). */
   promptType?: string | null
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null

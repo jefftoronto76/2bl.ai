@@ -65,7 +65,7 @@ export default async function BlocksPage({
   const supabase = getAdminClient()
 
   // Prompt sets (the real prompt_sets table) feed the picker; the active set
-  // scopes the blocks query via its prompt_type_id (UUID). blocks.prompt_type_key
+  // scopes the blocks query via its prompt_type_id (UUID). blocks.prompt_set_key
   // is the matching UUID FK → prompt_types.id. Falls back to all non-deleted
   // blocks when there are no sets or the active set has no prompt type assigned.
   const sets = await getPromptSets(tenantId)
@@ -79,7 +79,7 @@ export default async function BlocksPage({
     .eq('tenant_id', tenantId)
     .neq('status', 'deleted')
   if (activeSet?.promptTypeId) {
-    blocksQuery = blocksQuery.eq('prompt_type_key', activeSet.promptTypeId)
+    blocksQuery = blocksQuery.eq('prompt_set_key', activeSet.promptTypeId)
   }
 
   const [blocksResult, topicsResult] = await Promise.all([

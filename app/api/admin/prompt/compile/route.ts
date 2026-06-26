@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const promptTypeKey: string | null =
-    typeof body.prompt_type_key === 'string' && body.prompt_type_key.length > 0
-      ? body.prompt_type_key
+    typeof body.prompt_set_key === 'string' && body.prompt_set_key.length > 0
+      ? body.prompt_set_key
       : null
 
   const result = await compilePrompt(authCtx.tenant_id, promptTypeKey)
