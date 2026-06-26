@@ -18,9 +18,10 @@ import styles from './PromptSetPicker.module.css'
 interface PromptSetPickerProps {
   sets: PromptSet[]
   activeId: string
+  promptTypes: { id: string; name: string }[]
   onSelect: (id: string) => void
-  /** Create a new Draft v1 set with this label, then select it (page owns POST). */
-  onCreate: (label: string) => void
+  /** Create a new Draft v1 set (label + optional type + description), then select it (page owns POST). */
+  onCreate: (input: { label: string; promptTypeId: string | null; description: string }) => void
 }
 
 // DB status is lowercase ('live' | 'draft'); display it capitalized.
@@ -28,18 +29,22 @@ function statusLabel(status: string): string {
   return status.toLowerCase() === 'live' ? 'Live' : 'Draft'
 }
 
-export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSetPickerProps) {
+export function PromptSetPicker({ sets, activeId, promptTypes, onSelect, onCreate }: PromptSetPickerProps) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const [typeId, setTypeId] = useState('') // '' = "No type yet"
+  const [desc, setDesc] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+
+  function resetCreate() { setCreating(false); setName(''); setTypeId(''); setDesc('') }
 
   // Close on outside click.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false); setCreating(false); setName('')
+        setOpen(false); resetCreate()
       }
     }
     document.addEventListener('mousedown', onDown)
@@ -51,8 +56,8 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
   function create() {
     const label = name.trim()
     if (!label) return
-    onCreate(label)
-    setName(''); setCreating(false); setOpen(false)
+    onCreate({ label, promptTypeId: typeId || null, description: desc })
+    resetCreate(); setOpen(false)
   }
 
   if (!active) return null
@@ -98,21 +103,36 @@ export function PromptSetPicker({ sets, activeId, onSelect, onCreate }: PromptSe
             <div className={styles.sep} />
 
             {creating ? (
-              <div className={styles.create}>
+              <div className={styles.createForm}>
+                <label className={styles.cfLabel}>Name</label>
                 <input
                   autoFocus
-                  className={styles.createInput}
+                  className={styles.cfInput}
                   value={name}
-                  placeholder="New prompt set name…"
+                  placeholder="e.g. Sage Base"
                   onChange={e => setName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') create()
-                    if (e.key === 'Escape') { setCreating(false); setName('') }
-                  }}
+                  onKeyDown={e => { if (e.key === 'Escape') resetCreate() }}
                 />
-                <button type="button" className={styles.createGo} disabled={!name.trim()} onClick={create}>
-                  Create
-                </button>
+
+                <label className={styles.cfLabel}>Type</label>
+                <select className={styles.cfSelect} value={typeId} onChange={e => setTypeId(e.target.value)}>
+                  <option value="">No type yet</option>
+                  {promptTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+
+                <label className={styles.cfLabel}>Description</label>
+                <textarea
+                  className={styles.cfTextarea}
+                  rows={2}
+                  value={desc}
+                  placeholder="What this set is for…"
+                  onChange={e => setDesc(e.target.value)}
+                />
+
+                <div className={styles.cfActions}>
+                  <button type="button" className={styles.cfCancel} onClick={resetCreate}>Cancel</button>
+                  <button type="button" className={styles.createGo} disabled={!name.trim()} onClick={create}>Create</button>
+                </div>
               </div>
             ) : (
               <button type="button" className={styles.newItem} onClick={() => setCreating(true)}>
