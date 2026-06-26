@@ -7,7 +7,10 @@
 //
 // Field rules:
 //   • version        — READ-ONLY. Auto-increments on compile; the editor never writes it.
-//   • is_master      — READ-ONLY badge. Flagged by the platform admin on Platform Settings.
+//   • is_composer_prompt — READ-ONLY badge. The prompt set powering the Composer AI;
+//                      flagged by the platform admin on Platform Settings.
+//   • is_default     — READ-ONLY. The set loaded for a tenant's chat sessions when no
+//                      specific set is requested (one default per tenant).
 //   • prompt_type_id — FK → prompt_types.id. Only meaningful while status === 'live'.
 //                      Chosen from the tenant's prompt types; a new type can be minted
 //                      inline via POST /api/admin/prompt-types.
@@ -40,7 +43,8 @@ interface PromptSet {
   label: string
   description: string | null
   status: PromptSetStatus
-  is_master: boolean
+  is_composer_prompt: boolean
+  is_default: boolean
   prompt_type_id: string | null
   version: number
   created_at: string
@@ -56,7 +60,7 @@ interface PromptType {
 }
 
 // Only the editable fields travel in the draft / PATCH body. Everything else is
-// server-owned (tenant_id, version, is_master, timestamps).
+// server-owned (tenant_id, version, is_composer_prompt, is_default, timestamps).
 interface DraftFields {
   label: string
   description: string
@@ -152,7 +156,7 @@ export function PromptSets() {
   )
 
   // Upsert: PATCH with an id updates; without an id inserts. The server resolves
-  // tenant_id from the session and ignores any client-sent version/is_master/dates.
+  // tenant_id from the session and ignores any client-sent version/is_composer_prompt/is_default/dates.
   async function patchSet(payload: PatchPayload): Promise<PromptSet> {
     const res = await fetch('/api/admin/prompt-sets', {
       method: 'PATCH',
@@ -401,7 +405,7 @@ function PromptSetBadges({ set, typeName }: { set: PromptSet; typeName: string |
   return (
     <Group gap={6} wrap="wrap">
       <StatusBadge status={set.status} />
-      {set.is_master && (
+      {set.is_composer_prompt && (
         <Badge color="green" variant="filled" radius="sm">
           Master
         </Badge>
@@ -449,7 +453,7 @@ function MetaStrip({ set, isNew }: { set?: PromptSet; isNew?: boolean }) {
         <MetaRow
           label="Master"
           value={
-            set?.is_master ? (
+            set?.is_composer_prompt ? (
               <Badge color="green" variant="filled" radius="sm">
                 Master
               </Badge>
