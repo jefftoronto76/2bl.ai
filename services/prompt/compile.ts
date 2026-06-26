@@ -23,7 +23,7 @@ interface BlockForCompile {
   type: string
   body: string
   order: number | null
-  prompt_set_key: string | null
+  prompt_set_id: string | null
 }
 
 export interface CompileSuccess {
@@ -44,9 +44,9 @@ export type CompileResult =
  * status the route should surface.
  *
  * When `promptTypeKey` is absent or null, compiles the default slot (blocks
- * where prompt_set_key IS NULL) and writes prompt_set_key = NULL on the saved
+ * where prompt_set_id IS NULL) and writes prompt_set_id = NULL on the saved
  * master_prompt row. When provided, includes blocks matching that key plus
- * shared blocks (prompt_set_key IS NULL) and writes the key on the row.
+ * shared blocks (prompt_set_id IS NULL) and writes the key on the row.
  */
 export async function compilePrompt(
   tenantId: string,
@@ -62,15 +62,15 @@ export async function compilePrompt(
   console.log('[prompt/compile] fetching active blocks for tenant_id:', tenantId, 'promptTypeKey:', typeKeyLabel)
   let blocksQuery = supabase
     .from('blocks')
-    .select('id, title, type, body, order, prompt_set_key')
+    .select('id, title, type, body, order, prompt_set_id')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
     .in('scope', ['runtime', 'platform'])
 
   if (promptTypeKey) {
-    blocksQuery = blocksQuery.or(`prompt_set_key.is.null,prompt_set_key.eq.${promptTypeKey}`)
+    blocksQuery = blocksQuery.or(`prompt_set_id.is.null,prompt_set_id.eq.${promptTypeKey}`)
   } else {
-    blocksQuery = blocksQuery.is('prompt_set_key', null)
+    blocksQuery = blocksQuery.is('prompt_set_id', null)
   }
 
   const { data: blocks, error: blocksError } = await blocksQuery
@@ -136,9 +136,9 @@ export async function compilePrompt(
     .limit(1)
 
   if (promptTypeKey) {
-    existingQuery = existingQuery.eq('prompt_set_key', promptTypeKey)
+    existingQuery = existingQuery.eq('prompt_set_id', promptTypeKey)
   } else {
-    existingQuery = existingQuery.is('prompt_set_key', null)
+    existingQuery = existingQuery.is('prompt_set_id', null)
   }
 
   const { data: existing } = await existingQuery.maybeSingle()
@@ -189,7 +189,7 @@ export async function compilePrompt(
         content,
         version: newVersion,
         updated_at: now,
-        prompt_set_key: promptTypeKey ?? null,
+        prompt_set_id: promptTypeKey ?? null,
       })
 
     if (insertError) {

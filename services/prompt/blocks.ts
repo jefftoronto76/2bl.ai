@@ -153,7 +153,7 @@ export async function createBlock(
       // prompt_set_id is only written when it is a real UUID referencing
       // prompt_sets.id — client-local / placeholder ids are sent as null
       // and must not reach this FK column.
-      ...(prompt_set_id ? { prompt_set_key: prompt_set_id } : {}),
+      ...(prompt_set_id ? { prompt_set_id } : {}),
       ...(conversation_id ? { conversation_id } : {}),
       // Stamp updated_by on create for consistency with the PATCH route
       // (Step 3 of PR 2). updated_at is auto-set by the

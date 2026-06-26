@@ -7,8 +7,8 @@ export interface PromptSet {
   id: string
   /**
    * prompt_sets.prompt_type_id (UUID → prompt_types.id). Used to scope the
-   * Blocks table: blocks.prompt_set_key is also a UUID FK → prompt_types.id,
-   * so the page filters `prompt_set_key === promptTypeId`. Never a text slug.
+   * Blocks table: blocks.prompt_set_id is also a UUID FK → prompt_types.id,
+   * so the page filters `prompt_set_id === promptTypeId`. Never a text slug.
    * null when the set has no prompt type assigned (e.g. an unconfigured draft).
    */
   promptTypeId: string | null

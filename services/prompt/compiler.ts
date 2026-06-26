@@ -27,7 +27,7 @@ export const QUESTION_MODE_CONTEXT =
  * master_prompt row for the given slot, or DEFAULT_SYSTEM_PROMPT on any miss.
  *
  * When `promptTypeKey` is absent or null, selects the default slot
- * (prompt_set_key IS NULL). When provided, selects the matching named slot.
+ * (prompt_set_id IS NULL). When provided, selects the matching named slot.
  * All existing callers omit the argument and continue hitting the default slot.
  */
 export async function getSystemPrompt(
@@ -47,9 +47,9 @@ export async function getSystemPrompt(
       .limit(1)
 
     if (promptTypeKey) {
-      query = query.eq('prompt_set_key', promptTypeKey)
+      query = query.eq('prompt_set_id', promptTypeKey)
     } else {
-      query = query.is('prompt_set_key', null)
+      query = query.is('prompt_set_id', null)
     }
 
     const { data, error } = await query.maybeSingle()
