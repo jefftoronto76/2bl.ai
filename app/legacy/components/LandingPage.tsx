@@ -951,7 +951,7 @@ const REVEAL_CSS = `
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-lg-background text-lg-text-primary">
+    <div className="min-h-screen overflow-x-hidden bg-lg-background text-lg-text-primary">
       <style>{REVEAL_CSS}</style>
       <LandingNav />
       <main>
