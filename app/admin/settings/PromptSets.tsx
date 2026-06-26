@@ -405,19 +405,22 @@ function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, o
           maxRows={6}
           disabled={saving}
         />
-        <Select
-          label="Status"
-          description="Set by the admin. Multiple sets can be live."
-          data={[
-            { value: 'live', label: 'Live' },
-            { value: 'draft', label: 'Draft' },
-          ]}
-          value={draft.status}
-          onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
-          size="sm"
-          allowDeselect={false}
-          disabled={saving}
-        />
+        {/* Status is a choice only for existing sets — a new set is always a draft. */}
+        {!isNew && (
+          <Select
+            label="Status"
+            description="Set by the admin. Multiple sets can be live."
+            data={[
+              { value: 'live', label: 'Live' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            value={draft.status}
+            onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
+            size="sm"
+            allowDeselect={false}
+            disabled={saving}
+          />
+        )}
 
         {/* NEW: Type renders for drafts too; required only when Live. */}
         {creatingType ? (
