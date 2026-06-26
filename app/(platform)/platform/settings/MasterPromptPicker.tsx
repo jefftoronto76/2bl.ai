@@ -27,7 +27,7 @@ export function MasterPromptPicker({ options, selectedId, masterId, onSelect, di
 
   return (
     <Select
-      label="Master prompt set"
+      label="System prompt set"
       placeholder="Select a prompt set…"
       data={data}
       value={selectedId}
@@ -64,7 +64,7 @@ export function MasterPromptPicker({ options, selectedId, masterId, onSelect, di
               </Badge>
               {o.id === masterId && (
                 <Badge size="sm" radius="sm" variant="filled" color="green">
-                  Master
+                  System Prompt
                 </Badge>
               )}
             </Group>

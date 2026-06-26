@@ -90,7 +90,7 @@ export default function PlatformSettingsPage() {
       const savedSet = options.find((o) => o.id === saved.promptSetId)
       notifications.show({
         color: 'green',
-        title: 'Master prompt updated',
+        title: 'System prompt updated',
         message: savedSet ? `${savedSet.label} — ${savedSet.tenantName}` : 'Saved.',
       })
     } catch (err) {
@@ -118,11 +118,11 @@ export default function PlatformSettingsPage() {
         <Stack gap="md">
           <Stack gap={4}>
             <Title order={2} size="h4">
-              Master Prompt
+              System Prompt
             </Title>
             <Text c="dimmed" size="sm">
               The system prompt that powers every tenant&rsquo;s Composer when building blocks. The set you mark here
-              is compiled and sent as the master system prompt platform-wide.
+              is compiled and sent as the system prompt platform-wide.
             </Text>
           </Stack>
 
@@ -135,14 +135,14 @@ export default function PlatformSettingsPage() {
             <Stack gap={4}>
               <Text fw={500}>No prompt sets yet.</Text>
               <Text c="dimmed" size="sm">
-                Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform master.
+                Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform System Prompt.
               </Text>
             </Stack>
           ) : (
             <>
               <Group gap="xs" wrap="wrap" align="center">
                 <Text size="sm" c="dimmed">
-                  Current master
+                  Current System Prompt
                 </Text>
                 <Text size="sm" aria-hidden>
                   ·
@@ -166,7 +166,7 @@ export default function PlatformSettingsPage() {
                   </>
                 ) : (
                   <Text size="sm" c="dimmed">
-                    No master set yet
+                    No System Prompt set yet
                   </Text>
                 )}
               </Group>
