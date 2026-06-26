@@ -2,6 +2,31 @@
 
 ## 2026-06-26
 
+### Refactor `prompt_sets` — rename `is_master`, add `is_default`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Changes:**
+- Renamed `is_master` → `is_composer_prompt` — clarifies this is the 
+  prompt set that powers the Composer AI, not a general "master" concept
+- Added `is_default` (boolean NOT NULL DEFAULT false) — flags the prompt 
+  set loaded for a tenant's chat sessions when no specific set is requested
+- Seeded `is_default = true` on both existing sets (Heirloom + jefflougheed.ca)
+- Added `prompt_sets_single_default_idx` — unique partial index enforcing 
+  one default per tenant
+- Added `prompt_sets_single_composer_idx` — unique partial index enforcing 
+  one composer prompt across all tenants
+
+**Rules enforced:**
+- Every tenant must have exactly one `is_default = true` prompt set
+- Exactly one row across all tenants may have `is_composer_prompt = true`
+- Application layer must prevent deactivating the last default without 
+  another set present
+
+
+## 2026-06-26
+
 ### Refactor `prompt_types` — drop `tenant_id`, add `prompt_type_tenants` join table
 
 **Type:** Schema change
