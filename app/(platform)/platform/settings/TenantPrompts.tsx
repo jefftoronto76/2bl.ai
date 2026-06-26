@@ -53,7 +53,7 @@ function errMsg(body: unknown, fallback: string): string {
   return fallback
 }
 
-export function TenantPrompts() {
+export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } = {}) {
   const router = useRouter()
   const [sets, setSets] = useState<PlatformPromptSet[]>([])
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -168,6 +168,7 @@ export function TenantPrompts() {
         return next
       })
       notifications.show({ color: 'green', title: existing ? 'Prompt set saved' : 'Prompt set added', message: `${saved.label} · ${saved.tenant_name}` })
+      onSetsChanged?.() // keep the Master Prompt picker in sync (create + edit)
     } catch (err) {
       notifications.show({ color: 'red', title: 'Save failed', message: err instanceof Error ? err.message : 'Failed to save.' })
     } finally {
@@ -188,6 +189,7 @@ export function TenantPrompts() {
       setSets((prev) => prev.filter((s) => s.id !== deleteTarget.id))
       notifications.show({ color: 'green', title: 'Prompt set deleted', message: `${deleteTarget.label} · ${deleteTarget.tenant_name}` })
       setDeleteTarget(null)
+      onSetsChanged?.() // keep the Master Prompt picker in sync (delete)
     } catch (err) {
       console.error('[TenantPrompts] delete failed:', err)
       notifications.show({ color: 'red', title: 'Delete failed', message: 'Could not reach the server.' })

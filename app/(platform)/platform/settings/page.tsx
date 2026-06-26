@@ -7,7 +7,7 @@
 // master pointer, holds the PENDING selection (defaults to the live master), and
 // owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Badge, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { MasterPromptPicker } from './MasterPromptPicker'
@@ -22,6 +22,17 @@ export default function PlatformSettingsPage() {
   const [pending, setPending] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Re-fetch just the picker options. Called on mount and whenever TenantPrompts
+  // mutates a set (create/edit/delete) so the Master Prompt picker never goes stale.
+  const loadOptions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/platform/prompt-sets')
+      if (res.ok) setOptions(await res.json())
+    } catch (err) {
+      console.error('[PlatformSettings] options refresh failed:', err)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -194,7 +205,7 @@ export default function PlatformSettingsPage() {
             Tenant Prompts
           </Title>
 
-          <TenantPrompts />
+          <TenantPrompts onSetsChanged={loadOptions} />
         </Stack>
       </Card>
     </Stack>
