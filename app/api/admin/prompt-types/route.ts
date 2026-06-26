@@ -32,10 +32,13 @@ export async function GET() {
   }
 
   const supabase = getAdminClient()
+  // prompt_types are tenant-agnostic definitions; a tenant's set is resolved through
+  // the prompt_type_tenants assignment join (inner join + filter on the assignment's
+  // tenant_id). Ordering stays on the prompt_types columns.
   const { data, error } = await supabase
     .from('prompt_types')
-    .select('id, key, name, description, sort_order')
-    .eq('tenant_id', authCtx.tenant_id)
+    .select('id, key, name, description, sort_order, prompt_type_tenants!inner(tenant_id)')
+    .eq('prompt_type_tenants.tenant_id', authCtx.tenant_id)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
@@ -44,7 +47,14 @@ export async function GET() {
     return Response.json({ error: error.message }, { status: 500 })
   }
 
-  const promptTypes: PromptType[] = data ?? []
+  // Strip the embedded assignment rows — callers only need the type definition.
+  const promptTypes: PromptType[] = (data ?? []).map((r) => ({
+    id: r.id,
+    key: r.key,
+    name: r.name,
+    description: r.description,
+    sort_order: r.sort_order,
+  }))
   console.log('[prompt-types] GET', { tenant_id: authCtx.tenant_id, count: promptTypes.length })
 
   return Response.json(promptTypes)
@@ -77,31 +87,56 @@ export async function POST(req: Request) {
   }
 
   const supabase = getAdminClient()
-  const now = new Date().toISOString()
 
-  const { data, error } = await supabase
+  // A prompt type is a shared definition (prompt_types) assigned to tenants via
+  // prompt_type_tenants. Find-or-create the definition by key (keys are NOT unique —
+  // take the first existing row), then assign it to this tenant.
+  const { data: existing, error: lookupErr } = await supabase
     .from('prompt_types')
-    .insert({
-      tenant_id: authCtx.tenant_id,
-      key,
-      name,
-      created_at: now,
-      updated_at: now,
-    })
     .select('id, key, name, description, sort_order')
-    .single()
+    .eq('key', key)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
-  if (error) {
-    // 23505 = unique_violation on (tenant_id, key)
-    if (error.code === '23505') {
-      return Response.json({ error: 'A prompt type with that name already exists' }, { status: 409 })
-    }
-    console.error('[prompt-types] insert failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  if (lookupErr) {
+    console.error('[prompt-types] lookup failed:', lookupErr.message)
+    return Response.json({ error: lookupErr.message }, { status: 500 })
   }
 
-  const promptType: PromptType = data
-  console.log('[prompt-types] POST', { tenant_id: authCtx.tenant_id, key: promptType.key })
+  let promptType: PromptType
+  if (existing) {
+    promptType = existing
+  } else {
+    const now = new Date().toISOString()
+    const { data: created, error: insertErr } = await supabase
+      .from('prompt_types')
+      .insert({ key, name, created_at: now, updated_at: now })
+      .select('id, key, name, description, sort_order')
+      .single()
+    if (insertErr) {
+      console.error('[prompt-types] insert failed:', insertErr.message)
+      return Response.json({ error: insertErr.message }, { status: 500 })
+    }
+    promptType = created
+  }
+
+  // Assign the definition to this tenant. The unique constraint on
+  // prompt_type_tenants (prompt_type_id, tenant_id) turns a re-assign into a 409.
+  const { error: assignErr } = await supabase
+    .from('prompt_type_tenants')
+    .insert({ prompt_type_id: promptType.id, tenant_id: authCtx.tenant_id })
+
+  if (assignErr) {
+    // 23505 = unique_violation on (prompt_type_id, tenant_id) → already assigned here
+    if (assignErr.code === '23505') {
+      return Response.json({ error: 'A prompt type with that name already exists' }, { status: 409 })
+    }
+    console.error('[prompt-types] assignment failed:', assignErr.message)
+    return Response.json({ error: assignErr.message }, { status: 500 })
+  }
+
+  console.log('[prompt-types] POST', { tenant_id: authCtx.tenant_id, key: promptType.key, reused: Boolean(existing) })
 
   return Response.json(promptType, { status: 201 })
 }
