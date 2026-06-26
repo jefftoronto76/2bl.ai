@@ -1,5 +1,15 @@
 # DB Changelog
 
+## 2026-06-25 (rename)
+
+`blocks.prompt_type_key` → `blocks.prompt_set_key` → finally `blocks.prompt_set_id`
+(Jeff, Studio). For `master_prompt`, the briefly-renamed `prompt_set_key` column
+was dropped as an empty ghost — `master_prompt.prompt_set_id` already existed and
+is canonical. Net result: both `blocks` and `master_prompt` use `prompt_set_id`.
+`pills.prompt_type_key` and `session_tokens.prompt_type_key` are unchanged.
+Application code updated to `prompt_set_id` (the older "ADD COLUMN prompt_type_key"
+entries below remain as historical record of the original adds).
+
 ## June 25 2026:
 
 **Rename `blocks.prompt_type_key` → `blocks.prompt_set_id`**

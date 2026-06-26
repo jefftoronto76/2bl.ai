@@ -14,6 +14,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Tenants', href: '/platform/admin' },
       { label: 'Members', href: '/platform/members' },
+      { label: 'Settings', href: '/platform/settings' },
       { label: 'Usage', href: '/platform/usage' },
       { label: 'Prompt', href: '/admin/prompt-studio/prompt' },
     ],
@@ -42,6 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
 export const PAGE_TITLES: Record<string, string> = {
   '/platform/admin': 'Tenants',
   '/platform/members': 'Members',
+  '/platform/settings': 'Settings',
   '/platform/usage': 'Usage',
   '/admin': 'Inbound Chats',
   '/admin/prompt': 'System Prompt',
@@ -57,6 +59,7 @@ export const PAGE_TITLES: Record<string, string> = {
 export const PADDED_ROUTES = new Set<string>([
   '/platform/admin',
   '/platform/members',
+  '/platform/settings',
   '/platform/usage',
   '/admin/members',
 ]);

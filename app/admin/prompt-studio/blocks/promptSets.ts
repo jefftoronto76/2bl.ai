@@ -1,12 +1,17 @@
 // Type-only + pure so it can be imported from both the server page and the
 // client picker. The Supabase reader lives in getPromptSets.ts ('server-only').
 
-export type PromptSetStatus = 'Live' | 'Draft' | string
+export type PromptSetStatus = 'live' | 'draft'
 
 export interface PromptSet {
   id: string
-  /** prompt_types.key — used to filter blocks by prompt_type_key */
-  key: string
+  /**
+   * prompt_sets.prompt_type_id (UUID → prompt_types.id) — the prompt type this
+   * set maps to. Informational only; the Blocks page scopes blocks by the set's
+   * own id (blocks.prompt_set_id → prompt_sets.id), not this field. null when no
+   * prompt type is assigned (e.g. an unconfigured draft).
+   */
+  promptTypeId: string | null
   label: string
   version: number
   status: PromptSetStatus

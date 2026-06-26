@@ -52,7 +52,7 @@ function StatusBadge({ status }: { status: PromptSetStatus }) {
   const isLive = String(status).toLowerCase() === 'live'
   return (
     <Badge color={isLive ? 'green' : 'yellow'} variant="light" size="sm" radius="sm">
-      {status}
+      {isLive ? 'Live' : 'Draft'}
     </Badge>
   )
 }

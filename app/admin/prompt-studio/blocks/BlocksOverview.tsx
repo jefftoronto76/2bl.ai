@@ -63,7 +63,7 @@ export function BlocksOverview({ blocks, version = null, status = null }: Blocks
             <div style={dv}>
               {status ? (
                 <Badge color={isLive ? 'green' : 'yellow'} variant="light" size="sm" radius="sm">
-                  {status}
+                  {isLive ? 'Live' : 'Draft'}
                 </Badge>
               ) : (
                 <Text variant="muted">—</Text>

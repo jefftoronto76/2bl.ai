@@ -3,6 +3,7 @@
 import { Accordion } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { SageParameters } from './SageParameters'
+import { PromptSets } from './PromptSets'
 import { ChatThresholds } from './ChatThresholds'
 import { InviteGate } from './InviteGate'
 import { Appearance } from './Appearance'
@@ -24,6 +25,16 @@ export default function SettingsPage() {
             </Accordion.Control>
             <Accordion.Panel>
               <SageParameters />
+            </Accordion.Panel>
+          </Accordion.Item>
+
+          <Accordion.Item value="prompt-sets">
+            <Accordion.Control>
+              <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>Prompt Sets</span>
+              <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>The prompt sets this tenant runs — label, status, and which prompt type each live set is wired to.</span>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <PromptSets />
             </Accordion.Panel>
           </Accordion.Item>
 
