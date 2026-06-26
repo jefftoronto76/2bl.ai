@@ -249,6 +249,14 @@ export function PromptSets() {
     }
   }
 
+  // Delete-guard scenarios, derived from the target + the rest of the tenant's sets:
+  //   • blocked  — the only set AND the default → cannot delete (must keep one default).
+  //   • warning  — the default but other sets exist → confirm before deleting.
+  //   • normal   — not the default → standard confirmation.
+  const deleteOtherSets = deleteTarget ? sets.filter((s) => s.id !== deleteTarget.id) : []
+  const deleteBlocked = deleteTarget ? deleteTarget.is_default && deleteOtherSets.length === 0 : false
+  const deleteDefaultWarning = deleteTarget ? deleteTarget.is_default && deleteOtherSets.length > 0 : false
+
   return (
     <Stack gap="md">
       <Group justify="flex-end">
@@ -320,16 +328,36 @@ export function PromptSets() {
         />
       )}
 
-      <Modal opened={deleteTarget !== null} onClose={() => { if (!deleting) setDeleteTarget(null) }} title="Delete prompt set?" centered size="sm">
+      <Modal
+        opened={deleteTarget !== null}
+        onClose={() => { if (!deleting) setDeleteTarget(null) }}
+        title={deleteBlocked ? 'Cannot delete prompt set' : 'Delete prompt set?'}
+        centered
+        size="sm"
+      >
         <Stack gap="md">
-          <Text variant="muted">Delete this prompt set? This cannot be undone.</Text>
+          <Text variant="muted">
+            {deleteBlocked
+              ? 'You cannot delete the only prompt set. Create another prompt set first.'
+              : deleteDefaultWarning
+                ? 'This is your default prompt set. Delete anyway?'
+                : 'Delete this prompt set? This cannot be undone.'}
+          </Text>
           <Group gap="xs" justify="flex-end">
-            <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="filled" color="red" size="sm" onClick={handleConfirmDelete} loading={deleting}>
-              Delete
-            </Button>
+            {deleteBlocked ? (
+              <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)}>
+                Close
+              </Button>
+            ) : (
+              <>
+                <Button variant="subtle" color="gray" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button variant="filled" color="red" size="sm" onClick={handleConfirmDelete} loading={deleting}>
+                  Delete
+                </Button>
+              </>
+            )}
           </Group>
         </Stack>
       </Modal>
