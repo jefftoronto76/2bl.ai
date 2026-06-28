@@ -1,5 +1,5 @@
 import { getAuthContext } from '@/services/auth'
-import { saveMasterPrompt } from '@/services/prompt/save'
+import { saveCompiledPrompt } from '@/services/prompt/save'
 import { NextRequest, NextResponse } from 'next/server'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Prompt cannot be empty' }, { status: 400 })
   }
 
-  const result = await saveMasterPrompt(authCtx.tenant_id, prompt, checkResult)
+  const result = await saveCompiledPrompt(authCtx.tenant_id, prompt, checkResult)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
