@@ -1,5 +1,21 @@
 # DB Changelog
 
+## 2026-06-28
+
+### Drop compatibility views — master_prompt rename complete
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+Dropped the temporary compatibility views `master_prompt` and 
+`master_prompt_history` that were created to bridge the table rename. 
+All code references were updated in PR #170 before the views were dropped.
+
+Final state:
+- `compiled_prompts` — the live table (was `master_prompt`)
+- `compiled_prompts_history` — the archive table (was `master_prompt_history`)
+- `compiled_prompts_tenant_key_unique` — constraint (was `master_prompt_tenant_key_unique`)
+
 ## 2026-06-26
 
 RLS review pending on prompt_sets/prompt_types for cross-tenant platform writes
