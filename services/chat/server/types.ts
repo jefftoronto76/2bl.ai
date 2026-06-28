@@ -43,7 +43,7 @@ export interface ChatStreamRequest {
   memberId?: string | null
   tenant: ChatTenantContext
   /** Accepted for forward-compatibility but currently ignored: getSystemPrompt
-   *  resolves the tenant's highest-version master_prompt regardless of slot. */
+   *  resolves the tenant's highest-version compiled_prompts regardless of slot. */
   promptType?: string | null
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
