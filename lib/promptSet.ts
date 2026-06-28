@@ -5,8 +5,8 @@
 // that already exists — no writes from any Settings path:
 //
 //   • block_count          — COUNT(blocks) active in the set
-//   • last_compiled_at      — master_prompt.updated_at for this set's compile
-//   • compiled_version      — master_prompt.version ("compiled version", the
+//   • last_compiled_at      — compiled_prompts.updated_at for this set's compile
+//   • compiled_version      — compiled_prompts.version ("compiled version", the
 //                             version stamped by the compile pipeline)
 //
 // "Stale" is computed, never stored: a set is stale when it was edited after it
