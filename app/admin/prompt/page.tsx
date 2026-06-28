@@ -17,14 +17,14 @@ export default async function PromptPage() {
 
     const [{ data: current }, { data: history }] = await Promise.all([
       supabase
-        .from('master_prompt')
+        .from('compiled_prompts')
         .select('content, version')
         .eq('tenant_id', authCtx.tenant_id)
         .order('version', { ascending: false })
         .limit(1)
         .maybeSingle(),
       supabase
-        .from('master_prompt_history')
+        .from('compiled_prompts_history')
         .select('id, version, content, saved_at')
         .eq('tenant_id', authCtx.tenant_id)
         .order('version', { ascending: false })
