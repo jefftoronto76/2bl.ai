@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const supabase = getAdminClient()
   const { data, error } = await supabase
-    .from('master_prompt') // a.k.a. compiled_prompts
+    .from('compiled_prompts')
     .select('content, version, updated_at')
     .eq('prompt_set_id', id)
     .order('version', { ascending: false })

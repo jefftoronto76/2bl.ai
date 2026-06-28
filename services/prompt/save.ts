@@ -1,7 +1,7 @@
 // services/prompt/save.ts
 //
-// Manual master-prompt save for the prompt service (legacy save path). Archives
-// the current version to master_prompt_history, then writes the new content +
+// Manual compiled-prompt save for the prompt service (legacy save path). Archives
+// the current version to compiled_prompts_history, then writes the new content +
 // safety-check result with an incremented version. Moved verbatim from the
 // inline app/api/admin/prompt/save route body; the route is now a thin handler.
 
@@ -12,11 +12,11 @@ export type SaveResult =
   | { ok: false; status: number; error: string }
 
 /**
- * Persist a manually-edited master prompt for a tenant. Returns the new
+ * Persist a manually-edited compiled prompt for a tenant. Returns the new
  * version, or an error with the HTTP status the route should surface. Behavior
  * is identical to the prior inline route logic.
  */
-export async function saveMasterPrompt(
+export async function saveCompiledPrompt(
   tenantId: string,
   prompt: string,
   checkResult: unknown,
@@ -24,9 +24,9 @@ export async function saveMasterPrompt(
   const supabase = getAdminClient()
   const now = new Date().toISOString()
 
-  console.log('[prompt/save] fetching existing master_prompt for tenant_id:', tenantId)
+  console.log('[prompt/save] fetching existing compiled_prompts for tenant_id:', tenantId)
   const { data: existing } = await supabase
-    .from('master_prompt')
+    .from('compiled_prompts')
     .select('id, version, content, safety_check_result')
     .eq('tenant_id', tenantId)
     .limit(1)
@@ -37,7 +37,7 @@ export async function saveMasterPrompt(
 
     // Archive current version to history before overwriting
     const { error: historyError } = await supabase
-      .from('master_prompt_history')
+      .from('compiled_prompts_history')
       .insert({
         prompt_id: existing.id,
         tenant_id: tenantId,
@@ -53,7 +53,7 @@ export async function saveMasterPrompt(
 
     const newVersion = existing.version + 1
     const { error } = await supabase
-      .from('master_prompt')
+      .from('compiled_prompts')
       .update({
         content: prompt,
         version: newVersion,
@@ -68,12 +68,12 @@ export async function saveMasterPrompt(
       console.error('[prompt/save] update error:', error)
       return { ok: false, status: 500, error: error.message }
     }
-    console.log('[prompt/save] updated master_prompt to version:', newVersion)
+    console.log('[prompt/save] updated compiled_prompts to version:', newVersion)
     return { ok: true, version: newVersion }
   } else {
     console.log('[prompt/save] no existing row for tenant — inserting version 1')
     const { error } = await supabase
-      .from('master_prompt')
+      .from('compiled_prompts')
       .insert({
         tenant_id: tenantId,
         content: prompt,

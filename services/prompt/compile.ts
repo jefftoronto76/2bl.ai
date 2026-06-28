@@ -1,9 +1,9 @@
 // services/prompt/compile.ts
 //
-// Master-prompt compilation for the prompt service. Fetches the tenant's active
+// Compiled-prompt compilation for the prompt service. Fetches the tenant's active
 // blocks, orders them by the fixed compile sequence, joins their bodies, and
-// persists the result to master_prompt (archiving the prior version to
-// master_prompt_history). Moved verbatim from the inline
+// persists the result to compiled_prompts (archiving the prior version to
+// compiled_prompts_history). Moved verbatim from the inline
 // app/api/admin/prompt/compile route body; the route is now a thin handler.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
@@ -45,8 +45,9 @@ export type CompileResult =
  *
  * When `promptSetId` is absent or null, compiles the default slot (blocks
  * where prompt_set_id IS NULL) and writes prompt_set_id = NULL on the saved
- * master_prompt row. When provided, includes blocks matching that key plus
- * shared blocks (prompt_set_id IS NULL) and writes the key on the row.
+ * compiled_prompts row. When provided, includes blocks matching that key plus
+ * shared blocks (prompt_set_id IS NULL) and writes the key on the
+ * compiled_prompts row.
  */
 export async function compilePrompt(
   tenantId: string,
@@ -125,12 +126,12 @@ export async function compilePrompt(
     return { ok: false, status: 400, error: 'No active blocks to compile' }
   }
 
-  // 4. Save to master_prompt — find existing row for this tenant+slot, archive
+  // 4. Save to compiled_prompts — find existing row for this tenant+slot, archive
   //    to history, then update. promptSetId (or null) scopes the slot.
   const now = new Date().toISOString()
 
   let existingQuery = supabase
-    .from('master_prompt')
+    .from('compiled_prompts')
     .select('id, version, content')
     .eq('tenant_id', tenantId)
     .limit(1)
@@ -146,10 +147,10 @@ export async function compilePrompt(
   let newVersion: number
 
   if (existing) {
-    console.log('[prompt/compile] existing master_prompt version:', existing.version)
+    console.log('[prompt/compile] existing compiled_prompts version:', existing.version)
 
     const { error: historyError } = await supabase
-      .from('master_prompt_history')
+      .from('compiled_prompts_history')
       .insert({
         prompt_id: existing.id,
         tenant_id: tenantId,
@@ -165,7 +166,7 @@ export async function compilePrompt(
 
     newVersion = existing.version + 1
     const { error: updateError } = await supabase
-      .from('master_prompt')
+      .from('compiled_prompts')
       .update({
         content,
         version: newVersion,
@@ -183,7 +184,7 @@ export async function compilePrompt(
     console.log('[prompt/compile] no existing row — inserting version 1')
     newVersion = 1
     const { error: insertError } = await supabase
-      .from('master_prompt')
+      .from('compiled_prompts')
       .insert({
         tenant_id: tenantId,
         content,
