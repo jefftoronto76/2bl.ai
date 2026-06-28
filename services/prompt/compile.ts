@@ -117,8 +117,15 @@ export async function compilePrompt(
     console.warn('[prompt/compile] excluded', excludedCount, 'blocks with unknown type')
   }
 
-  // 3. Compile — join bodies with double newlines.
-  const content = sorted.map(b => (b.body ?? '').trim()).filter(Boolean).join('\n\n')
+  // 3. Compile — wrap each block in its type tag, join with double newlines.
+  const content = sorted
+    .map(b => {
+      const body = (b.body ?? '').trim()
+      if (!body) return ''
+      return `<${b.type}>\n${body}\n</${b.type}>`
+    })
+    .filter(Boolean)
+    .join('\n\n')
   const tokenCount = tokensFor(content)
   console.log('[prompt/compile] compiled length:', content.length, 'tokens:', tokenCount)
 
