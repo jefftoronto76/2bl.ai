@@ -10,7 +10,7 @@ export { getSystemPrompt, QUESTION_MODE_CONTEXT, DEFAULT_SYSTEM_PROMPT } from '.
 // Master-prompt compilation + manual save
 export { compilePrompt } from './compile'
 export type { CompileResult, CompileSuccess } from './compile'
-export { saveMasterPrompt } from './save'
+export { saveCompiledPrompt } from './save'
 export type { SaveResult } from './save'
 
 // Block CRUD
