@@ -17,7 +17,7 @@ export default async function PromptStudioPromptPage() {
 
     const [promptRes, blocksRes] = await Promise.all([
       supabase
-        .from('master_prompt')
+        .from('compiled_prompts')
         .select('content, version, updated_at')
         .eq('tenant_id', authCtx.tenant_id)
         .limit(1)
@@ -30,7 +30,7 @@ export default async function PromptStudioPromptPage() {
     ])
 
     if (promptRes.error) {
-      console.error('[prompt] master_prompt fetch error:', promptRes.error.message)
+      console.error('[prompt] compiled_prompts fetch error:', promptRes.error.message)
     } else if (promptRes.data) {
       initialContent = promptRes.data.content ?? ''
       initialVersion = promptRes.data.version ?? null
