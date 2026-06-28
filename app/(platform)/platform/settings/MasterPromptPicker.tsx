@@ -64,7 +64,7 @@ export function MasterPromptPicker({ options, selectedId, masterId, onSelect, di
               </Badge>
               {o.id === masterId && (
                 <Badge size="sm" radius="sm" variant="filled" color="green">
-                  System Prompt
+                  Composer Prompt
                 </Badge>
               )}
             </Group>
@@ -89,7 +89,7 @@ export function CurrentSystemPromptPill({ set, setByName, setAt }: CurrentSystem
   if (!set) {
     return (
       <Text size="sm" c="dimmed">
-        No System Prompt set yet
+        No Composer Prompt set yet
       </Text>
     )
   }
