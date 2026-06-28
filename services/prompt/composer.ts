@@ -4,8 +4,13 @@
 // prompt strings; the route handlers own the runChatStream call and the 502
 // error catch.
 //
-//   - buildBlocksComposerSystem  → system string for POST /api/admin/blocks/chat
+//   - getCompiledComposerSystem  → DB-driven system string for POST /api/admin/blocks/chat
+//                                   falls back to BLOCKS_COMPOSER_SYSTEM when no live
+//                                   compiled prompt exists for the compiler prompt set
+//   - buildBlocksComposerSystem  → legacy hardcoded assembly (kept as fallback reference)
 //   - buildPromptChatSystem      → system string for POST /api/admin/prompt-chat
+
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 export interface BlocksComposerInput {
   type: string
@@ -64,6 +69,56 @@ export function buildBlocksComposerSystem(input: BlocksComposerInput): string {
       : ''
 
   return BLOCKS_COMPOSER_SYSTEM + documentSection + blocksSection
+}
+
+/**
+ * DB-driven composer system prompt. Looks up the live compiler prompt set
+ * (is_composer_prompt = true, status = 'live'), fetches its compiled prompt,
+ * and appends dynamic XML context sections. Falls back to BLOCKS_COMPOSER_SYSTEM
+ * when no compiled row exists.
+ */
+export async function getCompiledComposerSystem(input: BlocksComposerInput): Promise<string> {
+  const { documentContext, existingBlocks } = input
+
+  let basePrompt = BLOCKS_COMPOSER_SYSTEM
+
+  try {
+    const supabase = getAdminClient()
+
+    const { data: promptSet } = await supabase
+      .from('prompt_sets')
+      .select('id')
+      .eq('is_composer_prompt', true)
+      .eq('status', 'live')
+      .maybeSingle()
+
+    if (promptSet?.id) {
+      const { data: compiled } = await supabase
+        .from('compiled_prompts')
+        .select('content')
+        .eq('prompt_set_id', promptSet.id)
+        .order('version', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (compiled?.content) {
+        basePrompt = compiled.content
+      }
+    }
+  } catch (err) {
+    console.error('[composer] getCompiledComposerSystem: falling back to hardcoded prompt', err)
+  }
+
+  const documentSection = documentContext
+    ? `\n\n<document_context>\n${documentContext}\n</document_context>`
+    : ''
+
+  const blocksSection =
+    existingBlocks && existingBlocks.length > 0
+      ? `\n\n<existing_blocks>\n${existingBlocks.map(b => `  <block type="${b.type}" title="${b.title}">${b.body}</block>`).join('\n')}\n</existing_blocks>`
+      : ''
+
+  return basePrompt + documentSection + blocksSection
 }
 
 /** Returns the assembled system prompt string for the prompt-builder chat. */

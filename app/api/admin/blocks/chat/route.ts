@@ -1,4 +1,4 @@
-import { buildBlocksComposerSystem, type BlocksComposerInput } from '@/services/prompt/composer'
+import { getCompiledComposerSystem, type BlocksComposerInput } from '@/services/prompt/composer'
 import { runChatStream } from '@/services/chat/server/stream'
 import { DEFAULT_ADMIN_MODEL_CONFIG } from '@/services/chat/server/config'
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return new Response('Invalid JSON body', { status: 400 })
   }
 
-  const system = buildBlocksComposerSystem(body)
+  const system = await getCompiledComposerSystem(body)
   const messages = body.messages.map(m => ({
     role: m.role as 'user' | 'assistant',
     content: m.content,
