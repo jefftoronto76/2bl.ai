@@ -1,6 +1,6 @@
 // services/prompt/save.ts
 //
-// Manual master-prompt save for the prompt service (legacy save path). Archives
+// Manual compiled-prompt save for the prompt service (legacy save path). Archives
 // the current version to compiled_prompts_history, then writes the new content +
 // safety-check result with an incremented version. Moved verbatim from the
 // inline app/api/admin/prompt/save route body; the route is now a thin handler.
@@ -12,11 +12,11 @@ export type SaveResult =
   | { ok: false; status: number; error: string }
 
 /**
- * Persist a manually-edited master prompt for a tenant. Returns the new
+ * Persist a manually-edited compiled prompt for a tenant. Returns the new
  * version, or an error with the HTTP status the route should surface. Behavior
  * is identical to the prior inline route logic.
  */
-export async function saveMasterPrompt(
+export async function saveCompiledPrompt(
   tenantId: string,
   prompt: string,
   checkResult: unknown,
