@@ -1,7 +1,7 @@
 // services/prompt/compiler.ts
 //
 // Runtime system-prompt assembly for the prompt service. Server-only — reads
-// the highest-version master_prompt row via the service-role client, falling
+// the highest-version compiled_prompts row via the service-role client, falling
 // back to DEFAULT_SYSTEM_PROMPT. Moved here verbatim from
 // services/chat/server/prompt.ts (which now re-exports from this module so the
 // chat orchestrator keeps importing it unchanged).
@@ -24,7 +24,7 @@ export const QUESTION_MODE_CONTEXT =
 
 /**
  * Resolve the base system prompt for a tenant: the highest-version
- * master_prompt row, or DEFAULT_SYSTEM_PROMPT on any miss.
+ * compiled_prompts row, or DEFAULT_SYSTEM_PROMPT on any miss.
  */
 export async function getSystemPrompt(tenantId: string | null): Promise<string> {
   if (!tenantId) {
@@ -33,7 +33,7 @@ export async function getSystemPrompt(tenantId: string | null): Promise<string> 
   }
   try {
     const { data, error } = await getAdminClient()
-      .from('master_prompt')
+      .from('compiled_prompts')
       .select('content')
       .eq('tenant_id', tenantId)
       .order('version', { ascending: false })
@@ -41,24 +41,24 @@ export async function getSystemPrompt(tenantId: string | null): Promise<string> 
       .maybeSingle()
 
     if (error) {
-      console.error('[chat/prompt] master_prompt query failed:', error.message)
+      console.error('[chat/prompt] compiled_prompts query failed:', error.message)
       return DEFAULT_SYSTEM_PROMPT
     }
 
     if (!data?.content) {
       console.log(
-        '[chat/prompt] no master_prompt row for tenant_id:',
+        '[chat/prompt] no compiled_prompts row for tenant_id:',
         tenantId,
         '— falling back to DEFAULT_SYSTEM_PROMPT',
       )
       return DEFAULT_SYSTEM_PROMPT
     }
 
-    console.log('[chat/prompt] using master_prompt for tenant_id:', tenantId)
+    console.log('[chat/prompt] using compiled_prompts for tenant_id:', tenantId)
     return data.content
   } catch (err) {
     console.error(
-      '[chat/prompt] master_prompt query threw:',
+      '[chat/prompt] compiled_prompts query threw:',
       err instanceof Error ? err.message : err,
     )
     return DEFAULT_SYSTEM_PROMPT
