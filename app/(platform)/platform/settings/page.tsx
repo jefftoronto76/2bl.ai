@@ -117,9 +117,9 @@ export default function PlatformSettingsPage() {
       <Accordion variant="separated" defaultValue="system-prompt">
         <Accordion.Item value="system-prompt">
           <Accordion.Control>
-            <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>System Prompt</span>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>Composer Prompt</span>
             <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>
-              The system prompt that powers every tenant&rsquo;s Composer when building blocks. The set you mark here is compiled and sent as the system prompt platform-wide.
+              The compiled prompt that powers the Composer AI when building blocks. Only one can be active at a time.
             </span>
           </Accordion.Control>
           <Accordion.Panel>
@@ -133,7 +133,7 @@ export default function PlatformSettingsPage() {
                 <Stack gap={4}>
                   <Text fw={500}>No prompt sets yet.</Text>
                   <Text c="dimmed" size="sm">
-                    Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform System Prompt.
+                    Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform Composer Prompt.
                   </Text>
                 </Stack>
               ) : (
