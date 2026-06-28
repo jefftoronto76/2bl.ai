@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     action: AuditAction.PROMPT_SAVE,
     tenant_id: authCtx.tenant_id,
     actor_id: authCtx.owner_id,
-    target_type: 'master_prompt',
+    target_type: 'compiled_prompt',
     target_id: authCtx.tenant_id,
     correlation_id: req.headers.get('x-correlation-id'),
     metadata: { version: result.version },
