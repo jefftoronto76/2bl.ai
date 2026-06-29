@@ -12,6 +12,7 @@
  *   - coach    → a quiet borrowed call-out (quote + attribution)
  */
 
+import { useState } from 'react'
 import {
   ScanSearch,
   ArrowRight,
@@ -21,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useMode, type Mode } from './useMode'
+import { FEATURED_TESTIMONIALS } from './SectionTestimonials'
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -56,13 +58,6 @@ const PRINCIPLES: Record<Mode, ModeCard[]> = {
       lede: "I've sat in the owner's chair, and I bring that lens to every conversation.",
     },
   ],
-}
-
-/** Coach-mode coda call-out (the fixed "quiet line" treatment). */
-const CALLOUT = {
-  quote: 'One of the people I learned the most from.',
-  who: 'Brittany Dallman',
-  role: 'BDR',
 }
 
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
@@ -152,8 +147,12 @@ function ModeGrid({ items, modeKey }: { items: ModeCard[]; modeKey: Mode }) {
   )
 }
 
-function CalloutFigure() {
-  const initials = CALLOUT.who
+type CalloutData = { quote: string; who: string; role: string; headshot?: string }
+
+function CalloutFigure({ callout }: { callout: CalloutData }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImg = Boolean(callout.headshot) && !imgFailed
+  const initials = callout.who
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -162,18 +161,28 @@ function CalloutFigure() {
   return (
     <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
       <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
-        &ldquo;{CALLOUT.quote}&rdquo;
+        &ldquo;{callout.quote}&rdquo;
       </blockquote>
       <figcaption className="mt-4 flex items-center gap-3">
         <span
-          aria-hidden
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)]"
+          aria-label={callout.who}
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)] overflow-hidden"
         >
-          {initials}
+          {showImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/sage/jefflougheed/headshots/${callout.headshot}.jpeg`}
+              alt={callout.who}
+              className="w-full h-full object-cover"
+              onError={() => setImgFailed(true)}
+            />
+          ) : (
+            <span aria-hidden>{initials}</span>
+          )}
         </span>
         <span className="flex flex-col gap-0.5 font-mono text-[11px] tracking-[0.1em] uppercase text-[color:var(--color-text-dim)]">
-          <span className="text-[color:var(--color-text-muted)]">{CALLOUT.who}</span>
-          <span>{CALLOUT.role}</span>
+          <span className="text-[color:var(--color-text-muted)]">{callout.who}</span>
+          <span>{callout.role}</span>
         </span>
       </figcaption>
     </figure>
@@ -214,6 +223,7 @@ function SectionKeyframes() {
 
 export function SectionWhy() {
   const [mode, setMode] = useMode()
+  const iara = FEATURED_TESTIMONIALS.find((t) => t.name === 'Iara Rios')
 
   return (
     <section id="why" className="py-16 px-4 md:px-8">
@@ -241,7 +251,11 @@ export function SectionWhy() {
         {/* Coda */}
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
           {mode === 'coach' ? (
-            <CalloutFigure />
+            iara && (
+              <CalloutFigure
+                callout={{ quote: iara.text, who: iara.name, role: iara.company ?? iara.title ?? '', headshot: iara.headshot }}
+              />
+            )
           ) : (
             <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
               Most of my career has been spent{' '}
