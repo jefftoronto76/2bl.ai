@@ -1189,10 +1189,7 @@ function RoleCardView({
 
 function EducationCardView({ card }: { card: EducationCard }) {
   return (
-    <article
-      className="bone-card relative flex flex-col h-full border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 pb-10"
-      style={{ background: 'color-mix(in srgb, rgb(245 244 240) 94%, var(--color-accent) 6%)' }}
-    >
+    <article className="bone-card relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 pb-10">
       <GraduationCap
         size={14}
         strokeWidth={1.6}
