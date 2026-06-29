@@ -20,6 +20,7 @@ export interface UseBlocksFiltersReturn {
   setTypeFilter: (value: TypeFilter) => void
   statusFilter: StatusFilter
   setStatusFilter: (value: StatusFilter) => void
+  clearAll: () => void
 }
 
 /**
@@ -114,6 +115,16 @@ export function useBlocksFilters(): UseBlocksFiltersReturn {
     [writeParam],
   )
 
+  const clearAll = useCallback(() => {
+    setQueryLocal('')
+    const next = new URLSearchParams(params.toString())
+    next.delete('q')
+    next.delete('type')
+    next.delete('status')
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, params])
+
   return {
     query,
     setQuery,
@@ -121,5 +132,6 @@ export function useBlocksFilters(): UseBlocksFiltersReturn {
     setTypeFilter,
     statusFilter,
     setStatusFilter,
+    clearAll,
   }
 }
