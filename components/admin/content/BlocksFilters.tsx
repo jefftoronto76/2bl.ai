@@ -278,7 +278,7 @@ export function FilterBar({ f, typeCounts, statusCounts }: FilterBarProps) {
   const [pop, setPop] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  useClickOutside(() => setPop(false), null, [containerRef, popoverRef])
+  useClickOutside(() => setPop(false), null, [containerRef as React.RefObject<HTMLElement>, popoverRef as React.RefObject<HTMLElement>])
 
   const hasFilter = f.typeFilter !== 'all' || f.statusFilter !== 'all'
 
@@ -598,7 +598,7 @@ export function FilterPopover({ f, typeCounts, statusCounts }: FilterPopoverProp
   const [pop, setPop] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  useClickOutside(() => setPop(false), null, [containerRef, popoverRef])
+  useClickOutside(() => setPop(false), null, [containerRef as React.RefObject<HTMLElement>, popoverRef as React.RefObject<HTMLElement>])
 
   const activeCount =
     (f.typeFilter !== 'all' ? 1 : 0) + (f.statusFilter !== 'all' ? 1 : 0)
