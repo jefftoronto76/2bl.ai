@@ -42,6 +42,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
+import { useMode } from './useMode'
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
 
@@ -70,8 +71,8 @@ type Deliverable = {
 type Track = {
   id: TrackId
   chipLabel: string
-  /** Two paragraph lines that replace the lede under the headline. */
-  subhead: [string, string]
+  /** Paragraph line(s) that replace the lede under the headline. */
+  subhead: string[]
   symptoms: string[]
   steps: [Step, Step, Step]
   deliverables: {
@@ -89,7 +90,6 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'coaching',
     chipLabel: 'Coaching',
     subhead: [
-      'Structured thinking work, not just conversations.',
       'A clear process to get you unstuck and moving forward.',
     ],
     symptoms: [
@@ -138,7 +138,6 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'operator',
     chipLabel: 'Operator',
     subhead: [
-      'For organizations that want to grow without the drama.',
       'I build systems that stop problems from happening.',
     ],
     symptoms: [
@@ -648,7 +647,10 @@ export type SectionProcessProps = {
   /** Intercept symptom-pill clicks. Receives the symptom text and the
    *  active track id so the parent can pre-populate the chat composer. */
   onSymptomClick?: (symptom: string, trackId: TrackId) => void
-  /** Starting track. Defaults to 'coaching'. */
+  /** @deprecated The active track is now driven by the shared Operator/Coach
+   *  mode (useMode), so it stays in sync with SectionOutcomes / SectionWhy.
+   *  This prop is accepted for API compatibility but no longer sets the
+   *  initial track — adjust the shared mode default in useMode.ts instead. */
   defaultTrack?: TrackId
 }
 
@@ -656,9 +658,14 @@ export function SectionProcess({
   ctaUrl = CTA_URL,
   chatUrl = CHAT_URL,
   onSymptomClick,
-  defaultTrack = 'coaching',
 }: SectionProcessProps = {}) {
-  const [activeId, setActiveId] = useState<TrackId>(defaultTrack)
+  // Track selection is shared across sections via useMode. The cross-section
+  // mode speaks 'operator' | 'coach'; this section's tracks are
+  // 'operator' | 'coaching', so we map 'coach' ⇄ 'coaching'.
+  const [mode, setMode] = useMode()
+  const activeId: TrackId = mode === 'coach' ? 'coaching' : 'operator'
+  const setActiveId = (id: TrackId) =>
+    setMode(id === 'coaching' ? 'coach' : 'operator')
   const track = TRACKS[activeId]
 
   return (
