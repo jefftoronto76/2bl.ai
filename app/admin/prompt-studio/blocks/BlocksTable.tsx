@@ -6,6 +6,7 @@ import {
   Box,
   Center,
   Group,
+  Paper,
   Stack,
   Modal,
   Button,
@@ -23,8 +24,16 @@ import { BlockCard } from '@/components/admin/content/BlockCard'
 import { BlockEditDrawer } from '@/components/admin/content/BlockEditDrawer'
 import { BlockEditSheet } from '@/components/admin/content/BlockEditSheet'
 import { BlockEditForm } from '@/components/admin/content/BlockEditForm'
-import { BlocksToolbar } from '@/components/admin/content/BlocksToolbar'
 import { useBlocksFilters } from '@/components/admin/content/useBlocksFilters'
+import {
+  FilterBar,
+  FilterPopover,
+  FilterRail,
+  ResultMeta,
+  FILTER_LAYOUT,
+  type TypeCounts,
+  type StatusCounts,
+} from '@/components/admin/content/BlocksFilters'
 import type { BlockType } from '@/services/prompt/block-types'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
@@ -91,6 +100,7 @@ export function BlocksTable({
     setTypeFilter,
     statusFilter,
     setStatusFilter,
+    clearAll,
   } = useBlocksFilters()
 
   // useMediaQuery returns undefined on first render (SSR) and true/false
@@ -405,6 +415,21 @@ export function BlocksTable({
     tokens: activeBlocks.reduce((sum, b) => sum + tokensFor(b.body), 0),
   }
 
+  // Facet counts — scoped to all items in the set (before type/status filtering).
+  const typeCounts: TypeCounts = {}
+  for (const b of items) typeCounts[b.type as keyof TypeCounts] = (typeCounts[b.type as keyof TypeCounts] ?? 0) + 1
+  const statusCounts: StatusCounts = { active: 0, disabled: 0 }
+  for (const b of items) {
+    if (b.status === 'active') statusCounts.active++
+    else if (b.status === 'disabled') statusCounts.disabled++
+  }
+
+  const hasFilters =
+    typeFilter !== 'all' || statusFilter !== 'all' || query.trim().length > 0
+
+  // The filter state object passed to all three filter presentations.
+  const filterState = { query, setQuery, typeFilter, setTypeFilter, statusFilter, setStatusFilter }
+
   // Select-all is scoped to the currently-visible (filtered) set.
   // Bulk actions still operate on all selectedIds — so selections
   // made outside the current filter persist when filters change.
@@ -462,36 +487,50 @@ export function BlocksTable({
         />
       </SummarySection>
 
-      {items.length === 0 ? (
-        <Center h={200}>
-          <Text variant="muted">No blocks yet.</Text>
-        </Center>
-      ) : null}
-
-      {items.length > 0 && (
+      {/* Filter region — switched by FILTER_LAYOUT constant */}
+      {items.length > 0 && FILTER_LAYOUT === 'rail' ? (
+        <Box style={{ display: 'grid', gridTemplateColumns: '208px minmax(0, 1fr)', gap: 'var(--mantine-spacing-xl)', alignItems: 'start' }}>
+          <FilterRail
+            f={filterState}
+            typeCounts={typeCounts}
+            statusCounts={statusCounts}
+            total={items.length}
+          />
+          <Stack gap="md">
+            <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+              <ResultMeta
+                filteredCount={filtered.length}
+                totalCount={items.length}
+                allExpanded={allExpanded}
+                onToggleExpand={allExpanded ? handleCollapseAll : handleExpandAll}
+              />
+            </Group>
+            {selectedCount > 0 && (
+              <BulkActionsBar
+                selectedCount={selectedCount}
+                disabled={bulkInFlight}
+                onEnable={() => handleBulkStatusChange('active')}
+                onDisable={() => handleBulkStatusChange('disabled')}
+                onDelete={() => setBulkDeleteOpen(true)}
+                onClear={() => setSelectedIds(new Set())}
+              />
+            )}
+          </Stack>
+        </Box>
+      ) : items.length > 0 ? (
         <>
-          {/* Filter toolbar — visible at all viewports. The original PR 1
-              design gated this with visibleFrom="md" pending a separate
-              mobile filter UX (overlay + chip row) planned for the
-              originally-scoped PR 4. That PR 4 was cancelled when the
-              redesign rescoped to page rework, so the gate is removed.
-              Step 9 of the rework swaps the SegmentedControls for
-              Chip.Group, which wraps cleanly at narrow viewports. */}
           <Box className={layout.stickyToolbar}>
-            <BlocksToolbar
-              query={query}
-              onQueryChange={setQuery}
-              typeFilter={typeFilter}
-              onTypeFilterChange={setTypeFilter}
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-              allExpanded={allExpanded}
-              onToggleExpandAll={
-                allExpanded ? handleCollapseAll : handleExpandAll
-              }
-              filteredCount={filtered.length}
-              totalCount={items.length}
-            />
+            <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+              {FILTER_LAYOUT === 'popover'
+                ? <FilterPopover f={filterState} typeCounts={typeCounts} statusCounts={statusCounts} />
+                : <FilterBar f={filterState} typeCounts={typeCounts} statusCounts={statusCounts} />}
+              <ResultMeta
+                filteredCount={filtered.length}
+                totalCount={items.length}
+                allExpanded={allExpanded}
+                onToggleExpand={allExpanded ? handleCollapseAll : handleExpandAll}
+              />
+            </Group>
           </Box>
 
           {/* Bulk action bar */}
@@ -505,6 +544,31 @@ export function BlocksTable({
               onClear={() => setSelectedIds(new Set())}
             />
           )}
+        </>
+      ) : null}
+
+      {/* Empty state — no items at all OR no items matching current filters */}
+      {filtered.length === 0 ? (
+        items.length === 0 ? (
+          <Center h={200}>
+            <Text variant="muted">No blocks yet.</Text>
+          </Center>
+        ) : (
+          <Paper withBorder radius="md" p="xl" style={{ borderStyle: 'dashed', background: 'var(--mantine-color-gray-0)' }}>
+            <Stack align="center" gap={7} py="lg">
+              <Text variant="body" style={{ fontWeight: 600, fontSize: 14 }}>No blocks to show</Text>
+              <Text variant="muted" style={{ fontSize: 14 }}>No blocks in this set match your filters.</Text>
+              {hasFilters && (
+                <Button variant="subtle" color="gray" size="xs" onClick={clearAll}>
+                  Clear filters
+                </Button>
+              )}
+            </Stack>
+          </Paper>
+        )
+      ) : (
+        // Items exist and some match — render the table/card list
+        <>
 
           {/* Desktop: Table */}
           <Box visibleFrom="md">
