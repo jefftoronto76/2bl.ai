@@ -34,6 +34,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { FeaturedTestimonial } from './FeaturedTestimonial'
+import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import {
   ShieldCheck,
   FileText,
@@ -46,10 +47,6 @@ import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useMode } from './useMode'
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
-
-/** Default href for the "Book a Session — C$250" CTA. Overridable via
- *  the `ctaUrl` prop so it can be set per-page or fed from config. */
-const CTA_URL = ''
 
 /** Default href for the symptom pills. The pills act as conversation
  *  starters with Sage — points at the chat anchor by default. */
@@ -76,6 +73,8 @@ type Track = {
   subhead: string[]
   symptoms: string[]
   steps: [Step, Step, Step]
+  /** Key matching a `sage_parameters.key` row — CTA URL is pulled from there. */
+  bookingParamKey: string
   deliverables: {
     /** 0-indexed step the deliverables "come from" — controls the
      *  origin-card accent and the desktop tray's notch position. */
@@ -119,6 +118,7 @@ const TRACKS: Record<TrackId, Track> = {
           "See the situation differently and move forward with confidence.",
       },
     ],
+    bookingParamKey: 'coaching_session',
     deliverables: {
       originStep: 1,
       items: [
@@ -167,6 +167,7 @@ const TRACKS: Record<TrackId, Track> = {
           "Clarity on the challenge, the levers that matter, and a practical path forward.",
       },
     ],
+    bookingParamKey: 'working_session_scoping',
     deliverables: {
       originStep: 1,
       items: [
@@ -629,7 +630,9 @@ function SectionKeyframes() {
 /* ─── Main export ───────────────────────────────────────────────────── */
 
 export type SectionProcessProps = {
-  /** Override the module-level CTA_URL default ("Book a Session — C$250"). */
+  /** Fallback href for the "Book a Session" CTA. The live URL is pulled from
+   *  sage_parameters (keyed by track.bookingParamKey) — this prop is only
+   *  used when that fetch fails or the key is absent. */
   ctaUrl?: string
   /** Default href the symptom pills navigate to when no
    *  `onSymptomClick` handler is provided. */
@@ -645,7 +648,7 @@ export type SectionProcessProps = {
 }
 
 export function SectionProcess({
-  ctaUrl = CTA_URL,
+  ctaUrl = '',
   chatUrl = CHAT_URL,
   onSymptomClick,
 }: SectionProcessProps = {}) {
@@ -658,13 +661,19 @@ export function SectionProcess({
     setMode(id === 'coaching' ? 'coach' : 'operator')
   const track = TRACKS[activeId]
 
+  // Per-track booking URL pulled live from sage_parameters.
+  // Key names must match the admin panel (Settings → Parameters) exactly.
+  // Falls back to ctaUrl (empty → disabled button) if the fetch fails or key is missing.
+  const sageParams = useSageParameters()
+  const trackCtaUrl = sageParams.find(p => p.key === track.bookingParamKey)?.url ?? ctaUrl
+
   return (
     <section
       id="how-it-works"
       aria-labelledby="how-it-works-h"
-      className="py-20 px-6 md:px-12"
+      className="py-20"
     >
-      <div className="mx-auto max-w-[1100px]">
+      <div className="mx-auto max-w-[1100px] px-[clamp(24px,5vw,48px)]">
         {/* Eyebrow */}
         <p className="mb-7 flex items-center gap-4 font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">
           <span className="hilite">One session at a time.</span>
@@ -679,7 +688,7 @@ export function SectionProcess({
           id="how-it-works-h"
           className="mb-4 font-display font-normal text-[clamp(34px,4.2vw,56px)] leading-[1.06] tracking-[-0.02em] text-[color:var(--color-text-primary)] text-pretty"
         >
-          Working Together
+          Getting Started
         </h2>
 
         {/* Per-track subhead */}
@@ -709,7 +718,7 @@ export function SectionProcess({
                   index={i}
                   isOrigin={isOrigin}
                   filterKey={activeId}
-                  ctaUrl={ctaUrl}
+                  ctaUrl={trackCtaUrl}
                 />
                 {i === track.deliverables.originStep && (
                   <div className="lg:hidden">

@@ -230,8 +230,8 @@ export function SectionWhy() {
   const iara = FEATURED_TESTIMONIALS.find((t) => t.name === 'Iara Rios')
 
   return (
-    <section id="why" className="py-16 px-4 md:px-8">
-      <div className="max-w-[1100px] mx-auto">
+    <section id="why" className="py-16">
+      <div className="max-w-[1100px] mx-auto px-[clamp(24px,5vw,48px)]">
         {/* Eyebrow */}
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
           <span>Show up, listen, and contribute.</span>
