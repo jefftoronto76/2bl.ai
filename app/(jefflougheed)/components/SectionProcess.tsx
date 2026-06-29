@@ -90,7 +90,8 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'coaching',
     chipLabel: 'Coaching',
     subhead: [
-      'A clear process to get you unstuck and moving forward.',
+      'Structured thinking work, not just conversations.',
+      'An experienced partner for your most important initiatives.',
     ],
     symptoms: [
       'A deal you can’t afford to lose',
