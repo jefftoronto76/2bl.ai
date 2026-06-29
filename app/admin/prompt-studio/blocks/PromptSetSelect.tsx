@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Badge, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core'
+import { Badge, Box, Group, Menu, Stack, Text, TextInput, UnstyledButton } from '@mantine/core'
+import { IconSearch } from '@tabler/icons-react'
 import { Text as MutedText } from '@/components/admin/primitives/Text'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { resolveActiveSet, type PromptSet, type PromptSetStatus } from './promptSets'
@@ -64,6 +65,7 @@ export interface PromptSetSelectProps {
 
 export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -73,10 +75,16 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
 
   function select(id: string) {
     if (id === active!.id) return
-    const next = new URLSearchParams(params.toString())
+    // Strip stale filter params when switching sets — start clean.
+    const next = new URLSearchParams()
     next.set('set', id)
     router.push(`${pathname}?${next.toString()}`)
   }
+
+  const showSearch = sets.length > 6
+  const visible = showSearch && search.trim()
+    ? sets.filter((s) => s.label.toLowerCase().includes(search.trim().toLowerCase()))
+    : sets
 
   return (
     <Stack gap={6}>
@@ -99,7 +107,7 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
         shadow="md"
         withinPortal
         opened={menuOpen}
-        onChange={setMenuOpen}
+        onChange={(open) => { setMenuOpen(open); if (!open) setSearch('') }}
       >
         <Menu.Target>
           <UnstyledButton
@@ -122,7 +130,19 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
         </Menu.Target>
 
         <Menu.Dropdown>
-          {sets.map((s) => (
+          {showSearch && (
+            <Box px={6} pt={6} pb={4}>
+              <TextInput
+                data-autofocus
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                placeholder="Find a prompt set"
+                size="xs"
+                leftSection={<IconSearch size={12} />}
+              />
+            </Box>
+          )}
+          {visible.map((s) => (
             <Menu.Item key={s.id} onClick={() => select(s.id)} aria-selected={s.id === active.id}>
               <Group justify="space-between" wrap="nowrap" gap="sm">
                 <Text size="sm" fw={500} style={{ whiteSpace: 'nowrap' }}>{s.label}</Text>
@@ -136,6 +156,9 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
               </Group>
             </Menu.Item>
           ))}
+          {showSearch && visible.length === 0 && (
+            <Text c="dimmed" size="sm" ta="center" py="sm">No prompt sets match.</Text>
+          )}
         </Menu.Dropdown>
       </Menu>
     </Stack>
