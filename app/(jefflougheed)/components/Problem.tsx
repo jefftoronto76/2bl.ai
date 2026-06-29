@@ -8,7 +8,7 @@ export function Problem() {
     <>
     <div style={{ padding: '48px' }}>
     <section id="problem" className="problem-section" style={{
-      padding: '64px clamp(24px, 5vw, 48px)',
+      padding: '64px 0',
       borderBottom: '1px solid rgba(26,25,23,0.08)',
       backgroundImage: 'url(/sage/jefflougheed/ProblemBackground.webp)',
       backgroundSize: 'cover',
@@ -25,7 +25,8 @@ export function Problem() {
         background: 'rgba(0,0,0,0.1)',
         zIndex: 1,
       }} />
-      <div ref={ref} className="reveal" style={{ maxWidth: '700px', position: 'relative', zIndex: 2 }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 clamp(24px, 5vw, 48px)', position: 'relative', zIndex: 2 }}>
+      <div ref={ref} className="reveal" style={{ maxWidth: '700px' }}>
         <p style={{
           fontFamily: 'var(--font-mono)', fontSize: '13.2px',
           letterSpacing: '0.22em', textTransform: 'uppercase',
@@ -54,6 +55,7 @@ export function Problem() {
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400, marginBottom: '8px' }}>When teams chase problems, they look for someone to blame.</p>
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400, marginBottom: '8px' }}>When teams chase outcomes, they engage, they adapt, and they learn.</p>
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400 }}>The problems get solved either way.</p>
+      </div>
       </div>
     </section>
     </div>

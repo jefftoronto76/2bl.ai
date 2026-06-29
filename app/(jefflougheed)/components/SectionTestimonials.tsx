@@ -251,12 +251,12 @@ export function SectionTestimonials() {
       <div className="max-w-[1100px] mx-auto">
         {/* Headline */}
         <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-4 text-balance max-w-[22ch]">
-          Testimonials
+          Working Together
         </h2>
 
         {/* Lede */}
         <p className="font-display text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] max-w-[56ch] mb-10 text-pretty">
-          A collection of thoughts from the people who&rsquo;ve helped me, and who I&rsquo;ve helped throughout my career and life.
+          I&rsquo;ve been fortunate to work with exceptional people. These are a few of their reflections on what it was like to work together.
         </p>
 
         {/* Filter row */}

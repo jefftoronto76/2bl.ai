@@ -79,7 +79,7 @@ function ModeToggle({
   return (
     <div
       role="tablist"
-      aria-label="Operator or Coach"
+      aria-label="Special Projects or Coaching"
       className="flex flex-wrap gap-2.5 mb-16"
     >
       {MODE_LABELS.map(([id, label]) => {
@@ -160,6 +160,10 @@ function CalloutFigure({ callout }: { callout: CalloutData }) {
     .join('')
   return (
     <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+      <div className="mb-4 flex items-center gap-4">
+        <span className="font-mono text-[11px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">In their words</span>
+        <span aria-hidden className="h-px flex-1 bg-[color:var(--color-border)] max-w-[120px]" />
+      </div>
       <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
         &ldquo;{callout.quote}&rdquo;
       </blockquote>
@@ -226,11 +230,11 @@ export function SectionWhy() {
   const iara = FEATURED_TESTIMONIALS.find((t) => t.name === 'Iara Rios')
 
   return (
-    <section id="why" className="py-16 px-4 md:px-8">
-      <div className="max-w-[1100px] mx-auto">
+    <section id="why" className="py-16">
+      <div className="max-w-[1100px] mx-auto px-[clamp(24px,5vw,48px)]">
         {/* Eyebrow */}
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
-          <span>I show up, listen, and contribute.</span>
+          <span>Show up, listen, and contribute.</span>
           <span
             aria-hidden
             className="flex-1 h-px bg-[color:var(--color-border)] max-w-[160px]"

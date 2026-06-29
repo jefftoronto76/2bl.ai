@@ -7,6 +7,7 @@ import {
   WhatsappShareButton,
   EmailShareButton,
 } from 'react-share'
+import { SHARE_ICON } from './ShareIcons'
 
 const SHARE_MESSAGE = 'Worth knowing about if you work in tech: jefflougheed.ca'
 const EMAIL_SUBJECT = "Thought you'd find this useful"
@@ -99,6 +100,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
             resetButtonStyle={false}
             className={ROW}
           >
+            {SHARE_ICON['linkedin']}
             LinkedIn
           </LinkedinShareButton>
 
@@ -108,6 +110,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
             resetButtonStyle={false}
             className={ROW}
           >
+            {SHARE_ICON['twitter']}
             Twitter / X
           </TwitterShareButton>
 
@@ -118,6 +121,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
             resetButtonStyle={false}
             className={ROW}
           >
+            {SHARE_ICON['whatsapp']}
             WhatsApp
           </WhatsappShareButton>
 
@@ -129,6 +133,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
             resetButtonStyle={false}
             className={ROW}
           >
+            {SHARE_ICON['email']}
             Email
           </EmailShareButton>
 
@@ -137,6 +142,7 @@ export function ShareModal({ open, onClose }: ShareModalProps) {
             onClick={handleCopy}
             className={`${ROW} ${copied ? 'text-accent' : ''}`}
           >
+            {SHARE_ICON['copy']}
             {copied ? 'Copied!' : 'Copy link'}
           </button>
         </div>
