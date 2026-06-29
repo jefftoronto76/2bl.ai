@@ -108,17 +108,17 @@ export function Donut({ segments, total, centerSub, size = 180, formatCenter }: 
       ))}
       {hv ? (
         <>
-          <text x={cx} y={cy - 5} textAnchor="middle" style={{ fontFamily: 'Manrope', fontSize: 14, fontWeight: 600, fill: hv.color }}>{hv.label}</text>
-          <text x={cx} y={cy + 15} textAnchor="middle" style={{ fontFamily: 'DM Mono', fontSize: 13, fill: 'var(--mantine-color-text)' }}>{hv.value.toLocaleString()}</text>
-          <text x={cx} y={cy + 32} textAnchor="middle" style={{ fontFamily: 'DM Mono', fontSize: 11, fill: 'var(--mantine-color-dimmed)' }}>{hvPct}%</text>
+          <text x={cx} y={cy - 5} textAnchor="middle" style={{ fontFamily: 'var(--mantine-font-family)', fontSize: 14, fontWeight: 600, fill: hv.color }}>{hv.label}</text>
+          <text x={cx} y={cy + 15} textAnchor="middle" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13, fill: 'var(--mantine-color-text)' }}>{hv.value.toLocaleString()}</text>
+          <text x={cx} y={cy + 32} textAnchor="middle" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 11, fill: 'var(--mantine-color-dimmed)' }}>{hvPct}%</text>
         </>
       ) : (
         <>
-          <text x={cx} y={cy - 1} textAnchor="middle" style={{ fontFamily: 'DM Mono', fontSize: 25, fontWeight: 500, fill: 'var(--mantine-color-text)' }}>
+          <text x={cx} y={cy - 1} textAnchor="middle" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 25, fontWeight: 500, fill: 'var(--mantine-color-text)' }}>
             {formatCenter ? formatCenter(sum) : sum.toLocaleString()}
           </text>
           {centerSub && (
-            <text x={cx} y={cy + 18} textAnchor="middle" style={{ fontFamily: 'DM Mono', fontSize: 11, fill: 'var(--mantine-color-dimmed)' }}>{centerSub}</text>
+            <text x={cx} y={cy + 18} textAnchor="middle" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 11, fill: 'var(--mantine-color-dimmed)' }}>{centerSub}</text>
           )}
         </>
       )}
