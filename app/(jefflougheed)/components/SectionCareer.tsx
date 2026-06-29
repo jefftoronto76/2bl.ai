@@ -1190,16 +1190,12 @@ function RoleCardView({
 function EducationCardView({ card }: { card: EducationCard }) {
   return (
     <article className="bone-card relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 pb-10">
-      <GraduationCap
-        size={14}
-        strokeWidth={1.6}
-        aria-hidden
-        className="absolute top-5 left-6 text-[color:var(--color-text-dim)]"
-      />
-
-      <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
-        {card.year}
-      </span>
+      <div className="absolute top-5 right-5 flex flex-col items-end gap-1">
+        <GraduationCap size={20} strokeWidth={1.6} aria-hidden className="text-[color:var(--color-text-dim)]" />
+        <span className="font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
+          {card.year}
+        </span>
+      </div>
 
       <div className="mb-5 h-9 flex items-center">
         {Array.isArray(card.logo) ? (
