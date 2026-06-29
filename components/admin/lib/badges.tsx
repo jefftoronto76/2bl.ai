@@ -4,6 +4,7 @@
 // Tints mirror Mantine's light-variant fills; production quirks (e.g. only four
 // tenant types get a colour) are preserved verbatim.
 
+import { type ReactNode } from 'react'
 import { Badge } from '@mantine/core'
 import type {
   BadgeTint, BlockType, HistoryStatus, MemberPlan, MemberRole, MemberStatus,
@@ -123,7 +124,7 @@ export const avatarColor = (seed: string): BadgeTint => {
 /** Custom-tinted light badge for the {bg,fg} tints carried in the data maps. */
 export function TintBadge({
   tint, children, size = 'sm',
-}: { tint: BadgeTint; children: React.ReactNode; size?: string }) {
+}: { tint: BadgeTint; children: ReactNode; size?: string }) {
   return (
     <Badge
       size={size}
