@@ -169,3 +169,6 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
 
 // Static export kept for any existing imports that haven't switched to buildAdminTheme.
 export const adminTheme = buildAdminTheme().theme;
+
+export const accentMix = (pct: number, base = 'transparent'): string =>
+  `color-mix(in srgb, var(--mantine-color-brand-6) ${pct}%, ${base})`

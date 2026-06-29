@@ -72,10 +72,10 @@ function Dashboard({ rows }: { rows: Session[] }) {
   const fmtK = (n: number) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n))
   const started = rows.length
   const funnel = [
-    { key: 'started', label: 'Chats started', value: started, color: '#1c7ed6' },
-    { key: 'cta', label: 'Presented CTA', value: stats.presentedCTA, color: '#e67700' },
-    { key: 'converted', label: 'Converted', value: stats.converted, color: '#2d6a4f' },
-    { key: 'abandoned', label: 'Abandoned', value: stats.dist.abandoned, color: '#868e96' },
+    { key: 'started', label: 'Chats started', value: started, color: 'var(--mantine-color-blue-7)' },
+    { key: 'cta', label: 'Presented CTA', value: stats.presentedCTA, color: 'var(--mantine-color-orange-8)' },
+    { key: 'converted', label: 'Converted', value: stats.converted, color: 'var(--mantine-color-brand-6)' },
+    { key: 'abandoned', label: 'Abandoned', value: stats.dist.abandoned, color: 'var(--mantine-color-gray-6)' },
   ]
   return (
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -83,7 +83,7 @@ function Dashboard({ rows }: { rows: Session[] }) {
         <StatTile label="Sessions" value={started} sub={`${stats.msgs} messages`} />
         <StatTile label="Tokens" value={fmtK(totalTokens)} sub="input + output" />
         <StatTile label="Est. cost" value={cost} sub="sonnet-4-6 rates" />
-        <StatTile label="Converted" value={`${started > 0 ? Math.round((stats.converted / started) * 100) : 0}%`} sub={`${stats.converted} of ${started}`} accent="#2d6a4f" />
+        <StatTile label="Converted" value={`${started > 0 ? Math.round((stats.converted / started) * 100) : 0}%`} sub={`${stats.converted} of ${started}`} accent="var(--mantine-color-brand-6)" />
       </SimpleGrid>
       <Card withBorder radius="md" p="lg" style={{ background: 'transparent' }}>
         <Stack gap="sm">

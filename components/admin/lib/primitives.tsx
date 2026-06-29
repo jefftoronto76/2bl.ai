@@ -3,7 +3,7 @@
 // Presentational primitives shared across dashboards: StatTile, MetaRow, the
 // segmented Donut (+ legend), and a notify() helper over Mantine notifications.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Paper, Stack, Text, Group } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 
@@ -20,7 +20,7 @@ export function notify(t: Toast) {
 /* ── StatTile — a labelled metric for dashboard headers ── */
 export function StatTile({
   label, value, sub, accent,
-}: { label: string; value: React.ReactNode; sub?: string; accent?: string }) {
+}: { label: string; value: ReactNode; sub?: string; accent?: string }) {
   return (
     <Paper withBorder radius="md" p="md" style={{ background: 'transparent' }}>
       <Stack gap={2}>
@@ -43,7 +43,7 @@ export function StatTile({
 }
 
 /* ── MetaRow — label + value row used on detail cards ── */
-export function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function MetaRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Group gap="xs" wrap="wrap" align="baseline">
       <Text c="dimmed" style={{ fontSize: 'var(--mantine-font-size-xs)', minWidth: 110 }}>{label}</Text>
@@ -53,12 +53,12 @@ export function MetaRow({ label, children }: { label: string; children: React.Re
 }
 
 /* ── mono / dim text helpers ── */
-export const Mono = ({ children, size }: { children: React.ReactNode; size?: number | string }) => (
+export const Mono = ({ children, size }: { children: ReactNode; size?: number | string }) => (
   <Text span style={{ fontSize: size ?? 'var(--mantine-font-size-sm)', fontFamily: 'var(--mantine-font-family-monospace)', wordBreak: 'break-all' }}>
     {children}
   </Text>
 )
-export const Dim = ({ children }: { children: React.ReactNode }) => (
+export const Dim = ({ children }: { children: ReactNode }) => (
   <Text span c="dimmed" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>{children}</Text>
 )
 

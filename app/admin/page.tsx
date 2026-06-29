@@ -1,5 +1,8 @@
 import { getAuthContext } from '@/services/auth'
 import { getInboundChats, type ChatSession } from '@/services/crm/inbound'
+import { Stack, Title } from '@mantine/core'
+import { Text } from '@/components/admin/primitives/Text'
+import { InboundChartsDashboard } from './InboundChartsDashboard'
 import { InboundChatsTable } from './InboundChatsTable'
 
 export const dynamic = 'force-dynamic'
@@ -15,27 +18,13 @@ export default async function AdminPage() {
   }
 
   return (
-    <div>
-      <h1 style={{
-        fontFamily: 'var(--font-display)',
-        fontSize: 'clamp(28px, 3vw, 40px)',
-        fontWeight: 400,
-        letterSpacing: '-0.02em',
-        color: 'var(--color-text-primary)',
-        marginBottom: '8px',
-      }}>
-        Inbound Chats
-      </h1>
-      <p style={{
-        fontFamily: 'var(--font-body)',
-        fontSize: '15px',
-        color: 'var(--color-text-muted)',
-        marginBottom: '48px',
-      }}>
-        Sage conversation history.
-      </p>
-
+    <Stack gap="lg">
+      <Stack gap={4}>
+        <Title order={1} size="h2">Inbound Chats</Title>
+        <Text variant="muted">Sage conversation history.</Text>
+      </Stack>
+      <InboundChartsDashboard rows={rows} />
       <InboundChatsTable rows={rows} />
-    </div>
+    </Stack>
   )
 }
