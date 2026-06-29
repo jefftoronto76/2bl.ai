@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActionIcon,
   Box,
@@ -11,7 +11,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core'
-import { useClickOutside } from '@mantine/hooks'
+
 import {
   IconCheck,
   IconChevronsDown,
@@ -278,7 +278,16 @@ export function FilterBar({ f, typeCounts, statusCounts }: FilterBarProps) {
   const [pop, setPop] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  useClickOutside(() => setPop(false), null, [containerRef as React.RefObject<HTMLElement>, popoverRef as React.RefObject<HTMLElement>])
+  useEffect(() => {
+    if (!pop) return
+    function handler(e: MouseEvent) {
+      const t = e.target as Node
+      if (containerRef.current?.contains(t) || popoverRef.current?.contains(t)) return
+      setPop(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pop])
 
   const hasFilter = f.typeFilter !== 'all' || f.statusFilter !== 'all'
 
@@ -598,7 +607,16 @@ export function FilterPopover({ f, typeCounts, statusCounts }: FilterPopoverProp
   const [pop, setPop] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  useClickOutside(() => setPop(false), null, [containerRef as React.RefObject<HTMLElement>, popoverRef as React.RefObject<HTMLElement>])
+  useEffect(() => {
+    if (!pop) return
+    function handler(e: MouseEvent) {
+      const t = e.target as Node
+      if (containerRef.current?.contains(t) || popoverRef.current?.contains(t)) return
+      setPop(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pop])
 
   const activeCount =
     (f.typeFilter !== 'all' ? 1 : 0) + (f.statusFilter !== 'all' ? 1 : 0)
