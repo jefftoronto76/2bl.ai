@@ -22,7 +22,7 @@ const TESTIMONIALS: Testimonial[] = [
   // Executives
   { name: 'Saif Ajani', title: 'CEO', company: 'Keyhole', featured: true, text: 'Jeff brought sales leadership and structure to our revenue as we grew. His coaching approach gave the team a productive path to growth.', relationship: 'Executive', headshot: 'Saif_A' },
   { name: 'Vlad Chernenko', title: 'CEO', text: 'Overall, Jeff has been instrumental in moving Meal Garden forward.', relationship: 'Executive', headshot: 'Vlad_C' },
-  { name: 'Jim Schnepp', title: 'VP, Sales and Marketing', text: 'Jeff proved himself to be a very capable leader, a great coach, an advocate for the customer, and a real partner.', relationship: 'Executive', headshot: 'Jim_S' },
+  { name: 'Jim Schnepp', title: 'VP, Sales and Marketing', featured: true, text: 'Jeff proved himself to be a very capable leader, a great coach, an advocate for the customer, and a real partner.', relationship: 'Executive', headshot: 'Jim_S' },
   { name: 'Rick Bacchus', title: 'President', company: 'Trapeze', featured: true, text: 'He has proven repeatedly that he can perform in the most trying situations.', relationship: 'Executive', headshot: 'Rick_B' },
   { name: 'Colin McKenzie', title: 'General Manager', text: 'Jeff’s ability to read people, adjust his message for his audience, and speak frankly and openly… was critical to his success.', relationship: 'Executive', headshot: 'Colin_M' },
   { name: 'John Parsons', title: 'VP, Sales', text: 'Jeff got the CFO to confirm their desire to expand scope, then spent months expanding efforts and connections inside the account.', relationship: 'Executive', headshot: 'John_P' },

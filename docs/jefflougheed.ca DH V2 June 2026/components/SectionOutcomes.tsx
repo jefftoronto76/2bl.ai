@@ -1,63 +1,69 @@
 'use client'
 
 /**
- * SectionWhy — "How I work"
- * ──────────────────────────
- * Mode-aware editorial section, twin to SectionOutcomes. The same shared
- * Operator/Coach toggle (useMode) re-skins this block into fewer, larger
- * principle statements per mode.
+ * SectionOutcomes — "Outcomes I focus on"
+ * ────────────────────────────────────────
+ * Mode-aware editorial section. An Operator/Coach toggle (shared via
+ * useMode, so it moves in lock-step with SectionWhy and SectionProcess)
+ * re-skins the block into fewer, larger outcome statements per mode.
  *
  * Coda:
- *   - operator → the original italic "close to ownership" line
+ *   - operator → the original italic "relationships are a moat" line
  *   - coach    → a quiet borrowed call-out (quote + attribution)
+ *   Practice-area pills sit in the coda's trailing column in both modes.
  */
 
-import { useState } from 'react'
 import {
+  TrendingUp,
+  Users,
+  Layers,
   ScanSearch,
-  ArrowRight,
-  ShieldCheck,
-  GraduationCap,
-  Handshake,
+  BadgeCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { useMode, type Mode } from './useMode'
-import { FEATURED_TESTIMONIALS } from './SectionTestimonials'
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
 type ModeCard = { Icon: LucideIcon; title: string; lede: string }
 
-const PRINCIPLES: Record<Mode, ModeCard[]> = {
+const OUTCOMES: Record<Mode, ModeCard[]> = {
   operator: [
     {
-      Icon: ScanSearch,
-      title: 'Signal Over Noise',
-      lede: 'Find the few things actually shaping performance, and fix those.',
+      Icon: TrendingUp,
+      title: 'Revenue That Lasts',
+      lede: 'Disciplined teams that beat the number quarter after quarter — not just once.',
     },
     {
-      Icon: ArrowRight,
-      title: 'Progress Over Process',
-      lede: 'Processes should support the work, not become the work.',
+      Icon: Users,
+      title: 'Teams That Scale',
+      lede: "People who grow, systems that improve, and a bench that's ready before you need it.",
     },
     {
-      Icon: ShieldCheck,
-      title: 'Owner Mindset',
-      lede: "I treat every decision like the business is mine — that's how durable companies get built.",
+      Icon: Layers,
+      title: 'Businesses That Run Themselves',
+      lede: 'People grow. Systems improve. Profits compound.',
     },
   ],
   coach: [
     {
-      Icon: GraduationCap,
-      title: 'Structured Coaching',
-      lede: 'ICF-certified methodology. Agenda-free conversations that go beneath the surface.',
+      Icon: ScanSearch,
+      title: 'Clarity',
+      lede: "See what's actually going on — underneath the noise, the story, and the symptom.",
     },
     {
-      Icon: Handshake,
-      title: 'Owner Perspective',
-      lede: "I've sat in the owner's chair, and I bring that lens to every conversation.",
+      Icon: BadgeCheck,
+      title: 'Confidence',
+      lede: "A defined next move that's yours to own, and the conviction to make it.",
     },
   ],
+}
+
+/** Coach-mode coda call-out (the fixed "quiet line" treatment). */
+const CALLOUT = {
+  quote: 'Your question-based coaching helped me think more creatively.',
+  who: 'Iara Rios',
+  role: 'Keyhole',
 }
 
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
@@ -79,7 +85,7 @@ function ModeToggle({
   return (
     <div
       role="tablist"
-      aria-label="Operator or Coach"
+      aria-label="Special Projects or Coaching"
       className="flex flex-wrap gap-2.5 mb-16"
     >
       {MODE_LABELS.map(([id, label]) => {
@@ -112,6 +118,7 @@ function ModeGrid({ items, modeKey }: { items: ModeCard[]; modeKey: Mode }) {
   const two = items.length === 2
   return (
     <div
+      // key re-mounts the grid on mode change so the stagger replays
       key={modeKey + ':' + items.map((i) => i.title).join('|')}
       className={[
         'grid grid-cols-1',
@@ -147,12 +154,8 @@ function ModeGrid({ items, modeKey }: { items: ModeCard[]; modeKey: Mode }) {
   )
 }
 
-type CalloutData = { quote: string; who: string; role: string; headshot?: string }
-
-function CalloutFigure({ callout }: { callout: CalloutData }) {
-  const [imgFailed, setImgFailed] = useState(false)
-  const showImg = Boolean(callout.headshot) && !imgFailed
-  const initials = callout.who
+function CalloutFigure() {
+  const initials = CALLOUT.who
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -160,29 +163,29 @@ function CalloutFigure({ callout }: { callout: CalloutData }) {
     .join('')
   return (
     <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+      {/* "In their words" eyebrow — added this round */}
+      <div className="mb-[18px] flex items-center gap-4">
+        <span className="font-mono text-[11px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">
+          In their words
+        </span>
+        <span
+          aria-hidden
+          className="h-px flex-1 max-w-[160px] bg-[color:var(--color-border)]"
+        />
+      </div>
       <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
-        &ldquo;{callout.quote}&rdquo;
+        &ldquo;{CALLOUT.quote}&rdquo;
       </blockquote>
       <figcaption className="mt-4 flex items-center gap-3">
         <span
-          aria-label={callout.who}
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)] overflow-hidden"
+          aria-hidden
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)]"
         >
-          {showImg ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`/sage/jefflougheed/headshots/${callout.headshot}.jpeg`}
-              alt={callout.who}
-              className="w-full h-full object-cover"
-              onError={() => setImgFailed(true)}
-            />
-          ) : (
-            <span aria-hidden>{initials}</span>
-          )}
+          {initials}
         </span>
         <span className="flex flex-col gap-0.5 font-mono text-[11px] tracking-[0.1em] uppercase text-[color:var(--color-text-dim)]">
-          <span className="text-[color:var(--color-text-muted)]">{callout.who}</span>
-          <span>{callout.role}</span>
+          <span className="text-[color:var(--color-text-muted)]">{CALLOUT.who}</span>
+          <span>{CALLOUT.role}</span>
         </span>
       </figcaption>
     </figure>
@@ -208,6 +211,8 @@ function PracticeAreas() {
 function SectionKeyframes() {
   return (
     <style>{`
+      /* Transform-only entrance: content stays at opacity:1 even when the
+         animation timeline is frozen (background tab / print / PDF). */
       @keyframes jlRise {
         from { transform: translateY(8px) }
         to   { transform: none }
@@ -221,16 +226,15 @@ function SectionKeyframes() {
 
 /* ─── Main export ───────────────────────────────────────────────────── */
 
-export function SectionWhy() {
+export function SectionOutcomes() {
   const [mode, setMode] = useMode()
-  const iara = FEATURED_TESTIMONIALS.find((t) => t.name === 'Iara Rios')
 
   return (
-    <section id="why" className="py-16 px-4 md:px-8">
+    <section id="outcomes" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
         {/* Eyebrow */}
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
-          <span>I show up, listen, and contribute.</span>
+          <span>Fewer fires. Clearer priorities.</span>
           <span
             aria-hidden
             className="flex-1 h-px bg-[color:var(--color-border)] max-w-[160px]"
@@ -239,30 +243,26 @@ export function SectionWhy() {
 
         {/* Headline */}
         <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-8 text-balance">
-          How I work
+          Outcomes I focus on
         </h2>
 
         {/* Operator / Coach toggle (shared) */}
         <ModeToggle mode={mode} setMode={setMode} />
 
         {/* Mode-specific cards */}
-        <ModeGrid items={PRINCIPLES[mode]} modeKey={mode} />
+        <ModeGrid items={OUTCOMES[mode]} modeKey={mode} />
 
         {/* Coda */}
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
           {mode === 'coach' ? (
-            iara && (
-              <CalloutFigure
-                callout={{ quote: iara.text, who: iara.name, role: iara.company ?? iara.title ?? '', headshot: iara.headshot }}
-              />
-            )
+            <CalloutFigure />
           ) : (
-            <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
-              Most of my career has been spent{' '}
+            <p className="font-display italic font-normal text-[20px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
+              Underneath all of it: relationships are a moat. Durable businesses{' '}
               <span className="mark-highlight--display font-display">
-                close to ownership
+                know their customers, understand their pains, and help them win
               </span>
-              . It shapes how I lead, build, and make decisions.
+              .
             </p>
           )}
           <PracticeAreas />
@@ -274,4 +274,4 @@ export function SectionWhy() {
   )
 }
 
-export default SectionWhy
+export default SectionOutcomes

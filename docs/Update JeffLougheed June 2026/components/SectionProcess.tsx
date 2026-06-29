@@ -90,8 +90,7 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'coaching',
     chipLabel: 'Coaching',
     subhead: [
-      'Structured thinking work, not just conversations.',
-      'An experienced partner for your most important initiatives.',
+      'A clear process to get you unstuck and moving forward.',
     ],
     symptoms: [
       'A deal you can’t afford to lose',
@@ -137,7 +136,7 @@ const TRACKS: Record<TrackId, Track> = {
   },
   operator: {
     id: 'operator',
-    chipLabel: 'Special Projects',
+    chipLabel: 'Operator',
     subhead: [
       'I build systems that stop problems from happening.',
     ],
@@ -190,7 +189,7 @@ const TRACKS: Record<TrackId, Track> = {
   },
 }
 
-const TRACK_ORDER: TrackId[] = ['operator', 'coaching']
+const TRACK_ORDER: TrackId[] = ['coaching', 'operator']
 
 const DELIVERABLE_ICON: Record<DeliverableIconKind, LucideIcon> = {
   shield: ShieldCheck,

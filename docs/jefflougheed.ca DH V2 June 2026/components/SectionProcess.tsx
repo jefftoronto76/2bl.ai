@@ -8,12 +8,12 @@
  * IA:
  *   1. Eyebrow + headline
  *   2. Per-track 2-line subhead (swaps with the active chip)
- *   3. Two chips: Coaching · Operator
+ *   3. Two chips: Special Projects · Coaching
  *   4. "Sound like you?" disclosure → reveals 7 symptom pills + a
  *      "click on a topic to explore with Sage" prompt; pills are
  *      conversation starters that link to the chat surface
- *   5. Three numbered step cards (Book → Work → Outcome); step 1 has
- *      the price-forward "Book a Session — C$250" CTA
+ *   5. Three numbered step cards (Book → Engage → Excel); step 1 has
+ *      the price-forward "Book a Session — C$350" CTA
  *   6. Deliverables tray pinned below the step grid (desktop) or
  *      inlined into the step stack after the yielding step (mobile),
  *      with a notch that slides between step columns on desktop
@@ -26,7 +26,7 @@
  *   - Mobile tray: height + opacity slide-in
  *
  * Wiring:
- *   - `ctaUrl`  → the "Book a Session — C$250" button
+ *   - `ctaUrl`  → the "Book a Session — C$350" button
  *   - `chatUrl` → fallback href for the symptom pills
  *   - `onSymptomClick` → intercepts symptom pill clicks; receive
  *      `(symptom, trackId)` so the parent can pre-populate chat
@@ -46,7 +46,7 @@ import { useMode } from './useMode'
 
 /* ─── Wiring defaults ───────────────────────────────────────────────── */
 
-/** Default href for the "Book a Session — C$250" CTA. Overridable via
+/** Default href for the "Book a Session — C$350" CTA. Overridable via
  *  the `ctaUrl` prop so it can be set per-page or fed from config. */
 const CTA_URL = ''
 
@@ -90,8 +90,7 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'coaching',
     chipLabel: 'Coaching',
     subhead: [
-      'Structured thinking work, not just conversations.',
-      'An experienced partner for your most important initiatives.',
+      'A clear process to get you unstuck and moving forward.',
     ],
     symptoms: [
       'A deal you can’t afford to lose',
@@ -104,19 +103,19 @@ const TRACKS: Record<TrackId, Track> = {
     ],
     steps: [
       {
-        title: 'Book a session',
+        title: 'Book',
         body:
-          'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+          'Each session lasts 45 minutes and is structured around your situation, goals, and next move.',
       },
       {
-        title: 'The session',
+        title: 'Engage',
         body:
-          'ICF-certified coaching methodology. A conversation that goes beneath the surface — agenda-free, focused on what’s actually in the way.',
+          'Built on ICF-certified coaching principles. A structured conversation that goes beneath the surface to uncover the real influences and what’s driving them.',
       },
       {
-        title: 'The shift',
+        title: 'Excel',
         body:
-          'Clarity on what’s really going on. A defined next move that’s yours to own.',
+          'See the situation differently and move forward with confidence.',
       },
     ],
     deliverables: {
@@ -139,7 +138,7 @@ const TRACKS: Record<TrackId, Track> = {
     id: 'operator',
     chipLabel: 'Special Projects',
     subhead: [
-      'I build systems that stop problems from happening.',
+      'An experienced partner for your most important initiatives.',
     ],
     symptoms: [
       'Forecasts you don’t trust',
@@ -152,19 +151,19 @@ const TRACKS: Record<TrackId, Track> = {
     ],
     steps: [
       {
-        title: 'Book a session',
+        title: 'Book',
         body:
-          'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+          'Each session is 60 minutes and focused on understanding your objectives, constraints, and the opportunities ahead.',
       },
       {
-        title: 'Working Session',
+        title: 'Engage',
         body:
-          'Bring the problem. We’ll leverage ICF competencies, along with our own expertise, to determine the outcome we need and how to achieve it.',
+          'Built on ICF-certified coaching principles and shaped by decades of leadership experience. You know your business. I’ll help you see it differently.',
       },
       {
-        title: 'The shift',
+        title: 'Excel',
         body:
-          'Clarity on what’s really going on. A defined next move for you to consider.',
+          'Clarity on the challenge, the levers that matter, and a practical path forward.',
       },
     ],
     deliverables: {
@@ -424,7 +423,7 @@ function CTAButton({ href }: { href: string }) {
         .filter(Boolean)
         .join(' ')}
     >
-      Book a Session &mdash; C$250
+      Book a Session &mdash; C$350
       <ArrowRight aria-hidden size={14} strokeWidth={2} />
     </a>
   )
@@ -463,15 +462,13 @@ function StepCard({
         <span className="font-display font-normal text-[40px] lg:text-[56px] leading-[0.9] tracking-[-0.02em] text-[color:var(--color-text-primary)]/30">
           {Number}
         </span>
-        <span
-          className={[
-            'font-mono text-[10.5px] tracking-[0.18em] uppercase',
-            'transition-colors duration-500',
-            isOrigin ? 'text-accent' : 'text-[color:var(--color-text-dim)]',
-          ].join(' ')}
-        >
-          {isOrigin ? '→ Yields' : 'Step'}
-        </span>
+        {/* Origin (middle) card keeps a label — "The Session", dark ink.
+            Non-origin cards no longer show a "Step" / "→ Yields" tag. */}
+        {isOrigin && (
+          <span className="font-mono text-[10.5px] tracking-[0.18em] uppercase text-[color:var(--color-text-primary)]">
+            The Session
+          </span>
+        )}
       </div>
 
       <div>
@@ -517,7 +514,6 @@ function DeliverableTile({ d, delay }: { d: Deliverable; delay: string }) {
 function DesktopTray({ track }: { track: Track }) {
   const { originStep, items } = track.deliverables
   const notchLeft = NOTCH_LEFT_BY_STEP[originStep]
-  const fromLabel = `From step ${String(originStep + 1).padStart(2, '0')}`
 
   return (
     <div className="relative rounded-[20px] border border-accent/[0.16] bg-accent/[0.045] px-6 pt-8 pb-7">
@@ -535,12 +531,6 @@ function DesktopTray({ track }: { track: Track }) {
         <p className="m-0 font-mono text-[11px] tracking-[0.22em] uppercase text-accent">
           What you&rsquo;ll walk away with
         </p>
-        <span
-          key={track.id + '-from'}
-          className="inline-flex items-center rounded-full border border-[color:var(--color-border)] bg-surface px-2 py-1 font-mono text-[10.5px] tracking-[0.18em] uppercase text-[color:var(--color-text-dim)] [animation:hiwPop_0.4s_ease_both]"
-        >
-          {fromLabel}
-        </span>
         <span aria-hidden className="h-px flex-1 bg-accent/[0.16]" />
       </div>
 
@@ -640,7 +630,7 @@ function SectionKeyframes() {
 /* ─── Main export ───────────────────────────────────────────────────── */
 
 export type SectionProcessProps = {
-  /** Override the module-level CTA_URL default ("Book a Session — C$250"). */
+  /** Override the module-level CTA_URL default ("Book a Session — C$350"). */
   ctaUrl?: string
   /** Default href the symptom pills navigate to when no
    *  `onSymptomClick` handler is provided. */
