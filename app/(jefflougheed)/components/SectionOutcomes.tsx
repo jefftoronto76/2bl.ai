@@ -80,7 +80,7 @@ function ModeToggle({
   return (
     <div
       role="tablist"
-      aria-label="Operator or Coach"
+      aria-label="Special Projects or Coaching"
       className="flex flex-wrap gap-2.5 mb-16"
     >
       {MODE_LABELS.map(([id, label]) => {
@@ -162,6 +162,10 @@ function CalloutFigure({ callout }: { callout: CalloutData }) {
     .join('')
   return (
     <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+      <div className="mb-4 flex items-center gap-4">
+        <span className="font-mono text-[11px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">In their words</span>
+        <span aria-hidden className="h-px flex-1 bg-[color:var(--color-border)] max-w-[120px]" />
+      </div>
       <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
         &ldquo;{callout.quote}&rdquo;
       </blockquote>

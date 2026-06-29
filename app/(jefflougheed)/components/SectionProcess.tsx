@@ -33,6 +33,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { FeaturedTestimonial } from './FeaturedTestimonial'
 import {
   ShieldCheck,
   FileText,
@@ -87,36 +88,35 @@ type Track = {
 
 const TRACKS: Record<TrackId, Track> = {
   coaching: {
-    id: 'coaching',
-    chipLabel: 'Coaching',
+    id: "coaching",
+    chipLabel: "Coaching",
     subhead: [
-      'Structured thinking work, not just conversations.',
-      'An experienced partner for your most important initiatives.',
+      "Structured thinking work, not just conversations.",
     ],
     symptoms: [
-      'A deal you can’t afford to lose',
-      'Conversations you don’t know how to have',
-      'Teams that aren’t working together',
-      'Decisions with no clear answer',
-      'A project that’s going sideways',
-      'Pipeline that doesn’t convert',
-      'Customers quietly churning',
+      "A deal you can't afford to lose",
+      "Conversations you don't know how to have",
+      "Teams that aren't working together",
+      "Decisions with no clear answer",
+      "A project that's going sideways",
+      "Pipeline that doesn't convert",
+      "Customers quietly churning",
     ],
     steps: [
       {
-        title: 'Book a session',
+        title: "Book",
         body:
-          'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+          "Each session lasts 45 minutes and is structured around your situation, goals, and next move.",
       },
       {
-        title: 'The session',
+        title: "Engage",
         body:
-          'ICF-certified coaching methodology. A conversation that goes beneath the surface — agenda-free, focused on what’s actually in the way.',
+          "Built on ICF-certified coaching principles. A structured conversation that goes beneath the surface to uncover the real influences and what\'s driving them.",
       },
       {
-        title: 'The shift',
+        title: "Excel",
         body:
-          'Clarity on what’s really going on. A defined next move that’s yours to own.',
+          "See the situation differently and move forward with confidence.",
       },
     ],
     deliverables: {
@@ -130,41 +130,41 @@ const TRACKS: Record<TrackId, Track> = {
         {
           icon: 'shield',
           title: '100% satisfaction guarantee',
-          body: 'If it wasn’t worth it, you don’t pay.',
+          body: "If it wasn't worth it, you don't pay.",
         },
       ],
     },
   },
   operator: {
-    id: 'operator',
-    chipLabel: 'Special Projects',
+    id: "operator",
+    chipLabel: "Special Projects",
     subhead: [
-      'I build systems that stop problems from happening.',
+      "An experienced partner for your most important initiatives.",
     ],
     symptoms: [
-      'Forecasts you don’t trust',
-      'Conversion drops nobody can explain',
-      'Systems breaking under growth',
-      'A critical project off track',
-      'A leadership gap slowing execution',
-      'Friction between product, sales, and customers',
-      'AI plans that aren’t operational',
+      "Forecasts you don't trust",
+      "Conversion drops nobody can explain",
+      "Systems breaking under growth",
+      "A critical project off track",
+      "A leadership gap slowing execution",
+      "Friction between product, sales, and customers",
+      "AI plans that aren't operational",
     ],
     steps: [
       {
-        title: 'Book a session',
+        title: "Book",
         body:
-          'Talk to Sage if you need to think it through. When you’re ready, one session is all it takes to start.',
+          "Each session is 60 minutes and focused on understanding your objectives, constraints, and the opportunities ahead.",
       },
       {
-        title: 'Working Session',
+        title: "Engage",
         body:
-          'Bring the problem. We’ll leverage ICF competencies, along with our own expertise, to determine the outcome we need and how to achieve it.',
+          "Built on ICF-certified coaching principles and shaped by decades of leadership experience. You know your business. I\'ll help you see it differently.",
       },
       {
-        title: 'The shift',
+        title: "Excel",
         body:
-          'Clarity on what’s really going on. A defined next move for you to consider.',
+          "Clarity on the challenge, the levers that matter, and a practical path forward.",
       },
     ],
     deliverables: {
@@ -178,7 +178,7 @@ const TRACKS: Record<TrackId, Track> = {
         {
           icon: 'shield',
           title: '100% satisfaction guarantee',
-          body: 'If it wasn’t worth it, you don’t pay.',
+          body: "If it wasn't worth it, you don't pay.",
         },
         {
           icon: 'docs',
@@ -424,7 +424,7 @@ function CTAButton({ href }: { href: string }) {
         .filter(Boolean)
         .join(' ')}
     >
-      Book a Session &mdash; C$250
+      Book a Session &mdash; C$350
       <ArrowRight aria-hidden size={14} strokeWidth={2} />
     </a>
   )
@@ -463,15 +463,11 @@ function StepCard({
         <span className="font-display font-normal text-[40px] lg:text-[56px] leading-[0.9] tracking-[-0.02em] text-[color:var(--color-text-primary)]/30">
           {Number}
         </span>
-        <span
-          className={[
-            'font-mono text-[10.5px] tracking-[0.18em] uppercase',
-            'transition-colors duration-500',
-            isOrigin ? 'text-accent' : 'text-[color:var(--color-text-dim)]',
-          ].join(' ')}
-        >
-          {isOrigin ? '→ Yields' : 'Step'}
-        </span>
+        {isOrigin && (
+          <span className="font-mono text-[10.5px] tracking-[0.18em] uppercase text-[color:var(--color-text-primary)]">
+            The Session
+          </span>
+        )}
       </div>
 
       <div>
@@ -517,7 +513,6 @@ function DeliverableTile({ d, delay }: { d: Deliverable; delay: string }) {
 function DesktopTray({ track }: { track: Track }) {
   const { originStep, items } = track.deliverables
   const notchLeft = NOTCH_LEFT_BY_STEP[originStep]
-  const fromLabel = `From step ${String(originStep + 1).padStart(2, '0')}`
 
   return (
     <div className="relative rounded-[20px] border border-accent/[0.16] bg-accent/[0.045] px-6 pt-8 pb-7">
@@ -535,12 +530,6 @@ function DesktopTray({ track }: { track: Track }) {
         <p className="m-0 font-mono text-[11px] tracking-[0.22em] uppercase text-accent">
           What you&rsquo;ll walk away with
         </p>
-        <span
-          key={track.id + '-from'}
-          className="inline-flex items-center rounded-full border border-[color:var(--color-border)] bg-surface px-2 py-1 font-mono text-[10.5px] tracking-[0.18em] uppercase text-[color:var(--color-text-dim)] [animation:hiwPop_0.4s_ease_both]"
-        >
-          {fromLabel}
-        </span>
         <span aria-hidden className="h-px flex-1 bg-accent/[0.16]" />
       </div>
 
@@ -736,6 +725,8 @@ export function SectionProcess({
         <div className="hidden lg:block">
           <DesktopTray track={track} />
         </div>
+
+        <FeaturedTestimonial />
       </div>
 
       <SectionKeyframes />
