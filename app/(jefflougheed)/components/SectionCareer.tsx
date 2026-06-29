@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronUp } from 'lucide-react'
+import { ChevronUp, GraduationCap } from 'lucide-react'
 
 type FilterId = 'all' | 'roles' | 'education'
 
@@ -1189,7 +1189,17 @@ function RoleCardView({
 
 function EducationCardView({ card }: { card: EducationCard }) {
   return (
-    <article className="bone-card relative flex flex-col h-full bg-[rgb(245_244_240)] border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7">
+    <article
+      className="bone-card relative flex flex-col h-full border border-[color:var(--color-border)] rounded-2xl p-6 md:p-7 pb-10"
+      style={{ background: 'color-mix(in srgb, rgb(245 244 240) 94%, var(--color-accent) 6%)' }}
+    >
+      <GraduationCap
+        size={14}
+        strokeWidth={1.6}
+        aria-hidden
+        className="absolute top-5 left-6 text-[color:var(--color-text-dim)]"
+      />
+
       <span className="absolute top-5 right-5 font-mono text-[10.5px] tracking-[0.16em] text-[color:var(--color-text-dim)]">
         {card.year}
       </span>
@@ -1219,6 +1229,10 @@ function EducationCardView({ card }: { card: EducationCard }) {
           {card.coursework}
         </div>
       )}
+
+      <span className="absolute bottom-4 left-6 font-mono text-[10px] tracking-[0.16em] uppercase text-accent">
+        Education
+      </span>
     </article>
   )
 }
