@@ -1,71 +1,234 @@
+'use client'
+
+/**
+ * SectionWhy — "How I work"
+ * ──────────────────────────
+ * Mode-aware editorial section, twin to SectionOutcomes. The same shared
+ * Operator/Coach toggle (useMode) re-skins this block into fewer, larger
+ * principle statements per mode.
+ *
+ * Coda:
+ *   - operator → the original italic "close to ownership" line
+ *   - coach    → a quiet borrowed call-out (quote + attribution)
+ */
+
+import { useState } from 'react'
 import {
-  Globe,
-  Handshake,
   ScanSearch,
   ArrowRight,
-  Zap,
-  BadgeCheck,
+  ShieldCheck,
+  GraduationCap,
+  Handshake,
+  type LucideIcon,
 } from 'lucide-react'
+import { useMode, type Mode } from './useMode'
+import { FEATURED_TESTIMONIALS } from './SectionTestimonials'
 
-type Reason = {
-  Icon: typeof Globe
-  title: string
-  bodyLead: string
-  bodyMark: string
-  bodyTrail: string
+/* ─── Data ──────────────────────────────────────────────────────────── */
+
+type ModeCard = { Icon: LucideIcon; title: string; lede: string }
+
+const PRINCIPLES: Record<Mode, ModeCard[]> = {
+  operator: [
+    {
+      Icon: ScanSearch,
+      title: 'Signal Over Noise',
+      lede: 'Find the few things actually shaping performance, and fix those.',
+    },
+    {
+      Icon: ArrowRight,
+      title: 'Progress Over Process',
+      lede: 'Processes should support the work, not become the work.',
+    },
+    {
+      Icon: ShieldCheck,
+      title: 'Owner Mindset',
+      lede: "I treat every decision like the business is mine — that's how durable companies get built.",
+    },
+  ],
+  coach: [
+    {
+      Icon: GraduationCap,
+      title: 'Structured Coaching',
+      lede: 'ICF-certified methodology. Agenda-free conversations that go beneath the surface.',
+    },
+    {
+      Icon: Handshake,
+      title: 'Owner Perspective',
+      lede: "I've sat in the owner's chair, and I bring that lens to every conversation.",
+    },
+  ],
 }
-
-const REASONS: Reason[] = [
-  {
-    Icon: Globe,
-    title: 'Intentional Range',
-    bodyLead: "The fundamentals that drive performance don't change, ",
-    bodyMark: 'how you apply them does',
-    bodyTrail: '.',
-  },
-  {
-    Icon: Handshake,
-    title: 'Give trust, get trust',
-    bodyLead: 'Trusted people ',
-    bodyMark: 'take ownership',
-    bodyTrail: ', improve faster, and help teams scale.',
-  },
-  {
-    Icon: ScanSearch,
-    title: 'Signal over noise',
-    bodyLead: 'Cut through the noise. Find the few things ',
-    bodyMark: 'actually shaping performance',
-    bodyTrail: ' and fix those.',
-  },
-  {
-    Icon: ArrowRight,
-    title: 'Progress over process',
-    bodyLead: 'Processes should support the work, ',
-    bodyMark: 'not become the work',
-    bodyTrail: '.',
-  },
-  {
-    Icon: Zap,
-    title: 'Player-coach',
-    bodyLead: 'Strategy matters, but ',
-    bodyMark: 'credibility comes from contribution',
-    bodyTrail: '.',
-  },
-  {
-    Icon: BadgeCheck,
-    title: "I'm honest about fit",
-    bodyLead: 'Clear about where I can help most — and ',
-    bodyMark: "where I can't",
-    bodyTrail: '.',
-  },
-]
 
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
+const MODE_LABELS: [Mode, string][] = [
+  ['operator', 'Special Projects'],
+  ['coach', 'Coaching'],
+]
+
+/* ─── Shared sub-components ──────────────────────────────────────────── */
+
+function ModeToggle({
+  mode,
+  setMode,
+}: {
+  mode: Mode
+  setMode: (m: Mode) => void
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Operator or Coach"
+      className="flex flex-wrap gap-2.5 mb-16"
+    >
+      {MODE_LABELS.map(([id, label]) => {
+        const on = mode === id
+        return (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={on}
+            type="button"
+            onClick={() => setMode(id)}
+            className={[
+              'inline-flex items-center gap-2 rounded-full border px-4 py-[9px]',
+              'font-body text-[13px] font-medium tracking-[0.01em] cursor-pointer',
+              'transition-colors duration-150',
+              on
+                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-bg'
+                : 'bg-surface border-[color:var(--color-border)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)]',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ModeGrid({ items, modeKey }: { items: ModeCard[]; modeKey: Mode }) {
+  const two = items.length === 2
+  return (
+    <div
+      key={modeKey + ':' + items.map((i) => i.title).join('|')}
+      className={[
+        'grid grid-cols-1',
+        two
+          ? 'min-[820px]:grid-cols-2 min-[820px]:gap-x-24 max-w-[820px]'
+          : 'min-[820px]:grid-cols-3 min-[820px]:gap-x-16',
+      ].join(' ')}
+    >
+      {items.map((it, i) => {
+        const Icon = it.Icon
+        return (
+          <div
+            key={it.title}
+            style={{ animationDelay: i * 70 + 'ms' }}
+            className="pt-[30px] border-t border-[color:var(--color-border)] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]"
+          >
+            <Icon
+              size={54}
+              strokeWidth={1.6}
+              aria-hidden
+              className="text-[color:var(--color-text-primary)] mb-8"
+            />
+            <h3 className="font-display font-normal text-[clamp(27px,2.6vw,36px)] leading-[1.1] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-4 text-pretty">
+              {it.title}
+            </h3>
+            <p className="font-body text-[17px] leading-[1.62] text-[color:var(--color-text-muted)] max-w-[34ch] text-pretty">
+              {it.lede}
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+type CalloutData = { quote: string; who: string; role: string; headshot?: string }
+
+function CalloutFigure({ callout }: { callout: CalloutData }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImg = Boolean(callout.headshot) && !imgFailed
+  const initials = callout.who
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('')
+  return (
+    <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+      <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
+        &ldquo;{callout.quote}&rdquo;
+      </blockquote>
+      <figcaption className="mt-4 flex items-center gap-3">
+        <span
+          aria-label={callout.who}
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)] overflow-hidden"
+        >
+          {showImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/sage/jefflougheed/headshots/${callout.headshot}.jpeg`}
+              alt={callout.who}
+              className="w-full h-full object-cover"
+              onError={() => setImgFailed(true)}
+            />
+          ) : (
+            <span aria-hidden>{initials}</span>
+          )}
+        </span>
+        <span className="flex flex-col gap-0.5 font-mono text-[11px] tracking-[0.1em] uppercase text-[color:var(--color-text-dim)]">
+          <span className="text-[color:var(--color-text-muted)]">{callout.who}</span>
+          <span>{callout.role}</span>
+        </span>
+      </figcaption>
+    </figure>
+  )
+}
+
+function PracticeAreas() {
+  return (
+    <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Practice areas">
+      {PRACTICE_AREAS.map((label) => (
+        <span
+          key={label}
+          className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-primary)] bg-surface border border-[color:var(--color-border)] rounded-full px-3 pt-2 pb-[7px]"
+        >
+          <span aria-hidden className="w-[7px] h-[7px] rounded-full bg-accent" />
+          {label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function SectionKeyframes() {
+  return (
+    <style>{`
+      @keyframes jlRise {
+        from { transform: translateY(8px) }
+        to   { transform: none }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        [class*="[animation:jlRise"] { animation: none !important }
+      }
+    `}</style>
+  )
+}
+
+/* ─── Main export ───────────────────────────────────────────────────── */
+
 export function SectionWhy() {
+  const [mode, setMode] = useMode()
+  const iara = FEATURED_TESTIMONIALS.find((t) => t.name === 'Iara Rios')
+
   return (
     <section id="why" className="py-16 px-4 md:px-8">
       <div className="max-w-[1100px] mx-auto">
+        {/* Eyebrow */}
         <p className="font-mono text-[13.2px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)] mb-6 flex items-center gap-4">
           <span>I show up, listen, and contribute.</span>
           <span
@@ -74,57 +237,41 @@ export function SectionWhy() {
           />
         </p>
 
-        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-14 text-balance">
+        {/* Headline */}
+        <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-8 text-balance">
           How I work
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-14">
-          {REASONS.map(({ Icon, title, bodyLead, bodyMark, bodyTrail }) => (
-            <article key={title} className="grid grid-rows-[auto_auto_auto] gap-4 pt-1">
-              <Icon
-                size={60}
-                strokeWidth={1.2}
-                aria-hidden
-                className="text-[color:var(--color-text-primary)] mb-2"
-              />
-              <h3 className="font-body text-xl font-semibold leading-snug tracking-[-0.01em] text-[color:var(--color-text-primary)] m-0">
-                {title}
-              </h3>
-              <p className="font-body text-[16px] leading-[1.55] text-[color:var(--color-text-muted)] m-0 text-pretty max-w-[32ch]">
-                {bodyLead}
-                <span className="mark-highlight">
-                  {bodyMark}
-                </span>
-                {bodyTrail}
-              </p>
-            </article>
-          ))}
-        </div>
+        {/* Operator / Coach toggle (shared) */}
+        <ModeToggle mode={mode} setMode={setMode} />
 
+        {/* Mode-specific cards */}
+        <ModeGrid items={PRINCIPLES[mode]} modeKey={mode} />
+
+        {/* Coda */}
         <div className="mt-[72px] pt-8 border-t border-[color:var(--color-border)] grid grid-cols-1 lg:grid-cols-[1fr_auto] items-end gap-7 lg:gap-12">
-          <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
-            Most of my career has been spent{' '}
-            <span className="mark-highlight--display font-display">
-              close to ownership
-            </span>
-            . It shapes how I lead, build, and make decisions.
-          </p>
-          <div
-            className="flex flex-wrap gap-2 lg:justify-end"
-            aria-label="Practice areas"
-          >
-            {PRACTICE_AREAS.map((label) => (
-              <span
-                key={label}
-                className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-primary)] bg-surface border border-[color:var(--color-border)] rounded-full px-3 pt-2 pb-[7px]"
-              >
-                <span aria-hidden className="w-[7px] h-[7px] rounded-full bg-accent" />
-                {label}
+          {mode === 'coach' ? (
+            iara && (
+              <CalloutFigure
+                callout={{ quote: iara.text, who: iara.name, role: iara.company ?? iara.title ?? '', headshot: iara.headshot }}
+              />
+            )
+          ) : (
+            <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
+              Most of my career has been spent{' '}
+              <span className="mark-highlight--display font-display">
+                close to ownership
               </span>
-            ))}
-          </div>
+              . It shapes how I lead, build, and make decisions.
+            </p>
+          )}
+          <PracticeAreas />
         </div>
       </div>
+
+      <SectionKeyframes />
     </section>
   )
 }
+
+export default SectionWhy
