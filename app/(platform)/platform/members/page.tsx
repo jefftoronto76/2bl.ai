@@ -10,6 +10,7 @@ import { Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { Text } from '@/components/admin/primitives/Text';
 import { MembersList } from '@/app/admin/members/MembersList';
+import { MembersDashboard } from './MembersDashboard';
 import type { Membership, TenantOption, UserRow } from '@/app/admin/members/types';
 
 export const dynamic = 'force-dynamic';
@@ -108,7 +109,10 @@ export default async function PlatformMembersPage() {
       {error ? (
         <Text variant="muted">Unable to load members.</Text>
       ) : (
-        <MembersList users={allUsers} tenants={tenants} inviteApiBase="/api/platform/members" />
+        <>
+          <MembersDashboard users={allUsers} />
+          <MembersList users={allUsers} tenants={tenants} inviteApiBase="/api/platform/members" />
+        </>
       )}
     </Stack>
   );
