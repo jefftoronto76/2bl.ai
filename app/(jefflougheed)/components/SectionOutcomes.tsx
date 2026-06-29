@@ -69,8 +69,8 @@ const CALLOUT = {
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
 const MODE_LABELS: [Mode, string][] = [
-  ['operator', 'Operator'],
-  ['coach', 'Coach'],
+  ['operator', 'Special Projects'],
+  ['coach', 'Coaching'],
 ]
 
 /* ─── Shared sub-components ──────────────────────────────────────────── */

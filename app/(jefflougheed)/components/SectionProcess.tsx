@@ -136,7 +136,7 @@ const TRACKS: Record<TrackId, Track> = {
   },
   operator: {
     id: 'operator',
-    chipLabel: 'Operator',
+    chipLabel: 'Special Projects',
     subhead: [
       'I build systems that stop problems from happening.',
     ],
@@ -189,7 +189,7 @@ const TRACKS: Record<TrackId, Track> = {
   },
 }
 
-const TRACK_ORDER: TrackId[] = ['coaching', 'operator']
+const TRACK_ORDER: TrackId[] = ['operator', 'coaching']
 
 const DELIVERABLE_ICON: Record<DeliverableIconKind, LucideIcon> = {
   shield: ShieldCheck,
