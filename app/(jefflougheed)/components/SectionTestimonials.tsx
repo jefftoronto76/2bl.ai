@@ -247,8 +247,8 @@ export function SectionTestimonials() {
   const showDesktopButton = !showAll && visible.length > DESKTOP_LIMIT
 
   return (
-    <section id="testimonials" className="py-16 px-6 md:px-12">
-      <div className="max-w-[1100px] mx-auto">
+    <section id="testimonials" className="py-16">
+      <div className="max-w-[1100px] mx-auto px-[clamp(24px,5vw,48px)]">
         {/* Headline */}
         <h2 className="font-display text-[clamp(30px,4vw,52px)] font-normal leading-[1.08] tracking-[-0.02em] text-[color:var(--color-text-primary)] mb-4 text-balance max-w-[22ch]">
           Working Together
