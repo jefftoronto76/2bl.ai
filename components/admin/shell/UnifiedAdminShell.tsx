@@ -20,10 +20,10 @@ function Wordmark({ tenantName }: { tenantName: string }) {
       <Text
         size="md"
         fw={400}
-        c="ink.1"
         style={{
           fontFamily: 'var(--mantine-font-family-headings)',
           letterSpacing: '-0.01em',
+          color: 'var(--admin-sidebar-text)',
         }}
       >
         {tenantName}
@@ -46,7 +46,7 @@ function Wordmark({ tenantName }: { tenantName: string }) {
 
 function NavContent({ tenantName, isPlatformAdmin, onNavigate }: { tenantName: string; isPlatformAdmin: boolean; onNavigate?: () => void }) {
   return (
-    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--mantine-color-background-9)' }}>
+    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--admin-sidebar-bg)' }}>
       <Wordmark tenantName={tenantName} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
@@ -77,7 +77,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         hiddenFrom="md"
         style={{
           backgroundColor: 'var(--mantine-color-body)',
-          borderBottom: '1px solid var(--mantine-color-background-7)',
+          borderBottom: '1px solid color-mix(in srgb, var(--admin-sidebar-bg) 75%, transparent)',
         }}
       >
         <Group h="100%" px="md" gap={12}>
@@ -110,8 +110,8 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         visibleFrom="md"
         data-mantine-color-scheme="dark"
         style={{
-          backgroundColor: 'var(--mantine-color-background-9)',
-          borderRight: '1px solid var(--mantine-color-background-7)',
+          backgroundColor: 'var(--admin-sidebar-bg)',
+          borderRight: '1px solid color-mix(in srgb, var(--admin-sidebar-bg) 75%, transparent)',
         }}
       >
         <AppShell.Section>
@@ -138,7 +138,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         transitionProps={{ duration: 400 }}
         styles={{
           body: { padding: 0, height: '100%' },
-          content: { backgroundColor: 'var(--mantine-color-background-9)' },
+          content: { backgroundColor: 'var(--admin-sidebar-bg)' },
         }}
       >
         <NavContent tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={close} />
