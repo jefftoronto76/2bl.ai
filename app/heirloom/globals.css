@@ -1,152 +1,95 @@
-/* ───────────────────────────────────────────────────────────────────────────
-   Heirloom storefront tokens.
+/* ─── Heirloom Design Tokens ───────────────────────────────────────────────
+   Canonical platform tokens (see css-token-unification-spec.md). Token NAMES
+   are fixed and shared across tenants — no tenant-scoped --hl-*/--lg-* prefixes
+   (scripts/lint-tokens.ts fails the build on those). Color values are raw RGB
+   triplets so Tailwind opacity modifiers work (bg-accent/20, border-border,
+   text-text-muted, …).
 
-   Imported by app/heirloom/layout.tsx, so these styles only load on the
-   /heirloom (heirloom.2bl.ai) routes. Because the file is route-scoped via its
-   import location, the colour tokens are promoted to :root rather than scoped
-   to [data-brand="heirloom"] — they cannot collide with the inkwell or SBL
-   palettes, which ship in their own route-scoped globals.css files.
+   VALUES below ARE the landing redesign: a flat egg-shell base (#FAF6EE page,
+   #FFFFFF surfaces — no radial "paper" glow, no grain) with the Second Brain
+   Labs terracotta (#C8542E) as the single accent. These are written in directly.
+   layout.tsx still injects the tenant branding row over the same :root names when
+   use_db_branding is on; until then THIS file is the source of truth.
 
-   Triplet forms feed the alpha-aware Tailwind tokens (bg-accent/20,
-   border-accent/35, bg-text-primary/10); fixed forms feed the tokens used
-   without an alpha modifier (text-muted, accent-hover, border). --color-surface
-   / --color-accent are intentionally re-scoped here so the existing
-   `surface` / `accent` Tailwind tokens render Heirloom values on these routes.
+   Imported by app/heirloom/layout.tsx, so the tokens load only on the /heirloom
+   (heirloom.2bl.ai) routes and are promoted to :root.
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Re-scoped existing tokens (rgb triplets) */
-  --color-surface: 246 239 224;  /* #F6EFE0 */
-  --color-accent:  46 133 77;    /* #2E854D */
+  /* Color */
+  --color-background:   250 246 238;  /* #FAF6EE — flat egg-shell page */
+  --color-surface:      255 255 255;  /* #FFFFFF — cards / panels */
+  --color-accent:       200 84 46;    /* #C8542E — SBL terracotta */
+  --color-accent-hover: 169 63 29;    /* #A93F1D */
+  --color-text-primary: 31 26 20;     /* #1F1A14 — ink */
+  --color-text-muted:   107 98 86;    /* #6B6256 */
+  --color-text-dim:     154 145 127;  /* #9A917F — faint */
+  --color-border:       230 220 200;  /* #E6DCC8 — neutral hairline (accent hairlines use border-accent/30) */
+  --color-border-hover: 214 201 172;  /* #D6C9AC */
 
-  /* Heirloom-only tokens */
-  --hl-bg:           236 227 210; /* #ECE3D2 */
-  --hl-text-primary: 46 36 23;    /* #2E2417 */
-  --hl-text-muted:   rgba(46, 36, 23, 0.62);
-  --hl-accent-hover: #15733C;
-  --hl-border:       rgba(46, 36, 23, 0.14);
+  /* Modal (light surface floating above the warm-light page) */
+  --color-modal-background:   255 252 247; /* #FFFCF7 */
+  --color-modal-surface:      244 239 229; /* #F4EFE5 — input fields */
+  --color-modal-text-primary: 31 26 20;    /* #1F1A14 */
+  --color-modal-text-muted:   107 98 86;   /* #6B6256 */
+  --color-modal-border:       230 220 200; /* #E6DCC8 */
 
-  /* Clerk modal light-surface tokens — card floats above the warm-light page */
-  --hl-modal-bg:         255 252 247;          /* #FFFCF7 — near-white warm; clear elevation above ECE3D2 */
-  --hl-modal-surface:    246 239 224;          /* #F6EFE0 — input fields; matches --color-surface */
-  --hl-modal-ink:        46 36 23;             /* #2E2417 — matches new --hl-text-primary */
-  --hl-modal-ink-muted:  rgba(46, 36, 23, 0.55);
-  --hl-modal-border:     rgba(46, 36, 23, 0.14);
+  background-color: rgb(var(--color-background));
+  color: rgb(var(--color-text-primary));
 
-  background-color: rgb(var(--hl-bg));
-  color: rgb(var(--hl-text-primary));
+  /* Backward-compat aliases — Tailwind config still references --hl-* */
+  --hl-bg:           var(--color-background);
+  --hl-text-primary: var(--color-text-primary);
+  --hl-text-muted:   var(--color-text-muted);
+  --hl-accent-hover: var(--color-accent-hover);
+  --hl-border:       var(--color-border);
 }
 
-/* Font remaps stay scoped to the [data-brand="heirloom"] wrapper <div>:
-   next/font defines --font-heirloom-serif / --font-heirloom-sans on that
-   wrapper (via the className in app/heirloom/layout.tsx), so the var()
-   references only resolve there. Promoting these remaps to :root would leave
-   --font-heirloom-* undefined and break the Heirloom typography. */
+/* next/font defines --font-heirloom-serif / -sans / -mono on the wrapper div in
+   app/heirloom/layout.tsx, so these remaps resolve only under [data-brand="heirloom"].
+   Cormorant Garamond (display) / DM Sans (body) / DM Mono (mono). */
 [data-brand="heirloom"] {
   --font-display: var(--font-heirloom-serif);
-  --font-serif:   var(--font-heirloom-serif);
+  --font-accent:  var(--font-heirloom-serif);
   --font-body:    var(--font-heirloom-sans);
-  --font-mono: var(--font-heirloom-mono);
+  --font-mono:    var(--font-heirloom-mono);
 }
 
-/* Heirloom gradient + pattern utilities. */
-/* TODO: hard-coded gradient stops — do not respond to DB branding changes.
-   These should be derived from the `background` DB field via paper-stack.ts
-   in a future pass. */
-[data-brand="heirloom"] .bg-hero-glow {
-  background: radial-gradient(ellipse at 50% 40%, #E9D3A8 0%, #E0CCA0 35%, #D4BF8E 65%, #ECE3D2 100%);
-}
-/* TODO: hard-coded gradient stops — do not respond to DB branding changes.
-   These should be derived from the `background` DB field via paper-stack.ts
-   in a future pass. */
-[data-brand="heirloom"] .bg-contributor-glow {
-  background: radial-gradient(ellipse at 50% 30%, #E9D3A8 0%, #E0CCA0 40%, #ECE3D2 100%);
-}
-/* TODO: hard-coded gradient stops — do not respond to DB branding changes.
-   These should be derived from the `background` DB field via paper-stack.ts
-   in a future pass. */
-[data-brand="heirloom"] .bg-pricing-glow {
-  background: radial-gradient(ellipse at 50% 20%, #E9D3A8 0%, #E0CCA0 55%, #ECE3D2 100%);
-}
-/* TODO: hard-coded gradient stops — do not respond to DB branding changes.
-   These should be derived from the `background` DB field via paper-stack.ts
-   in a future pass. */
+/* Flat base: the redesign ships WITHOUT the radial "paper" glow and grain, so the
+   former *-glow utilities collapse to the flat page colour. (The redesigned landing
+   doesn't use .bg-pattern-dots at all.) */
+[data-brand="heirloom"] .bg-hero-glow,
+[data-brand="heirloom"] .bg-contributor-glow,
+[data-brand="heirloom"] .bg-pricing-glow,
 [data-brand="heirloom"] .bg-cta-glow {
-  background: radial-gradient(ellipse at 50% 0%, #E9D3A8 0%, #E0CCA0 40%, #ECE3D2 100%);
-}
-/* TODO: hard-coded gradient stops — do not respond to DB branding changes.
-   These should be derived from the `background` DB field via paper-stack.ts
-   in a future pass. */
-[data-brand="heirloom"] .bg-pattern-dots {
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232E854D' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background: rgb(var(--color-background));
 }
 
-/* Clerk modal input placeholder — the elements block uses inline styles which
-   cannot target ::placeholder, so this is handled here instead. */
-.cl-formFieldInput::placeholder {
-  color: var(--hl-modal-ink-muted);
-}
-
-/* "or" divider text */
-.cl-dividerText {
-  color: var(--hl-modal-ink-muted);
-}
-
-/* Search input text inside the open country code dropdown */
-.cl-selectSearchInput__countryCode {
-  color: rgb(var(--hl-modal-ink));
-}
+/* Clerk modal text — inline element styles can't target ::placeholder / these spans,
+   so they're handled here, re-pointed to the canonical modal tokens. */
+.cl-formFieldInput::placeholder { color: rgb(var(--color-modal-text-muted)); }
+.cl-dividerText { color: rgb(var(--color-modal-text-muted)); }
+.cl-selectSearchInput__countryCode { color: rgb(var(--color-modal-text-primary)); }
 
 /* ── Modal / overlay animations ──────────────────────────────────────────── */
-@keyframes hl-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes hl-modal-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
-}
-.hl-animate-fade {
-  animation: hl-fade-in 0.2s ease both;
-}
-.hl-animate-modal {
-  animation: hl-modal-in 0.26s cubic-bezier(.22, 1, .36, 1) both;
-}
+@keyframes hl-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hl-modal-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+.hl-animate-fade { animation: hl-fade-in 0.2s ease both; }
+.hl-animate-modal { animation: hl-modal-in 0.26s cubic-bezier(.22, 1, .36, 1) both; }
 
-@keyframes hl-sheet-up {
-  from { opacity: 0; transform: translateY(100%); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.hl-animate-sheet {
-  animation: hl-sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+@keyframes hl-sheet-up { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+.hl-animate-sheet { animation: hl-sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
-@keyframes hl-sheet-left {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(0); }
-}
-.hl-animate-sheet-left {
-  animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+@keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+.hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Landing scroll-reveal (matches .hl-reveal in LandingPage.tsx) ────────── */
+.hl-reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.hl-reveal.hl-visible { opacity: 1; transform: translateY(0); }
 
 @media (prefers-reduced-motion: reduce) {
   .hl-animate-sheet,
   .hl-animate-sheet-left,
   .hl-animate-fade,
-  .hl-animate-modal {
-    animation: none !important;
-  }
+  .hl-animate-modal { animation: none !important; }
+  .hl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
 }
-
-/* ── VoiceImmersive listening orb ───────────────────────────────────────── */
-@keyframes hl-orb {
-  0%, 100% { transform: scale(0.82); opacity: 0.55; }
-  50%      { transform: scale(1.08); opacity: 0.20; }
-}
-
-/* VoiceImmersive gates orb + fade on `motion-safe:` in the component.
-   This hard-stop covers any case where the class selector is matched
-   outside that context. */
-@media (prefers-reduced-motion: reduce) {
-  [class*="animate-[hl-orb"] { animation: none !important; }
-}
-
