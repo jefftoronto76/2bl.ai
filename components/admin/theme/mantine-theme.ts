@@ -1,3 +1,5 @@
+'use client';
+
 import { createTheme, type CSSVariablesResolver } from '@mantine/core';
 import { generateColors } from '@mantine/colors-generator';
 import { isValidHex } from '@/services/branding/hex-utils';
@@ -16,7 +18,7 @@ import { ALL_FONTS } from '@/services/branding/font-registry';
  */
 
 
-interface BrandingForTheme {
+export interface BrandingForTheme {
   background?:     string | null;
   accent?:         string | null;
   accent_hover?:   string | null;
