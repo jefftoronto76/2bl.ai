@@ -26,7 +26,10 @@ export interface BrandingForTheme {
   body?:           string | null;
   sidebar_bg?:     string | null;
   sidebar_text?:   string | null;
+  // muted = admin dim-text (maps to --admin-text-muted).
+  // text_dim and lede are storefront-only — never read them on admin rows.
   muted?:          string | null;
+  border?:         string | null;
   font_primary?:   string | null;
   font_secondary?: string | null;
   font_mono?:      string | null;
@@ -49,6 +52,7 @@ const TENANT_FALLBACKS: Record<string, RequiredBranding> = {
     background: '#181820', accent: '#a8c8a8', accent_hover: '#7da87d', heading: '#eae7dc',
     body: '#eae7dc',
     sidebar_bg: '#181820', sidebar_text: '#CFC9BF', muted: 'rgba(234,231,220,0.70)',
+    border: 'rgba(234,231,220,0.15)',
     font_primary: 'Playfair Display, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -59,6 +63,7 @@ const TENANT_FALLBACKS: Record<string, RequiredBranding> = {
     background: '#FAF6EE', accent: '#C8542E', accent_hover: '#A03D1E', heading: '#1F1A14',
     body: '#1F1A14',
     sidebar_bg: '#17130E', sidebar_text: '#CFC9BF', muted: '#6B6256',
+    border: '#E7E0D3',
     font_primary: 'Newsreader, serif',
     font_secondary: 'Manrope, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -69,6 +74,7 @@ const TENANT_FALLBACKS: Record<string, RequiredBranding> = {
     background: '#ECE3D2', accent: '#2E854D', accent_hover: '#1e6035', heading: '#2E2417',
     body: '#2E2417',
     sidebar_bg: '#1C1308', sidebar_text: '#C2B89A', muted: 'rgba(46,36,23,0.62)',
+    border: 'rgba(194,184,154,0.20)',
     font_primary: 'Cormorant Garamond, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -95,6 +101,7 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
   const sidebarBg   = isValidHex(b.sidebar_bg)    ? b.sidebar_bg!   : fallback.sidebar_bg;
   const sidebarText = isValidHex(b.sidebar_text)  ? b.sidebar_text! : fallback.sidebar_text;
   const muted       = b.muted ?? fallback.muted;
+  const border      = b.border ?? fallback.border;
 
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
   const resolveFont = (v: string | null | undefined, fb: string) =>
@@ -171,10 +178,11 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
   // Mantine emits these as real CSS variables — no manual <style> injection needed.
   const resolver: CSSVariablesResolver = () => ({
     variables: {
-      '--admin-sidebar-bg':   sidebarBg,
-      '--admin-sidebar-text': sidebarText,
-      '--admin-accent-hover': accentHover,
-      '--admin-text-muted':   muted,
+      '--admin-sidebar-bg':     sidebarBg,
+      '--admin-sidebar-text':   sidebarText,
+      '--admin-accent-hover':   accentHover,
+      '--admin-text-muted':     muted,
+      '--admin-sidebar-border': border,
     },
     light: {
       '--mantine-color-body': bg,

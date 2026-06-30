@@ -126,7 +126,7 @@ const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
 // to the SyncStatus card. They are NOT in STRING/BOOL fields so they can never
 // be written via PATCH.
 const GET_SELECT =
-  'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder, defaults_synced_at, branding_warnings';
+  'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, border, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder, defaults_synced_at, branding_warnings';
 
 export async function GET(req: Request) {
   const target = parseTarget(req);

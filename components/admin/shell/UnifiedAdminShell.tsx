@@ -30,12 +30,12 @@ function Wordmark({ tenantName }: { tenantName: string }) {
       </Text>
       <Text
         size="xs"
-        c="brand.6"
         style={{
           fontFamily: 'var(--mantine-font-family-monospace)',
           fontSize: '9px',
           letterSpacing: '0.18em',
           textTransform: 'uppercase',
+          color: 'var(--admin-accent-hover)',
         }}
       >
         Admin
@@ -46,7 +46,7 @@ function Wordmark({ tenantName }: { tenantName: string }) {
 
 function NavContent({ tenantName, isPlatformAdmin, onNavigate }: { tenantName: string; isPlatformAdmin: boolean; onNavigate?: () => void }) {
   return (
-    <Stack gap={0} h="100%" data-mantine-color-scheme="dark" style={{ backgroundColor: 'var(--admin-sidebar-bg)' }}>
+    <Stack gap={0} h="100%" style={{ backgroundColor: 'var(--admin-sidebar-bg)' }}>
       <Wordmark tenantName={tenantName} />
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <UnifiedSidebarNav tenantName={tenantName} isPlatformAdmin={isPlatformAdmin} onNavigate={onNavigate} />
@@ -77,7 +77,7 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         hiddenFrom="md"
         style={{
           backgroundColor: 'var(--mantine-color-body)',
-          borderBottom: '1px solid color-mix(in srgb, var(--admin-sidebar-bg) 75%, transparent)',
+          borderBottom: '1px solid var(--admin-sidebar-border)',
         }}
       >
         <Group h="100%" px="md" gap={12}>
@@ -108,10 +108,9 @@ export function UnifiedAdminShell({ children, tenantName, isPlatformAdmin }: Uni
         p="sm"
         withBorder={false}
         visibleFrom="md"
-        data-mantine-color-scheme="dark"
         style={{
           backgroundColor: 'var(--admin-sidebar-bg)',
-          borderRight: '1px solid color-mix(in srgb, var(--admin-sidebar-bg) 75%, transparent)',
+          borderRight: '1px solid var(--admin-sidebar-border)',
         }}
       >
         <AppShell.Section>
