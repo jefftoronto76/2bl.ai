@@ -33,7 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     faviconBase = branding?.favicon_base_path ?? null;
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
-    adminResult = buildAdminTheme(branding, authCtx.tenant_id);
+    adminResult = buildAdminTheme(useDbBranding ? branding : null, authCtx.tenant_id);
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       use_db_branding: useDbBranding,
@@ -58,12 +58,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
-  const { theme: adminTheme, textMuted, accentHover } = adminResult;
-  const bodyBg = (adminTheme.other?.bodyBackground as string) ?? '#f9f8f5';
+  const { theme: adminTheme, resolver } = adminResult;
 
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted};--admin-accent-hover:${accentHover}}`}</style>
       {faviconBase && (
         <>
           <link rel="icon" href={`${faviconBase}/favicon.ico`} sizes="any" />
@@ -81,7 +79,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         />
       ))}
       <AdminUserProvider supabaseUserId={supabaseUserId}>
-        <MantineProvider theme={adminTheme}>
+        <MantineProvider theme={adminTheme} cssVariablesResolver={resolver}>
           <ColorSchemeScript defaultColorScheme="light" />
           <Notifications position="top-right" />
           <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>
