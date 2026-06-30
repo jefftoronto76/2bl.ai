@@ -1,5 +1,3 @@
-import { MantineProvider, ColorSchemeScript } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
 import { getCurrentUser, getTenantName, getTenantType, getAuthContext } from '@/services/auth';
 import { redirect } from 'next/navigation';
 
@@ -9,7 +7,8 @@ import '@mantine/notifications/styles.css';
 // (jefflougheed) route group, so import them explicitly here.
 import '../(jefflougheed)/globals.css';
 
-import { buildAdminTheme } from '@/components/admin/theme/mantine-theme';
+import { AdminThemeProvider } from '@/components/admin/theme/AdminThemeProvider';
+import type { BrandingForTheme } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { ALL_FONTS, type FontEntry } from '@/services/branding/font-registry';
@@ -35,13 +34,16 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[platform layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
-  let platformResult = buildAdminTheme();
+  // Resolve branding server-side; pass raw values to AdminThemeProvider (client).
+  let resolvedBranding: BrandingForTheme | null = null;
+  let resolvedTenantId: string | undefined;
   let brandingFontEntries: FontEntry[] = [];
   try {
     const authCtx = await getAuthContext();
+    resolvedTenantId = authCtx.tenant_id;
     const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
     console.log('[branding:platform]', JSON.stringify({ branding }));
-    platformResult = buildAdminTheme(branding, authCtx.tenant_id);
+    resolvedBranding = branding;
     console.log('[platform layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       font_primary: branding?.font_primary,
@@ -61,12 +63,8 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     console.error('[platform layout] branding fetch failed:', err instanceof Error ? err.message : err);
   }
 
-  const { theme: platformTheme, textMuted, accentHover } = platformResult;
-  const bodyBg = (platformTheme.other?.bodyBackground as string) ?? '#f9f8f5';
-
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted};--admin-accent-hover:${accentHover}}`}</style>
       {brandingFontEntries.map(entry => (
         <link
           key={entry.googleFamily}
@@ -74,13 +72,11 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           href={`https://fonts.googleapis.com/css2?family=${entry.googleFamily}&display=swap`}
         />
       ))}
-      <MantineProvider theme={platformTheme}>
-        <ColorSchemeScript defaultColorScheme="light" />
-        <Notifications position="top-right" />
+      <AdminThemeProvider branding={resolvedBranding} tenantId={resolvedTenantId}>
         <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>
           {children}
         </UnifiedAdminShell>
-      </MantineProvider>
+      </AdminThemeProvider>
     </>
   );
 }

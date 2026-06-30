@@ -49,8 +49,10 @@ export function AdminPreview({ t }: { t: ThemeTokens }) {
   const headFont = `"${t.font_primary}", sans-serif`;
   const bodyFont = `"${t.font_secondary}", sans-serif`;
   const btnBg = t.accent_buttons ? t.accent : '#1a1917';
+  const sidebarBg = t.sidebar_bg || t.background;
   const ps = paperStack(t.background, t.paper_effect, t.heading);
-  const navText = 'rgba(255,255,255,0.6)';
+  const navText = t.sidebar_text || 'rgba(255,255,255,0.6)';
+  const muted = t.muted || t.lede;
 
   return (
     <div className="theme-preview-wrap">
@@ -60,7 +62,7 @@ export function AdminPreview({ t }: { t: ThemeTokens }) {
       <div className="theme-preview" style={{ padding: 0, overflow: 'hidden', background: '#f9f8f5', fontFamily: bodyFont }}>
         <div style={{ display: 'flex', minHeight: 344 }}>
           {/* ── Sidebar ── */}
-          <div style={{ width: 140, flex: '0 0 140px', background: t.background, padding: '15px 11px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ width: 140, flex: '0 0 140px', background: sidebarBg, padding: '15px 11px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ marginBottom: 13, padding: '0 5px' }}>
               <div style={{ fontFamily: headFont, color: '#fff', fontSize: 14, fontWeight: 600, lineHeight: 1.2 }}>Second Brain</div>
               <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.18em', textTransform: 'uppercase', color: t.accent, marginTop: 3 }}>Admin</div>
@@ -90,14 +92,14 @@ export function AdminPreview({ t }: { t: ThemeTokens }) {
           {/* ── Main content ── */}
           <div style={{ flex: 1, minWidth: 0, padding: '18px 18px 20px' }}>
             <h1 style={{ fontFamily: headFont, color: t.heading, fontSize: 21, lineHeight: 1.15, margin: 0, fontWeight: 600 }}>Members</h1>
-            <p style={{ color: t.lede, fontSize: 12.5, margin: '5px 0 0', lineHeight: 1.5 }}>Manage who can access this workspace.</p>
+            <p style={{ color: muted, fontSize: 12.5, margin: '5px 0 0', lineHeight: 1.5 }}>Manage who can access this workspace.</p>
 
             <div style={{ marginTop: 14, background: ps.surface, border: `1px solid ${ps.line}`, borderRadius: 12, padding: 14, transition: 'background 160ms ease, border-color 160ms ease' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ width: 30, height: 30, borderRadius: '50%', background: t.accent, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 11.5, fontWeight: 700, fontFamily: bodyFont, flex: '0 0 auto' }}>JL</span>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ color: t.heading, fontSize: 13.5, fontWeight: 600 }}>Jeff Lougheed</div>
-                  <div style={{ color: t.lede, fontSize: 12 }}>jeff@naturalresource.co</div>
+                  <div style={{ color: muted, fontSize: 12 }}>jeff@naturalresource.co</div>
                 </div>
                 <span style={{ background: mixHex(t.background, t.accent, 0.12), color: t.accent, border: `1px solid ${mixHex(t.background, t.accent, 0.3)}`, borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 600, fontFamily: bodyFont }}>
                   Owner

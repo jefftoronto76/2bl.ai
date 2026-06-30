@@ -8,7 +8,7 @@ import { NAV_SECTIONS, isActive } from './nav-config';
 const navLinkStyle = (active: boolean) =>
   ({
     borderRadius: 'var(--mantine-radius-sm)',
-    color: active ? 'var(--mantine-color-white)' : 'var(--mantine-color-ink-2)',
+    color: active ? 'var(--mantine-color-white)' : 'var(--admin-sidebar-text)',
     '--nl-color': 'var(--mantine-color-white)',
     '--nl-bg': 'var(--mantine-color-brand-filled)',
     '--nl-hover': 'var(--admin-accent-hover, var(--mantine-color-brand-filled-hover))',

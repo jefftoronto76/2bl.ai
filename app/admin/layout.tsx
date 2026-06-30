@@ -1,13 +1,11 @@
-import { MantineProvider, ColorSchemeScript } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
-
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 // Inkwell tokens are shared with jefflougheed.ca but admin lives outside the
 // (jefflougheed) route group, so import them explicitly here.
 import '../(jefflougheed)/globals.css';
 
-import { buildAdminTheme } from '@/components/admin/theme/mantine-theme';
+import { AdminThemeProvider } from '@/components/admin/theme/AdminThemeProvider';
+import type { BrandingForTheme } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
 import { syncUser, getTenantName, getCurrentUser, getTenantType, getAuthContext } from '@/services/auth';
@@ -22,18 +20,20 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     getTenantType(),
   ])
 
-  // Build a dynamic Mantine theme from the tenant's saved branding.
-  // Falls back to the inkwell default theme if auth or DB fails.
-  let adminResult = buildAdminTheme();
+  // Resolve branding server-side; pass raw values to AdminThemeProvider (client).
+  // generateColors() is client-only so theme construction happens in the provider.
+  let resolvedBranding: BrandingForTheme | null = null;
+  let resolvedTenantId: string | undefined;
   let brandingFontEntries: FontEntry[] = [];
   let faviconBase: string | null = null;
   try {
     const authCtx = await getAuthContext();
+    resolvedTenantId = authCtx.tenant_id;
     const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
     faviconBase = branding?.favicon_base_path ?? null;
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
-    adminResult = buildAdminTheme(branding, authCtx.tenant_id);
+    resolvedBranding = useDbBranding ? branding : null;
     console.log('[admin layout] branding resolved:', {
       tenant_id: authCtx.tenant_id,
       use_db_branding: useDbBranding,
@@ -58,12 +58,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
-  const { theme: adminTheme, textMuted, accentHover } = adminResult;
-  const bodyBg = (adminTheme.other?.bodyBackground as string) ?? '#f9f8f5';
-
   return (
     <>
-      <style>{`:root{--mantine-color-body:${bodyBg};--admin-text-muted:${textMuted};--admin-accent-hover:${accentHover}}`}</style>
       {faviconBase && (
         <>
           <link rel="icon" href={`${faviconBase}/favicon.ico`} sizes="any" />
@@ -81,13 +77,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         />
       ))}
       <AdminUserProvider supabaseUserId={supabaseUserId}>
-        <MantineProvider theme={adminTheme}>
-          <ColorSchemeScript defaultColorScheme="light" />
-          <Notifications position="top-right" />
+        <AdminThemeProvider branding={resolvedBranding} tenantId={resolvedTenantId}>
           <UnifiedAdminShell tenantName={tenantName ?? 'Natural Resource'} isPlatformAdmin={isPlatformAdmin}>
             {children}
           </UnifiedAdminShell>
-        </MantineProvider>
+        </AdminThemeProvider>
       </AdminUserProvider>
     </>
   );

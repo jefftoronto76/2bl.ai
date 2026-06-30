@@ -18,7 +18,7 @@ import { notifications } from '@mantine/notifications';
 import { AppearanceHistory } from './AppearanceHistory';
 import { SyncStatus } from './SyncStatus';
 import type { AppearanceChange, BrandingTarget, BrandingSync } from './types';
-import { DISPLAY_FONTS, BODY_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
+import { DISPLAY_FONTS, BODY_FONTS, MONO_FONTS, ALL_FONTS } from '@/services/branding/font-registry';
 import { ThemePreview } from './ThemePreview';
 import { AdminPreview } from './AdminPreview';
 import './appearance.css';
@@ -30,6 +30,9 @@ interface BrandingRow {
   lede:           string;
   heading:        string;
   body:           string;
+  sidebar_bg:     string;
+  sidebar_text:   string;
+  muted:          string;
   font_primary:   string;
   font_secondary: string;
   font_mono:      string;
@@ -45,6 +48,9 @@ const EMPTY: BrandingRow = {
   lede:            '',
   heading:         '',
   body:            '',
+  sidebar_bg:      '',
+  sidebar_text:    '',
+  muted:           '',
   font_primary:    '',
   font_secondary:  '',
   font_mono:       '',
@@ -70,6 +76,9 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
     lede:            (row.lede            as string  | null) ?? '',
     heading:         (row.heading         as string  | null) ?? '',
     body:            (row.body            as string  | null) ?? '',
+    sidebar_bg:      (row.sidebar_bg      as string  | null) ?? '',
+    sidebar_text:    (row.sidebar_text    as string  | null) ?? '',
+    muted:           (row.muted           as string  | null) ?? '',
     font_primary:    (row.font_primary    as string  | null) ?? '',
     font_secondary:  (row.font_secondary  as string  | null) ?? '',
     font_mono:       (row.font_mono       as string  | null) ?? '',
@@ -338,76 +347,82 @@ function BrandingEditor({ target }: { target: BrandingTarget }) {
         {/* ── Left column: editor ── */}
         <Stack gap="md">
           {/* Colors card */}
-          <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
-            <Stack gap="sm">
-              <Title order={6} fw={600}>Colors</Title>
+          {target === 'admin' ? (
+            <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+              <Stack gap="md">
+                <Title order={6} fw={600}>Colors</Title>
 
-              <ColorRow
-                label="Background"
-                description="Page canvas behind all content."
-                value={values.background}
-                onChange={v => set('background', v)}
-              />
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Paper effect</div>
-                <SegmentedControl
-                  data={[
-                    { value: 'warm', label: 'Warm' },
-                    { value: 'lift', label: 'Lift' },
-                    { value: 'flat', label: 'Flat' },
-                  ]}
-                  value={values.paper_effect}
-                  onChange={v => set('paper_effect', v as 'warm' | 'lift' | 'flat')}
+                {/* Accent group */}
+                <Stack gap="sm">
+                  <Text size="xs" fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.07em' }}>Accent</Text>
+                  <ColorRow label="Accent" description="Links, active nav items, and highlights." value={values.accent} onChange={v => set('accent', v)} />
+                  <ColorRow label="Accent hover" description="Nav item hover state. Defaults to accent when empty." value={values.accent_hover} onChange={v => set('accent_hover', v)} />
+                  <Switch
+                    label="Apply accent to buttons"
+                    description="When off, primary buttons stay neutral (ink)."
+                    checked={values.accent_buttons}
+                    onChange={e => set('accent_buttons', e.currentTarget.checked)}
+                    disabled={saving}
+                    size="sm"
+                  />
+                </Stack>
+
+                {/* Sidebar group */}
+                <Stack gap="sm">
+                  <Text size="xs" fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.07em' }}>Sidebar</Text>
+                  <ColorRow label="Sidebar background" description="Dark panel behind the navigation." value={values.sidebar_bg} onChange={v => set('sidebar_bg', v)} />
+                  <ColorRow label="Sidebar text" description="Inactive nav labels and wordmark." value={values.sidebar_text} onChange={v => set('sidebar_text', v)} />
+                </Stack>
+
+                {/* Content group */}
+                <Stack gap="sm">
+                  <Text size="xs" fw={600} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.07em' }}>Content</Text>
+                  <ColorRow label="Background" description="Page canvas behind all content." value={values.background} onChange={v => set('background', v)} />
+                  <ColorRow label="Heading (H1)" description="Top-level page titles." value={values.heading} onChange={v => set('heading', v)} />
+                  <ColorRow label="Body copy" description="Default paragraph text." value={values.body} onChange={v => set('body', v)} />
+                  <ColorRow label="Muted text" description="Subtitles, helper text, and secondary info." value={values.muted} onChange={v => set('muted', v)} />
+                </Stack>
+              </Stack>
+            </Card>
+          ) : (
+            <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+              <Stack gap="sm">
+                <Title order={6} fw={600}>Colors</Title>
+
+                <ColorRow label="Background" description="Page canvas behind all content." value={values.background} onChange={v => set('background', v)} />
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Paper effect</div>
+                  <SegmentedControl
+                    data={[
+                      { value: 'warm', label: 'Warm' },
+                      { value: 'lift', label: 'Lift' },
+                      { value: 'flat', label: 'Flat' },
+                    ]}
+                    value={values.paper_effect}
+                    onChange={v => set('paper_effect', v as 'warm' | 'lift' | 'flat')}
+                    disabled={saving}
+                    size="sm"
+                    fullWidth
+                  />
+                  <div style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)', marginTop: 4 }}>
+                    Surface depth: warm amber, white lift, or flat.
+                  </div>
+                </div>
+                <ColorRow label="Accent" description="Links and highlights use this color." value={values.accent} onChange={v => set('accent', v)} />
+                <Switch
+                  label="Apply accent to buttons"
+                  description="When off, primary buttons stay neutral (ink)."
+                  checked={values.accent_buttons}
+                  onChange={e => set('accent_buttons', e.currentTarget.checked)}
                   disabled={saving}
                   size="sm"
-                  fullWidth
                 />
-                <div style={{ fontSize: 12, color: 'var(--mantine-color-dimmed)', marginTop: 4 }}>
-                  Surface depth: warm amber, white lift, or flat.
-                </div>
-              </div>
-              <ColorRow
-                label="Accent"
-                description="Links and highlights use this color."
-                value={values.accent}
-                onChange={v => set('accent', v)}
-              />
-              {target === 'admin' && (
-                <ColorRow
-                  label="Accent hover"
-                  description="Nav item hover color. Defaults to accent when empty."
-                  value={values.accent_hover}
-                  onChange={v => set('accent_hover', v)}
-                />
-              )}
-              <Switch
-                label="Apply accent to buttons"
-                description="When off, primary buttons stay neutral (ink)."
-                checked={values.accent_buttons}
-                onChange={e => set('accent_buttons', e.currentTarget.checked)}
-                disabled={saving}
-                size="sm"
-              />
-              <ColorRow
-                label="Lede"
-                description="Intro / subtitle text under headings."
-                value={values.lede}
-                onChange={v => set('lede', v)}
-              />
-              <ColorRow
-                label="Heading (H1)"
-                description="Top-level page titles."
-                value={values.heading}
-                onChange={v => set('heading', v)}
-              />
-              <ColorRow
-                label="Body copy"
-                description="Default paragraph text."
-                value={values.body}
-                onChange={v => set('body', v)}
-              />
-            </Stack>
-          </Card>
+                <ColorRow label="Lede" description="Intro / subtitle text under headings." value={values.lede} onChange={v => set('lede', v)} />
+                <ColorRow label="Heading (H1)" description="Top-level page titles." value={values.heading} onChange={v => set('heading', v)} />
+                <ColorRow label="Body copy" description="Default paragraph text." value={values.body} onChange={v => set('body', v)} />
+              </Stack>
+            </Card>
+          )}
 
           {/* Typography card */}
           <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
@@ -428,12 +443,25 @@ function BrandingEditor({ target }: { target: BrandingTarget }) {
               />
               <Select
                 label="Secondary font"
-                description="Used for lede and body copy."
+                description="Used for body copy and UI labels."
                 data={BODY_FONTS}
                 value={values.font_secondary || null}
                 onChange={v => {
                   const val = v ?? '';
                   set('font_secondary', val);
+                  if (val) loadFontForValue(val);
+                }}
+                size="sm"
+                disabled={saving}
+              />
+              <Select
+                label="Mono font"
+                description="Used for code, slugs, and monospace labels."
+                data={MONO_FONTS}
+                value={values.font_mono || null}
+                onChange={v => {
+                  const val = v ?? '';
+                  set('font_mono', val);
                   if (val) loadFontForValue(val);
                 }}
                 size="sm"

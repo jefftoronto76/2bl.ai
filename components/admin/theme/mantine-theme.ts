@@ -1,4 +1,7 @@
-import { createTheme, colorsTuple } from '@mantine/core';
+'use client';
+
+import { createTheme, type CSSVariablesResolver } from '@mantine/core';
+import { generateColors } from '@mantine/colors-generator';
 import { isValidHex } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
 
@@ -9,20 +12,24 @@ import { ALL_FONTS } from '@/services/branding/font-registry';
  *   - CLAUDE.md design token table (authoritative values)
  *   - /components/admin/theme/tokens.ts (spacing, radius primitives)
  *
- * This file maps existing design tokens into Mantine's theme API so both
- * systems can coexist during migration. tokens.ts is NOT deleted — it
- * remains the source of truth for existing hand-rolled components until
- * Phase 2 replaces them with Mantine equivalents.
+ * buildAdminTheme returns { theme, resolver } — the resolver is passed to
+ * <MantineProvider cssVariablesResolver={resolver}> so Mantine emits all
+ * admin-specific CSS variables natively. No manual <style> injection needed.
  */
 
 
-interface BrandingForTheme {
+export interface BrandingForTheme {
   background?:     string | null;
   accent?:         string | null;
   accent_hover?:   string | null;
   heading?:        string | null;
-  lede?:           string | null;
   body?:           string | null;
+  sidebar_bg?:     string | null;
+  sidebar_text?:   string | null;
+  // muted = admin dim-text (maps to --admin-text-muted).
+  // text_dim and lede are storefront-only — never read them on admin rows.
+  muted?:          string | null;
+  border?:         string | null;
   font_primary?:   string | null;
   font_secondary?: string | null;
   font_mono?:      string | null;
@@ -34,11 +41,18 @@ interface BrandingForTheme {
 // interface renders with its storefront palette rather than generic inkwell
 // defaults. The jefflougheed tenant is also the system default when no
 // tenant-specific fallback is matched.
-const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
+//
+// RequiredBranding strips optionality AND nullability so every resolved
+// fallback field is typed as a plain string/boolean (as the values actually are).
+type RequiredBranding = { [K in keyof BrandingForTheme]-?: NonNullable<BrandingForTheme[K]> };
+
+const TENANT_FALLBACKS: Record<string, RequiredBranding> = {
   // jefflougheed.ca
   'e07334a0-2afd-4544-898b-edb124d2dd33': {
     background: '#181820', accent: '#a8c8a8', accent_hover: '#7da87d', heading: '#eae7dc',
-    lede: 'rgba(234,231,220,0.70)', body: '#eae7dc',
+    body: '#eae7dc',
+    sidebar_bg: '#181820', sidebar_text: '#CFC9BF', muted: 'rgba(234,231,220,0.70)',
+    border: 'rgba(234,231,220,0.15)',
     font_primary: 'Playfair Display, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -46,8 +60,10 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   },
   // 2bl.ai — Second Brain Labs
   '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb': {
-    background: '#FAF6EE', accent: '#C8542E', accent_hover: '#a03d1e', heading: '#1F1A14',
-    lede: '#6B6256', body: '#1F1A14',
+    background: '#FAF6EE', accent: '#C8542E', accent_hover: '#A03D1E', heading: '#1F1A14',
+    body: '#1F1A14',
+    sidebar_bg: '#17130E', sidebar_text: '#CFC9BF', muted: '#6B6256',
+    border: '#E7E0D3',
     font_primary: 'Newsreader, serif',
     font_secondary: 'Manrope, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -56,7 +72,9 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   // heirloom.2bl.ai — Heirloom
   '20767f1d-1148-4e43-ab73-f6da88f0ac56': {
     background: '#ECE3D2', accent: '#2E854D', accent_hover: '#1e6035', heading: '#2E2417',
-    lede: 'rgba(46,36,23,0.62)', body: '#2E2417',
+    body: '#2E2417',
+    sidebar_bg: '#1C1308', sidebar_text: '#C2B89A', muted: 'rgba(46,36,23,0.62)',
+    border: 'rgba(194,184,154,0.20)',
     font_primary: 'Cormorant Garamond, Georgia, serif',
     font_secondary: 'DM Sans, sans-serif',
     font_mono: 'DM Mono, Courier New, monospace',
@@ -64,50 +82,42 @@ const TENANT_FALLBACKS: Record<string, BrandingForTheme> = {
   },
 };
 
-/** Builds a dynamic Mantine theme from tenant_branding values. Falls back to per-tenant defaults. */
+const DEFAULT_FALLBACK = TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'];
+
+/** Builds a dynamic Mantine theme + cssVariablesResolver from tenant_branding values.
+ *  Falls back to per-tenant defaults when branding is null or a field is missing.
+ *  Pass branding=null to get a pure fallback theme (use_db_branding=false path). */
 export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: string) {
-  const fallback: BrandingForTheme = TENANT_FALLBACKS[tenantId ?? ''] ?? TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'];
+  const fallback: RequiredBranding =
+    TENANT_FALLBACKS[tenantId ?? ''] ?? DEFAULT_FALLBACK;
 
-  console.log('[admin-theme] tenant:', tenantId);
-  console.log('[admin-theme] branding from DB:', JSON.stringify(branding));
-  console.log('[admin-theme] using fallback:', !branding);
+  const b = branding ?? {};
 
-  const accent      = isValidHex(branding?.accent)       ? branding!.accent!       : fallback.accent!;
-  const accentHover = isValidHex(branding?.accent_hover) ? branding!.accent_hover! : (fallback.accent_hover ?? accent);
-  const bg          = isValidHex(branding?.background)   ? branding!.background!   : fallback.background!;
-  const textPrimary = isValidHex(branding?.heading)     ? branding!.heading!     : fallback.heading!;
-  const textMuted   = branding?.lede ?? fallback.lede!;
-  const bodyText    = isValidHex(branding?.body)        ? branding!.body!        : fallback.body!;
-  const ink         = isValidHex(branding?.heading)     ? branding!.heading!     : fallback.heading!;
+  const accent      = isValidHex(b.accent)       ? b.accent!       : fallback.accent;
+  const accentHover = isValidHex(b.accent_hover)  ? b.accent_hover! : fallback.accent_hover;
+  const bg          = isValidHex(b.background)    ? b.background!   : fallback.background;
+  const headingHex  = isValidHex(b.heading)       ? b.heading!      : fallback.heading;
+  const bodyText    = isValidHex(b.body)          ? b.body!         : fallback.body;
+  const sidebarBg   = isValidHex(b.sidebar_bg)    ? b.sidebar_bg!   : fallback.sidebar_bg;
+  const sidebarText = isValidHex(b.sidebar_text)  ? b.sidebar_text! : fallback.sidebar_text;
+  const muted       = b.muted ?? fallback.muted;
+  const border      = b.border ?? fallback.border;
 
   const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
   const resolveFont = (v: string | null | undefined, fb: string) =>
     (v && allowedFontValues.has(v)) ? v : fb;
 
-  const headingFont   = resolveFont(branding?.font_primary,   fallback.font_primary!);
-  const bodyFont      = resolveFont(branding?.font_secondary, fallback.font_secondary!);
-  const monoFont      = resolveFont(branding?.font_mono,      fallback.font_mono!);
-  const accentButtons = branding?.accent_buttons ?? fallback.accent_buttons ?? true;
-
-  console.log('[admin-theme] resolved accent:', accent);
-  console.log('[admin-theme] resolved background:', bg);
-  console.log('[admin-theme] resolved fonts:', { headingFont, bodyFont, monoFont });
+  const headingFont   = resolveFont(b.font_primary,   fallback.font_primary);
+  const bodyFont      = resolveFont(b.font_secondary, fallback.font_secondary);
+  const monoFont      = resolveFont(b.font_mono,      fallback.font_mono);
+  const accentButtons = b.accent_buttons ?? fallback.accent_buttons;
 
   const theme = createTheme({
     // ── Colors ──────────────────────────────────────────────────────────────────
     primaryColor: 'brand',
     colors: {
-      brand:      colorsTuple(accent),
-      ink:        colorsTuple(ink),
-      background: colorsTuple(bg),
-    },
-
-    // Kept for backward compat — being phased out in favour of theme.colors.*
-    other: {
-      bodyBackground: bg,
-      textPrimary,
-      textMuted,
-      bodyText,
+      brand: generateColors(accent),   // real 10-shade scale — hover/variants work
+      ink:   generateColors(headingHex),
     },
 
     // ── Typography ──────────────────────────────────────────────────────────────
@@ -115,6 +125,7 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
     fontFamilyMonospace: monoFont,
     headings: {
       fontFamily: headingFont,
+      textWrap:   'pretty' as const,
     },
 
     // Font sizes from tokens.typography.size (xs through xl)
@@ -164,11 +175,28 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
     },
   });
 
-  return { theme, textMuted, accentHover };
+  // Mantine emits these as real CSS variables — no manual <style> injection needed.
+  const resolver: CSSVariablesResolver = () => ({
+    variables: {
+      '--admin-sidebar-bg':     sidebarBg,
+      '--admin-sidebar-text':   sidebarText,
+      '--admin-accent-hover':   accentHover,
+      '--admin-text-muted':     muted,
+      '--admin-sidebar-border': border,
+    },
+    light: {
+      '--mantine-color-body': bg,
+      '--mantine-color-text': bodyText,
+    },
+    dark: {},
+  });
+
+  return { theme, resolver };
 }
 
 // Static export kept for any existing imports that haven't switched to buildAdminTheme.
 export const adminTheme = buildAdminTheme().theme;
 
+// Use accentMix() for any faint accent wash (e.g. a soft brand background).
 export const accentMix = (pct: number, base = 'transparent'): string =>
   `color-mix(in srgb, var(--mantine-color-brand-6) ${pct}%, ${base})`
