@@ -4,10 +4,14 @@ import { getAdminClient } from '@/services/auth/supabase-admin';
 export interface TenantBranding {
   background:      string | null;
   accent:          string | null;
+  accent_hover:    string | null;
   accent_rgb:      string | null;
   lede:            string | null;
   heading:         string | null;
   body:            string | null;
+  sidebar_bg:      string | null;
+  sidebar_text:    string | null;
+  muted:           string | null;
   font_primary:    string | null;
   font_secondary:  string | null;
   font_mono:       string | null;
@@ -28,7 +32,7 @@ export async function getTenantBranding(
     const { data, error } = await supabase
       .from('tenant_branding')
       .select(
-        'background, accent, accent_rgb, lede, heading, body, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, favicon_base_path'
+        'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, favicon_base_path'
       )
       .eq('tenant_id', tenantId)
       .eq('target', target)
