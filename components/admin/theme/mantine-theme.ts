@@ -36,7 +36,12 @@ interface BrandingForTheme {
 // interface renders with its storefront palette rather than generic inkwell
 // defaults. The jefflougheed tenant is also the system default when no
 // tenant-specific fallback is matched.
-const TENANT_FALLBACKS: Record<string, Required<BrandingForTheme>> = {
+//
+// RequiredBranding strips optionality AND nullability so every resolved
+// fallback field is typed as a plain string/boolean (as the values actually are).
+type RequiredBranding = { [K in keyof BrandingForTheme]-?: NonNullable<BrandingForTheme[K]> };
+
+const TENANT_FALLBACKS: Record<string, RequiredBranding> = {
   // jefflougheed.ca
   'e07334a0-2afd-4544-898b-edb124d2dd33': {
     background: '#181820', accent: '#a8c8a8', accent_hover: '#7da87d', heading: '#eae7dc',
@@ -75,7 +80,7 @@ const DEFAULT_FALLBACK = TENANT_FALLBACKS['e07334a0-2afd-4544-898b-edb124d2dd33'
  *  Falls back to per-tenant defaults when branding is null or a field is missing.
  *  Pass branding=null to get a pure fallback theme (use_db_branding=false path). */
 export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: string) {
-  const fallback: Required<BrandingForTheme> =
+  const fallback: RequiredBranding =
     TENANT_FALLBACKS[tenantId ?? ''] ?? DEFAULT_FALLBACK;
 
   const b = branding ?? {};

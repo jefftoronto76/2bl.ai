@@ -60,12 +60,17 @@ export interface ThemeTokens {
   background:     string;
   paper_effect:   'warm' | 'lift' | 'flat';
   accent:         string;
+  accent_hover?:  string;
   accent_buttons: boolean;
   lede:           string;
   heading:        string;
   body:           string;
+  sidebar_bg?:    string;
+  sidebar_text?:  string;
+  muted?:         string;
   font_primary:   string;
   font_secondary: string;
+  font_mono?:     string;
 }
 
 export function ThemePreview({ t }: { t: ThemeTokens }) {
