@@ -74,6 +74,39 @@ function previewTenantFallback(): string | null {
   return id
 }
 
+/**
+ * Resolves the tenant from the x-preview-tenant request header (non-production
+ * only). The header is set by middleware when an API request arrives with the
+ * hl-preview cookie — itself set when the page loaded with ?preview=<slug>.
+ * Queries tenants.slug so each tenant can be addressed by a short name rather
+ * than a domain, matching whatever value was in the ?preview= param.
+ */
+async function resolvePreviewHeader(
+  req: Request,
+  supabase: ReturnType<typeof getAdminClient>,
+): Promise<string | null> {
+  if (process.env.VERCEL_ENV === 'production') return null
+  const slug = req.headers.get('x-preview-tenant')
+  if (!slug) return null
+
+  const { data, error } = await supabase
+    .from('tenants')
+    .select('id')
+    .eq('slug', slug)
+    .limit(1)
+
+  if (error) {
+    console.error('[getTenantFromRequest] preview slug lookup failed:', error.message)
+    return null
+  }
+  if (data && data.length > 0) {
+    console.log('[getTenantFromRequest] resolved via x-preview-tenant:', data[0].id, '(slug:', slug, ')')
+    return data[0].id as string
+  }
+  console.log('[getTenantFromRequest] x-preview-tenant slug not matched:', slug)
+  return null
+}
+
 export async function getTenantFromRequest(req: Request): Promise<string | null> {
   const host = req.headers.get('host')
   const fullHost = normalizeHost(host)
@@ -109,6 +142,8 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
   }
 
   if (!data || data.length === 0) {
+    const preview = await resolvePreviewHeader(req, supabase)
+    if (preview) return preview
     const fallback = previewTenantFallback()
     if (fallback) {
       console.log('[getTenantFromRequest] no tenant matched candidates:', candidates, '— using PREVIEW_TENANT_ID fallback:', fallback)
@@ -125,6 +160,8 @@ export async function getTenantFromRequest(req: Request): Promise<string | null>
     null
 
   if (!matched) {
+    const preview = await resolvePreviewHeader(req, supabase)
+    if (preview) return preview
     const fallback = previewTenantFallback()
     if (fallback) {
       console.log('[getTenantFromRequest] no tenant matched candidates:', candidates, '— using PREVIEW_TENANT_ID fallback:', fallback)
