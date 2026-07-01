@@ -1,6 +1,6 @@
 /* ─── Heirloom Design Tokens ───────────────────────────────────────────────
    Canonical platform tokens (see css-token-unification-spec.md). Token NAMES
-   are fixed and shared across tenants — no tenant-scoped --hl-*/--lg-* prefixes
+   are fixed and shared across tenants — no tenant-scoped --hl-X / --lg-X prefixes
    (scripts/lint-tokens.ts fails the build on those). Color values are raw RGB
    triplets so Tailwind opacity modifiers work (bg-accent/20, border-border,
    text-text-muted, …).
