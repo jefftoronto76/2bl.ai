@@ -68,7 +68,9 @@ export default createAuthMiddleware(async (auth, req) => {
       if (!isHeirloomPath) {
         url.pathname = pathname === '/' ? '/heirloom' : `/heirloom${pathname}`
       }
-      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'heirloom', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
     }
 
     if (previewTenant === 'legacy') {
@@ -79,7 +81,9 @@ export default createAuthMiddleware(async (auth, req) => {
       if (!isLegacyPath) {
         url.pathname = pathname === '/' ? '/legacy' : `/legacy${pathname}`
       }
-      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'legacy', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
     }
 
     if (previewTenant === 'sbl') {
@@ -90,7 +94,9 @@ export default createAuthMiddleware(async (auth, req) => {
       if (!isSblPath) {
         url.pathname = pathname === '/' ? '/secondbrainlabs' : `/secondbrainlabs${pathname}`
       }
-      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'sbl', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
     }
 
     if (previewTenant === 'jefflougheed') {
@@ -98,9 +104,26 @@ export default createAuthMiddleware(async (auth, req) => {
       // applies when no brand header is set.
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-correlation-id', correlationId)
-      return NextResponse.next({ request: { headers: requestHeaders } })
+      const res = NextResponse.next({ request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'jefflougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
     }
     // Unknown ?preview= value — fall through to normal host-based routing.
+  }
+
+  // ─── Preview tenant header for API routes (non-production only) ───
+  // Page requests with ?preview=<tenant> set the hl-preview cookie above.
+  // API calls from those pages don't carry ?preview= in their URL, so we read
+  // the cookie here and forward it as x-preview-tenant so that
+  // getTenantFromRequest can resolve the correct tenant by slug.
+  if (process.env.VERCEL_ENV !== 'production' && isApiPath) {
+    const previewValue = req.cookies.get('hl-preview')?.value
+    if (previewValue) {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-preview-tenant', previewValue)
+      requestHeaders.set('x-correlation-id', correlationId)
+      return NextResponse.next({ request: { headers: requestHeaders } })
+    }
   }
 
   if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath) {
