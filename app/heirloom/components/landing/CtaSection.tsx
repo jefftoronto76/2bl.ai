@@ -1,7 +1,13 @@
 'use client';
 
+/*
+  CtaSection → closing CTA "All memories fade. They don't have to be forgotten."
+
+  ⚠️ Chat activation (fresh wiring): "Start Your Story" → dispatch({ type: 'OPEN_CHAT' }).
+*/
+
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { Feather } from 'lucide-react';
 import { useChatStore } from '@/components/shells/membership/chatStore';
 
 export function CtaSection() {
@@ -11,59 +17,30 @@ export function CtaSection() {
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setVisible(true);
-      },
-      { threshold: 0.1 }
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.1 },
     );
     if (sectionRef.current) observer.observe(sectionRef.current);
     return () => observer.disconnect();
   }, []);
 
   return (
-    <section
-      ref={sectionRef}
-      id="cta"
-      className="py-20 sm:py-24 md:py-40 bg-cta-glow"
-    >
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-        <div
-          className={`transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
+    <section ref={sectionRef} id="cta" className="py-24 sm:py-28 md:py-40 px-4 sm:px-6 text-center bg-background">
+      <div className={`max-w-2xl mx-auto transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+        <span className="inline-flex items-center justify-center text-accent mb-6">
+          <Feather size={36} strokeWidth={1.5} />
+        </span>
+        <p className="font-display italic font-light text-text-primary mb-10 leading-[1.2]" style={{ fontSize: 'clamp(28px, 4.4vw, 52px)' }}>
+          All memories fade. They don&rsquo;t have to be forgotten.
+        </p>
+        <button
+          type="button"
+          onClick={() => dispatch({ type: 'OPEN_CHAT' })}
+          className="inline-flex items-center bg-accent hover:bg-accent-hover text-background font-body text-base font-semibold px-8 rounded-[13px] transition-colors min-h-[52px]"
         >
-          <h2 className="font-display font-light text-text-primary mb-6 leading-tight text-3xl sm:text-4xl md:text-5xl lg:text-6xl">
-            Your story deserves to be told.
-          </h2>
-          <p className="font-body text-text-muted leading-relaxed mb-10 max-w-xl mx-auto text-base md:text-lg">
-            Don't let your memories disappear. Start capturing them today with Heirloom's AI-guided platform.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'OPEN_CHAT' })}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 font-body font-semibold px-8 sm:px-9 py-4 rounded-xl transition-all text-base hover:bg-accent-hover active:scale-95 bg-accent text-background"
-            >
-              Start Your Book
-              <ArrowRight size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 font-body font-semibold px-8 sm:px-9 py-4 rounded-xl transition-all text-base hover:bg-accent/10 active:scale-95 bg-transparent text-accent border border-accent/45"
-            >
-              Schedule a Demo
-            </button>
-          </div>
-
-          <div className="border-t mx-auto mb-14 max-w-xl border-border" />
-
-          <p className="font-display italic text-accent mb-3 text-xl md:text-2xl">
-            Every life deserves to be a book.
-          </p>
-          <p className="font-body text-text-muted text-base tracking-wide">
-            Heirloom · April 2026
-          </p>
-        </div>
+          Start Your Story
+        </button>
+        <p className="font-mono text-[13px] tracking-[0.06em] text-text-muted mt-[18px]">Write your first story in under two minutes.</p>
       </div>
     </section>
   );
