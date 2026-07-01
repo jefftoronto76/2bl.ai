@@ -24,7 +24,11 @@ export default createAuthMiddleware(async (auth, req) => {
   const host = (req.headers.get('host') ?? '').toLowerCase().split(':')[0]
   const { pathname } = req.nextUrl
   const isSblHost = SBL_HOSTS.has(host)
+  const isHeirloomHost = HEIRLOOM_HOSTS.has(host)
+  const isLegacyHost = LEGACY_HOSTS.has(host)
   const isSblPath = pathname === '/secondbrainlabs' || pathname.startsWith('/secondbrainlabs/')
+  const isHeirloomPath = pathname === '/heirloom' || pathname.startsWith('/heirloom/')
+  const isLegacyPath = pathname === '/legacy' || pathname.startsWith('/legacy/')
 
   // /platform is the 2BL platform admin. It lives at the root (not under
   // /secondbrainlabs) and uses the Mantine admin (inkwell) palette, so it must
@@ -46,6 +50,59 @@ export default createAuthMiddleware(async (auth, req) => {
   // (404), causing all admin settings fetches to fail on the SBL host.
   const isApiPath = pathname === '/api' || pathname.startsWith('/api/')
 
+  // ─── Preview tenant routing (non-production only) ───
+  // Allows switching storefronts on Vercel preview hosts (*.vercel.app) via
+  // ?preview=<tenant> so each product can be tested from a single preview URL
+  // without needing a matching domain. The ?preview= param is preserved in the
+  // rewritten URL automatically (req.nextUrl.clone() keeps all search params)
+  // so it persists across server-rendered navigations.
+  // Guards mirror the existing host blocks: API, admin, and platform paths pass through.
+  if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath) {
+    const previewTenant = req.nextUrl.searchParams.get('preview')
+
+    if (previewTenant === 'heirloom') {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-heirloom', '1')
+      requestHeaders.set('x-correlation-id', correlationId)
+      const url = req.nextUrl.clone()
+      if (!isHeirloomPath) {
+        url.pathname = pathname === '/' ? '/heirloom' : `/heirloom${pathname}`
+      }
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    if (previewTenant === 'legacy') {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-legacy', '1')
+      requestHeaders.set('x-correlation-id', correlationId)
+      const url = req.nextUrl.clone()
+      if (!isLegacyPath) {
+        url.pathname = pathname === '/' ? '/legacy' : `/legacy${pathname}`
+      }
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    if (previewTenant === 'sbl') {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-sbl', '1')
+      requestHeaders.set('x-correlation-id', correlationId)
+      const url = req.nextUrl.clone()
+      if (!isSblPath) {
+        url.pathname = pathname === '/' ? '/secondbrainlabs' : `/secondbrainlabs${pathname}`
+      }
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    if (previewTenant === 'jefflougheed') {
+      // No rewrite or brand header — root layout's default (data-brand="jefflougheed")
+      // applies when no brand header is set.
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-correlation-id', correlationId)
+      return NextResponse.next({ request: { headers: requestHeaders } })
+    }
+    // Unknown ?preview= value — fall through to normal host-based routing.
+  }
+
   if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
@@ -66,8 +123,6 @@ export default createAuthMiddleware(async (auth, req) => {
   // inkwell palette. Disjoint from the SBL host/path above, so the SBL rewrite
   // never catches Heirloom. Direct hits to /heirloom (e.g. preview URLs) get
   // the same tag without a rewrite.
-  const isHeirloomHost = HEIRLOOM_HOSTS.has(host)
-  const isHeirloomPath = pathname === '/heirloom' || pathname.startsWith('/heirloom/')
 
   if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
@@ -88,8 +143,6 @@ export default createAuthMiddleware(async (auth, req) => {
   // /legacy segment and tag with x-legacy so the root layout drops the
   // inkwell palette. Direct hits to /legacy (e.g. preview URLs) get
   // the same tag without a rewrite.
-  const isLegacyHost = LEGACY_HOSTS.has(host)
-  const isLegacyPath = pathname === '/legacy' || pathname.startsWith('/legacy/')
 
   if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath) {
     const requestHeaders = new Headers(req.headers)
