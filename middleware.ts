@@ -108,6 +108,15 @@ export default createAuthMiddleware(async (auth, req) => {
       res.cookies.set('hl-preview', 'jefflougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
       return res
     }
+
+    if (previewTenant === 'jeff-lougheed') {
+      // No rewrite or brand header — jefflougheed.ca is the fallthrough default.
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-correlation-id', correlationId)
+      const res = NextResponse.next({ request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'jeff-lougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
+    }
     // Unknown ?preview= value — fall through to normal host-based routing.
   }
 
