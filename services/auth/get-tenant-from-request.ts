@@ -74,12 +74,21 @@ function previewTenantFallback(): string | null {
   return id
 }
 
+// Hardcoded slug → tenant_id entries for preview tenants whose DB slug column
+// may not match the ?preview= value. Checked before the DB lookup so these
+// always resolve, even without a matching slug in the tenants row. Only honored
+// in non-production (the production guard at the top of resolvePreviewHeader
+// makes the map unreachable in production regardless).
+const PREVIEW_SLUG_MAP: Record<string, string> = {
+  'jeff-lougheed': 'e07334a0-2afd-4544-898b-edb124d2dd33',
+}
+
 /**
  * Resolves the tenant from the x-preview-tenant request header (non-production
  * only). The header is set by middleware when an API request arrives with the
  * hl-preview cookie — itself set when the page loaded with ?preview=<slug>.
- * Queries tenants.slug so each tenant can be addressed by a short name rather
- * than a domain, matching whatever value was in the ?preview= param.
+ * Checks PREVIEW_SLUG_MAP first (hardcoded overrides), then falls back to
+ * querying tenants.slug for slugs not in the map.
  */
 async function resolvePreviewHeader(
   req: Request,
@@ -88,6 +97,12 @@ async function resolvePreviewHeader(
   if (process.env.VERCEL_ENV === 'production') return null
   const slug = req.headers.get('x-preview-tenant')
   if (!slug) return null
+
+  const hardcoded = PREVIEW_SLUG_MAP[slug]
+  if (hardcoded) {
+    console.log('[getTenantFromRequest] resolved via preview slug map:', hardcoded, '(slug:', slug, ')')
+    return hardcoded
+  }
 
   const { data, error } = await supabase
     .from('tenants')
