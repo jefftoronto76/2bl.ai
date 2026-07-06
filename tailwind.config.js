@@ -3,7 +3,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: 'rgb(var(--color-bg) / <alpha-value>)',
+        bg: 'rgb(var(--color-background) / <alpha-value>)',
         surface: 'rgb(var(--color-surface) / <alpha-value>)',
         accent: 'rgb(var(--color-accent) / <alpha-value>)',
         // Second Brain Labs storefront tokens — values are scoped to
@@ -20,14 +20,15 @@ export default {
         'accent-deep': 'var(--color-accent-deep)',
         'accent-soft': 'var(--color-accent-soft)',
         pos: 'var(--color-pos)',
-        // Heirloom storefront tokens — values are scoped to [data-brand="heirloom"]
-        // in globals.css, so these are inert elsewhere. `surface` and `accent`
-        // (above) are reused; these are the Heirloom-only additions.
-        background: 'rgb(var(--hl-bg) / <alpha-value>)',
-        'text-primary': 'rgb(var(--hl-text-primary) / <alpha-value>)',
-        'text-muted': 'var(--hl-text-muted)',
-        'accent-hover': 'var(--hl-accent-hover)',
-        border: 'var(--hl-border)',
+        // Heirloom/Legacy storefront tokens — mapped to canonical --color-* names
+        // (css-token-unification-spec.md). Values are defined in each route's
+        // globals.css; these are inert on routes that don't define the vars.
+        background:     'rgb(var(--color-background) / <alpha-value>)',
+        'text-primary': 'rgb(var(--color-text-primary) / <alpha-value>)',
+        'text-muted':   'var(--color-text-muted)',
+        'accent-hover': 'var(--color-accent-hover)',
+        border:         'var(--color-border)',
+        'surface-2':    'rgb(var(--color-surface-2) / <alpha-value>)',
         // Legacy storefront tokens — values are scoped to /legacy routes via
         // app/legacy/globals.css; inert everywhere else.
         'lg-background':   'rgb(var(--lg-bg) / <alpha-value>)',

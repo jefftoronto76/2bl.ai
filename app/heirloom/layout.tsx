@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, DM_Mono, DM_Sans } from 'next/font/google';
+import { Caveat, Cormorant_Garamond, DM_Mono, DM_Sans } from 'next/font/google';
 import './globals.css';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
@@ -27,6 +27,13 @@ const mono = DM_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-heirloom-mono',
+  display: 'swap',
+});
+
+const hand = Caveat({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-heirloom-hand',
   display: 'swap',
 });
 
@@ -68,7 +75,7 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
   if (useDbBranding) {
     if (isValidHex(branding?.background)) {
       const rgb = hexToRgbTriplet(branding!.background!);
-      if (rgb) colorLines.push(`  --hl-bg: ${rgb};`);
+      if (rgb) colorLines.push(`  --color-background: ${rgb};`);
       const effectMode = branding?.paper_effect ?? 'flat';
       const surface = (effectMode === 'lift' || effectMode === 'warm')
         ? deriveSurface(branding!.background!, true)
@@ -82,10 +89,11 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
     }
     if (isValidHex(branding?.heading)) {
       const rgb = hexToRgbTriplet(branding!.heading!);
-      if (rgb) colorLines.push(`  --hl-text-primary: ${rgb};`);
+      if (rgb) colorLines.push(`  --color-text-primary: ${rgb};`);
     }
     if (isValidHex(branding?.lede)) {
-      colorLines.push(`  --hl-text-muted: ${branding!.lede!};`);
+      const rgb = hexToRgbTriplet(branding!.lede!);
+      if (rgb) colorLines.push(`  --color-text-muted: ${rgb};`);
     }
 
     // Font overrides on [data-brand="heirloom"] — validate against registry to prevent CSS injection
@@ -127,7 +135,7 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
           route only, so they never collide with jefflougheed's global palette or SBL.
           The next/font classNames define --font-heirloom-serif/-sans, which globals.css
           maps onto --font-display / --font-serif / --font-body for this subtree. */}
-      <div data-brand="heirloom" className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
+      <div data-brand="heirloom" className={`${serif.variable} ${sans.variable} ${mono.variable} ${hand.variable}`}>
         {children}
       </div>
     </>

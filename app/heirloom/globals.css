@@ -18,6 +18,7 @@
   /* Color */
   --color-background:   250 246 238;  /* #FAF6EE — flat egg-shell page */
   --color-surface:      255 255 255;  /* #FFFFFF — cards / panels */
+  --color-surface-2:    244 239 229;  /* #F4EFE5 — chat sidebar / input insets */
   --color-accent:       200 84 46;    /* #C8542E — SBL terracotta */
   --color-accent-hover: 169 63 29;    /* #A93F1D */
   --color-text-primary: 31 26 20;     /* #1F1A14 — ink */
@@ -45,6 +46,7 @@
   --font-accent:  var(--font-heirloom-serif);
   --font-body:    var(--font-heirloom-sans);
   --font-mono:    var(--font-heirloom-mono);
+  --font-hand:    var(--font-heirloom-hand);
 }
 
 /* Flat base: the redesign ships WITHOUT the radial "paper" glow and grain, so the
