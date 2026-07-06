@@ -1,3 +1,9 @@
+
+# Admin work July - 2026 (when noted)
+
+Preview tenant routing — dynamic resolution
+Middleware preview routing (?preview=<slug>) is currently a hardcoded block per tenant. Doesn't scale — every new tenant requires a middleware edit. Needs a dynamic solution that works within edge runtime constraints (no Supabase client, raw fetch only, or an alternative architecture). Deferred until there's bandwidth to think it through properly.
+
 # Friday cleanup — Sage Blocks redesign PR
 
 Captured during Steps 6–18. Do not address inside per-step commits.
