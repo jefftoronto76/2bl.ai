@@ -37,7 +37,7 @@ export function VoiceImmersive({
       className="absolute inset-0 z-[70] overflow-hidden flex flex-col motion-safe:animate-[hl-fade-in_.25s_ease]"
       style={{
         background:
-          'radial-gradient(ellipse at 50% 38%, rgb(var(--color-surface)) 0%, rgb(var(--hl-bg)) 62%)',
+          'radial-gradient(ellipse at 50% 38%, rgb(var(--color-surface)) 0%, rgb(var(--color-background)) 62%)',
       }}
     >
       {/* top bar — collapse + close */}
