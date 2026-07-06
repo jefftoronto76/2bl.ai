@@ -99,6 +99,19 @@ export default createAuthMiddleware(async (auth, req) => {
       return res
     }
 
+    if (previewTenant === 'second-brain-labs') {
+      const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-sbl', '1')
+      requestHeaders.set('x-correlation-id', correlationId)
+      const url = req.nextUrl.clone()
+      if (!isSblPath) {
+        url.pathname = pathname === '/' ? '/secondbrainlabs' : `/secondbrainlabs${pathname}`
+      }
+      const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+      res.cookies.set('hl-preview', 'second-brain-labs', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      return res
+    }
+
     if (previewTenant === 'jefflougheed') {
       // No rewrite or brand header — root layout's default (data-brand="jefflougheed")
       // applies when no brand header is set.
