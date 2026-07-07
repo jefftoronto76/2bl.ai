@@ -118,7 +118,10 @@ export default async function HeirloomLayout({ children }: { children: React.Rea
   const cssBlocks: string[] = [];
   if (colorLines.length > 0) cssBlocks.push(`:root {\n${colorLines.join('\n')}\n}`);
   if (fontLines.length > 0)  cssBlocks.push(`[data-brand="heirloom"] {\n${fontLines.join('\n')}\n}`);
-  const cssString = cssBlocks.join('\n');
+  let cssString = cssBlocks.join('\n');
+  if (useDbBranding && branding?.custom_css) {
+    cssString += branding.custom_css;
+  }
   console.log('[branding:heirloom]', JSON.stringify({ branding, cssString }));
 
   return (
