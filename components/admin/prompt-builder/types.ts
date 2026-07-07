@@ -8,7 +8,7 @@ export type BlockType =
   | 'knowledge'
   | 'guardrail'
   | 'process'
-  | 'escalation'
+  | 'output_format'
 
 export interface Topic {
   id: string
@@ -89,7 +89,7 @@ export const TYPES: { value: BlockType; label: string }[] = [
   { value: 'knowledge', label: 'Knowledge' },
   { value: 'guardrail', label: 'Guardrail' },
   { value: 'process', label: 'Process' },
-  { value: 'escalation', label: 'Escalation' },
+  { value: 'output_format', label: 'Output Format' },
 ]
 
 export const VALID_TYPES = new Set<string>(TYPES.map(t => t.value))

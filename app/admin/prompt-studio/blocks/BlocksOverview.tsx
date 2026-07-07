@@ -9,6 +9,7 @@ import {
   type BlockType,
 } from '@/services/prompt/block-types'
 import { TokenDonut } from './TokenDonut'
+import { GuardrailMeter } from '@/components/admin/content/GuardrailMeter'
 import type { BlockRow } from './BlocksTable'
 
 function relTime(iso: string): string {
@@ -46,6 +47,7 @@ export interface BlocksOverviewProps {
 
 export function BlocksOverview({ blocks, version = null, status = null }: BlocksOverviewProps) {
   const active = blocks.filter((b) => b.status === 'active')
+  const guardrailCount = active.filter((b) => b.type === 'guardrail').length
   const donutBlocks = active.map((b) => ({ type: b.type as BlockType, body: b.body ?? '' }))
   const lastUpdated = blocks.length
     ? blocks.reduce((a, b) => (a > b.updated_at ? a : b.updated_at), blocks[0].updated_at)
@@ -79,6 +81,8 @@ export function BlocksOverview({ blocks, version = null, status = null }: Blocks
             <div style={{ ...dk, borderBottom: 'none' }}>Last updated</div>
             <div style={{ ...dv, borderBottom: 'none' }}>{lastUpdated ? relTime(lastUpdated) : '—'}</div>
           </div>
+
+          <GuardrailMeter count={guardrailCount} />
 
           <Group gap="xs" wrap="wrap">
             {ORDERED_TYPES.map((t) => (

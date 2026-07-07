@@ -33,12 +33,14 @@ export interface NewBlockDraft {
 export interface EditBlockDraft {
   body: string
   order: number | null
+  type: BlockType | null
 }
 
 type EditModeProps = {
   mode?: 'edit'
   block: BlockEditFormBlock
   topics?: undefined
+  promptSetLabel?: string | null
   onSave: (draft: EditBlockDraft) => Promise<void>
   onSaveAnyway: (draft: EditBlockDraft) => Promise<void>
   onCancel: () => void
@@ -49,6 +51,7 @@ type NewModeProps = {
   mode: 'new'
   block?: undefined
   topics: Topic[]
+  promptSetLabel?: string | null
   onSave: (draft: NewBlockDraft) => Promise<void>
   onSaveAnyway: (draft: NewBlockDraft) => Promise<void>
   onCancel: () => void
@@ -106,7 +109,9 @@ export function BlockEditForm(props: BlockEditFormProps) {
   // 'new' mode local state — unused in edit mode but always declared
   // for hook order stability.
   const [title, setTitle] = useState('')
-  const [type, setType] = useState<BlockType | ''>('')
+  const [type, setType] = useState<BlockType | ''>(
+    !isNew ? ((props as EditModeProps).block.type as BlockType) ?? '' : '',
+  )
   const [topicId, setTopicId] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
@@ -172,12 +177,14 @@ export function BlockEditForm(props: BlockEditFormProps) {
           await (props as EditModeProps).onSave({
             body,
             order: parseOrderInput(order),
+            type: type || null,
           })
         },
         onSaveAnyway: async ({ body }: { body: string }) => {
           await (props as EditModeProps).onSaveAnyway({
             body,
             order: parseOrderInput(order),
+            type: type || null,
           })
         },
       }
@@ -249,6 +256,15 @@ export function BlockEditForm(props: BlockEditFormProps) {
 
   return (
     <Stack gap="sm">
+      {props.promptSetLabel && (
+        <TextInput
+          label="Prompt set"
+          value={props.promptSetLabel}
+          readOnly
+          size="sm"
+          styles={{ input: { cursor: 'default' } }}
+        />
+      )}
       {isNew && (
         <>
           <TextInput
@@ -299,6 +315,16 @@ export function BlockEditForm(props: BlockEditFormProps) {
           }}
           size="sm"
           disabled={busy}
+        />
+      )}
+      {!isNew && (
+        <Select
+          label="Type"
+          data={TYPE_SELECT_DATA}
+          value={type || null}
+          onChange={handleTypeChange}
+          disabled={busy}
+          clearable
         />
       )}
       <Textarea

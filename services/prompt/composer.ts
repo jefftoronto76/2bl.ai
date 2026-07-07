@@ -11,6 +11,7 @@
 //   - buildPromptChatSystem      → system string for POST /api/admin/prompt-chat
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { BLOCK_TYPES, TYPE_LABELS } from '@/services/prompt/block-types'
 
 export interface BlocksComposerInput {
   type: string
@@ -35,7 +36,7 @@ A block is one focused instruction or piece of context that will be compiled int
 - Knowledge — factual context about the business, owner, or services
 - Guardrail — a rule or constraint on what Sage should or should not do
 - Process — step-by-step instructions for how Sage should handle a specific situation
-- Escalation — when and how Sage should route a visitor to a human or off-ramp
+- Output Format — how Sage should structure and present its responses
 
 Your process:
 1. ALWAYS draft first. When the owner provides any content — typed, pasted, or uploaded — immediately draft one or more blocks from it. Never ask a clarifying question before attempting a draft.
@@ -113,12 +114,37 @@ export async function getCompiledComposerSystem(input: BlocksComposerInput): Pro
     ? `\n\n<document_context>\n${documentContext}\n</document_context>`
     : ''
 
+  const GUARDRAIL_LIMIT = 5
+
+  const summarySection =
+    existingBlocks && existingBlocks.length > 0
+      ? (() => {
+          const counts = new Map(BLOCK_TYPES.map(t => [t, 0] as [string, number]))
+          for (const b of existingBlocks) {
+            if (counts.has(b.type)) counts.set(b.type, (counts.get(b.type) ?? 0) + 1)
+          }
+          const lines = BLOCK_TYPES.map(t => {
+            const n = counts.get(t) ?? 0
+            const label = TYPE_LABELS[t]
+            return t === 'guardrail'
+              ? `  <type name="${label}" count="${n}" limit="${GUARDRAIL_LIMIT}" />`
+              : `  <type name="${label}" count="${n}" />`
+          })
+          const missing = BLOCK_TYPES.filter(t => (counts.get(t) ?? 0) === 0)
+            .map(t => TYPE_LABELS[t])
+          if (missing.length > 0) {
+            lines.push(`  <missing>${missing.join(', ')}</missing>`)
+          }
+          return `\n\n<block_summary>\n${lines.join('\n')}\n</block_summary>`
+        })()
+      : ''
+
   const blocksSection =
     existingBlocks && existingBlocks.length > 0
       ? `\n\n<existing_blocks>\n${existingBlocks.map(b => `  <block type="${b.type}" title="${b.title}">${b.body}</block>`).join('\n')}\n</existing_blocks>`
       : ''
 
-  return basePrompt + documentSection + blocksSection
+  return basePrompt + documentSection + summarySection + blocksSection
 }
 
 /** Returns the assembled system prompt string for the prompt-builder chat. */

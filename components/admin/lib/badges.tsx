@@ -71,15 +71,15 @@ export const SESSION_COLOR: Record<SessionStatus, string> = {
 }
 
 /* ── block types (services/prompt/block-types.ts) ── */
-export const BLOCK_TYPES: BlockType[] = ['identity', 'knowledge', 'guardrail', 'process', 'escalation']
+export const BLOCK_TYPES: BlockType[] = ['identity', 'knowledge', 'guardrail', 'process', 'output_format']
 export const BLOCK_TYPE_COLORS: Record<BlockType, string> = {
-  identity: 'violet', knowledge: 'blue', guardrail: 'red', process: 'orange', escalation: 'yellow',
+  identity: 'violet', knowledge: 'blue', guardrail: 'red', process: 'orange', output_format: 'green',
 }
 export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
-  identity: 'Identity', knowledge: 'Knowledge', guardrail: 'Guardrail', process: 'Process', escalation: 'Escalation',
+  identity: 'Identity', knowledge: 'Knowledge', guardrail: 'Guardrail', process: 'Process', output_format: 'Output Format',
 }
 export const BLOCK_TYPE_COMPILE_ORDER: Record<BlockType, number> = {
-  guardrail: 1, identity: 2, process: 3, knowledge: 4, escalation: 5,
+  identity: 1, knowledge: 2, guardrail: 3, process: 4, output_format: 5,
 }
 export const ORDERED_BLOCK_TYPES: BlockType[] =
   [...BLOCK_TYPES].sort((a, b) => BLOCK_TYPE_COMPILE_ORDER[a] - BLOCK_TYPE_COMPILE_ORDER[b])
