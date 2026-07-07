@@ -289,9 +289,11 @@ export function BlocksTable({
   async function persistEdit({
     body,
     order,
+    type,
   }: {
     body: string
     order: number | null
+    type: string | null
   }): Promise<void> {
     if (!editingId) return
 
@@ -339,12 +341,12 @@ export function BlocksTable({
     // "invalid, skip"). To avoid local-state desync, we only flip the
     // local order when we actually sent the change.
     const willSendOrder = orderChanged && order !== null
-    const updates: { body: string; order?: number } = { body }
-    if (willSendOrder) {
-      updates.order = order
-    }
+    const typeChanged = type !== null && type !== current.type
+    const updates: { body: string; order?: number; type?: string } = { body }
+    if (willSendOrder) updates.order = order
+    if (typeChanged) updates.type = type
 
-    console.log('[BlocksTable] persistEdit PATCH dispatch:', { id: editingId, willSendOrder })
+    console.log('[BlocksTable] persistEdit PATCH dispatch:', { id: editingId, willSendOrder, typeChanged })
     const ok = await patchBlock(editingId, updates)
     if (!ok) {
       console.error('[BlocksTable] persistEdit PATCH failed:', { id: editingId })
@@ -354,19 +356,19 @@ export function BlocksTable({
     setItems(prev =>
       prev.map(b =>
         b.id === editingId
-          ? { ...b, body, order: willSendOrder ? order : b.order }
+          ? { ...b, body, order: willSendOrder ? order : b.order, type: typeChanged ? type! : b.type }
           : b,
       ),
     )
     setEditingId(null)
   }
 
-  async function handleFormSave({ body, order }: { body: string; order: number | null }) {
-    await persistEdit({ body, order })
+  async function handleFormSave({ body, order, type }: { body: string; order: number | null; type: string | null }) {
+    await persistEdit({ body, order, type })
   }
 
-  async function handleFormSaveAnyway({ body, order }: { body: string; order: number | null }) {
-    await persistEdit({ body, order })
+  async function handleFormSaveAnyway({ body, order, type }: { body: string; order: number | null; type: string | null }) {
+    await persistEdit({ body, order, type })
   }
 
   async function handleConfirmDelete() {
@@ -654,6 +656,7 @@ export function BlocksTable({
               id: editingBlock.id,
               title: editingBlock.title,
               body: editingBlock.body,
+              type: editingBlock.type,
               order: editingBlock.order,
             }}
             onSave={handleFormSave}

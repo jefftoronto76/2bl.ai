@@ -24,6 +24,7 @@ export interface BlockUpdate {
   status?: 'active' | 'disabled' | 'deleted'
   title?: string
   body?: string
+  type?: string
   active?: boolean
   order?: number
 }

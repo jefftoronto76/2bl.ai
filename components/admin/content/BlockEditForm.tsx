@@ -33,6 +33,7 @@ export interface NewBlockDraft {
 export interface EditBlockDraft {
   body: string
   order: number | null
+  type: BlockType | null
 }
 
 type EditModeProps = {
@@ -106,7 +107,9 @@ export function BlockEditForm(props: BlockEditFormProps) {
   // 'new' mode local state — unused in edit mode but always declared
   // for hook order stability.
   const [title, setTitle] = useState('')
-  const [type, setType] = useState<BlockType | ''>('')
+  const [type, setType] = useState<BlockType | ''>(
+    !isNew ? ((props as EditModeProps).block.type as BlockType) ?? '' : '',
+  )
   const [topicId, setTopicId] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
@@ -172,12 +175,14 @@ export function BlockEditForm(props: BlockEditFormProps) {
           await (props as EditModeProps).onSave({
             body,
             order: parseOrderInput(order),
+            type: type || null,
           })
         },
         onSaveAnyway: async ({ body }: { body: string }) => {
           await (props as EditModeProps).onSaveAnyway({
             body,
             order: parseOrderInput(order),
+            type: type || null,
           })
         },
       }
@@ -299,6 +304,16 @@ export function BlockEditForm(props: BlockEditFormProps) {
           }}
           size="sm"
           disabled={busy}
+        />
+      )}
+      {!isNew && (
+        <Select
+          label="Type"
+          data={TYPE_SELECT_DATA}
+          value={type || null}
+          onChange={handleTypeChange}
+          disabled={busy}
+          clearable
         />
       )}
       <Textarea

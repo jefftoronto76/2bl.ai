@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getAuthContext } from '@/services/auth'
 import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
+import { BLOCK_TYPES } from '@/services/prompt/block-types'
 import { logEvent, AuditAction } from '@/services/audit'
 
 const VALID_STATUSES = ['active', 'disabled', 'deleted'] as const
@@ -20,7 +21,7 @@ export async function PATCH(
 
   const { id } = await params
 
-  let body: { status?: string; title?: string; body?: string; order?: number }
+  let body: { status?: string; title?: string; body?: string; order?: number; type?: string }
   try {
     body = await req.json()
   } catch {
@@ -57,6 +58,13 @@ export async function PATCH(
       return Response.json({ error: 'Invalid order value' }, { status: 400 })
     }
     updates.order = body.order
+  }
+
+  if (body.type !== undefined) {
+    if (typeof body.type !== 'string' || !(BLOCK_TYPES as readonly string[]).includes(body.type)) {
+      return Response.json({ error: 'Invalid block type' }, { status: 400 })
+    }
+    updates.type = body.type
   }
 
   if (Object.keys(updates).length === 0) {
