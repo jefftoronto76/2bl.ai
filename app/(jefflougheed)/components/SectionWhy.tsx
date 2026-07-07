@@ -60,6 +60,14 @@ const PRINCIPLES: Record<Mode, ModeCard[]> = {
   ],
 }
 
+/** Operator-mode coda — Jeff's own point of view (no quote marks). */
+const POV = {
+  quote:
+    'Most of my career has been spent close to ownership. It shapes how I lead, build, and make decisions.',
+  who: 'Jeff Lougheed',
+  role: 'Operator & Coach',
+}
+
 const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
 
 const MODE_LABELS: [Mode, string][] = [
@@ -193,6 +201,43 @@ function CalloutFigure({ callout }: { callout: CalloutData }) {
   )
 }
 
+function MyPovFigure() {
+  const initials = POV.who
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('')
+  return (
+    <figure className="m-0 max-w-[64ch] [animation:jlRise_0.45s_cubic-bezier(0.2,0.7,0.2,1)_both]">
+      <div className="flex items-center gap-4 mb-[18px]">
+        <span className="font-mono text-[11px] tracking-[0.22em] uppercase text-[color:var(--color-text-dim)]">
+          My POV
+        </span>
+        <span
+          aria-hidden
+          className="flex-1 h-px max-w-[160px] bg-[color:var(--color-border)]"
+        />
+      </div>
+      <blockquote className="m-0 font-display italic text-[clamp(18px,1.7vw,21px)] leading-[1.5] text-[color:var(--color-text-primary)] text-pretty">
+        {POV.quote}
+      </blockquote>
+      <figcaption className="mt-4 flex items-center gap-3">
+        <span
+          aria-hidden
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)]"
+        >
+          {initials}
+        </span>
+        <span className="flex flex-col gap-0.5 font-mono text-[11px] tracking-[0.1em] uppercase text-[color:var(--color-text-dim)]">
+          <span className="text-[color:var(--color-text-muted)]">{POV.who}</span>
+          <span>{POV.role}</span>
+        </span>
+      </figcaption>
+    </figure>
+  )
+}
+
 function PracticeAreas() {
   return (
     <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Practice areas">
@@ -261,13 +306,7 @@ export function SectionWhy() {
               />
             )
           ) : (
-            <p className="font-display italic font-normal text-[clamp(18px,1.8vw,22px)] leading-[1.55] text-[color:var(--color-text-muted)] m-0 max-w-[64ch] text-pretty">
-              Most of my career has been spent{' '}
-              <span className="mark-highlight--display font-display">
-                close to ownership
-              </span>
-              . It shapes how I lead, build, and make decisions.
-            </p>
+            <MyPovFigure />
           )}
           <PracticeAreas />
         </div>
