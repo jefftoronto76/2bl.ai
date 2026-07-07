@@ -11,6 +11,8 @@ import { BlockEditForm, type NewBlockDraft, type Topic } from './BlockEditForm'
 
 export interface NewBlockButtonProps {
   topics: Topic[]
+  activeSetId: string | null
+  activeSetLabel: string | null
 }
 
 /**
@@ -25,7 +27,7 @@ export interface NewBlockButtonProps {
  * Topics arrive pre-fetched from the server component (page.tsx) to
  * avoid a network round-trip on every drawer open.
  */
-export function NewBlockButton({ topics }: NewBlockButtonProps) {
+export function NewBlockButton({ topics, activeSetId, activeSetLabel }: NewBlockButtonProps) {
   const router = useRouter()
   const [opened, setOpened] = useState(false)
 
@@ -63,6 +65,7 @@ export function NewBlockButton({ topics }: NewBlockButtonProps) {
         topic_id: draft.topic_id,
         title: draft.title,
         body: draft.body,
+        ...(activeSetId ? { prompt_set_id: activeSetId } : {}),
       }),
     })
 
@@ -89,7 +92,7 @@ export function NewBlockButton({ topics }: NewBlockButtonProps) {
       >
         New block
       </Button>
-      <EditContainer opened={opened} onClose={handleClose} title="New block">
+      <EditContainer opened={opened} onClose={handleClose} title={activeSetLabel ? `New block — ${activeSetLabel}` : 'New block'}>
         {opened && (
           <BlockEditForm
             mode="new"

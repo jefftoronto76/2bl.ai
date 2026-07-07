@@ -128,7 +128,11 @@ export default async function BlocksPage({
         </Stack>
 
         <Flex direction={{ base: 'column', sm: 'row' }} gap="sm" align="flex-start">
-          <NewBlockButton topics={topics} />
+          <NewBlockButton
+              topics={topics}
+              activeSetId={activeSet?.id ?? null}
+              activeSetLabel={activeSet?.label ?? null}
+            />
           <PublishButton />
         </Flex>
       </Flex>
