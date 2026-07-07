@@ -87,7 +87,7 @@ export interface Session {
 }
 
 /* ── prompt blocks ──────────────────────────────────────────────────────── */
-export type BlockType = 'identity' | 'knowledge' | 'guardrail' | 'process' | 'escalation'
+export type BlockType = 'identity' | 'knowledge' | 'guardrail' | 'process' | 'output_format' | 'escalation'
 export type BlockStatus = 'active' | 'disabled'
 
 export interface Block {

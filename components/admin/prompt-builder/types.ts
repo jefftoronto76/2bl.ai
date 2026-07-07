@@ -8,6 +8,7 @@ export type BlockType =
   | 'knowledge'
   | 'guardrail'
   | 'process'
+  | 'output_format'
   | 'escalation'
 
 export interface Topic {
@@ -89,6 +90,7 @@ export const TYPES: { value: BlockType; label: string }[] = [
   { value: 'knowledge', label: 'Knowledge' },
   { value: 'guardrail', label: 'Guardrail' },
   { value: 'process', label: 'Process' },
+  { value: 'output_format', label: 'Output Format' },
   { value: 'escalation', label: 'Escalation' },
 ]
 

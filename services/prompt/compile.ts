@@ -13,9 +13,8 @@ import { tokensFor } from '@/services/prompt/tokenize'
 // Fixed compile sequence. Within each type bucket: blocks with `order > 0`
 // come first ascending by order; blocks with `order` = 0 or null come last,
 // ordered by title ascending.
-// Section order: identity → knowledge → guardrail → process → escalation.
-// Note: no `output_format` type exists yet; `escalation` occupies position 5.
-const COMPILE_ORDER = ['identity', 'knowledge', 'guardrail', 'process', 'escalation'] as const
+// Section order: identity → knowledge → guardrail → process → output_format → escalation.
+const COMPILE_ORDER = ['identity', 'knowledge', 'guardrail', 'process', 'output_format', 'escalation'] as const
 type CompileType = typeof COMPILE_ORDER[number]
 
 interface BlockForCompile {

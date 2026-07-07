@@ -30,6 +30,7 @@ export function TokenDonut({ blocks, limit = TOKEN_LIMIT, size = 200 }: TokenDon
     knowledge: 0,
     guardrail: 0,
     process: 0,
+    output_format: 0,
     escalation: 0,
   }
   for (const b of blocks) byType[b.type] += tokensFor(b.body ?? '')
