@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guardrail Counter — Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+
+  :root {
+    --cream: #FAF6EE;
+    --ink: #23201B;
+    --muted: #6B6459;
+    --terra: #C8542E;
+    --line: #E4DCCD;
+    --code-bg: #F3EEE3;
+    --add: #2d6a4f;
+  }
+
+  doc-page {
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.62;
+    background: #fff;
+  }
+
+  h1, h2, h3 { font-family: 'Newsreader', Georgia, serif; font-weight: 600; color: var(--ink); line-height: 1.2; }
+  h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 34px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; font-family: 'Manrope', sans-serif; font-weight: 700; margin: 20px 0 6px; }
+
+  .kicker { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--terra); margin: 0 0 14px; }
+  .lede { font-size: 16.5px; color: var(--muted); margin: 0 0 6px; }
+
+  p { margin: 0 0 12px; }
+  a { color: var(--terra); }
+  a:hover { color: #a5401f; }
+  strong { font-weight: 700; }
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin: 0 0 5px; }
+
+  code { font-family: 'DM Mono', monospace; font-size: 12.5px; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  pre { font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.5; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 0 0 6px; }
+  pre .add { color: var(--add); }
+  pre .cmt { color: var(--muted); }
+  figcaption { font-family: 'DM Mono', monospace; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 6px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: 'DM Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1.5px solid var(--ink); }
+  td code { background: none; padding: 0; }
+
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 20px; font-size: 13.5px; margin: 0 0 8px; }
+  .meta dt { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .meta dd { margin: 0; }
+
+  .callout { background: var(--code-bg); border-left: 3px solid var(--terra); border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 14px 0; font-size: 14px; }
+  .callout p:last-child { margin: 0; }
+
+  .check { list-style: none; padding-left: 0; }
+  .check li { padding-left: 26px; position: relative; }
+  .check li::before { content: '☐'; position: absolute; left: 0; font-size: 15px; color: var(--terra); }
+
+  .foot { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+
+  /* ── Guardrail counter — visual mock of the Mantine pill ── */
+  .statecard { display: grid; grid-template-columns: 1fr; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 4px; }
+  .staterow { display: grid; grid-template-columns: 118px 1fr; align-items: center; gap: 18px; padding: 15px 18px; }
+  .staterow + .staterow { border-top: 1px solid var(--line); }
+  .staterow .cond { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+  .staterow .cond b { display: block; color: var(--ink); font-size: 13px; letter-spacing: 0.02em; margin-bottom: 2px; }
+  .stateright { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .gr-pill { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px 0 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+  .gr-pill .ico { width: 15px; height: 15px; flex: 0 0 auto; }
+  .gr-pill .num { font-family: 'DM Mono', monospace; font-weight: 500; }
+  .gr-pill.neutral { background: #F1F3F5; color: #495057; }
+  .gr-pill.neutral .ico { color: #868E96; }
+  .gr-pill.warn { background: #FFF3BF; color: #A5730E; }
+  .gr-pill.warn .ico { color: #C08A0E; }
+  .gr-pill.err { background: #FFE3E3; color: #C92A2A; }
+  .gr-pill.err .ico { color: #E03131; }
+  .gr-hint { font-size: 12.5px; color: var(--muted); }
+  .gr-hint.err { color: #C92A2A; }
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#C8542E">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="360" y="150" width="480" height="500" rx="12" fill="#FAF6EE" />
+    <path d="M600 250 l90 34 v70 c0 62 -42 100 -90 120 c-48 -20 -90 -58 -90 -120 v-70 z" fill="#FFE3E3" stroke="#C92A2A" stroke-width="10" />
+    <text x="600" y="470" text-anchor="middle" font-family="monospace" font-size="60" fill="#C92A2A">6/5</text>
+  </svg>
+</template>
+<doc-page size="letter" margin="0.85in">
+
+  <div slot="footer" class="foot">
+    <span>Second Brain Labs · Admin</span>
+    <span>Blocks — Guardrail counter</span>
+  </div>
+
+  <p class="kicker">Design Spec · July 2026</p>
+  <h1>Guardrail counter — Blocks</h1>
+  <p class="lede">A compact, always-visible meter that tells an admin how many active guardrail blocks the current prompt set has, against a best-practice ceiling of five.</p>
+
+  <dl class="meta">
+    <dt>Screen</dt><dd>Prompt Studio · Blocks (<code>app/admin/prompt-studio/blocks</code>)</dd>
+    <dt>Stack</dt><dd>Mantine <code>@mantine/core</code> 7.17.8 · <code>buildAdminTheme</code> tokens</dd>
+    <dt>Scope</dt><dd>One new indicator in the prompt-set summary. No new endpoints, filters, or data model.</dd>
+    <dt>Status</dt><dd>Spec + component design. <strong>Not yet implemented</strong> — this document is the port target.</dd>
+  </dl>
+
+  <h2>Why</h2>
+  <p>Guardrail blocks compound. Past five, they start to contradict each other and dilute the ones that matter — reliability drops rather than climbs. The Blocks screen already shows a token donut and per-type filter counts, but nothing tells an admin they've crossed the guardrail best-practice line. This surfaces that one number where they're already reading counts, and nudges them back under the line before they publish.</p>
+
+  <div class="callout">
+    <p><strong>Best-practice ceiling is 5.</strong> Five is the soft maximum, not a hard block — the admin can still save and publish past it. The counter informs and nudges; it never prevents.</p>
+  </div>
+
+  <h2>The rule</h2>
+  <p>Count = active guardrail blocks in the <em>current</em> prompt set. Disabled / archived guardrails do not count. The count drives one of three tones:</p>
+  <table>
+    <thead><tr><th>Count</th><th>Tone</th><th>Reads as</th><th>Message</th></tr></thead>
+    <tbody>
+      <tr><td>0–4</td><td>Neutral (gray)</td><td>Within best practice</td><td><code>Guardrails · 3 / 5</code></td></tr>
+      <tr><td>5</td><td>Warning (yellow)</td><td>At the ceiling</td><td><code>Guardrails · 5 / 5</code> + “At the recommended limit”</td></tr>
+      <tr><td>6+</td><td>Error (red)</td><td>Over best practice</td><td><code>Guardrails · 6 / 5</code> + “Reduce to improve reliability”</td></tr>
+    </tbody>
+  </table>
+  <p><em>Current sample data:</em> “Sage — Production” has one active guardrail, so the live default state is a neutral <code>1 / 5</code>.</p>
+
+  <h2>Component design</h2>
+  <p>A single self-contained pill — <strong>shield icon · “Guardrails” · <span style="font-family:'DM Mono',monospace">N / 5</span></strong> — built on the Mantine <code>Badge</code> (<code>variant="light"</code>), the same primitive the type badges already use. Tone is the badge <code>color</code> prop (<code>gray</code> → <code>yellow</code> → <code>red</code>); nothing else about the shape changes. At the warning and error tones a short helper line sits <em>beside</em> the pill (never inside it) so the pill itself stays a fixed, scannable size.</p>
+
+  <div class="statecard">
+    <div class="staterow">
+      <div class="cond"><b>0–4</b>neutral</div>
+      <div class="stateright">
+        <span class="gr-pill neutral">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7-7 9-4-2-7-4.5-7-9V6z"/></svg>
+          Guardrails <span class="num">3 / 5</span>
+        </span>
+      </div>
+    </div>
+    <div class="staterow">
+      <div class="cond"><b>5</b>warning</div>
+      <div class="stateright">
+        <span class="gr-pill warn">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7-7 9-4-2-7-4.5-7-9V6z"/><path d="M12 9v3"/><path d="M12 15.5v.2"/></svg>
+          Guardrails <span class="num">5 / 5</span>
+        </span>
+        <span class="gr-hint">At the recommended limit</span>
+      </div>
+    </div>
+    <div class="staterow">
+      <div class="cond"><b>6+</b>error</div>
+      <div class="stateright">
+        <span class="gr-pill err">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          Guardrails <span class="num">6 / 5</span>
+        </span>
+        <span class="gr-hint err">Reduce to improve reliability</span>
+      </div>
+    </div>
+  </div>
+  <figcaption>Three tones on the shared Mantine <code>Badge</code>. Icon: <code>IconShieldHalf</code> for 0–5, <code>IconAlertTriangle</code> for 6+. Helper text sits outside the pill.</figcaption>
+
+  <h3>Anatomy</h3>
+  <ul>
+    <li><strong>Icon</strong> — a shield reads “guardrail” at a glance; it flips to an alert triangle only in the over state, so red + triangle together carry the strongest signal.</li>
+    <li><strong>Label + count</strong> — <code>Guardrails</code> in body weight, the <code>N / 5</code> in <code>DM Mono</code> to match every other count on the page (token totals, filter counts, <code>filtered / total</code>).</li>
+    <li><strong>Helper line</strong> — appears only at 5 and 6+, one short clause, dimmed at warning and red at error.</li>
+    <li><strong>No new colors</strong> — gray / yellow / red are Mantine theme scales already in the admin palette; the red matches the donut’s existing over-limit red (<code>--mantine-color-red-7</code>).</li>
+  </ul>
+
+  <h2>Placement</h2>
+  <p>The counter lives in the prompt-set summary at the top of the page, so it is visible without scrolling in both states of that summary:</p>
+  <ul>
+    <li><strong>Summary expanded</strong> — the pill sits in the left summary card’s stat area, on its own row directly beneath “Active blocks”, reading identity → counts → guardrail health.</li>
+    <li><strong>Summary collapsed</strong> — the pill joins the one-line summary bar next to “<strong>N</strong> active blocks” and “<strong>N</strong> tokens”, so it never disappears when the summary is hidden.</li>
+  </ul>
+  <p>It is a status indicator, not a filter. Clicking it does nothing by default; a future enhancement (below) could make it filter the table to guardrails.</p>
+
+  <h2>Data logic</h2>
+  <p>Derived from state already in the screen — no new fetch. The count is active guardrails scoped to the set in view:</p>
+  <pre><span class="cmt">// blocks-screen.js — inside Blocks(), alongside the existing counts.</span>
+<span class="cmt">// inSet = items already scoped to the current prompt set.</span>
+<span class="add">const GUARDRAIL_LIMIT = 5</span>
+<span class="add">const guardrailCount = inSet.filter(</span>
+<span class="add">  (b) => b.type === 'guardrail' &amp;&amp; b.status === 'active'</span>
+<span class="add">).length</span>
+<span class="add">const guardrailTone =</span>
+<span class="add">  guardrailCount &gt; GUARDRAIL_LIMIT ? 'error'</span>
+<span class="add">  : guardrailCount === GUARDRAIL_LIMIT ? 'warning'</span>
+<span class="add">  : 'neutral'</span></pre>
+  <figcaption>Recomputes on every render — so toggling a guardrail’s Active switch, deleting one, or switching prompt sets updates the pill live.</figcaption>
+
+  <div class="callout">
+    <p><strong>Production note:</strong> the ceiling of <code>5</code> is a UI constant here. If it should be configurable per tenant later, resolve it from prompt-set settings server-side rather than hard-coding — but ship the constant first.</p>
+  </div>
+
+  <h2>Component sketch (Mantine)</h2>
+  <p>A small presentational component; tone → <code>{ color, Icon, hint }</code>. Illustrative, not final code:</p>
+  <pre>const GR = {
+  neutral: { color: 'gray',   Icon: IconShieldHalf,    hint: null },
+  warning: { color: 'yellow', Icon: IconShieldHalf,    hint: 'At the recommended limit' },
+  error:   { color: 'red',    Icon: IconAlertTriangle, hint: 'Reduce to improve reliability' },
+}
+
+function GuardrailMeter({ count, limit = 5, tone }) {
+  const { color, Icon, hint } = GR[tone]
+  return html`
+    &lt;${M.Group} gap="xs" align="center" wrap="nowrap"&gt;
+      &lt;${M.Badge} color=${color} variant="light" radius="xl" size="lg"
+        leftSection=${html`&lt;${Icon} size=${14} /&gt;`}&gt;
+        Guardrails ${count} / ${limit}
+      &lt;//&gt;
+      ${hint &amp;&amp; html`&lt;${M.Text} size="xs" c=${tone === 'error' ? 'red.7' : 'dimmed'}&gt;${hint}&lt;//&gt;`}
+    &lt;//&gt;`
+}</pre>
+  <figcaption>Uses only <code>Badge</code>, <code>Group</code>, <code>Text</code> + Tabler icons — all already imported in <code>harness.js</code>.</figcaption>
+
+  <h2>Files to touch (at implementation)</h2>
+  <table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td><code>admin-mantine/blocks-screen.js</code></td><td>Add <code>GUARDRAIL_LIMIT</code> + derived count/tone; add <code>GuardrailMeter</code>; render it in the <code>Overview</code> stat area and in the collapsed summary bar</td></tr>
+      <tr><td><code>admin-mantine/Combined Admin.html</code></td><td>No change if Blocks stays sourced from <code>blocks-screen.js</code> (it does) — verify only</td></tr>
+      <tr><td><code>admin-mantine/Blocks.html</code></td><td>Standalone preview — mirror the same meter if it renders its own Overview</td></tr>
+    </tbody>
+  </table>
+  <p>Production port: apply the equivalent to the Blocks <code>*-page.tsx</code> in the handoff package, resolving the limit as noted above.</p>
+
+  <h2>QA checklist</h2>
+  <ul class="check">
+    <li>Pill is visible at the top of Blocks without scrolling, in both expanded and collapsed summary states.</li>
+    <li>Count reflects only <strong>active</strong> guardrails — toggling a guardrail’s switch off decrements it immediately.</li>
+    <li>Disabled and non-guardrail blocks never affect the number.</li>
+    <li>0–4 renders gray, 5 renders yellow with “At the recommended limit”, 6+ renders red with the reduce message.</li>
+    <li>Switching prompt sets recomputes the count for the newly selected set.</li>
+    <li>Count digits use <code>DM Mono</code>, matching the page’s other counts.</li>
+    <li>Contrast passes at all three tones; the pill doesn’t wrap or resize between states.</li>
+  </ul>
+
+  <h2>Out of scope / follow-ups</h2>
+  <ul>
+    <li><strong>Click-to-filter</strong> — tapping the pill could filter the table to guardrails. Propose separately.</li>
+    <li><strong>Per-tenant limit</strong> — configurable ceiling from prompt-set settings; ship the constant first.</li>
+    <li><strong>Publish-time nudge</strong> — an optional confirmation when publishing a set that is over the limit.</li>
+  </ul>
+
+</doc-page>
+<script src="doc-page.js"></script>
+</body>
+</html>

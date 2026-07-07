@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guardrail Counter — Diff Handover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+
+  :root {
+    --cream: #FAF6EE;
+    --ink: #23201B;
+    --muted: #6B6459;
+    --terra: #C8542E;
+    --line: #E4DCCD;
+    --code-bg: #F3EEE3;
+    --add: #2d6a4f;
+    --del: #b0341f;
+  }
+
+  doc-page {
+    color: var(--ink);
+    font-family: 'Manrope', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.62;
+    background: #fff;
+  }
+
+  h1, h2, h3 { font-family: 'Newsreader', Georgia, serif; font-weight: 600; color: var(--ink); line-height: 1.2; }
+  h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 34px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; font-family: 'DM Mono', monospace; font-weight: 500; letter-spacing: 0.02em; margin: 22px 0 6px; color: var(--ink); }
+
+  .kicker { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--terra); margin: 0 0 14px; }
+  .lede { font-size: 16.5px; color: var(--muted); margin: 0 0 6px; }
+
+  p { margin: 0 0 12px; }
+  a { color: var(--terra); }
+  a:hover { color: #a5401f; }
+  strong { font-weight: 700; }
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin: 0 0 5px; }
+
+  code { font-family: 'DM Mono', monospace; font-size: 12.5px; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  figcaption { font-family: 'DM Mono', monospace; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 6px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: 'DM Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1.5px solid var(--ink); }
+  td code { background: none; padding: 0; }
+
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 20px; font-size: 13.5px; margin: 0 0 8px; }
+  .meta dt { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .meta dd { margin: 0; }
+
+  .callout { background: var(--code-bg); border-left: 3px solid var(--terra); border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 14px 0; font-size: 14px; }
+  .callout p:last-child { margin: 0; }
+
+  .check { list-style: none; padding-left: 0; }
+  .check li { padding-left: 26px; position: relative; }
+  .check li::before { content: '☐'; position: absolute; left: 0; font-size: 15px; color: var(--terra); }
+
+  .foot { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+
+  /* ── Unified-diff blocks ── */
+  .diff { font-family: 'DM Mono', monospace; font-size: 11.5px; line-height: 1.55; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 6px 0 4px; background: #fff; }
+  .diff .fname { background: #2b2823; color: #EFE7D8; padding: 7px 12px; font-size: 11px; letter-spacing: 0.03em; }
+  .diff pre { margin: 0; padding: 10px 0; overflow-x: auto; background: #FBF8F1; }
+  .diff .ln { display: block; padding: 0 12px; white-space: pre; }
+  .diff .hunk { color: var(--muted); background: #F0EADD; }
+  .diff .add { background: rgba(45,106,79,0.10); color: #1f5138; }
+  .diff .del { background: rgba(176,52,31,0.09); color: #8f2a19; }
+  .diff .ctx { color: #6B6459; }
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#2b2823">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="330" y="180" width="540" height="440" rx="14" fill="#FBF8F1" />
+    <rect x="370" y="250" width="330" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+    <rect x="370" y="300" width="420" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+    <rect x="370" y="360" width="260" height="18" rx="4" fill="#8f2a19" opacity="0.8" />
+    <rect x="370" y="410" width="380" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+    <rect x="370" y="470" width="300" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+  </svg>
+</template>
+<doc-page size="letter" margin="0.85in">
+
+  <div slot="footer" class="foot">
+    <span>Second Brain Labs · Admin</span>
+    <span>Blocks — Guardrail counter · diff</span>
+  </div>
+
+  <p class="kicker">Diff Handover · July 2026</p>
+  <h1>Guardrail counter — implementation diff</h1>
+  <p class="lede">A surgical, additive change on one file: a colour-coded meter for active guardrail blocks against a best-practice ceiling of five, gated behind a Tweak.</p>
+
+  <dl class="meta">
+    <dt>Files</dt><dd><strong>1</strong> — <code>admin-mantine/blocks-screen.js</code></dd>
+    <dt>Shape</dt><dd>~30 lines added, 4 signature/prop lines modified, 0 removed</dd>
+    <dt>Surfaces</dt><dd>Blocks screen everywhere it renders — <code>Combined Admin July 2026.html</code>, <code>admin-mantine/Combined Admin.html</code>, <code>admin-mantine/Blocks.html</code> (shared source)</dd>
+    <dt>Risk</dt><dd>Low — new component + one boolean Tweak (default on); no data model, endpoints, or existing logic touched</dd>
+  </dl>
+
+  <h2>What changed, in one breath</h2>
+  <p>Added a <code>GuardrailMeter</code> pill built on the existing Mantine <code>Badge</code>. It counts <strong>active</strong> guardrail blocks in the current prompt set and recolours by tone: <strong>gray</strong> at 0–4, <strong>yellow</strong> at 5, <strong>red</strong> at 6+ (icon flips to an alert triangle, plus a “reduce to improve reliability” hint). It renders in the summary card and in the collapsed summary bar, and is toggled by a new “Guardrail counter” switch in the Blocks Tweaks panel (on by default). The count recomputes on every render, so it reacts live to enabling/disabling, deleting, or switching sets.</p>
+
+  <h2>The diff</h2>
+  <p>Context lines are dimmed; <span style="color:#1f5138">+ additions</span> and <span style="color:#8f2a19">− edits</span> are highlighted.</p>
+
+  <h3>1 · New constants + component (after <code>TypeBadge</code>)</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js</div>
+<pre><span class="ln ctx"> const TypeBadge = ({ type }) =&gt; html`&lt;${TintBadge} tint=${blockTint(type)}&gt;…&lt;//&gt;`</span>
+<span class="ln add">+</span>
+<span class="ln add">+ // ── Guardrail counter — active guardrails vs. best-practice ceiling (5) ──</span>
+<span class="ln add">+ const GUARDRAIL_LIMIT = 5</span>
+<span class="ln add">+ const guardrailToneFor = (n) =&gt;</span>
+<span class="ln add">+   (n &gt; GUARDRAIL_LIMIT ? 'error' : n === GUARDRAIL_LIMIT ? 'warning' : 'neutral')</span>
+<span class="ln add">+ const GR_META = {</span>
+<span class="ln add">+   neutral: { color: 'gray',   hint: null },</span>
+<span class="ln add">+   warning: { color: 'yellow', hint: 'At the recommended limit' },</span>
+<span class="ln add">+   error:   { color: 'red',    hint: 'Reduce to improve reliability' },</span>
+<span class="ln add">+ }</span>
+<span class="ln add">+ function GuardrailMeter({ count, showHint = true }) {</span>
+<span class="ln add">+   const tone = guardrailToneFor(count)</span>
+<span class="ln add">+   const { color, hint } = GR_META[tone]</span>
+<span class="ln add">+   const Icon = tone === 'error' ? Ic.IconAlertTriangle : Ic.IconShieldHalf</span>
+<span class="ln add">+   return html`</span>
+<span class="ln add">+     &lt;${M.Group} gap="xs" align="center" wrap="nowrap"&gt;</span>
+<span class="ln add">+       &lt;${M.Badge} color=${color} variant="light" radius="xl" size="lg"</span>
+<span class="ln add">+         leftSection=${html`&lt;${Icon} size=${13} style=${{ display: 'block' }} /&gt;`}</span>
+<span class="ln add">+         styles=${{ root: { textTransform: 'none', fontWeight: 600 } }}&gt;</span>
+<span class="ln add">+         Guardrails &lt;span style=${{ fontFamily: '…monospace', fontWeight: 500 }}&gt;${count} / ${GUARDRAIL_LIMIT}&lt;/span&gt;</span>
+<span class="ln add">+       &lt;//&gt;</span>
+<span class="ln add">+       ${showHint &amp;&amp; hint &amp;&amp; html`&lt;${M.Text} size="xs" c=${tone === 'error' ? 'red.7' : 'dimmed'}&gt;${hint}&lt;//&gt;`}</span>
+<span class="ln add">+     &lt;//&gt;`</span>
+<span class="ln add">+ }</span></pre>
+  </div>
+
+  <h3>2 · <code>Overview</code> — prop + derived count</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js · function Overview</div>
+<pre><span class="ln del">- function Overview({ blocks, set, onPublish, notify }) {</span>
+<span class="ln add">+ function Overview({ blocks, set, onPublish, notify, showGuardrail }) {</span>
+<span class="ln add">+   const guardrailCount = blocks.filter((b) =&gt; b.type === 'guardrail').length</span>
+<span class="ln ctx">   const byType = { identity: 0, knowledge: 0, guardrail: 0, process: 0, escalation: 0 }</span></pre>
+  </div>
+
+  <h3>3 · Render in the summary card (between stats and buttons)</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js · Overview return</div>
+<pre><span class="ln ctx">             &lt;${M.Text} c="dimmed" size="sm"&gt;Last updated&lt;//&gt;…</span>
+<span class="ln ctx">           &lt;//&gt;</span>
+<span class="ln add">+          ${showGuardrail &amp;&amp; html`&lt;${GuardrailMeter} count=${guardrailCount} /&gt;`}</span>
+<span class="ln ctx">           &lt;${M.Group} gap="sm"&gt;</span></pre>
+  </div>
+
+  <h3>4 · Render in the collapsed summary bar</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js · collapsed summary</div>
+<pre><span class="ln ctx">                     &lt;${M.Text} size="sm" c="dimmed"&gt;&lt;b&gt;${summaryTokens…}&lt;/b&gt; tokens&lt;//&gt;</span>
+<span class="ln add">+                    ${showGuardrail &amp;&amp; html`&lt;${GuardrailMeter} count=${guardrailActiveCount} showHint=${false} /&gt;`}</span>
+<span class="ln ctx">                   &lt;//&gt;</span></pre>
+  </div>
+
+  <h3>5 · Blocks state + derived count</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js · function Blocks</div>
+<pre><span class="ln ctx">   const [startHidden, setStartHidden] = useState(false)</span>
+<span class="ln add">+  const [showGuardrail, setShowGuardrail] = useState(true)</span>
+<span class="ln ctx">   …</span>
+<span class="ln ctx">   const activeBlocks = inSet.filter((b) =&gt; b.status === 'active')</span>
+<span class="ln add">+  const guardrailActiveCount = activeBlocks.filter((b) =&gt; b.type === 'guardrail').length</span></pre>
+  </div>
+
+  <h3>6 · Wire the prop through + Tweak switch</h3>
+  <div class="diff">
+    <div class="fname">admin-mantine/blocks-screen.js · Overview call + TweaksPanel</div>
+<pre><span class="ln del">- …&lt;${Overview} blocks=${activeBlocks} set=${set} onPublish=${onPublish} notify=${notify} /&gt;…</span>
+<span class="ln add">+ …&lt;${Overview} … notify=${notify} showGuardrail=${showGuardrail} /&gt;…</span>
+<span class="ln ctx"> </span>
+<span class="ln del">- function TweaksPanel({ …, animate, setAnimate }) {</span>
+<span class="ln add">+ function TweaksPanel({ …, animate, setAnimate, showGuardrail, setShowGuardrail }) {</span>
+<span class="ln add">+            &lt;${M.Switch} size="sm" label="Guardrail counter"</span>
+<span class="ln add">+              checked=${showGuardrail} onChange=${(e) =&gt; setShowGuardrail(e.currentTarget.checked)} /&gt;</span>
+<span class="ln ctx">             &lt;${M.Switch} size="sm" label="Start summary hidden" … /&gt;</span>
+<span class="ln ctx"> </span>
+<span class="ln del">- &lt;${TweaksPanel} … setAnimate=${setAnimate} /&gt;</span>
+<span class="ln add">+ &lt;${TweaksPanel} … setAnimate=${setAnimate} showGuardrail=${showGuardrail} setShowGuardrail=${setShowGuardrail} /&gt;</span></pre>
+  </div>
+
+  <h2>Behaviour</h2>
+  <table>
+    <thead><tr><th>Active guardrails</th><th>Tone</th><th>Badge color</th><th>Icon</th><th>Hint (card only)</th></tr></thead>
+    <tbody>
+      <tr><td>0–4</td><td>Neutral</td><td><code>gray</code></td><td><code>IconShieldHalf</code></td><td>—</td></tr>
+      <tr><td>5</td><td>Warning</td><td><code>yellow</code></td><td><code>IconShieldHalf</code></td><td>At the recommended limit</td></tr>
+      <tr><td>6+</td><td>Error</td><td><code>red</code></td><td><code>IconAlertTriangle</code></td><td>Reduce to improve reliability</td></tr>
+    </tbody>
+  </table>
+  <p>The collapsed-bar instance passes <code>showHint=${false}</code> to stay compact; the card instance shows the hint. Count recomputes each render from live state.</p>
+
+  <div class="callout">
+    <p><strong>Data note:</strong> current fixtures top out at 1 active guardrail per set, so only the neutral tone shows on today’s sample data. The warning/error tones are wired and will trigger the moment a set crosses 5 — no code change needed to see them, only more guardrails.</p>
+  </div>
+
+  <h2>Verify</h2>
+  <ul class="check">
+    <li>Open Blocks → summary card shows <code>Guardrails 1 / 5</code> in gray.</li>
+    <li>Hide summary → the pill appears inline in the one-line bar (no hint).</li>
+    <li>Toggle a guardrail block’s Active switch → count changes immediately.</li>
+    <li>Switch prompt sets → count recomputes for the new set.</li>
+    <li>Tweaks → “Guardrail counter” off hides both instances; on restores them.</li>
+    <li>Digits render in DM Mono, matching other counts on the page.</li>
+  </ul>
+
+  <h2>Rollback</h2>
+  <p>Fully contained in <code>blocks-screen.js</code>. To remove: delete the <code>GuardrailMeter</code> block (hunk 1) and the six one-line insertions; revert the four modified signature/prop lines. No other file or fixture depends on it.</p>
+
+  <h2>Production port</h2>
+  <p>Apply the same shape to the Blocks <code>*-page.tsx</code> in the handoff package: a <code>&lt;GuardrailMeter&gt;</code> presentational component, tone from the same threshold map, count from active guardrails in the set. Ship the ceiling of <code>5</code> as a constant first; make it per-tenant configurable only if requested.</p>
+
+</doc-page>
+<script src="doc-page.js"></script>
+</body>
+</html>
