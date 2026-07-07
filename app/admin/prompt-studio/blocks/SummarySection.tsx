@@ -13,6 +13,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconChevronsDown, IconChevronsUp } from '@tabler/icons-react'
+import { GuardrailMeter } from '@/components/admin/content/GuardrailMeter'
 import styles from './BlocksLayout.module.css'
 
 const STORAGE_KEY = 'blocks.summaryHidden'
@@ -21,6 +22,7 @@ export interface SummaryStats {
   status: string | null   // e.g. "Live" / "Draft" — shown raw, like BlocksOverview
   count: number           // active block count
   tokens: number          // summed tokens across active blocks
+  guardrailCount: number  // active guardrail block count
 }
 
 export function SummarySection({
@@ -93,6 +95,7 @@ export function SummarySection({
               <b>{stats.tokens.toLocaleString()}</b> tokens
             </span>
           </span>
+          <GuardrailMeter count={stats.guardrailCount} showHint={false} />
           <span className={styles.recallShow}>
             <IconChevronsDown size={14} />
             Show summary

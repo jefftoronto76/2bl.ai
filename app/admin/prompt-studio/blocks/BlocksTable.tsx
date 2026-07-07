@@ -409,10 +409,12 @@ export function BlocksTable({
   // Summary recall stats — shown in the collapsed bar when the summary is hidden.
   // Active-only, matching BlocksOverview (the meter measures reality, not the view).
   const activeBlocks = items.filter(b => b.status === 'active')
+  const guardrailActiveCount = activeBlocks.filter(b => b.type === 'guardrail').length
   const summaryStats = {
     status: overview?.status ?? null,
     count: activeBlocks.length,
     tokens: activeBlocks.reduce((sum, b) => sum + tokensFor(b.body), 0),
+    guardrailCount: guardrailActiveCount,
   }
 
   // Facet counts — scoped to all items in the set (before type/status filtering).
