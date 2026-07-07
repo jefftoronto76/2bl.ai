@@ -266,7 +266,7 @@ function TrackChips({
               'font-body text-[13px] font-medium tracking-[0.01em] cursor-pointer',
               'transition-colors duration-150',
               on
-                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-bg'
+                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-[rgb(var(--color-bg))]'
                 : 'bg-surface border-[color:var(--color-border)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)]',
             ].join(' ')}
           >
@@ -417,7 +417,7 @@ function CTAButton({ href }: { href: string }) {
       className={[
         'mt-[18px] inline-flex items-center gap-2.5 rounded-full px-[18px] py-[11px]',
         'font-body text-[14px] font-semibold tracking-[0.01em] whitespace-nowrap',
-        'bg-accent text-bg transition-colors duration-150',
+        'bg-accent text-[rgb(var(--color-bg))] transition-colors duration-150',
         'hover:bg-[color:var(--color-accent-hover)]',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         !isLive && 'opacity-90 cursor-not-allowed',

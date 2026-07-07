@@ -96,7 +96,7 @@ function ModeToggle({
               'font-body text-[13px] font-medium tracking-[0.01em] cursor-pointer',
               'transition-colors duration-150',
               on
-                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-[color:var(--color-bg)]'
+                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-[rgb(var(--color-bg))]'
                 : 'bg-surface border-[color:var(--color-border)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)]',
             ].join(' ')}
           >
