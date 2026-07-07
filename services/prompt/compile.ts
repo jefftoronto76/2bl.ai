@@ -10,11 +10,12 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
 
-// Fixed compile sequence — mirrors the TYPE_LABELS ordinal order on the
-// Blocks page. Within each type bucket: blocks with `order > 0` come
-// first ascending by order; blocks with `order` = 0 or null come last,
+// Fixed compile sequence. Within each type bucket: blocks with `order > 0`
+// come first ascending by order; blocks with `order` = 0 or null come last,
 // ordered by title ascending.
-const COMPILE_ORDER = ['guardrail', 'identity', 'process', 'knowledge', 'escalation'] as const
+// Section order: identity → knowledge → guardrail → process → escalation.
+// Note: no `output_format` type exists yet; `escalation` occupies position 5.
+const COMPILE_ORDER = ['identity', 'knowledge', 'guardrail', 'process', 'escalation'] as const
 type CompileType = typeof COMPILE_ORDER[number]
 
 interface BlockForCompile {
