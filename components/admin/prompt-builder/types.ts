@@ -90,7 +90,6 @@ export const TYPES: { value: BlockType; label: string }[] = [
   { value: 'guardrail', label: 'Guardrail' },
   { value: 'process', label: 'Process' },
   { value: 'output_format', label: 'Output Format' },
-  { value: 'escalation', label: 'Escalation' },
 ]
 
 export const VALID_TYPES = new Set<string>(TYPES.map(t => t.value))
