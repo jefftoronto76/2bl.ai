@@ -92,11 +92,12 @@ export function NewBlockButton({ topics, activeSetId, activeSetLabel }: NewBlock
       >
         New block
       </Button>
-      <EditContainer opened={opened} onClose={handleClose} title={activeSetLabel ? `New block — ${activeSetLabel}` : 'New block'}>
+      <EditContainer opened={opened} onClose={handleClose} title="New block">
         {opened && (
           <BlockEditForm
             mode="new"
             topics={topics}
+            promptSetLabel={activeSetLabel ?? undefined}
             onSave={handleCreate}
             onSaveAnyway={handleCreate}
             onCancel={handleClose}

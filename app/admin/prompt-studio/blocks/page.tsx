@@ -74,7 +74,7 @@ export default async function BlocksPage({
   let blocksQuery = supabase
     .from('blocks')
     .select(
-      'id, title, type, body, status, is_default, order, created_at, updated_at, topics(name), author:users!blocks_updated_by_fkey(name)',
+      'id, title, type, body, status, is_default, order, prompt_set_id, created_at, updated_at, topics(name), author:users!blocks_updated_by_fkey(name)',
     )
     .eq('tenant_id', tenantId)
     .neq('status', 'deleted')
@@ -140,6 +140,7 @@ export default async function BlocksPage({
       <Box style={SCROLL_AREA_STYLE} px={{ base: 'md', sm: 'lg' }} pb={{ base: 'md', sm: 'lg' }} pt={0}>
         <BlocksTable
           rows={rows}
+          sets={sets}
           overview={{
             version: activeSet?.version ?? null,
             status: activeSet?.status ?? null,

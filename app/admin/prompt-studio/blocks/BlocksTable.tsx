@@ -37,6 +37,7 @@ import {
 import type { BlockType } from '@/services/prompt/block-types'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
+import type { PromptSet } from './promptSets'
 
 type BlockStatus = 'active' | 'disabled' | 'deleted'
 
@@ -48,6 +49,7 @@ export interface BlockRow {
   status: BlockStatus
   is_default: boolean
   order: number | null
+  prompt_set_id?: string | null
   created_at: string
   updated_at: string
   topics: { name: string } | null
@@ -74,9 +76,11 @@ type DuplicateResponse = {
 
 export function BlocksTable({
   rows,
+  sets,
   overview,
 }: {
   rows: BlockRow[]
+  sets?: PromptSet[]
   overview?: { version?: number | null; status?: string | null }
 }) {
   const [items, setItems] = useState<BlockRow[]>(rows)
@@ -659,6 +663,11 @@ export function BlocksTable({
               type: editingBlock.type,
               order: editingBlock.order,
             }}
+            promptSetLabel={
+              editingBlock.prompt_set_id
+                ? (sets?.find(s => s.id === editingBlock.prompt_set_id)?.label ?? null)
+                : null
+            }
             onSave={handleFormSave}
             onSaveAnyway={handleFormSaveAnyway}
             onCancel={handleCancelEdit}

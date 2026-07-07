@@ -40,6 +40,7 @@ type EditModeProps = {
   mode?: 'edit'
   block: BlockEditFormBlock
   topics?: undefined
+  promptSetLabel?: string | null
   onSave: (draft: EditBlockDraft) => Promise<void>
   onSaveAnyway: (draft: EditBlockDraft) => Promise<void>
   onCancel: () => void
@@ -50,6 +51,7 @@ type NewModeProps = {
   mode: 'new'
   block?: undefined
   topics: Topic[]
+  promptSetLabel?: string | null
   onSave: (draft: NewBlockDraft) => Promise<void>
   onSaveAnyway: (draft: NewBlockDraft) => Promise<void>
   onCancel: () => void
@@ -254,6 +256,15 @@ export function BlockEditForm(props: BlockEditFormProps) {
 
   return (
     <Stack gap="sm">
+      {props.promptSetLabel && (
+        <TextInput
+          label="Prompt set"
+          value={props.promptSetLabel}
+          readOnly
+          size="sm"
+          styles={{ input: { cursor: 'default' } }}
+        />
+      )}
       {isNew && (
         <>
           <TextInput
