@@ -31,7 +31,6 @@ export function TokenDonut({ blocks, limit = TOKEN_LIMIT, size = 200 }: TokenDon
     guardrail: 0,
     process: 0,
     output_format: 0,
-    escalation: 0,
   }
   for (const b of blocks) byType[b.type] += tokensFor(b.body ?? '')
   const total = ORDERED_TYPES.reduce((s, t) => s + byType[t], 0)

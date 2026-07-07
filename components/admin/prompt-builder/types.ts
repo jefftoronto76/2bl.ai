@@ -9,7 +9,6 @@ export type BlockType =
   | 'guardrail'
   | 'process'
   | 'output_format'
-  | 'escalation'
 
 export interface Topic {
   id: string

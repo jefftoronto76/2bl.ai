@@ -6,7 +6,6 @@ export const BLOCK_TYPES = [
   'guardrail',
   'process',
   'output_format',
-  'escalation',
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -17,7 +16,6 @@ export const TYPE_COLORS: Record<BlockType, MantineColor> = {
   guardrail: 'red',
   process: 'orange',
   output_format: 'green',
-  escalation: 'yellow',
 }
 
 // Plain names per INTEGRATION §4. Consumers that want ordinal or
@@ -28,10 +26,9 @@ export const TYPE_LABELS: Record<BlockType, string> = {
   guardrail: 'Guardrail',
   process: 'Process',
   output_format: 'Output Format',
-  escalation: 'Escalation',
 }
 
-// Compile sequence — identity runs 1st, escalation 6th. Source of truth
+// Compile sequence — identity runs 1st, output_format 5th. Source of truth
 // for ordinal position; matches the /api/admin/prompt/compile ordering.
 export const TYPE_COMPILE_ORDER: Record<BlockType, number> = {
   identity: 1,
@@ -39,7 +36,6 @@ export const TYPE_COMPILE_ORDER: Record<BlockType, number> = {
   guardrail: 3,
   process: 4,
   output_format: 5,
-  escalation: 6,
 }
 
 // Stable left-to-right order matching TYPE_COMPILE_ORDER — consumed by the
@@ -54,7 +50,6 @@ const ORDINAL_SUFFIX: Record<number, string> = {
   3: '3rd',
   4: '4th',
   5: '5th',
-  6: '6th',
 }
 
 // Decorated badge label for contexts that want to surface compile

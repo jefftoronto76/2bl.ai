@@ -58,7 +58,6 @@ export function SegmentedTokenMeter({ blocks }: SegmentedTokenMeterProps) {
     guardrail: 0,
     process: 0,
     output_format: 0,
-    escalation: 0,
   }
   for (const b of blocks) {
     tokensByType[b.type] += tokensFor(b.body ?? '')
