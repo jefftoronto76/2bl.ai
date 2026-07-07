@@ -20,6 +20,7 @@ export interface TenantBranding {
   accent_buttons:  boolean | null;
   use_db_branding: boolean | null;
   favicon_base_path: string | null;
+  custom_css:      string | null;
 }
 
 /** Fetches the tenant_branding row for `tenantId` and `target`. Returns null on miss or error. */
@@ -33,7 +34,7 @@ export async function getTenantBranding(
     const { data, error } = await supabase
       .from('tenant_branding')
       .select(
-        'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, border, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, favicon_base_path'
+        'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, border, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, favicon_base_path, custom_css'
       )
       .eq('tenant_id', tenantId)
       .eq('target', target)

@@ -1,9 +1,19 @@
+.appearance-grid {
+  container-type: inline-size;
+}
+
 .theme-preview-wrap {
-  position: sticky;
-  top: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Sticky only when the grid is wide enough for side-by-side columns */
+@container (min-width: 540px) {
+  .theme-preview-wrap {
+    position: sticky;
+    top: 12px;
+  }
 }
 
 .theme-preview {

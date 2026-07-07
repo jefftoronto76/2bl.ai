@@ -40,7 +40,7 @@ export function LandingNav() {
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center gap-2.5 outline-none focus:outline-none"
-          aria-label="Heirloom home"
+          aria-label="Legacy home"
         >
           <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center">
             <img
@@ -52,7 +52,7 @@ export function LandingNav() {
               />
           </div>
           <span className="font-display font-semibold text-lg text-text-primary tracking-wide">
-            Heirloom
+            Legacy
           </span>
         </button>
 
