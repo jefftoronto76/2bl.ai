@@ -14,7 +14,6 @@ const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56';
 function logBrandingStage(stage: string, payload: unknown): void {
   void (async () => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (getAdminClient() as any)
         .from('branding_logs')
         .insert({ tenant_id: HEIRLOOM_TENANT_ID, target: 'storefront', stage, payload });
