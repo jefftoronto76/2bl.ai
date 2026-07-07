@@ -92,6 +92,7 @@ const STRING_FIELDS = [
   'font_secondary',
   'font_mono',
   'paper_effect',
+  'custom_css',
 ] as const;
 
 // User-controllable boolean columns (excluded from string validation)
@@ -120,13 +121,14 @@ const FIELD_KIND: Record<EditableField, AppearanceChangeKind> = {
   paper_effect:    'toggle',
   accent_buttons:  'toggle',
   use_db_branding: 'toggle',
+  custom_css:      'text',
 };
 
 // defaults_synced_at + branding_warnings are read-only sync columns surfaced
 // to the SyncStatus card. They are NOT in STRING/BOOL fields so they can never
 // be written via PATCH.
 const GET_SELECT =
-  'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, border, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder, defaults_synced_at, branding_warnings';
+  'background, accent, accent_hover, accent_rgb, lede, heading, body, sidebar_bg, sidebar_text, muted, border, font_primary, font_secondary, font_mono, paper_effect, accent_buttons, use_db_branding, brand_name, logo_url, favicon_folder, defaults_synced_at, branding_warnings, custom_css';
 
 export async function GET(req: Request) {
   const target = parseTarget(req);

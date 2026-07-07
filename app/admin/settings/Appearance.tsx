@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Card,
+  CopyButton,
   Group,
   SegmentedControl,
   Select,
@@ -12,8 +13,10 @@ import {
   Stack,
   Switch,
   Text,
+  Textarea,
   Title,
 } from '@mantine/core';
+import { IconCheck, IconClipboard, IconCopy } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { AppearanceHistory } from './AppearanceHistory';
 import { SyncStatus } from './SyncStatus';
@@ -39,6 +42,7 @@ interface BrandingRow {
   paper_effect:    'warm' | 'lift' | 'flat';
   accent_buttons:  boolean;
   use_db_branding: boolean;
+  custom_css:      string;
 }
 
 const EMPTY: BrandingRow = {
@@ -57,6 +61,7 @@ const EMPTY: BrandingRow = {
   paper_effect:    'lift',
   accent_buttons:  true,
   use_db_branding: false,
+  custom_css:      '',
 };
 
 const EMPTY_SYNC: BrandingSync = { defaults_synced_at: null, branding_warnings: null };
@@ -85,6 +90,7 @@ function rowToForm(row: Record<string, unknown> | null): BrandingRow {
     paper_effect:    (row.paper_effect    as 'warm' | 'lift' | 'flat' | null) ?? 'lift',
     accent_buttons:  (row.accent_buttons  as boolean | null) ?? true,
     use_db_branding: (row.use_db_branding as boolean | null) ?? false,
+    custom_css:      (row.custom_css      as string  | null) ?? '',
   };
 }
 
@@ -343,7 +349,7 @@ function BrandingEditor({ target }: { target: BrandingTarget }) {
         />
       </Card>
 
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" className="appearance-grid">
         {/* ── Left column: editor ── */}
         <Stack gap="md">
           {/* Colors card */}
@@ -469,6 +475,61 @@ function BrandingEditor({ target }: { target: BrandingTarget }) {
               />
             </Stack>
           </Card>
+
+          {/* Custom CSS card — storefront only */}
+          {target === 'storefront' && (
+            <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
+              <Stack gap="sm">
+                <Group justify="space-between" align="center">
+                  <Title order={6} fw={600}>Custom CSS</Title>
+                  <Group gap={4}>
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      leftSection={<IconClipboard size={12} />}
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          set('custom_css', text);
+                          notifications.show({ message: 'CSS pasted from clipboard.', color: 'green' });
+                        } catch {
+                          notifications.show({ message: 'Could not read clipboard.', color: 'red' });
+                        }
+                      }}
+                    >
+                      Paste
+                    </Button>
+                    <CopyButton value={values.custom_css} timeout={2000}>
+                      {({ copied, copy }) => (
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          leftSection={copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                          onClick={copy}
+                          disabled={!values.custom_css}
+                        >
+                          {copied ? 'Copied' : 'Copy'}
+                        </Button>
+                      )}
+                    </CopyButton>
+                  </Group>
+                </Group>
+                <Text size="xs" c="dimmed">
+                  Paste custom CSS to fine-tune your storefront. Applied last, so it overrides the settings above. Use with care.
+                </Text>
+                <Textarea
+                  value={values.custom_css}
+                  onChange={e => set('custom_css', e.currentTarget.value)}
+                  autosize
+                  minRows={4}
+                  maxRows={14}
+                  spellCheck={false}
+                  disabled={saving}
+                  styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 13 } }}
+                />
+              </Stack>
+            </Card>
+          )}
 
           {/* Action row */}
           <Group justify="flex-end" gap="sm">

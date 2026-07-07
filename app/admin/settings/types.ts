@@ -4,7 +4,7 @@
 // Storefront/Admin branding-target nesting + read-only Sync status.
 
 /** Drives how a before/after value is displayed. */
-export type AppearanceChangeKind = 'color' | 'font' | 'toggle';
+export type AppearanceChangeKind = 'color' | 'font' | 'toggle' | 'text';
 
 export interface AppearanceChange {
   id: string;
