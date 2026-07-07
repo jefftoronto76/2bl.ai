@@ -15,6 +15,7 @@
 /* ─── Design tokens ───────────────────────── */
 :root {
   --color-bg: 249 248 245;
+  --color-background: 249 248 245;  /* alias for --color-bg — tailwind.config.js bg token points here */
   --color-surface: 255 255 255;
   --color-accent: 45 106 79;
   --color-accent-hover: 30 77 57;
