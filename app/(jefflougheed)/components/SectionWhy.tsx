@@ -233,7 +233,7 @@ function MyPovFigure() {
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src="/sage/jefflougheed/headshots/jeff-lougheed.jpeg"
+              src="/sage/jefflougheed/headshots/Jeff_L.jpeg"
               alt={POV.who}
               className="w-full h-full object-cover"
               onError={() => setImgFailed(true)}
