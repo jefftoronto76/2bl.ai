@@ -1,6 +1,14 @@
 
 # Admin work July - 2026 (when noted)
 
+Embed Composer in New Block Drawer
+Currently the "New block" button opens a blank form. Operators who create blocks directly bypass the Composer's coaching and guidance, and are left stranded if the safety check flags issues with no way to fix them.
+The fix: embed the Composer experience directly into the new block drawer. Operator describes what they want, Composer drafts the block with proper structure and positive language, operator reviews and saves. "Check & Save" becomes the final gate on an already-coached block rather than a cold quality check on unguided input.
+Defer until after Heirloom V1 is in production.
+
+
+# Admin work July - 2026 (when noted)
+
 Preview tenant routing — dynamic resolution
 Middleware preview routing (?preview=<slug>) is currently a hardcoded block per tenant. Doesn't scale — every new tenant requires a middleware edit. Needs a dynamic solution that works within edge runtime constraints (no Supabase client, raw fetch only, or an alternative architecture). Deferred until there's bandwidth to think it through properly.
 
