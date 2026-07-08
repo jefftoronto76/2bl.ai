@@ -98,10 +98,11 @@ export function Chat() {
       <section
         id="chat"
         style={{
-          padding: '64px clamp(24px, 5vw, 48px)',
+          padding: '64px 0',
           borderBottom: '1px solid rgba(26,25,23,0.08)',
         }}
       >
+        <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 clamp(24px, 5vw, 48px)' }}>
         <div ref={ref} className="reveal" style={{ maxWidth: '640px' }}>
           <p style={{
             fontFamily: 'var(--font-mono)',
@@ -185,6 +186,7 @@ export function Chat() {
               Book a Session
             </a>
           </div>
+        </div>
         </div>
       </section>
 
