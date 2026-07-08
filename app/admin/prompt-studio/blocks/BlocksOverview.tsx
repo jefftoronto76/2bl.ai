@@ -12,12 +12,7 @@
 
 import { Badge, Card, Group, SimpleGrid, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import {
-  ORDERED_TYPES,
-  TYPE_COLORS,
-  TYPE_LABELS,
-  type BlockType,
-} from '@/services/prompt/block-types'
+import type { BlockType } from '@/services/prompt/block-types'
 import { TokenDonut } from './TokenDonut'
 import { PublishButton } from './PublishButton'
 import { GuardrailMeter } from '@/components/admin/content/GuardrailMeter'
@@ -121,13 +116,6 @@ export function BlocksOverview({
           <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}>
             Hover a segment for its breakdown
           </Text>
-          <Group gap="xs" wrap="wrap" justify="center" mt={4}>
-            {ORDERED_TYPES.map((t) => (
-              <Badge key={t} color={TYPE_COLORS[t]} variant="light" size="sm" radius="sm">
-                {TYPE_LABELS[t]}
-              </Badge>
-            ))}
-          </Group>
         </Stack>
       </SimpleGrid>
     </Card>
