@@ -1,6 +1,11 @@
 
 # Admin work July - 2026 (when noted)
 
+Backlog: Safety check rewrite suggestion UI
+When the safety check flags an issue and offers a suggested rewrite, surface an "Apply rewrite" button that replaces the block body with the suggested version. Currently operators see the suggestion but have no way to apply it without manually editing.
+
+# Admin work July - 2026 (when noted)
+
 Embed Composer in New Block Drawer
 Currently the "New block" button opens a blank form. Operators who create blocks directly bypass the Composer's coaching and guidance, and are left stranded if the safety check flags issues with no way to fix them.
 The fix: embed the Composer experience directly into the new block drawer. Operator describes what they want, Composer drafts the block with proper structure and positive language, operator reviews and saves. "Check & Save" becomes the final gate on an already-coached block rather than a cold quality check on unguided input.
