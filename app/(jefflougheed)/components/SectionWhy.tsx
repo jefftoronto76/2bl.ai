@@ -202,6 +202,7 @@ function CalloutFigure({ callout }: { callout: CalloutData }) {
 }
 
 function MyPovFigure() {
+  const [imgFailed, setImgFailed] = useState(false)
   const initials = POV.who
     .split(/\s+/)
     .filter(Boolean)
@@ -224,10 +225,20 @@ function MyPovFigure() {
       </blockquote>
       <figcaption className="mt-4 flex items-center gap-3">
         <span
-          aria-hidden
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)]"
+          aria-label={POV.who}
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[#E8E1CF] font-body text-sm font-semibold text-[rgb(24_32_41)] shadow-[inset_0_0_0_1px_rgb(24_32_41/0.06)] overflow-hidden"
         >
-          {initials}
+          {imgFailed ? (
+            <span aria-hidden>{initials}</span>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/sage/jefflougheed/headshots/jeff-lougheed.jpeg"
+              alt={POV.who}
+              className="w-full h-full object-cover"
+              onError={() => setImgFailed(true)}
+            />
+          )}
         </span>
         <span className="flex flex-col gap-0.5 font-mono text-[11px] tracking-[0.1em] uppercase text-[color:var(--color-text-dim)]">
           <span className="text-[color:var(--color-text-muted)]">{POV.who}</span>
