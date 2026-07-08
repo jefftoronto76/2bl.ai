@@ -719,7 +719,7 @@ result so routes preserve their exact status codes.
 | File | Exports | Purpose |
 |------|---------|---------|
 | `compiler.ts` | `getSystemPrompt`, `QUESTION_MODE_CONTEXT`, `DEFAULT_SYSTEM_PROMPT` (re-export) | Runtime base-prompt assembly: highest-version `compiled_prompts` row, falls back to `DEFAULT_SYSTEM_PROMPT`. Consumed by the chat orchestrator via the thin `services/chat/server/prompt.ts` re-export. |
-| `compile.ts` | `compilePrompt(tenantId)` | Compiles active blocks (guardrail → identity → process → knowledge → escalation; `order`-aware) into `compiled_prompts`, archiving the prior version to `compiled_prompts_history`. Backs `POST /api/admin/prompt/compile`. |
+| `compile.ts` | `compilePrompt(tenantId)` | Compiles active blocks (identity → knowledge → guardrail → process → output_format; `order`-aware) into `compiled_prompts`, archiving the prior version to `compiled_prompts_history`. Each type compiles as a single `<type>` section tag containing named `<block name="..." order="...">` children. Backs `POST /api/admin/prompt/compile`. |
 | `blocks.ts` | `listActiveBlocks`, `updateBlock`, `createBlock`, `duplicateBlock` (+ `AuthScope`, `BlocksResult`, `BlockUpdate`, `CreateBlockInput`) | Block data-access against `blocks` (and the `content` / `chat_sessions` rows the create/duplicate flows touch). `BlockUpdate` accepts `status`, `title`, `body`, `active`, `order`. Backs the `app/api/admin/blocks/*` routes (except `blocks/chat`, a streaming composer with no block-table access). |
 | `save.ts` | `saveCompiledPrompt(tenantId, prompt, checkResult)` | Manual versioned compiled-prompt save (legacy path). Backs `POST /api/admin/prompt/save`. |
 | `safety.ts` | `reviewBlockBody`, `reviewMasterPrompt` (+ `CheckResult`, `CheckIssue`) | LLM safety review — single block (fail-open) backs `POST /api/admin/prompt/compile/check`; whole prompt backs the legacy `POST /api/admin/prompt/check`. |
@@ -880,7 +880,7 @@ response mapping; the data-access and business logic live in the service.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/admin/prompt/compile` | POST | Compiles all active blocks for the authenticated tenant into the master prompt. Orders by compile sequence (guardrail → identity → process → knowledge → escalation); within each type, blocks with `order > 0` come first ascending by order, then blocks with `order` = 0 or null come last ordered by title ascending. Logs the final compile sequence (title, type, order) before joining. Joins bodies with double newlines. Archives the previous `compiled_prompts` row to `compiled_prompts_history` and increments the version. Returns `{ success, version, tokenCount, content, updatedAt }`. |
+| `/api/admin/prompt/compile` | POST | Compiles all active blocks for the authenticated tenant into the master prompt. Orders by compile sequence (identity → knowledge → guardrail → process → output_format); within each type, blocks with `order > 0` come first ascending by order, then blocks with `order` = 0 or null come last ordered by title ascending. Logs the final compile sequence (title, type, order) before joining. Groups all blocks of each type into a single `<type>` section tag; each block is a `<block name="..." order="...">` child. Sections are joined with double newlines. Archives the previous `compiled_prompts` row to `compiled_prompts_history` and increments the version. Returns `{ success, version, tokenCount, content, updatedAt }`. |
 | `/api/admin/prompt/compile/check` | POST | LLM-based safety review of a single block body. Takes `{ body: string }`, returns `{ ok: boolean, issues: [{ description: string, offendingText: string \| null }] }`. Server-side verbatim guard: every returned `offendingText` is validated against `body.includes()` and nulled if not a real substring. Fails open to `{ ok: true, issues: [] }` on any error so the save flow is never blocked. |
 | `/api/admin/prompt/save` | POST | Manual save path for the master prompt (legacy). Takes `{ prompt, checkResult }`, tenant-scoped, archives previous version to history, increments version. |
 | `/api/admin/prompt/check` | POST | Safety check for an entire system prompt (legacy, used by the old prompt save flow). Returns `{ pass, issues }`. |
@@ -1179,15 +1179,16 @@ deploy.
 | `knowledge` | Factual context about the business, owner, services |
 | `guardrail` | Rules and constraints on Sage's behavior |
 | `process` | Step-by-step instructions for how Sage should handle situations |
-| `escalation` | When and how to route to a human or off-ramp |
+| `output_format` | How Sage should structure and format its responses |
 
 **Compile order**: Types are compiled into the master prompt in this
-fixed order: guardrail (1st), identity (2nd), process (3rd), knowledge
-(4th), escalation (5th). Within each type, blocks with `order > 0` come
-first ascending by `order`; blocks with `order` = 0 or null come last,
-ordered by title ascending. This order is enforced in
-`/api/admin/prompt/compile` and encoded in `BlocksTable.tsx`
-`TYPE_LABELS` — do not change without updating both.
+fixed order: identity (1st), knowledge (2nd), guardrail (3rd), process
+(4th), output_format (5th). Within each type, blocks with `order > 0`
+come first ascending by `order`; blocks with `order` = 0 or null come
+last, ordered by title ascending. This order is enforced in
+`services/prompt/compile.ts` (`COMPILE_ORDER`) and
+`services/prompt/block-types.ts` (`TYPE_COMPILE_ORDER`) — do not change
+without updating both.
 
 ---
 

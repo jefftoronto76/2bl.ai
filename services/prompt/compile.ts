@@ -38,6 +38,10 @@ export type CompileResult =
   | { ok: true; data: CompileSuccess }
   | { ok: false; status: number; error: string }
 
+function escapeXmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 /**
  * Compile and persist the master prompt for a tenant. Returns the success
  * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
@@ -117,15 +121,36 @@ export async function compilePrompt(
     console.warn('[prompt/compile] excluded', excludedCount, 'blocks with unknown type')
   }
 
-  // 3. Compile — wrap each block in its type tag, join with double newlines.
-  const content = sorted
-    .map(b => {
-      const body = (b.body ?? '').trim()
-      if (!body) return ''
-      return `<${b.type}>\n${body}\n</${b.type}>`
-    })
-    .filter(Boolean)
-    .join('\n\n')
+  // 3. Compile — group blocks by type into a single section tag per type;
+  //    each block is a named <block> child with name and order attributes.
+  const byType = new Map<string, BlockForCompile[]>()
+  for (const b of sorted) {
+    if (!byType.has(b.type)) byType.set(b.type, [])
+    byType.get(b.type)!.push(b)
+  }
+
+  const sections: string[] = []
+  for (const type of COMPILE_ORDER) {
+    const typeBlocks = byType.get(type)
+    if (!typeBlocks?.length) continue
+
+    const blockTags = typeBlocks
+      .map(b => {
+        const body = (b.body ?? '').trim()
+        if (!body) return ''
+        const nameAttr = escapeXmlAttr(b.title ?? '')
+        const orderAttr = b.order != null ? String(b.order) : ''
+        return `  <block name="${nameAttr}" order="${orderAttr}">\n${body}\n  </block>`
+      })
+      .filter(Boolean)
+      .join('\n')
+
+    if (blockTags) {
+      sections.push(`<${type}>\n${blockTags}\n</${type}>`)
+    }
+  }
+
+  const content = sections.join('\n\n')
   const tokenCount = tokensFor(content)
   console.log('[prompt/compile] compiled length:', content.length, 'tokens:', tokenCount)
 
