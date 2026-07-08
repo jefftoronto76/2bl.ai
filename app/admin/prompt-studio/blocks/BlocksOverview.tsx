@@ -1,5 +1,15 @@
 'use client'
 
+// BlocksOverview — the summary card (details + guardrail meter + actions on the left,
+// token donut + type legend on the right).
+//
+// LAYOUT PARITY (matches Combined Admin · Blocks design):
+//  • Left column  : details grid → GuardrailMeter → New block + Compile & Publish
+//  • Right column : TokenDonut → "Hover…" caption → type-chip legend (UNDER the donut)
+//
+// The action buttons used to live in the page header and the legend used to sit in the
+// left column; both were moved here to match the design.
+
 import { Badge, Card, Group, SimpleGrid, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import {
@@ -9,7 +19,10 @@ import {
   type BlockType,
 } from '@/services/prompt/block-types'
 import { TokenDonut } from './TokenDonut'
+import { PublishButton } from './PublishButton'
 import { GuardrailMeter } from '@/components/admin/content/GuardrailMeter'
+import { NewBlockButton } from '@/components/admin/content/NewBlockButton'
+import type { Topic } from '@/components/admin/content/BlockEditForm'
 import type { BlockRow } from './BlocksTable'
 
 function relTime(iso: string): string {
@@ -43,9 +56,20 @@ export interface BlocksOverviewProps {
   blocks: BlockRow[]
   version?: number | null
   status?: string | null
+  // Passed down so the action buttons can live in this card (design position).
+  topics: Topic[]
+  activeSetId: string | null
+  activeSetLabel: string | null
 }
 
-export function BlocksOverview({ blocks, version = null, status = null }: BlocksOverviewProps) {
+export function BlocksOverview({
+  blocks,
+  version = null,
+  status = null,
+  topics,
+  activeSetId,
+  activeSetLabel,
+}: BlocksOverviewProps) {
   const active = blocks.filter((b) => b.status === 'active')
   const guardrailCount = active.filter((b) => b.type === 'guardrail').length
   const donutBlocks = active.map((b) => ({ type: b.type as BlockType, body: b.body ?? '' }))
@@ -58,7 +82,7 @@ export function BlocksOverview({ blocks, version = null, status = null }: Blocks
   return (
     <Card withBorder radius="md" p="md">
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" style={{ alignItems: 'center' }}>
-        {/* Details */}
+        {/* Left — details + guardrail meter + actions */}
         <Stack gap="sm">
           <div style={defGrid}>
             <div style={dk}>Status</div>
@@ -84,21 +108,26 @@ export function BlocksOverview({ blocks, version = null, status = null }: Blocks
 
           <GuardrailMeter count={guardrailCount} />
 
-          <Group gap="xs" wrap="wrap">
+          {/* Actions — design position: left column, under the meter. */}
+          <Group gap="sm">
+            <NewBlockButton topics={topics} activeSetId={activeSetId} activeSetLabel={activeSetLabel} />
+            <PublishButton activeSetId={activeSetId} activeSetLabel={activeSetLabel ?? 'Prompt'} />
+          </Group>
+        </Stack>
+
+        {/* Right — donut + caption + type legend UNDER the donut */}
+        <Stack gap={6} align="center">
+          <TokenDonut blocks={donutBlocks} />
+          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}>
+            Hover a segment for its breakdown
+          </Text>
+          <Group gap="xs" wrap="wrap" justify="center" mt={4}>
             {ORDERED_TYPES.map((t) => (
               <Badge key={t} color={TYPE_COLORS[t]} variant="light" size="sm" radius="sm">
                 {TYPE_LABELS[t]}
               </Badge>
             ))}
           </Group>
-        </Stack>
-
-        {/* Donut */}
-        <Stack gap={6} align="center">
-          <TokenDonut blocks={donutBlocks} />
-          <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}>
-            Hover a segment for its breakdown
-          </Text>
         </Stack>
       </SimpleGrid>
     </Card>

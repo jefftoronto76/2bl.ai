@@ -3,10 +3,8 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth'
 import { Box, Center, Flex, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import { NewBlockButton } from '@/components/admin/content/NewBlockButton'
 import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { BlocksTable, type BlockRow } from './BlocksTable'
-import { PublishButton } from './PublishButton'
 import { PromptSetSelect } from './PromptSetSelect'
 import { getPromptSets } from './getPromptSets'
 import { resolveActiveSet } from './promptSets'
@@ -106,44 +104,24 @@ export default async function BlocksPage({
       <Flex
         direction={{ base: 'column', sm: 'row' }}
         justify="space-between"
-        align={{ base: 'stretch', sm: 'flex-start' }}
+        align={{ base: 'stretch', sm: 'center' }}
         gap="md"
         px={{ base: 16, sm: 24 }}
         py={{ base: 12, sm: 16 }}
         style={HEADER_FRAME_STYLE}
       >
-        <Stack gap="sm">
-          <Stack gap={4}>
-            <Title order={1} fz="lg" fw={600}>
-              Blocks
-            </Title>
-            <Text variant="muted">
-              Reusable prompt blocks — compiled into your system prompt.
-            </Text>
-          </Stack>
-
-          {sets.length > 0 && activeSet && (
-            <PromptSetSelect sets={sets} activeId={activeSet.id} />
-          )}
-        </Stack>
-
-        <Flex direction={{ base: 'column', sm: 'row' }} gap="sm" align="flex-start">
-          <NewBlockButton
-              topics={topics}
-              activeSetId={activeSet?.id ?? null}
-              activeSetLabel={activeSet?.label ?? null}
-            />
-          <PublishButton
-              activeSetId={activeSet?.id ?? null}
-              activeSetLabel={activeSet?.label ?? 'Prompt'}
-            />
-        </Flex>
+        {sets.length > 0 && activeSet && (
+          <PromptSetSelect sets={sets} activeId={activeSet.id} />
+        )}
       </Flex>
 
       <Box style={SCROLL_AREA_STYLE} px={{ base: 'md', sm: 'lg' }} pb={{ base: 'md', sm: 'lg' }} pt={0}>
         <BlocksTable
           rows={rows}
           sets={sets}
+          topics={topics}
+          activeSetId={activeSet?.id ?? null}
+          activeSetLabel={activeSet?.label ?? null}
           overview={{
             version: activeSet?.version ?? null,
             status: activeSet?.status ?? null,

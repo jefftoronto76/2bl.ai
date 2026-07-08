@@ -69,7 +69,7 @@ export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProp
 
   return (
     <>
-      <Button variant="filled" color="green" size="sm" onClick={handleCompile}>
+      <Button color="brand" size="sm" onClick={handleCompile}>
         Compile &amp; Publish
       </Button>
       <CompilePublishModal
