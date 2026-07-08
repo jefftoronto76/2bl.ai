@@ -133,7 +133,10 @@ export default async function BlocksPage({
               activeSetId={activeSet?.id ?? null}
               activeSetLabel={activeSet?.label ?? null}
             />
-          <PublishButton />
+          <PublishButton
+              activeSetId={activeSet?.id ?? null}
+              activeSetLabel={activeSet?.label ?? 'Prompt'}
+            />
         </Flex>
       </Flex>
 

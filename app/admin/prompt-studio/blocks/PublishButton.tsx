@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { CompilePublishModal } from '@/components/admin/prompt-studio/CompilePublishModal'
 
 interface CompileResponse {
   success: boolean
@@ -12,53 +13,74 @@ interface CompileResponse {
   updatedAt: string
 }
 
-export function PublishButton() {
-  const [publishing, setPublishing] = useState(false)
+interface PublishButtonProps {
+  activeSetId: string | null
+  activeSetLabel: string
+}
 
-  async function handlePublish() {
-    console.log('[PublishButton] compile triggered')
-    setPublishing(true)
+export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProps) {
+  const [compileOpen, setCompileOpen] = useState(false)
+  const [compiling, setCompiling] = useState(false)
+  const [compiledText, setCompiledText] = useState('')
+  const [compiledVersion, setCompiledVersion] = useState(0)
+
+  async function handleCompile() {
+    setCompiling(true)
+    setCompileOpen(true)
     try {
-      const res = await fetch('/api/admin/prompt/compile', { method: 'POST' })
+      const res = await fetch('/api/admin/prompt/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_set_id: activeSetId }),
+      })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        const message = data?.error ?? 'Compile failed'
-        console.error('[PublishButton] compile failed:', message)
+        setCompileOpen(false)
         notifications.show({
           color: 'red',
-          title: 'Publish failed',
-          message,
+          title: 'Compile failed',
+          message: data?.error ?? 'Compile failed',
         })
         return
       }
       const data: CompileResponse = await res.json()
-      console.log('[PublishButton] publish success:', { version: data.version, tokenCount: data.tokenCount })
-      notifications.show({
-        color: 'green',
-        title: 'Prompt published',
-        message: `Version ${data.version}`,
-      })
+      setCompiledText(data.content)
+      setCompiledVersion(data.version)
     } catch (err) {
-      console.error('[PublishButton] publish failed:', err)
+      setCompileOpen(false)
       notifications.show({
         color: 'red',
-        title: 'Publish failed',
+        title: 'Compile failed',
         message: 'Network error — could not reach the server.',
       })
     } finally {
-      setPublishing(false)
+      setCompiling(false)
     }
   }
 
+  function handlePublish() {
+    setCompileOpen(false)
+    notifications.show({
+      color: 'green',
+      title: 'Prompt published',
+      message: `Version ${compiledVersion}`,
+    })
+  }
+
   return (
-    <Button
-      variant="filled"
-      color="green"
-      size="sm"
-      onClick={handlePublish}
-      loading={publishing}
-    >
-      Compile & Publish
-    </Button>
+    <>
+      <Button variant="filled" color="green" size="sm" onClick={handleCompile}>
+        Compile &amp; Publish
+      </Button>
+      <CompilePublishModal
+        opened={compileOpen}
+        onClose={() => setCompileOpen(false)}
+        compiling={compiling}
+        text={compiledText}
+        set={{ id: activeSetId ?? '', label: activeSetLabel }}
+        version={compiledVersion}
+        onPublish={handlePublish}
+      />
+    </>
   )
 }
