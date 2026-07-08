@@ -9,6 +9,7 @@ import { SectionProcess } from './components/SectionProcess'
 import { Session } from './components/Session'
 import { Chat } from '@/components/shells/widget/Chat'
 import { Footer } from './components/Footer'
+import { Colophon } from './components/Colophon'
 import { ChatSessionProvider } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 
 export default function Page() {
@@ -32,6 +33,7 @@ export default function Page() {
         <Chat />
       </main>
       <Footer />
+      <Colophon />
     </ChatSessionProvider>
   )
 }
