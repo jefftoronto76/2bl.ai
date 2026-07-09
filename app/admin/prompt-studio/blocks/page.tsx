@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic'
 const HEADER_FRAME_STYLE: CSSProperties = {
   flexShrink: 0,
   borderBottom: '1px solid var(--mantine-color-gray-2)',
+  background: '#fff',
 }
 
 const SCROLL_AREA_STYLE: CSSProperties = {

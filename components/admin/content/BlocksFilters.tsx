@@ -302,7 +302,7 @@ export function FilterBar({ f, typeCounts, statusCounts }: FilterBarProps) {
           padding: '6px 6px 6px 13px',
           border: '1px solid var(--mantine-color-gray-3)',
           borderRadius: 'var(--mantine-radius-md)',
-          background: 'var(--mantine-color-body)',
+          background: '#fff',
           flexWrap: 'wrap',
         }}
       >
