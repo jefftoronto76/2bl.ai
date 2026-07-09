@@ -159,10 +159,7 @@ export function CompilePublishModal({
               size="lg"
               styles={{ root: { textTransform: 'none', fontWeight: 600 } }}
             >
-              Published as{' '}
-              <span style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontWeight: 500 }}>
-                v{version}
-              </span>
+              Ready to publish
             </Badge>
             <Text c="dimmed" size="sm" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
               {tokens.toLocaleString()} tokens · {lines} lines

@@ -38,21 +38,19 @@ export type CompileResult =
   | { ok: true; data: CompileSuccess }
   | { ok: false; status: number; error: string }
 
+export type BuildContentResult =
+  | { ok: true; content: string; tokenCount: number }
+  | { ok: false; status: number; error: string }
+
 /**
- * Compile and persist the master prompt for a tenant. Returns the success
- * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
- * status the route should surface.
- *
- * When `promptSetId` is absent or null, compiles the default slot (blocks
- * where prompt_set_id IS NULL) and writes prompt_set_id = NULL on the saved
- * compiled_prompts row. When provided, includes blocks matching that key plus
- * shared blocks (prompt_set_id IS NULL) and writes the key on the
- * compiled_prompts row.
+ * Pure compile step — fetches active blocks, sorts them, and assembles the XML
+ * content. Performs no DB writes. Used by the preview endpoint and internally
+ * by compilePrompt before the persist step.
  */
-export async function compilePrompt(
+export async function buildCompiledContent(
   tenantId: string,
   promptSetId?: string | null,
-): Promise<CompileResult> {
+): Promise<BuildContentResult> {
   const supabase = getAdminClient()
 
   // 1. Fetch active runtime/platform blocks for this tenant. Excludes
@@ -132,6 +130,30 @@ export async function compilePrompt(
   if (!content) {
     return { ok: false, status: 400, error: 'No active blocks to compile' }
   }
+
+  return { ok: true, content, tokenCount }
+}
+
+/**
+ * Compile and persist the master prompt for a tenant. Returns the success
+ * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
+ * status the route should surface.
+ *
+ * When `promptSetId` is absent or null, compiles the default slot (blocks
+ * where prompt_set_id IS NULL) and writes prompt_set_id = NULL on the saved
+ * compiled_prompts row. When provided, includes blocks matching that key plus
+ * shared blocks (prompt_set_id IS NULL) and writes the key on the
+ * compiled_prompts row.
+ */
+export async function compilePrompt(
+  tenantId: string,
+  promptSetId?: string | null,
+): Promise<CompileResult> {
+  const built = await buildCompiledContent(tenantId, promptSetId)
+  if (!built.ok) return built
+
+  const { content, tokenCount } = built
+  const supabase = getAdminClient()
 
   // 4. Save to compiled_prompts — find existing row for this tenant+slot, archive
   //    to history, then update. promptSetId (or null) scopes the slot.
