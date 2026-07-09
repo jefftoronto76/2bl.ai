@@ -505,8 +505,8 @@ export default function PromptBuilderPage() {
         const parsed = JSON.parse(candidate)
         if (parsed.done && parsed.title && parsed.content) {
           const draft: DraftBlock = { title: parsed.title, content: parsed.content }
-          if (typeof parsed.type === 'string' && VALID_TYPES.has(parsed.type.toLowerCase())) {
-            draft.suggestedType = parsed.type.toLowerCase() as BlockType
+          if (typeof parsed.type === 'string' && VALID_TYPES.has(parsed.type.toLowerCase().replace(/\s+/g, '_'))) {
+            draft.suggestedType = parsed.type.toLowerCase().replace(/\s+/g, '_') as BlockType
           }
           if (typeof parsed.topic === 'string' && parsed.topic.trim()) {
             draft.suggestedTopic = parsed.topic.trim()
