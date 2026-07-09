@@ -494,7 +494,7 @@ export function BlockRow({
           <Switch
             checked={block.status === 'active'}
             onChange={e => handleStatusToggle(e.currentTarget.checked)}
-            color="green"
+            color="brand"
             disabled={isSaving}
             aria-label={`${
               block.status === 'active' ? 'Disable' : 'Enable'
@@ -505,10 +505,6 @@ export function BlockRow({
             variant={block.status === 'active' ? 'body' : 'muted'}
             style={{
               fontSize: 'var(--mantine-font-size-sm)',
-              color:
-                block.status === 'active'
-                  ? 'var(--mantine-color-green-7)'
-                  : undefined,
             }}
           >
             {block.status === 'active' ? 'Active' : 'Disabled'}

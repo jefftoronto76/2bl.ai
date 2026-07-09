@@ -1,14 +1,11 @@
 'use client'
 
-// BlocksOverview — the summary card (details + guardrail meter + actions on the left,
-// token donut + type legend on the right).
+// BlocksOverview — the summary. Mirrors the design (Combined Admin · Blocks) structure
+// EXACTLY: an outer 2-col SimpleGrid holding TWO separate bordered cards.
 //
-// LAYOUT PARITY (matches Combined Admin · Blocks design):
-//  • Left column  : details grid → GuardrailMeter → New block + Compile & Publish
-//  • Right column : TokenDonut → "Hover…" caption → type-chip legend (UNDER the donut)
-//
-// The action buttons used to live in the page header and the legend used to sit in the
-// left column; both were moved here to match the design.
+//   Left card  : borderless 2-col detail grid (Status / Live version / Active blocks /
+//                Last updated) → GuardrailMeter → New block + Compile & Publish
+//   Right card : TokenDonut → "Hover…" caption
 
 import { Badge, Card, Group, SimpleGrid, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
@@ -29,29 +26,14 @@ function relTime(iso: string): string {
   return `${Math.floor(d / 86400)}d ago`
 }
 
-const LINE = 'var(--mantine-color-gray-2)'
-const defGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'auto 1fr',
-  border: `1px solid ${LINE}`,
-  borderRadius: 'var(--mantine-radius-md)',
-  overflow: 'hidden',
-}
-const dCell: React.CSSProperties = { padding: '9px 12px', fontSize: 13.5, borderBottom: `1px solid ${LINE}` }
-const dk: React.CSSProperties = {
-  ...dCell,
-  color: 'var(--mantine-color-dimmed)',
-  background: 'var(--mantine-color-gray-0)',
-  whiteSpace: 'nowrap',
-}
-const dv: React.CSSProperties = { ...dCell, display: 'flex', alignItems: 'center', gap: 8 }
 const mono = 'var(--mantine-font-family-monospace)'
+const sm = 'var(--mantine-font-size-sm)'
 
 export interface BlocksOverviewProps {
   blocks: BlockRow[]
   version?: number | null
   status?: string | null
-  // Passed down so the action buttons can live in this card (design position).
+  // Passed down so the action buttons live in the left card (design position).
   topics: Topic[]
   activeSetId: string | null
   activeSetLabel: string | null
@@ -75,13 +57,13 @@ export function BlocksOverview({
   const isLive = (status ?? '').toLowerCase() === 'live'
 
   return (
-    <Card withBorder radius="md" p="md">
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg" style={{ alignItems: 'center' }}>
-        {/* Left — details + guardrail meter + actions */}
-        <Stack gap="sm">
-          <div style={defGrid}>
-            <div style={dk}>Status</div>
-            <div style={dv}>
+    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+      {/* Left card — details + guardrail meter + actions */}
+      <Card withBorder radius="md" p="lg" style={{ background: 'transparent' }}>
+        <Stack gap="md" justify="space-between" style={{ height: '100%' }}>
+          <SimpleGrid cols={2} spacing="xs" verticalSpacing={10}>
+            <Text variant="muted" style={{ fontSize: sm }}>Status</Text>
+            <div>
               {status ? (
                 <Badge color={isLive ? 'green' : 'yellow'} variant="light" size="sm" radius="sm">
                   {isLive ? 'Live' : 'Draft'}
@@ -91,33 +73,34 @@ export function BlocksOverview({
               )}
             </div>
 
-            <div style={dk}>Live version</div>
-            <div style={{ ...dv, fontFamily: mono }}>{version != null ? `v${version}` : '—'}</div>
+            <Text variant="muted" style={{ fontSize: sm }}>Live version</Text>
+            <Text style={{ fontSize: sm, fontFamily: mono }}>{version != null ? `v${version}` : '—'}</Text>
 
-            <div style={dk}>Active blocks</div>
-            <div style={{ ...dv, fontFamily: mono }}>{active.length}</div>
+            <Text variant="muted" style={{ fontSize: sm }}>Active blocks</Text>
+            <Text style={{ fontSize: sm, fontFamily: mono }}>{active.length}</Text>
 
-            <div style={{ ...dk, borderBottom: 'none' }}>Last updated</div>
-            <div style={{ ...dv, borderBottom: 'none' }}>{lastUpdated ? relTime(lastUpdated) : '—'}</div>
-          </div>
+            <Text variant="muted" style={{ fontSize: sm }}>Last updated</Text>
+            <Text style={{ fontSize: sm }}>{lastUpdated ? relTime(lastUpdated) : '—'}</Text>
+          </SimpleGrid>
 
           <GuardrailMeter count={guardrailCount} />
 
-          {/* Actions — design position: left column, under the meter. */}
           <Group gap="sm">
             <NewBlockButton topics={topics} activeSetId={activeSetId} activeSetLabel={activeSetLabel} />
             <PublishButton activeSetId={activeSetId} activeSetLabel={activeSetLabel ?? 'Prompt'} />
           </Group>
         </Stack>
+      </Card>
 
-        {/* Right — donut + caption + type legend UNDER the donut */}
-        <Stack gap={6} align="center">
+      {/* Right card — donut + caption */}
+      <Card withBorder radius="md" p="lg" style={{ background: 'transparent' }}>
+        <Stack gap={4} align="center" justify="center" style={{ height: '100%' }}>
           <TokenDonut blocks={donutBlocks} />
           <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}>
             Hover a segment for its breakdown
           </Text>
         </Stack>
-      </SimpleGrid>
-    </Card>
+      </Card>
+    </SimpleGrid>
   )
 }
