@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Badge, Box, Group, Menu, Stack, Text, TextInput, UnstyledButton } from '@mantine/core'
+import { Badge, Box, Group, Menu, Text, TextInput, UnstyledButton } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { Text as MutedText } from '@/components/admin/primitives/Text'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -87,14 +87,14 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
     : sets
 
   return (
-    <Stack gap={6}>
+    <Group gap={16} align="center" wrap="nowrap">
       <MutedText
         variant="muted"
         style={{
-          fontFamily: 'var(--mantine-font-family-monospace)',
-          fontSize: 10,
-          letterSpacing: '0.16em',
+          fontSize: 13.5,
+          letterSpacing: '0.14em',
           textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
         }}
       >
         Current Prompt Set
@@ -115,15 +115,15 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 9,
-              height: 36,
-              padding: '0 9px 0 14px',
+              gap: 12,
+              height: 52,
+              padding: '0 14px 0 20px',
               border: '1px solid var(--mantine-color-gray-3)',
-              borderRadius: 'var(--mantine-radius-sm)',
-              background: 'var(--mantine-color-body)',
+              borderRadius: 'var(--mantine-radius-md)',
+              background: '#fff',
             }}
           >
-            <Text fw={600} size="sm" style={{ whiteSpace: 'nowrap' }}>{active.label}</Text>
+            <Text fw={600} style={{ fontSize: 18, whiteSpace: 'nowrap' }}>{active.label}</Text>
             <StatusBadge status={active.status} />
             <Caret open={menuOpen} />
           </UnstyledButton>
@@ -161,6 +161,6 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
           )}
         </Menu.Dropdown>
       </Menu>
-    </Stack>
+    </Group>
   )
 }
