@@ -87,13 +87,14 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
     : sets
 
   return (
-    <Group gap={16} align="center" wrap="nowrap">
+    <Group gap="sm" align="center" wrap="nowrap">
       <MutedText
         variant="muted"
         style={{
-          fontSize: 13.5,
-          letterSpacing: '0.14em',
+          fontSize: 'var(--mantine-font-size-xs)',
+          letterSpacing: '0.08em',
           textTransform: 'uppercase',
+          fontWeight: 600,
           whiteSpace: 'nowrap',
         }}
       >
@@ -115,15 +116,15 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 12,
-              height: 52,
-              padding: '0 14px 0 20px',
+              gap: 8,
+              height: 38,
+              padding: '0 9px 0 13px',
               border: '1px solid var(--mantine-color-gray-3)',
-              borderRadius: 'var(--mantine-radius-md)',
+              borderRadius: 'var(--mantine-radius-sm)',
               background: '#fff',
             }}
           >
-            <Text fw={600} style={{ fontSize: 18, whiteSpace: 'nowrap' }}>{active.label}</Text>
+            <Text fw={600} style={{ fontSize: 14, whiteSpace: 'nowrap' }}>{active.label}</Text>
             <StatusBadge status={active.status} />
             <Caret open={menuOpen} />
           </UnstyledButton>
