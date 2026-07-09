@@ -5,11 +5,6 @@ import { Button } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { CompilePublishModal } from '@/components/admin/prompt-studio/CompilePublishModal'
 
-interface PreviewResponse {
-  content: string
-  tokenCount: number
-}
-
 interface CompileResponse {
   success: boolean
   version: number
@@ -33,7 +28,7 @@ export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProp
     setCompiling(true)
     setCompileOpen(true)
     try {
-      const res = await fetch('/api/admin/prompt/preview', {
+      const res = await fetch('/api/admin/prompt/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_set_id: activeSetId }),
@@ -48,8 +43,9 @@ export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProp
         })
         return
       }
-      const data: PreviewResponse = await res.json()
+      const data: CompileResponse = await res.json()
       setCompiledText(data.content)
+      setCompiledVersion(data.version)
     } catch (err) {
       setCompileOpen(false)
       notifications.show({
@@ -62,41 +58,18 @@ export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProp
     }
   }
 
-  async function handlePublish() {
-    try {
-      const res = await fetch('/api/admin/prompt/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_set_id: activeSetId }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        notifications.show({
-          color: 'red',
-          title: 'Publish failed',
-          message: data?.error ?? 'Publish failed',
-        })
-        return
-      }
-      const data: CompileResponse = await res.json()
-      setCompiledVersion(data.version)
-      setCompileOpen(false)
-      notifications.show({
-        color: 'green',
-        title: 'Prompt published',
-        message: `Version ${data.version}`,
-      })
-    } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Publish failed',
-        message: 'Network error — could not reach the server.',
-      })
-    }
+  function handlePublish() {
+    setCompileOpen(false)
+    notifications.show({
+      color: 'green',
+      title: 'Prompt published',
+      message: `Version ${compiledVersion}`,
+    })
   }
 
   return (
     <>
+      {/* Brand terracotta (theme primary), not green — matches the design. */}
       <Button color="brand" size="sm" onClick={handleCompile}>
         Compile &amp; Publish
       </Button>

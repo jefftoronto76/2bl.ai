@@ -35,6 +35,7 @@ import {
   type StatusCounts,
 } from '@/components/admin/content/BlocksFilters'
 import type { BlockType } from '@/services/prompt/block-types'
+import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
 import type { PromptSet } from './promptSets'
@@ -77,10 +78,16 @@ type DuplicateResponse = {
 export function BlocksTable({
   rows,
   sets,
+  topics,
+  activeSetId,
+  activeSetLabel,
   overview,
 }: {
   rows: BlockRow[]
   sets?: PromptSet[]
+  topics: Topic[]
+  activeSetId: string | null
+  activeSetLabel: string | null
   overview?: { version?: number | null; status?: string | null }
 }) {
   const [items, setItems] = useState<BlockRow[]>(rows)
@@ -492,6 +499,9 @@ export function BlocksTable({
           blocks={items}
           version={overview?.version}
           status={overview?.status}
+          topics={topics}
+          activeSetId={activeSetId}
+          activeSetLabel={activeSetLabel}
         />
       </SummarySection>
 
