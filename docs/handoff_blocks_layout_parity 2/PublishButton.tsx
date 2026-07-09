@@ -69,6 +69,7 @@ export function PublishButton({ activeSetId, activeSetLabel }: PublishButtonProp
 
   return (
     <>
+      {/* Brand terracotta (theme primary), not green — matches the design. */}
       <Button color="brand" size="sm" onClick={handleCompile}>
         Compile &amp; Publish
       </Button>
