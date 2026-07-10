@@ -19,6 +19,7 @@ export interface MemberInviteRow {
   email: string | null
   name: string | null
   invited_name: string | null
+  invited_by: string | null
   role: string
   status: string
   token: string | null
@@ -42,7 +43,9 @@ function generateToken(): string {
  * account yet — user_id and clerk_id are null until they sign up and the
  * Clerk webhook fires (see linkInvitedMember). Optional email and phone lock
  * the invite to a specific contact (used by linkInvitedMember for email-match
- * activation via the webhook path).
+ * activation via the webhook path). actorId (the acting admin's users.id) is
+ * stamped onto invited_by for provenance — null means seeded/self-service and
+ * renders as a dash in the members UI.
  */
 export async function createMemberInvite(
   tenantId: string,
@@ -62,6 +65,9 @@ export async function createMemberInvite(
     role: 'member',
     token,
     updated_at: new Date().toISOString(),
+  }
+  if (actorId != null) {
+    payload.invited_by = actorId
   }
   if (invitedName != null && invitedName.trim().length > 0) {
     payload.invited_name = invitedName.trim()
@@ -122,7 +128,7 @@ export async function validateMemberToken(
 
   const { data, error } = await supabase
     .from('members')
-    .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, role, status, token, used_at, auto_open, primer, created_at, updated_at')
+    .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, invited_by, role, status, token, used_at, auto_open, primer, created_at, updated_at')
     .eq('token', token)
     .is('used_at', null)
     .maybeSingle()
