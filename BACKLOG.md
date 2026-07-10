@@ -1,8 +1,21 @@
 
 # Admin work July - 2026 (when noted)
 
+Bug: Check & Save freezes UI when multiple blocks are presented and saved in rapid succession
+
+Symptoms: When the Composer returns multiple blocks (e.g. 2 of 2) and the user clicks Check & Save on each in quick succession, the UI freezes and never recovers. Work appears to complete server-side but the frontend state is unresolvable.
+Likely cause: State management failure — first save may unmount/remount the block card component, leaving the second save's callback with nothing to return to. Or a loading state set to true on first click that never resets due to a silent error on the second call.
+Fix direction: Investigate block card component state lifecycle when multiple blocks are present. Consider optimistic UI update on click with background save.
+Priority: Medium — workaround is to save one block at a time.
+Discovered: July 9, 2026
+
+
+# Admin work July - 2026 (when noted)
+
 Backlog: Safety check rewrite suggestion UI
 When the safety check flags an issue and offers a suggested rewrite, surface an "Apply rewrite" button that replaces the block body with the suggested version. Currently operators see the suggestion but have no way to apply it without manually editing.
+
+Discovered: July 8, 2026
 
 # Admin work July - 2026 (when noted)
 
@@ -11,11 +24,15 @@ Currently the "New block" button opens a blank form. Operators who create blocks
 The fix: embed the Composer experience directly into the new block drawer. Operator describes what they want, Composer drafts the block with proper structure and positive language, operator reviews and saves. "Check & Save" becomes the final gate on an already-coached block rather than a cold quality check on unguided input.
 Defer until after Heirloom V1 is in production.
 
+Discovered: July 8, 2026
+
 
 # Admin work July - 2026 (when noted)
 
 Preview tenant routing — dynamic resolution
 Middleware preview routing (?preview=<slug>) is currently a hardcoded block per tenant. Doesn't scale — every new tenant requires a middleware edit. Needs a dynamic solution that works within edge runtime constraints (no Supabase client, raw fetch only, or an alternative architecture). Deferred until there's bandwidth to think it through properly.
+
+Discovered: July 7, 2026
 
 # Friday cleanup — Sage Blocks redesign PR
 
