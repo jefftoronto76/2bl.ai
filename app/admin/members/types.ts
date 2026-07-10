@@ -25,6 +25,8 @@ export interface Membership {
   lastActive: string | null;
   /** Optional name the admin set at invite creation. */
   invitedName: string | null;
+  /** Display name of the admin who created the invite (users.name via members.invited_by). Null = seeded/self-service — renders as a dash. */
+  invitedByName: string | null;
   /** Invite token — present when status = 'invited' and not yet used. */
   token: string | null;
 }
