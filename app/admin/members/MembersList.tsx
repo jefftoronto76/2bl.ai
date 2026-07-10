@@ -501,6 +501,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                   <Table.Th>Role</Table.Th>
                   <Table.Th>Plan</Table.Th>
                   <Table.Th>Status</Table.Th>
+                  <Table.Th>Invited by</Table.Th>
                   <Table.Th>Last active</Table.Th>
                   <Table.Th w={52} />
                 </Table.Tr>
@@ -568,6 +569,11 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                             {cap(p.status)}
                           </Badge>
                         )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c={p?.invitedByName ? undefined : 'dimmed'}>
+                          {p?.invitedByName || '—'}
+                        </Text>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" c="dimmed">
@@ -651,6 +657,15 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                   <Box mt="xs">
                     <TenantPills memberships={u.memberships} />
                   </Box>
+
+                  <Group justify="space-between" mt="xs">
+                    <Text size="xs" c="dimmed">
+                      Invited by
+                    </Text>
+                    <Text size="xs" c={p?.invitedByName ? undefined : 'dimmed'}>
+                      {p?.invitedByName || '—'}
+                    </Text>
+                  </Group>
 
                   {!u.isInviteOnly && (
                     <Group justify="space-between" mt="xs">
