@@ -319,7 +319,7 @@ describe('linkInvitedMember', () => {
     // client should never be called — this guard is at the top of the function
     adminHolder.client = { from: vi.fn() }
 
-    await expect(linkInvitedMember('clerk-1', '')).resolves.toBeUndefined()
+    await expect(linkInvitedMember('clerk-1', '')).resolves.toBe(false)
     expect((adminHolder.client as { from: ReturnType<typeof vi.fn> }).from).not.toHaveBeenCalled()
   })
 
