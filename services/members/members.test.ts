@@ -221,6 +221,26 @@ describe('createMemberInvite', () => {
     expect('invited_name' in payload).toBe(false)
   })
 
+  it('stamps invited_by with the acting admin users.id', async () => {
+    const { client, getCaptured } = makeInsertClient({ id: 'member-5', token: 'tok5' })
+    adminHolder.client = client
+
+    await createMemberInvite('tenant-1', 'actor-1')
+
+    const payload = getCaptured() as Record<string, unknown>
+    expect(payload.invited_by).toBe('actor-1')
+  })
+
+  it('omits invited_by when actorId is null', async () => {
+    const { client, getCaptured } = makeInsertClient({ id: 'member-6', token: 'tok6' })
+    adminHolder.client = client
+
+    await createMemberInvite('tenant-1', null)
+
+    const payload = getCaptured() as Record<string, unknown>
+    expect('invited_by' in payload).toBe(false)
+  })
+
   it('fires a MEMBER_INVITE_CREATED audit event on success', async () => {
     const { client } = makeInsertClient({ id: 'member-4', token: 'tok4' })
     adminHolder.client = client
@@ -299,7 +319,7 @@ describe('linkInvitedMember', () => {
     // client should never be called — this guard is at the top of the function
     adminHolder.client = { from: vi.fn() }
 
-    await expect(linkInvitedMember('clerk-1', '')).resolves.toBeUndefined()
+    await expect(linkInvitedMember('clerk-1', '')).resolves.toBe(false)
     expect((adminHolder.client as { from: ReturnType<typeof vi.fn> }).from).not.toHaveBeenCalled()
   })
 

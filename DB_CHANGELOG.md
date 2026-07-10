@@ -1,5 +1,36 @@
 # DB Changelog
 
+## 2026-07-10
+
+### Add `members.invited_by` — invite provenance
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio — ⚠️ **PENDING; required before the
+"Invited by" branch (`claude/member-invite-name-field-jw25tq`) deploys.**
+Without the column, the members pages and `validateMemberToken` (the Heirloom
+invite gate) will error on the unknown column.
+
+**Purpose:** Record which admin created each invite so the members table can
+show an "Invited by" column (and the detail drawer a provenance line). NULL is
+meaningful — seeded/self-service/waitlist rows have no inviter and render as a
+dimmed dash. Do not backfill historical invites.
+
+**SQL:**
+
+```sql
+ALTER TABLE members
+  ADD COLUMN invited_by uuid REFERENCES users(id) ON DELETE SET NULL;
+COMMENT ON COLUMN members.invited_by IS
+  'users.id of the admin who created the invite. NULL = seeded/self-service/waitlist — renders as a dash. Never backfilled.';
+```
+
+- `ON DELETE SET NULL` so hard-deleting an admin degrades their invitees to
+  the dash rather than breaking the FK.
+- No index — display-only join, never filtered or sorted.
+- Note: this adds a **second** FK from `members` to `users` (alongside
+  `user_id`); the app's PostgREST embeds were disambiguated with column-name
+  hints (`users!user_id`, `users!invited_by`) in the same branch.
+
 ## 2026-06-28
 
 ### Drop compatibility views — master_prompt rename complete

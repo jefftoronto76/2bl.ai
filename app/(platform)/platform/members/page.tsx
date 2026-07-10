@@ -30,8 +30,9 @@ export default async function PlatformMembersPage() {
     .select(
       `
       id, name, email,
-      members:members (
+      members:members!user_id (
         id, tenant_id, role, status, created_at, invited_name, token,
+        inviter:users!invited_by ( name, email ),
         tenant:tenants ( id, name )
       )
     `
@@ -41,7 +42,7 @@ export default async function PlatformMembersPage() {
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
-    .select('id, tenant_id, role, status, created_at, invited_name, token, tenant:tenants ( id, name )')
+    .select('id, tenant_id, role, status, created_at, invited_name, token, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name )')
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
     .order('created_at', { ascending: false });
@@ -67,6 +68,7 @@ export default async function PlatformMembersPage() {
         joined: m.created_at ?? null,
         lastActive: null,
         invitedName: m.invited_name ?? null,
+        invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
       })
     ),
@@ -89,6 +91,7 @@ export default async function PlatformMembersPage() {
         joined: m.created_at ?? null,
         lastActive: null,
         invitedName: m.invited_name ?? null,
+        invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
       },
     ],

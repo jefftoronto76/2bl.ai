@@ -55,6 +55,11 @@ export function MemberDrawer({ user, opened, onClose, inviteApiBase = '/api/plat
               <Text size="sm" c="dimmed" truncate>
                 {user.email || 'Invite pending'}
               </Text>
+              <Text size="xs" c="dimmed" truncate>
+                {user.memberships[0]?.invitedByName
+                  ? `Invited by ${user.memberships[0].invitedByName}`
+                  : 'Seeded · no inviter'}
+              </Text>
             </div>
           </Group>
         ) : null
