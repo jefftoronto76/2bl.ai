@@ -12,6 +12,7 @@ import { Text } from '@/components/admin/primitives/Text';
 import { MembersList } from '@/app/admin/members/MembersList';
 import { MembersDashboard } from './MembersDashboard';
 import type { Membership, TenantOption, UserRow } from '@/app/admin/members/types';
+import { toInviteLink } from '@/app/admin/members/inviteLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,8 +33,9 @@ export default async function PlatformMembersPage() {
       id, name, email,
       members:members!user_id (
         id, tenant_id, role, status, created_at, invited_name, token,
+        used_at, opened_at, opens, expires_at, revoked_at,
         inviter:users!invited_by ( name, email ),
-        tenant:tenants ( id, name )
+        tenant:tenants ( id, name, domain )
       )
     `
     )
@@ -42,14 +44,14 @@ export default async function PlatformMembersPage() {
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
-    .select('id, tenant_id, role, status, created_at, invited_name, token, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name )')
+    .select('id, tenant_id, role, status, created_at, invited_name, token, used_at, opened_at, opens, expires_at, revoked_at, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name, domain )')
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
     .order('created_at', { ascending: false });
 
   const { data: tenantData } = await supabase
     .from('tenants')
-    .select('id, name')
+    .select('id, name, domain')
     .order('name', { ascending: true });
 
   const users: UserRow[] = (data ?? []).map((u: any) => ({
@@ -70,6 +72,7 @@ export default async function PlatformMembersPage() {
         invitedName: m.invited_name ?? null,
         invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
+        invite: toInviteLink(m),
       })
     ),
   }));
@@ -93,11 +96,12 @@ export default async function PlatformMembersPage() {
         invitedName: m.invited_name ?? null,
         invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
+        invite: toInviteLink(m),
       },
     ],
   }));
 
-  const tenants: TenantOption[] = (tenantData ?? []).map((t) => ({ id: t.id, name: t.name }));
+  const tenants: TenantOption[] = (tenantData ?? []).map((t) => ({ id: t.id, name: t.name, domain: t.domain ?? null }));
   const allUsers = [...users, ...invitedRows];
 
   return (

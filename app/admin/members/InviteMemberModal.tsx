@@ -7,6 +7,7 @@ import { Button, Checkbox, CopyButton, Group, Modal, Select, Stack, Text, Textar
 import { IconCheck, IconCopy, IconUserPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import type { TenantOption } from './types';
+import { inviteUrlFor } from './inviteLink';
 
 /**
  * "Invite member" button + its modal.
@@ -116,7 +117,7 @@ export function InviteMemberModal({
       const data = (await res.json()) as { token: string; member_id: string; invite_url: string | null };
       // Use the server-constructed invite_url (built from tenant domain) when available;
       // fall back to the current origin only when the tenant has no domain configured.
-      const url = data.invite_url ?? `${window.location.origin}?invite=${data.token}`;
+      const url = data.invite_url ?? inviteUrlFor(data.token, null, window.location.origin);
       setInviteUrl(url);
       router.refresh();
     } catch (err) {
