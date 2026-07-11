@@ -11,6 +11,12 @@ import { AuditAction } from '@/services/audit/types'
 
 export const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
 
+// Days an invite link stays valid after being created or resent. Stamped onto
+// members.expires_at; not yet enforced at the redirect route. Duplicated here
+// rather than imported from app/admin/members/constants — services/ must not
+// import from app/ (architecture boundary).
+const INVITE_TTL_DAYS = 14
+
 export interface MemberInviteRow {
   id: string
   tenant_id: string
@@ -58,13 +64,16 @@ export async function createMemberInvite(
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
   const supabase = getAdminClient()
   const token = generateToken()
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   const payload: Record<string, unknown> = {
     tenant_id: tenantId,
     status: 'invited',
     role: 'member',
     token,
-    updated_at: new Date().toISOString(),
+    expires_at: expiresAt,
+    updated_at: now.toISOString(),
   }
   if (actorId != null) {
     payload.invited_by = actorId
