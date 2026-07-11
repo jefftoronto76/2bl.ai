@@ -1,14 +1,62 @@
-// DELETE /api/admin/members/invite/:memberId
-// Tenant-admin scoped. Revokes an invite-only or waitlist members row that belongs
-// to the authenticated admin's tenant and has no linked users row (not yet signed up).
-// The tenant_id guard prevents cross-tenant revocation.
+// GET/DELETE /api/admin/members/invite/:memberId
+// Tenant-admin scoped.
+// GET returns the live invite-tracking detail (InviteLink) for the drawer's
+// on-open refetch, scoped to the admin's own tenant. DELETE hard-deletes an
+// invite-only or waitlist members row that belongs to the authenticated
+// admin's tenant and has no linked users row (not yet signed up); the
+// tenant_id guard prevents cross-tenant revocation/deletion. (Soft revoke —
+// stamping revoked_at without deleting the row — is a separate POST
+// .../invite/:memberId/revoke endpoint.)
 
 import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
+import { toInviteLink } from '@/app/admin/members/inviteLink'
 
 interface RouteContext {
   params: Promise<{ memberId: string }>
+}
+
+export async function GET(req: Request, context: RouteContext) {
+  let authCtx: { owner_id: string; tenant_id: string }
+  try {
+    authCtx = await getAuthContext()
+  } catch (err) {
+    console.warn('[admin/members/invite/get] 401 — auth failed:', err instanceof Error ? err.message : err)
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { memberId } = await context.params
+  if (!memberId) return Response.json({ error: 'Missing memberId' }, { status: 400 })
+
+  const supabase = getAdminClient()
+  const { data: row, error } = await supabase
+    .from('members')
+    .select('token, created_at, used_at, opened_at, opens, revoked_at, expires_at')
+    .eq('id', memberId)
+    .eq('tenant_id', authCtx.tenant_id)
+    .maybeSingle()
+
+  if (error || !row) {
+    console.warn('[admin/members/invite/get] member not found or wrong tenant', { tenantId: authCtx.tenant_id, memberId })
+    return Response.json({ error: 'Member not found' }, { status: 404 })
+  }
+
+  const invite = toInviteLink(row as {
+    token: string | null
+    created_at: string | null
+    used_at: string | null
+    opened_at: string | null
+    opens: number | null
+    revoked_at: string | null
+    expires_at: string | null
+  })
+
+  if (!invite) {
+    return Response.json({ error: 'No tracked invite for this member' }, { status: 404 })
+  }
+
+  return Response.json(invite)
 }
 
 export async function DELETE(req: Request, context: RouteContext) {

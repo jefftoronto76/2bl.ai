@@ -1,12 +1,15 @@
 // POST /api/admin/members/invite/resend
 // Tenant-admin scoped. Regenerates the invite token for a member that belongs to the
 // authenticated admin's tenant. Promotes waitlist → invited on resend. The tenant_id
-// guard prevents a tenant admin from regenerating invites for another tenant.
+// guard prevents a tenant admin from regenerating invites for another tenant. Also
+// resets invite-tracking fields (opened_at, opens, revoked_at) and stamps a fresh
+// expires_at so the new link starts clean.
 
 import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { randomBytes } from 'crypto'
 import { logEvent, AuditAction } from '@/services/audit'
+import { INVITE_TTL_DAYS } from '@/app/admin/members/constants'
 
 export async function POST(req: Request) {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -35,11 +38,23 @@ export async function POST(req: Request) {
 
   const supabase = getAdminClient()
   const newToken = randomBytes(24).toString('base64url')
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   // Scope update to the admin's own tenant to prevent cross-tenant token regeneration.
+  // Resets tracking fields so the new link starts with a clean lifecycle.
   const { data, error } = await supabase
     .from('members')
-    .update({ token: newToken, status: 'invited', used_at: null, updated_at: new Date().toISOString() })
+    .update({
+      token: newToken,
+      status: 'invited',
+      used_at: null,
+      opened_at: null,
+      opens: 0,
+      revoked_at: null,
+      expires_at: expiresAt,
+      updated_at: now.toISOString(),
+    })
     .eq('id', member_id)
     .eq('tenant_id', tenantId)
     .in('status', ['invited', 'waitlist'])

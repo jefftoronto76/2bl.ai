@@ -1,5 +1,36 @@
 # DB Changelog
 
+## 2026-07-11
+
+### Add `members.opened_at`, `opens`, `expires_at`, `revoked_at` — invite-link tracking
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio (columns already present; documented here to
+close the gap — no `ALTER TABLE` performed by CC).
+
+**Purpose:** Backs the invite-link tracking timeline in the member detail drawer
+(Option B — Created → Opened → Accepted). The public tokenised redirect route
+(`GET /invite/[token]`) stamps `opened_at` / increments `opens` on every hit; the
+resend routes reset all four on a fresh token; the new soft-revoke endpoint stamps
+`revoked_at`. See `app/admin/members/inviteLink.ts` (`toInviteLink`) for the
+`members` row → `InviteLink` view-model mapping.
+
+**Columns:**
+```sql
+opened_at timestamptz   -- last redirect hit (not first — updated on every open)
+opens     integer       -- cumulative redirect hit count
+expires_at timestamptz  -- link expiry; stamped on create/resend, NOT YET enforced
+revoked_at timestamptz  -- non-null = link is dead (410 at the redirect route,
+                        --   rejected by validateMemberToken / acceptInvite)
+```
+
+**Notes:**
+- All four are nullable; null = not yet reached / no expiry / not revoked.
+- `expires_at` is read at the redirect route but expiry is not enforced yet
+  (deferred — see CLAUDE.md).
+- No new table — the invite lifecycle lives directly on the existing `members`
+  row (one membership = one invite), per the Option B design decision.
+
 ## 2026-07-10
 
 ### Add `members.invited_by` — invite provenance

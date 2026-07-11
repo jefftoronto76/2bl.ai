@@ -1,14 +1,61 @@
-// DELETE /api/platform/members/invite/:memberId
-// Platform admin only. Hard-deletes a members row that has no associated users row
-// (invited-only / waitlist members — status='invited' or status='waitlist' with user_id IS NULL).
-// Used to revoke an invite or remove a waitlist entry before the person has signed up.
+// GET/DELETE /api/platform/members/invite/:memberId
+// Platform admin only.
+// GET returns the live invite-tracking detail (InviteLink) for the drawer's
+// on-open refetch. DELETE hard-deletes a members row that has no associated
+// users row (invited-only / waitlist members — status='invited' or
+// status='waitlist' with user_id IS NULL); used to revoke an invite or remove
+// a waitlist entry before the person has signed up. (Soft revoke — stamping
+// revoked_at on an accepted-or-pending invite without deleting the row — is a
+// separate POST .../invite/:memberId/revoke endpoint.)
 
 import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
+import { toInviteLink } from '@/app/admin/members/inviteLink'
 
 interface RouteContext {
   params: Promise<{ memberId: string }>
+}
+
+export async function GET(req: Request, context: RouteContext) {
+  const user = await getCurrentUser()
+  if (!user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  if (!user.isPlatformAdmin) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const { memberId } = await context.params
+  if (!memberId) return Response.json({ error: 'Missing memberId' }, { status: 400 })
+
+  const supabase = getAdminClient()
+  const { data: row, error } = await supabase
+    .from('members')
+    .select('token, created_at, used_at, opened_at, opens, revoked_at, expires_at')
+    .eq('id', memberId)
+    .maybeSingle()
+
+  if (error || !row) {
+    console.warn('[platform/members/invite/get] member not found', { memberId })
+    return Response.json({ error: 'Member not found' }, { status: 404 })
+  }
+
+  const invite = toInviteLink(row as {
+    token: string | null
+    created_at: string | null
+    used_at: string | null
+    opened_at: string | null
+    opens: number | null
+    revoked_at: string | null
+    expires_at: string | null
+  })
+
+  if (!invite) {
+    return Response.json({ error: 'No tracked invite for this member' }, { status: 404 })
+  }
+
+  return Response.json(invite)
 }
 
 export async function DELETE(req: Request, context: RouteContext) {

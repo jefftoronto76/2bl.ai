@@ -8,6 +8,7 @@ import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMemberInvite } from '@/services/members'
 import { logEvent, AuditAction } from '@/services/audit'
+import { inviteUrlFor } from '@/app/admin/members/inviteLink'
 
 export async function POST(req: Request) {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
   }
 
   const { token, memberId } = result.data
-  const inviteUrl = tenantDomain ? `https://${tenantDomain}?invite=${token}` : null
+  const inviteUrl = tenantDomain ? inviteUrlFor(token, tenantDomain) : null
 
   console.log('[admin/members/invite] success', { actorId, tenantId, memberId, hasInviteUrl: !!inviteUrl })
 

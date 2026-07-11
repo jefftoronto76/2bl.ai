@@ -61,6 +61,7 @@ export const AuditAction = {
   MEMBER_INVITE_CREATED: 'member.invite_created',
   MEMBER_INVITE_RESENT: 'member.invite_resent',
   MEMBER_INVITE_REVOKED: 'member.invite_revoked',
+  MEMBER_INVITE_OPENED: 'member.invite_opened',
   MEMBER_INVITE_ACCEPTED: 'member.invite_accepted',
   MEMBER_HARD_DELETED: 'user.hard_deleted',
   // Conversations (Composer history)

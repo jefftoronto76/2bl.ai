@@ -11,6 +11,12 @@ import { AuditAction } from '@/services/audit/types'
 
 export const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
 
+// Days an invite link stays valid after being created or resent. Stamped onto
+// members.expires_at; not yet enforced at the redirect route. Duplicated here
+// rather than imported from app/admin/members/constants — services/ must not
+// import from app/ (architecture boundary).
+const INVITE_TTL_DAYS = 14
+
 export interface MemberInviteRow {
   id: string
   tenant_id: string
@@ -58,13 +64,16 @@ export async function createMemberInvite(
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
   const supabase = getAdminClient()
   const token = generateToken()
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   const payload: Record<string, unknown> = {
     tenant_id: tenantId,
     status: 'invited',
     role: 'member',
     token,
-    updated_at: new Date().toISOString(),
+    expires_at: expiresAt,
+    updated_at: now.toISOString(),
   }
   if (actorId != null) {
     payload.invited_by = actorId
@@ -131,6 +140,7 @@ export async function validateMemberToken(
     .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, invited_by, role, status, token, used_at, auto_open, primer, created_at, updated_at')
     .eq('token', token)
     .is('used_at', null)
+    .is('revoked_at', null)
     .maybeSingle()
 
   if (error || !data) return null
@@ -334,12 +344,14 @@ export async function acceptInvite(
 
   const supabase = getAdminClient()
 
-  // Step 1: find the invited row.
+  // Step 1: find the invited row. Excludes revoked invites — a revoked token
+  // is dead everywhere, not just at the /invite/[token] redirect.
   const { data: invitedRow, error: findErr } = await supabase
     .from('members')
     .select('id, tenant_id')
     .eq('token', token)
     .is('used_at', null)
+    .is('revoked_at', null)
     .maybeSingle()
 
   if (findErr) {

@@ -8,6 +8,7 @@ import { getCurrentUser } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMemberInvite } from '@/services/members'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
+import { inviteUrlFor } from '@/app/admin/members/inviteLink'
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()
@@ -111,9 +112,7 @@ export async function POST(req: Request) {
   }
 
   const { token, memberId } = result.data
-  const inviteUrl = tenantDomain
-    ? `https://${tenantDomain}?invite=${token}`
-    : null
+  const inviteUrl = tenantDomain ? inviteUrlFor(token, tenantDomain) : null
 
   console.log('[platform/members/invite] success', { providerUserId: user.providerUserId, tenant_id, memberId, hasInviteUrl: !!inviteUrl })
 

@@ -40,6 +40,7 @@ import { formatRelative, primaryStatus } from './utils';
 import { TenantPills } from './TenantPills';
 import { MemberDrawer } from './MemberDrawer';
 import { InviteMemberModal } from './InviteMemberModal';
+import { inviteUrlFor } from './inviteLink';
 
 interface MembersListProps {
   users: UserRow[];
@@ -220,8 +221,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
   function copyInviteLink(user: UserRow) {
     const m0 = user.memberships[0];
     if (!m0?.token) return;
-    const base = m0.tenantDomain ? `https://${m0.tenantDomain}` : window.location.origin;
-    const url = `${base}?invite=${m0.token}`;
+    const url = inviteUrlFor(m0.token, m0.tenantDomain, window.location.origin);
     void navigator.clipboard.writeText(url);
     notifications.show({ color: 'green', title: 'Copied', message: 'Invite link copied to clipboard.' });
   }

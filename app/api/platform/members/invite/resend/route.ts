@@ -1,12 +1,14 @@
 // POST /api/platform/members/invite/resend
 // Platform admin only. Regenerates the invite token for an existing 'invited'
 // members row (identified by member_id). Returns the new token so the client
-// can rebuild the invite URL.
+// can rebuild the invite URL. Also resets invite-tracking fields (opened_at,
+// opens, revoked_at) and stamps a fresh expires_at so the new link starts clean.
 
 import { getCurrentUser } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { randomBytes } from 'crypto'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
+import { INVITE_TTL_DAYS } from '@/app/admin/members/constants'
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()
@@ -63,11 +65,23 @@ export async function POST(req: Request) {
   const actorId = (actorRow as { id: string } | null)?.id ?? null
 
   const newToken = randomBytes(24).toString('base64url')
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   // Allow 'waitlist' as well — sending an invite to a waitlist member promotes them to 'invited'.
+  // Resets tracking fields so the new link starts with a clean lifecycle.
   const { data, error } = await supabase
     .from('members')
-    .update({ token: newToken, status: 'invited', used_at: null, updated_at: new Date().toISOString() })
+    .update({
+      token: newToken,
+      status: 'invited',
+      used_at: null,
+      opened_at: null,
+      opens: 0,
+      revoked_at: null,
+      expires_at: expiresAt,
+      updated_at: now.toISOString(),
+    })
     .eq('id', member_id)
     .in('status', ['invited', 'waitlist'])
     .select('id, token')

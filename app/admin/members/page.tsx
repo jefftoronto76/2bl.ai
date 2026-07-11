@@ -13,6 +13,7 @@ import { Text } from '@/components/admin/primitives/Text';
 import { MembersList } from './MembersList';
 import { MembersDashboard } from './MembersDashboard';
 import type { Membership, TenantOption, UserRow } from './types';
+import { toInviteLink } from './inviteLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,7 @@ export default async function MembersPage() {
     .select(
       `
       id, tenant_id, role, status, created_at, invited_name, token,
+      used_at, opened_at, opens, expires_at, revoked_at,
       user:users!user_id!inner ( id, name, email ),
       inviter:users!invited_by ( name, email ),
       tenant:tenants ( id, name, domain )
@@ -44,7 +46,7 @@ export default async function MembersPage() {
   // Invited-only: members rows with no linked users row (not yet signed up).
   const { data: inviteOnlyData } = await supabase
     .from('members')
-    .select('id, tenant_id, role, status, created_at, invited_name, token, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name, domain )')
+    .select('id, tenant_id, role, status, created_at, invited_name, token, used_at, opened_at, opens, expires_at, revoked_at, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name, domain )')
     .eq('tenant_id', authCtx.tenant_id)
     .is('user_id', null)
     .in('status', ['invited', 'waitlist'])
@@ -74,6 +76,7 @@ export default async function MembersPage() {
         invitedName: m.invited_name ?? null,
         invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
+        invite: toInviteLink(m),
       } satisfies Membership,
     ],
   }));
@@ -97,6 +100,7 @@ export default async function MembersPage() {
         invitedName: m.invited_name ?? null,
         invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
         token: m.token ?? null,
+        invite: toInviteLink(m),
       } satisfies Membership,
     ],
   }));

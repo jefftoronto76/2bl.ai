@@ -44,6 +44,13 @@ export default createAuthMiddleware(async (auth, req) => {
   // through to the root /admin route, which resolves the tenant from the host.
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/')
 
+  // /invite is the public tokenised invite redirect (app/invite/[token]/route.ts).
+  // It must never be rewritten under a product segment on any host — the token
+  // lookup has no tenant context of its own until it reads the members row, so
+  // 2bl.ai/invite/x or heirloom.2bl.ai/invite/x must hit the route handler
+  // directly rather than becoming /secondbrainlabs/invite/x or /heirloom/invite/x.
+  const isInvitePath = pathname === '/invite' || pathname.startsWith('/invite/')
+
   // API routes must never be rewritten under a product segment — they live at the
   // app root and resolve the tenant from the host header. Without this guard,
   // 2bl.ai/api/admin/appearance rewrites to /secondbrainlabs/api/admin/appearance
@@ -57,7 +64,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // rewritten URL automatically (req.nextUrl.clone() keeps all search params)
   // so it persists across server-rendered navigations.
   // Guards mirror the existing host blocks: API, admin, and platform paths pass through.
-  if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath) {
+  if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath && !isInvitePath) {
     const previewTenant = req.nextUrl.searchParams.get('preview')
 
     if (previewTenant === 'heirloom') {
@@ -148,7 +155,7 @@ export default createAuthMiddleware(async (auth, req) => {
     }
   }
 
-  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath) {
+  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath && !isInvitePath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
     requestHeaders.set('x-correlation-id', correlationId)
@@ -169,7 +176,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // never catches Heirloom. Direct hits to /heirloom (e.g. preview URLs) get
   // the same tag without a rewrite.
 
-  if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath) {
+  if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath && !isInvitePath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-heirloom', '1')
     requestHeaders.set('x-correlation-id', correlationId)
@@ -189,7 +196,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // inkwell palette. Direct hits to /legacy (e.g. preview URLs) get
   // the same tag without a rewrite.
 
-  if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath) {
+  if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath && !isInvitePath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-legacy', '1')
     requestHeaders.set('x-correlation-id', correlationId)
