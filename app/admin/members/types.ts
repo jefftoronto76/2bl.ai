@@ -9,6 +9,45 @@ export type MemberStatus = 'active' | 'invited' | 'waitlist' | 'suspended' | 'de
 // Display-only. Source is TBD (billing) — see handover §Open decisions.
 export type Plan = 'free' | 'pro' | 'team';
 
+// ─── Invite tracking (Option B) ────────────────────────────────────────────
+//
+// The invite lifecycle. A recipient moves forward through these stages;
+// `reached` is the FURTHEST stage they got to.
+//
+// Which stages are observable depends on HOW the link is sent:
+//   • 'sent'      always observable — logged when the invite row / token is created.
+//   • 'opened'    observable via the tokenised redirect route (GET /invite/[token]);
+//                 first hit ⇒ opened.
+//   • 'accepted'  always observable — the invitee completes signup (members.used_at).
+//   • 'delivered' NOT observable while links are copy-pasted; GATED out of
+//                 INVITE_STAGES until an email-provider delivery webhook exists.
+export type InviteStage = 'sent' | 'delivered' | 'opened' | 'accepted';
+
+export interface InviteLink {
+  /** Opaque token. The recipient URL is `${INVITE_BASE_URL}/invite/${token}`. */
+  token: string;
+  /** Furthest stage reached. Drives the badge + how far the timeline fills. */
+  reached: InviteStage;
+  /** ISO timestamps — present only for stages actually reached, null beyond. */
+  sentAt: string | null;
+  /** Only ever set by a provider webhook (gated stage — no column yet). */
+  deliveredAt?: string | null;
+  openedAt: string | null;
+  acceptedAt: string | null;
+  /** Total redirect hits. > 1 means opened on multiple devices/clicks. */
+  opens?: number;
+  /** ISO — link expiry, if invites expire. null = no expiry. */
+  expiresAt?: string | null;
+  /** ISO — set when an admin revokes the link. Non-null ⇒ link is dead. */
+  revokedAt?: string | null;
+}
+
+// The async fetch state for a membership's live invite detail. The drawer
+// refetches on open to get the freshest stage + opens count; while that is in
+// flight it shows a skeleton, and on failure an inline retry (see LinkTimeline).
+export type InviteFetchState = 'ready' | 'loading' | 'error';
+// ─── end invite tracking ────────────────────────────────────────────────────
+
 export interface Membership {
   /** members.id — used for invite resend, token operations. */
   memberId: string;
@@ -29,6 +68,10 @@ export interface Membership {
   invitedByName: string | null;
   /** Invite token — present when status = 'invited' and not yet used. */
   token: string | null;
+  /** Invite-tracking snapshot for this membership. Present while an invite has
+   *  been created for this tenant; null/absent = no tracked invite (e.g. the
+   *  member was added directly). Kept post-accept so the timeline stays visible. */
+  invite?: InviteLink | null;
 }
 
 export interface UserRow {
