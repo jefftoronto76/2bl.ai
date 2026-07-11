@@ -140,6 +140,7 @@ export async function validateMemberToken(
     .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, invited_by, role, status, token, used_at, auto_open, primer, created_at, updated_at')
     .eq('token', token)
     .is('used_at', null)
+    .is('revoked_at', null)
     .maybeSingle()
 
   if (error || !data) return null
@@ -343,12 +344,14 @@ export async function acceptInvite(
 
   const supabase = getAdminClient()
 
-  // Step 1: find the invited row.
+  // Step 1: find the invited row. Excludes revoked invites — a revoked token
+  // is dead everywhere, not just at the /invite/[token] redirect.
   const { data: invitedRow, error: findErr } = await supabase
     .from('members')
     .select('id, tenant_id')
     .eq('token', token)
     .is('used_at', null)
+    .is('revoked_at', null)
     .maybeSingle()
 
   if (findErr) {

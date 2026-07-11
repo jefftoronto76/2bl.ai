@@ -52,7 +52,7 @@ function makeInsertClient(
 }
 
 // Chainable select mock for validateMemberToken:
-//   .from().select().eq().is().maybeSingle()
+//   .from().select().eq().is('used_at', null).is('revoked_at', null).maybeSingle()
 function makeTokenSelectClient(returnData: unknown, returnError: unknown = null) {
   const client = {
     from(_table: string) {
@@ -62,7 +62,11 @@ function makeTokenSelectClient(returnData: unknown, returnError: unknown = null)
             eq(_col: string, _val: unknown) {
               return {
                 is(_col: string, _val: unknown) {
-                  return { maybeSingle: async () => ({ data: returnData, error: returnError }) }
+                  return {
+                    is(_col2: string, _val2: unknown) {
+                      return { maybeSingle: async () => ({ data: returnData, error: returnError }) }
+                    },
+                  }
                 },
               }
             },
