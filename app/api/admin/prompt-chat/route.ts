@@ -1,8 +1,16 @@
+import { getAuthContext } from '@/services/auth'
 import { buildPromptChatSystem, type PromptChatInput } from '@/services/prompt/composer'
 import { runChatStream } from '@/services/chat/server/stream'
 import { DEFAULT_ADMIN_MODEL_CONFIG } from '@/services/chat/server/config'
 
 export async function POST(req: Request) {
+  try {
+    await getAuthContext()
+  } catch (err) {
+    console.error('[prompt-chat] auth failed:', err instanceof Error ? err.message : err)
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return new Response('ANTHROPIC_API_KEY is not configured', { status: 500 })

@@ -78,7 +78,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     (sessionId || memberId)
       ? getMemberPrimer(sessionId, tenantId, memberId)
       : Promise.resolve(null),
-    resolveMediaContext(req.mediaItems, tenantId),
+    resolveMediaContext(req.mediaItems, tenantId, memberId),
   ])
 
   console.log('[chat] memberPrimer', memberPrimer !== null
@@ -104,7 +104,8 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       system: systemPrompt,
       messages: messagesForModel,
       onFinish: async ({ text, usage }) => {
-        await handleSessionFinish({ sessionId, text, usage, visitorText: lastVisitorText })
+        if (!tenantId) return
+        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText })
       },
     })
   } catch (error) {

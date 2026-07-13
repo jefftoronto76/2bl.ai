@@ -151,13 +151,14 @@ export function detectPhoneInText(text: string): string | null {
   return null
 }
 
-async function persistVisitorName(sessionId: string, name: string): Promise<boolean> {
+async function persistVisitorName(sessionId: string, tenantId: string, name: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
       .from('chat_sessions')
       .select('visitor_name')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (selectError) {
@@ -183,6 +184,7 @@ async function persistVisitorName(sessionId: string, name: string): Promise<bool
       .from('chat_sessions')
       .update({ visitor_name: name })
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       console.error('[chat/session] visitor_name update failed:', updateError.message)
@@ -201,13 +203,14 @@ async function persistVisitorName(sessionId: string, name: string): Promise<bool
 // only when a new value was actually written; false when the field was already
 // set, the session was missing, or any error occurred — so callers can decide
 // whether a fallback path should still run.
-async function persistVisitorEmail(sessionId: string, email: string): Promise<boolean> {
+async function persistVisitorEmail(sessionId: string, tenantId: string, email: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
       .from('chat_sessions')
       .select('email')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (selectError) {
@@ -233,6 +236,7 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<bo
       .from('chat_sessions')
       .update({ email })
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       console.error('[chat/session] email update failed:', updateError.message)
@@ -251,13 +255,14 @@ async function persistVisitorEmail(sessionId: string, email: string): Promise<bo
 // only when a new value was actually written; false when the field was already
 // set, the session was missing, or any error occurred — so callers can decide
 // whether a fallback path should still run.
-async function persistVisitorPhone(sessionId: string, phone: string): Promise<boolean> {
+async function persistVisitorPhone(sessionId: string, tenantId: string, phone: string): Promise<boolean> {
   try {
     const supabase = getAdminClient()
     const { data, error: selectError } = await supabase
       .from('chat_sessions')
       .select('phone')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (selectError) {
@@ -283,6 +288,7 @@ async function persistVisitorPhone(sessionId: string, phone: string): Promise<bo
       .from('chat_sessions')
       .update({ phone })
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       console.error('[chat/session] phone update failed:', updateError.message)
@@ -297,13 +303,14 @@ async function persistVisitorPhone(sessionId: string, phone: string): Promise<bo
   }
 }
 
-async function persistCalendarOffered(sessionId: string): Promise<void> {
+async function persistCalendarOffered(sessionId: string, tenantId: string): Promise<void> {
   try {
     const supabase = getAdminClient()
     const { error } = await supabase
       .from('chat_sessions')
       .update({ calendar_offered: true })
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
 
     if (error) {
       console.error('[chat/session] calendar_offered update failed:', error.message)
@@ -325,6 +332,7 @@ async function persistCalendarOffered(sessionId: string): Promise<void> {
 // same session, but no caller produces that pattern.
 async function persistTokenUsage(
   sessionId: string,
+  tenantId: string,
   inputDelta: number,
   outputDelta: number,
 ): Promise<void> {
@@ -335,6 +343,7 @@ async function persistTokenUsage(
       .from('chat_sessions')
       .select('input_tokens, output_tokens')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (selectError) {
@@ -356,6 +365,7 @@ async function persistTokenUsage(
       .from('chat_sessions')
       .update({ input_tokens: nextInput, output_tokens: nextOutput })
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
 
     if (updateError) {
       console.error('[chat/session] token usage update failed:', updateError.message)
@@ -393,11 +403,12 @@ async function persistTokenUsage(
  */
 export async function handleSessionFinish(params: {
   sessionId: string | null
+  tenantId: string
   text: string
   usage: TokenUsage | null
   visitorText?: string | null
 }): Promise<void> {
-  const { sessionId, text, usage, visitorText } = params
+  const { sessionId, tenantId, text, usage, visitorText } = params
 
   if (!sessionId) {
     console.log('[chat/session] onFinish: no session_id, skipping detection flows')
@@ -414,7 +425,7 @@ export async function handleSessionFinish(params: {
   // Token usage — main streamText turn. Persisted before any other flow so
   // its short-circuits cannot bypass the metric.
   if (usage) {
-    await persistTokenUsage(sessionId, usage.promptTokens, usage.completionTokens)
+    await persistTokenUsage(sessionId, tenantId, usage.promptTokens, usage.completionTokens)
   }
 
   // Calendar offer detection. Pre-check bounds cost: once true for a session,
@@ -425,6 +436,7 @@ export async function handleSessionFinish(params: {
       .from('chat_sessions')
       .select('calendar_offered')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (error) {
@@ -435,7 +447,7 @@ export async function handleSessionFinish(params: {
       console.log('[chat/session] onFinish: calendar_offered already set, skipping scan')
     } else if (scanForCalendarOffer(text)) {
       console.log('[chat/session] onFinish: calendar offer detected in assistant text')
-      await persistCalendarOffered(sessionId)
+      await persistCalendarOffered(sessionId, tenantId)
     }
   } catch (err) {
     console.error(
@@ -452,7 +464,7 @@ export async function handleSessionFinish(params: {
   const markerEmail = detectVisitorEmailMarker(text)
   if (markerEmail) {
     console.log('[chat/session] onFinish: email marker detected:', markerEmail)
-    emailCaptured = await persistVisitorEmail(sessionId, markerEmail)
+    emailCaptured = await persistVisitorEmail(sessionId, tenantId, markerEmail)
   } else {
     console.log('[chat/session] onFinish: no email marker in assistant text')
   }
@@ -463,7 +475,7 @@ export async function handleSessionFinish(params: {
   const markerPhone = detectVisitorPhoneMarker(text)
   if (markerPhone) {
     console.log('[chat/session] onFinish: phone marker detected:', markerPhone)
-    phoneCaptured = await persistVisitorPhone(sessionId, markerPhone)
+    phoneCaptured = await persistVisitorPhone(sessionId, tenantId, markerPhone)
   } else {
     console.log('[chat/session] onFinish: no phone marker in assistant text')
   }
@@ -482,7 +494,7 @@ export async function handleSessionFinish(params: {
       const phone = detectPhoneInText(visitorText)
       if (phone) {
         console.log('[chat/session] onFinish: phone detected in visitor message')
-        await persistVisitorPhone(sessionId, phone)
+        await persistVisitorPhone(sessionId, tenantId, phone)
       }
     }
 
@@ -492,7 +504,7 @@ export async function handleSessionFinish(params: {
       const email = detectEmailInText(visitorText)
       if (email) {
         console.log('[chat/session] onFinish: email detected in visitor message')
-        await persistVisitorEmail(sessionId, email)
+        await persistVisitorEmail(sessionId, tenantId, email)
       }
     }
   }
@@ -504,6 +516,7 @@ export async function handleSessionFinish(params: {
       .from('chat_sessions')
       .select('visitor_name')
       .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
       .maybeSingle()
 
     if (error) {
@@ -530,7 +543,7 @@ export async function handleSessionFinish(params: {
   const markerName = detectVisitorNameMarker(text)
   if (markerName) {
     console.log('[chat/session] onFinish: name marker detected:', markerName)
-    nameCaptured = await persistVisitorName(sessionId, markerName)
+    nameCaptured = await persistVisitorName(sessionId, tenantId, markerName)
   } else {
     console.log('[chat/session] onFinish: no name marker in assistant text')
   }
@@ -547,7 +560,7 @@ export async function handleSessionFinish(params: {
       const name = detectNameInText(visitorText)
       if (name) {
         console.log('[chat/session] onFinish: name detected in visitor message')
-        await persistVisitorName(sessionId, name)
+        await persistVisitorName(sessionId, tenantId, name)
       }
     }
   }

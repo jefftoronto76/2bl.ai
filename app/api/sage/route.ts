@@ -1,7 +1,35 @@
-import { getTenantFromRequest } from '@/services/auth'
+import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getAdminClient } from '@/services/auth/supabase-admin'
+import { validateMemberToken } from '@/services/members'
 import { streamChat } from '@/services/chat/server'
 import type { ChatMessage, ChatMode } from '@/services/chat/server'
 import type { MediaAttachmentInput } from '@/services/chat/server/types'
+
+async function resolveMemberId(
+  tenantId: string | null,
+  inviteToken: string | null,
+): Promise<string | null> {
+  if (!tenantId) return null
+
+  const user = await getCurrentUser()
+  if (user) {
+    const supabase = getAdminClient()
+    const { data: memberRow } = await supabase
+      .from('members')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('clerk_id', user.providerUserId)
+      .maybeSingle()
+    return (memberRow as { id: string } | null)?.id ?? null
+  }
+
+  if (inviteToken) {
+    const row = await validateMemberToken(inviteToken)
+    if (row && row.tenant_id === tenantId) return row.id
+  }
+
+  return null
+}
 
 // Thin HTTP adapter over the chat service (services/chat/server). Owns only
 // the HTTP concerns: the ANTHROPIC_API_KEY guard, host→tenant resolution, and
@@ -21,7 +49,7 @@ export async function POST(req: Request) {
     messages: { role: string; content: string }[]
     mode?: string | null
     session_id?: string | null
-    member_id?: string | null
+    invite_token?: string | null
     prompt_type?: string | null
     media_items?: { mediaItemId: string; type: string; filename: string }[] | null
   }
@@ -42,13 +70,18 @@ export async function POST(req: Request) {
       ? (body.media_items as MediaAttachmentInput[])
       : null
 
+  const inviteToken =
+    typeof body.invite_token === 'string' && body.invite_token.length > 0
+      ? body.invite_token
+      : null
+
+  const memberId = await resolveMemberId(tenantId, inviteToken)
+
   return streamChat({
     messages,
     mode,
     sessionId: body.session_id ?? null,
-    memberId: typeof body.member_id === 'string' && body.member_id.length > 0
-      ? body.member_id
-      : null,
+    memberId,
     tenant: { tenantId },
     promptType: typeof body.prompt_type === 'string' && body.prompt_type.length > 0
       ? body.prompt_type

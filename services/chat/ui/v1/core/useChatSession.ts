@@ -46,6 +46,12 @@ export interface ChatSessionConfig {
    */
   getMemberId?: () => string | null
   /**
+   * Optional accessor for the raw invite token of a pre-auth invited member.
+   * Sent to /api/sage as `invite_token` so the route can re-validate it and
+   * derive a trustworthy memberId server-side.
+   */
+  getInviteToken?: () => string | null
+  /**
    * Optional accessor for media items associated with the current session.
    * When provided, resolveMediaContext fetches derived_content for ready items
    * and injects an ATTACHED MEDIA section into the system prompt.
@@ -72,7 +78,7 @@ export interface ChatSession {
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
-  const { instanceKey, getMemberId, getMediaItems } = config
+  const { instanceKey, getMemberId, getInviteToken, getMediaItems } = config
 
   // Resolve the backing store. Singleton mode uses the client registry; on the
   // server (where a client component still renders for initial HTML) we never
@@ -116,9 +122,10 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
       getSessionId: () => store.getState().sessionId,
       getMode: () => store.getState().mode,
       getMemberId,
+      getInviteToken,
       getMediaItems,
     }),
-    [store, getMemberId, getMediaItems],
+    [store, getMemberId, getInviteToken, getMediaItems],
   )
 
   const turn = useChatTurn({ accessors })

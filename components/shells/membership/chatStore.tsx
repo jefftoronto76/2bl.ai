@@ -244,6 +244,7 @@ export function ChatProvider({
   // The conversation engine + state, isolated to this provider (no instanceKey).
   const session = useChatSession({
     getMemberId: () => memberIdRef.current,
+    getInviteToken: () => inviteTokenRef.current,
     getMediaItems: (): MediaAttachmentInput[] => mediaItemsRef.current.map(m => ({
       mediaItemId: m.id,
       type: m.type,

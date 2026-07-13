@@ -502,7 +502,10 @@ export default function PromptBuilderPage() {
 
       const candidate = text.slice(start, end + 1)
       try {
-        const parsed = JSON.parse(candidate)
+        const normalized = candidate
+          .replace(/[“”]/g, '"')
+          .replace(/[‘’]/g, "'")
+        const parsed = JSON.parse(normalized)
         if (parsed.done && parsed.title && parsed.content) {
           const draft: DraftBlock = { title: parsed.title, content: parsed.content }
           if (typeof parsed.type === 'string' && VALID_TYPES.has(parsed.type.toLowerCase().replace(/\s+/g, '_'))) {
