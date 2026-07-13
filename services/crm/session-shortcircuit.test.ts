@@ -28,16 +28,24 @@ function makeAdminClient(row: Row) {
           selectCols.push(cols)
           return {
             eq() {
-              return { maybeSingle: async () => ({ data: row, error: null }) }
+              return {
+                eq() {
+                  return { maybeSingle: async () => ({ data: row, error: null }) }
+                },
+              }
             },
           }
         },
         update(obj: Row) {
           return {
-            eq: async () => {
-              updates.push(obj)
-              Object.assign(row, obj)
-              return { error: null }
+            eq() {
+              return {
+                eq: async () => {
+                  updates.push(obj)
+                  Object.assign(row, obj)
+                  return { error: null }
+                },
+              }
             },
           }
         },
@@ -59,6 +67,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's1',
+      tenantId: 't1',
       text: 'Got it. [PHONE: +15551234567]',
       usage: null,
       // A *different* number in free text — if the regex ran it would write this.
@@ -81,6 +90,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's2',
+      tenantId: 't1',
       text: 'Sounds good, talk soon.',
       usage: null,
       visitorText: 'call me at 555-123-4567',
@@ -102,6 +112,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's3',
+      tenantId: 't1',
       text: 'Thanks. [EMAIL: marker@example.com]',
       usage: null,
       visitorText: 'or email me at regex@example.com',
@@ -122,6 +133,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's4',
+      tenantId: 't1',
       text: 'Sounds good.',
       usage: null,
       visitorText: 'reach me at hello@example.com',
@@ -142,6 +154,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's5',
+      tenantId: 't1',
       text: 'Great to meet you. [NAME: cassandra]',
       usage: null,
       // A different name in free text — if the regex ran it would write this.
@@ -163,6 +176,7 @@ describe('handleSessionFinish — marker/regex short-circuit', () => {
 
     await handleSessionFinish({
       sessionId: 's6',
+      tenantId: 't1',
       text: 'What brings you here today?',
       usage: null,
       visitorText: 'my name is Cassandra',
