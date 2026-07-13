@@ -78,7 +78,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     (sessionId || memberId)
       ? getMemberPrimer(sessionId, tenantId, memberId)
       : Promise.resolve(null),
-    resolveMediaContext(req.mediaItems, tenantId),
+    resolveMediaContext(req.mediaItems, tenantId, memberId),
   ])
 
   console.log('[chat] memberPrimer', memberPrimer !== null

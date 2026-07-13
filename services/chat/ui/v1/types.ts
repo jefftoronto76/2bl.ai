@@ -130,6 +130,11 @@ export interface ChatEngineAccessors {
    *  When provided, /api/sage passes it to getMemberPrimer so the primer
    *  can be looked up without chat_sessions.user_id being set. */
   getMemberId?(): string | null
+  /** Optional — the raw invite token for a pre-auth invited member. Sent to
+   *  /api/sage as `invite_token` so the route can re-validate it server-side
+   *  and derive a trustworthy memberId; the client-supplied member id above
+   *  is display/lookup convenience only and is never trusted by the server. */
+  getInviteToken?(): string | null
   /** Optional — media items associated with the current session. When provided,
    *  resolveMediaContext fetches derived_content for ready items and injects an
    *  ATTACHED MEDIA section into the system prompt. */

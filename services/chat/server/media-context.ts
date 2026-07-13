@@ -14,8 +14,9 @@ const MEDIA_UPLOAD_PATTERN = /\[MEDIA_UPLOAD:[^\]]*\]/g
 export async function resolveMediaContext(
   mediaItems: MediaAttachmentInput[] | null | undefined,
   tenantId: string | null,
+  memberId: string | null,
 ): Promise<string> {
-  if (!mediaItems || mediaItems.length === 0 || !tenantId) return ''
+  if (!mediaItems || mediaItems.length === 0 || !tenantId || !memberId) return ''
 
   const ids = mediaItems.map(m => m.mediaItemId)
 
@@ -25,6 +26,7 @@ export async function resolveMediaContext(
     .select('id, original_filename, type, derived_content')
     .in('id', ids)
     .eq('tenant_id', tenantId)
+    .eq('member_id', memberId)
     .eq('status', 'ready')
     .not('derived_content', 'is', null)
 

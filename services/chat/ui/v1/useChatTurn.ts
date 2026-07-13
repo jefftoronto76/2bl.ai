@@ -24,7 +24,7 @@ async function streamTurn(
   mode: ChatMode,
   sessionId: string | null,
   onChunk: (accumulated: string) => void,
-  memberId?: string | null,
+  inviteToken?: string | null,
   mediaItems?: MediaAttachmentInput[] | null,
 ): Promise<void> {
   const response = await fetch('/api/sage', {
@@ -34,7 +34,7 @@ async function streamTurn(
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       mode: mode ?? null,
       session_id: sessionId ?? null,
-      member_id: memberId ?? null,
+      invite_token: inviteToken ?? null,
       media_items: mediaItems?.length ? mediaItems : null,
     }),
   })
@@ -128,7 +128,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       try {
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
-          accessors.getMemberId?.() ?? null,
+          accessors.getInviteToken?.() ?? null,
           currentMediaItems,
         )
       } catch {
@@ -177,7 +177,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       try {
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
-          accessors.getMemberId?.() ?? null,
+          accessors.getInviteToken?.() ?? null,
         )
       } catch {
         accessors.updateLastMessage('')
@@ -204,7 +204,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         accessors.getMode?.() ?? null,
         retrySessionIdRef.current,
         chunk => accessors.updateLastMessage(chunk),
-        accessors.getMemberId?.() ?? null,
+        accessors.getInviteToken?.() ?? null,
         retryMediaItemsRef.current,
       )
     } catch {
