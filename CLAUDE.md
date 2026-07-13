@@ -13,8 +13,7 @@ follow-up task.
 ## Principles
 
 ###Marker fallback principle###
-Never make a business-critical outcome dependent solely on a marker firing. The marker is the fast path, not the only path. For any marker that triggers a server-side operation, a fallback must exist in handleSessionFinish that detects the missed case and completes the operation anyway. Current implementation: NAME, EMAIL, PHONE have marker + regex fallback. ACCOUNT_CREATE fallback not yet implemented — required before Heirloom trials.
-
+Never make a business-critical outcome dependent solely on a marker firing. The marker is the fast path, not the only path. For any marker that triggers a server-side operation, a fallback must exist that completes the operation if the marker is missed. Two valid patterns: (1) server-side — handleSessionFinish detects the missed case via regex and writes the data anyway (NAME, EMAIL, PHONE); (2) client-side UI — a turn-count-gated CTA surfaces the action to the user regardless of marker state (ACCOUNT_CREATE → SaveChatCTA after 4 messages). Every new business-critical marker must have one of these two fallback patterns in place before shipping.
 
 ### Mobile-First, Responsive on First Pass
 Every component ships responsive. Mobile is not a second pass or a polish task
