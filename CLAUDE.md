@@ -12,6 +12,10 @@ follow-up task.
 
 ## Principles
 
+###Marker fallback principle###
+Never make a business-critical outcome dependent solely on a marker firing. The marker is the fast path, not the only path. For any marker that triggers a server-side operation, a fallback must exist in handleSessionFinish that detects the missed case and completes the operation anyway. Current implementation: NAME, EMAIL, PHONE have marker + regex fallback. ACCOUNT_CREATE fallback not yet implemented — required before Heirloom trials.
+
+
 ### Mobile-First, Responsive on First Pass
 Every component ships responsive. Mobile is not a second pass or a polish task
 — it is part of the definition of done. Design and build mobile-first, then
