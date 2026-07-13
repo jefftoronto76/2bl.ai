@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+import { ChatThread } from '@/components/chat/ChatThread';
+import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
 interface MessageListProps {
@@ -230,8 +232,117 @@ function TypingIndicator() {
   );
 }
 
+// Renders a user message exactly as before: the admin-only [SYSTEM:] debug
+// branch, then media chips (image/audio/document/failed), then prose.
+function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[]) {
+  return function renderUserMessage(msg: Message): ReactNode {
+    // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
+    // added to the store, so this branch handles any future case where
+    // system-tagged content reaches messages (e.g. a stored hidden turn),
+    // without touching non-admin paths.
+    if (isAdmin && /^\[SYSTEM:\s*[^\]]*\]/.test(msg.content.trim())) {
+      return (
+        <div key={msg.id} className="flex justify-end">
+          <DebugPill raw={msg.content.trim()} />
+        </div>
+      );
+    }
+
+    const userMsg = parseUserMessage(msg.content);
+
+    return (
+      <div key={msg.id} className="flex flex-col gap-2">
+        {/* Image uploads — full-width preview above prose */}
+        {userMsg.uploads
+          .filter(u => u.type === 'image')
+          .map(u => (
+            <InlineImage
+              key={u.mediaItemId}
+              mediaItemId={u.mediaItemId}
+              filename={u.filename}
+              item={mediaItems.find(m => m.id === u.mediaItemId)}
+            />
+          ))}
+        {/* Audio / document chips */}
+        {userMsg.uploads
+          .filter(u => u.type !== 'image')
+          .map(u => (
+            <InlineFileChip
+              key={u.mediaItemId}
+              filename={u.filename}
+              type={u.type}
+              item={mediaItems.find(m => m.id === u.mediaItemId)}
+            />
+          ))}
+        {/* Failed-before-server uploads */}
+        {userMsg.failures.map((f, idx) => (
+          <FailedUploadChip key={idx} filename={f.filename} />
+        ))}
+        {/* Prose — only when there's actual text alongside the upload */}
+        {userMsg.text && <MessageBubble message={msg} content={userMsg.text} />}
+      </div>
+    );
+  };
+}
+
+interface AssistantRenderConfig {
+  isAdmin: boolean;
+  inviteToken: string | null;
+  visitorName: string | null;
+  visitorEmail: string | null;
+  visitorPhone: string | null;
+  handleAuthSuccess: (name: string) => void;
+}
+
+// Renders an assistant message exactly as before: prose bubble, the
+// ACCOUNT_CREATE → MagicLinkCard prompt, and admin-only debug pills for every
+// parsed marker.
+function makeRenderAssistantMessage(config: AssistantRenderConfig) {
+  return function renderAssistantMessage(msg: Message, parsed: MarkerParseResult): ReactNode {
+    const prose = parsed.prose;
+    const authPrompt = parsed.markers.find((m) => m.type === 'ACCOUNT_CREATE');
+    // All parsed markers (NAME, EMAIL, PHONE, BOOKING, ACCOUNT_CREATE) are
+    // shown as debug pills when admin. parsed.markers is already populated
+    // by the registry — debug view is purely additive display.
+    const debugMarkers = config.isAdmin ? parsed.markers : [];
+
+    // Skip empty assistant messages — no prose, no auth prompt, no debug.
+    if (!prose && !authPrompt && debugMarkers.length === 0) return null;
+
+    return (
+      <div key={msg.id} className="flex flex-col gap-3">
+        {prose && <MessageBubble message={msg} content={prose} />}
+        {authPrompt && (
+          <MagicLinkCard
+            reason={authPrompt.fields[0] || undefined}
+            initialName={config.visitorName}
+            initialEmail={config.visitorEmail}
+            initialPhone={config.visitorPhone}
+            inviteToken={config.inviteToken}
+            onSuccess={config.handleAuthSuccess}
+          />
+        )}
+        {debugMarkers.length > 0 && (
+          <div className="flex flex-col gap-1.5 ml-11">
+            {debugMarkers.map((m, idx) => (
+              <DebugPill key={idx} raw={m.raw} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+}
+
+function renderError(): ReactNode {
+  return <ErrorBubble />;
+}
+
+function renderStreamingIndicator(): ReactNode {
+  return <TypingIndicator />;
+}
+
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
   const { claimCurrentSession, inviteToken, mediaItems } = useChatStore();
   const { user } = useAuthUser();
 
@@ -239,29 +350,25 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
   // services/auth) — never expose debug view to members.
   const isAdmin = user?.isPlatformAdmin === true;
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading, isError]);
-
-  // Parse assistant messages once: markers are stripped, prose drives the bubble.
-  const parsed = messages.map((m) =>
+  // Scans every assistant message for the first NAME/EMAIL/PHONE marker, to
+  // pre-fill MagicLinkCard fields. Separate from ChatThread's per-message
+  // render-time parse (which only sees one message at a time) — this needs
+  // every message at once, so it keeps its own registry.parse() pass.
+  const scanned = messages.map((m) =>
     m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
   );
 
-  // Extract the first [NAME: …], [EMAIL: …], [PHONE: …] marker values from parsed
-  // messages — used to pre-fill the MagicLinkCard fields when the engine has
-  // already captured the visitor's contact info mid-conversation.
-  const visitorName = parsed
+  const visitorName = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'NAME')
     ?.fields[0] ?? null;
 
-  const visitorEmail = parsed
+  const visitorEmail = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'EMAIL')
     ?.fields[0] ?? null;
 
-  const visitorPhone = parsed
+  const visitorPhone = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'PHONE')
     ?.fields[0] ?? null;
@@ -282,93 +389,29 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
-        {messages.map((msg, i) => {
-          if (msg.role === 'user') {
-            // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and
-            // never added to the store, so this branch handles any future case
-            // where system-tagged content reaches messages (e.g. a stored
-            // hidden turn), without touching non-admin paths.
-            if (isAdmin && /^\[SYSTEM:\s*[^\]]*\]/.test(msg.content.trim())) {
-              return (
-                <div key={msg.id} className="flex justify-end">
-                  <DebugPill raw={msg.content.trim()} />
-                </div>
-              );
-            }
-
-            const userMsg = parseUserMessage(msg.content);
-
-            return (
-              <div key={msg.id} className="flex flex-col gap-2">
-                {/* Image uploads — full-width preview above prose */}
-                {userMsg.uploads
-                  .filter(u => u.type === 'image')
-                  .map(u => (
-                    <InlineImage
-                      key={u.mediaItemId}
-                      mediaItemId={u.mediaItemId}
-                      filename={u.filename}
-                      item={mediaItems.find(m => m.id === u.mediaItemId)}
-                    />
-                  ))}
-                {/* Audio / document chips */}
-                {userMsg.uploads
-                  .filter(u => u.type !== 'image')
-                  .map(u => (
-                    <InlineFileChip
-                      key={u.mediaItemId}
-                      filename={u.filename}
-                      type={u.type}
-                      item={mediaItems.find(m => m.id === u.mediaItemId)}
-                    />
-                  ))}
-                {/* Failed-before-server uploads */}
-                {userMsg.failures.map((f, idx) => (
-                  <FailedUploadChip key={idx} filename={f.filename} />
-                ))}
-                {/* Prose — only when there's actual text alongside the upload */}
-                {userMsg.text && <MessageBubble message={msg} content={userMsg.text} />}
-              </div>
-            );
-          }
-
-          const result = parsed[i];
-          const prose = result?.prose ?? '';
-          const authPrompt = result?.markers.find((m) => m.type === 'ACCOUNT_CREATE');
-          // All parsed markers (NAME, EMAIL, PHONE, BOOKING, ACCOUNT_CREATE) are
-          // shown as debug pills when admin. result.markers is already populated
-          // by the registry — debug view is purely additive display.
-          const debugMarkers = isAdmin ? (result?.markers ?? []) : [];
-
-          // Skip empty assistant messages — no prose, no auth prompt, no debug.
-          if (!prose && !authPrompt && debugMarkers.length === 0) return null;
-
-          return (
-            <div key={msg.id} className="flex flex-col gap-3">
-              {prose && <MessageBubble message={msg} content={prose} />}
-              {authPrompt && (
-                <MagicLinkCard
-                  reason={authPrompt.fields[0] || undefined}
-                  initialName={visitorName}
-                  initialEmail={visitorEmail}
-                  initialPhone={visitorPhone}
-                  inviteToken={inviteToken}
-                  onSuccess={handleAuthSuccess}
-                />
-              )}
-              {debugMarkers.length > 0 && (
-                <div className="flex flex-col gap-1.5 ml-11">
-                  {debugMarkers.map((m, idx) => (
-                    <DebugPill key={idx} raw={m.raw} />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {isLoading && <TypingIndicator />}
-        {isError && <ErrorBubble />}
-        <div ref={bottomRef} />
+        <ChatThread
+          messages={messages}
+          isStreaming={isLoading}
+          isError={isError}
+          // Membership has no retry capability wired to its UI today (no
+          // button reads this) — renderError below never invokes it. Passed
+          // as a no-op only to satisfy ChatThread's shared contract.
+          retry={() => {}}
+          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems)}
+          renderAssistantMessage={makeRenderAssistantMessage({
+            isAdmin,
+            inviteToken,
+            visitorName,
+            visitorEmail,
+            visitorPhone,
+            handleAuthSuccess,
+          })}
+          renderError={renderError}
+          renderStreamingIndicator={renderStreamingIndicator}
+          showStreamingIndicator={isLoading}
+          scrollBehavior="smooth"
+          scrollDeps={[messages, isLoading, isError]}
+        />
       </div>
     </div>
   );

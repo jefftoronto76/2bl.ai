@@ -1,5 +1,5 @@
 import { Nav } from './components/Nav'
-import { Hero } from '@/components/shells/widget/Hero'
+import { WidgetShellHero, WidgetShellChat } from '@/components/shells/widget/WidgetShell'
 import { Problem } from './components/Problem'
 import { SectionOutcomes } from './components/SectionOutcomes'
 import { SectionWhy } from './components/SectionWhy'
@@ -7,7 +7,6 @@ import { SectionCareer } from './components/SectionCareer'
 import { SectionTestimonials } from './components/SectionTestimonials'
 import { SectionProcess } from './components/SectionProcess'
 import { Session } from './components/Session'
-import { Chat } from '@/components/shells/widget/Chat'
 import { Footer } from './components/Footer'
 import { Colophon } from './components/Colophon'
 import { ChatSessionProvider } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -22,7 +21,7 @@ export default function Page() {
     <ChatSessionProvider instanceKey="sage">
       <Nav />
       <main>
-        <Hero />
+        <WidgetShellHero />
         <Problem />
         <SectionOutcomes />
         <SectionWhy />
@@ -30,7 +29,7 @@ export default function Page() {
         <SectionCareer />
         <SectionTestimonials />
         {/* <Session /> */}
-        <Chat />
+        <WidgetShellChat />
       </main>
       <Footer />
       <Colophon />
