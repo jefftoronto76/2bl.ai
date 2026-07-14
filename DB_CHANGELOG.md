@@ -1,5 +1,33 @@
 # DB Changelog
 
+## 2026-07-14
+
+### Add `chat_sessions.ttft_ms` — time-to-first-token measurement
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio (column already present; documented
+here to close the gap — no `ALTER TABLE` performed by CC).
+
+**Purpose:** Measures how long a visitor actually waits between sending a
+message and seeing the first token of Sage's reply, per the CLAUDE.md
+performance principle ("Anthropic streaming: first token under 1 second").
+Measured client-side in `useChatTurn.ts`'s `send()` (`performance.now()`,
+send → first streamed chunk) and written via the existing turn-completion
+`PATCH /api/sessions/[id]` call → `updateSession` (`services/crm/sessions.ts`).
+
+**Column:**
+```sql
+ttft_ms integer  -- milliseconds, nullable; overwritten on every turn (latest
+                 -- turn's TTFT, not self-guarded to the first turn)
+```
+
+**Notes:**
+- Only a genuine user-initiated `send()` measures and sends `ttft_ms`;
+  `sendHidden()` (system-driven turns) and `retry()` do not.
+- Overwritten each turn rather than self-guarded like `phone`/`email`/
+  `visitor_name` — a first-turn-only "cold start" variant is a straightforward
+  follow-up (`.is('ttft_ms', null)` on the update query) if preferred later.
+
 ## 2026-07-11
 
 ### Add `members.opened_at`, `opens`, `expires_at`, `revoked_at` — invite-link tracking
