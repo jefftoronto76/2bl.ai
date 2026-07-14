@@ -74,6 +74,8 @@ export interface ChatSession {
   stop(): void
   /** Re-generates one assistant message — see useChatTurn.ts `regenerate`. */
   regenerate(messageId: string): Promise<void>
+  /** Switches the displayed `versions` entry for a message — see useChatTurn.ts. */
+  setActiveVersion(messageId: string, versionIdx: number): void
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
@@ -174,6 +176,7 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     retry: turn.retry,
     stop: turn.stop,
     regenerate: turn.regenerate,
+    setActiveVersion: turn.setActiveVersion,
     setMode,
     hydrate,
     reset,

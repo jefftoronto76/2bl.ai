@@ -8,6 +8,7 @@ import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
+import { MessageActions } from '@/components/chat/MessageActions';
 import { membershipMarkdownComponents } from './markdownComponents';
 import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
@@ -331,11 +332,16 @@ interface AssistantRenderConfig {
   visitorEmail: string | null;
   visitorPhone: string | null;
   handleAuthSuccess: (name: string) => void;
+  messages: Message[];
+  isStreaming: boolean;
+  regenerate: (id: string) => void;
+  setActiveVersion: (id: string, versionIdx: number) => void;
 }
 
 // Renders an assistant message exactly as before: prose bubble, the
 // ACCOUNT_CREATE → MagicLinkCard prompt, and admin-only debug pills for every
-// parsed marker.
+// parsed marker. Adds the MessageActions row (Copy/Regenerate/version
+// carousel) below the prose, aligned under the avatar like the debug pills.
 function makeRenderAssistantMessage(config: AssistantRenderConfig) {
   return function renderAssistantMessage(
     msg: Message,
@@ -352,9 +358,28 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
     // Skip empty assistant messages — no prose, no auth prompt, no debug.
     if (!prose && !authPrompt && debugMarkers.length === 0) return null;
 
+    // Suppress actions on the message currently being streamed into; scope
+    // Regenerate to the latest assistant message only (see MessageActions.tsx).
+    const isLast = config.messages[config.messages.length - 1]?.id === msg.id;
+    const isActive = config.isStreaming && isLast;
+    const versions = msg.versions ?? [];
+    const versionIdx = msg.versionIdx ?? 0;
+
     return (
-      <div key={msg.id} className="flex flex-col gap-3">
+      <div key={msg.id} className="group flex flex-col gap-3">
         {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
+        {prose && !isActive && (
+          <div className="ml-11">
+            <MessageActions
+              content={msg.content}
+              stopped={msg.stopped}
+              versionIdx={versionIdx}
+              versionCount={versions.length}
+              onRegenerate={isLast ? () => config.regenerate(msg.id) : undefined}
+              onVersionChange={(dir) => config.setActiveVersion(msg.id, versionIdx + dir)}
+            />
+          </div>
+        )}
         {authPrompt && (
           <MagicLinkCard
             reason={authPrompt.fields[0] || undefined}
@@ -386,7 +411,7 @@ function renderStreamingIndicator(): ReactNode {
 }
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
-  const { claimCurrentSession, inviteToken, mediaItems, retry } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion } = useChatStore();
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -455,6 +480,10 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
             visitorEmail,
             visitorPhone,
             handleAuthSuccess,
+            messages,
+            isStreaming: isLoading,
+            regenerate,
+            setActiveVersion,
           })}
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}

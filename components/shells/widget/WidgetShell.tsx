@@ -9,6 +9,7 @@ import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
+import { MessageActions } from '@/components/chat/MessageActions'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
 import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
@@ -36,18 +37,48 @@ function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
     }))
 }
 
-function makeRenderAssistantMessage(sageParameters: SageParameterPublic[]) {
+interface AssistantMessageContext {
+  messages: UIMessage[]
+  isStreaming: boolean
+  regenerate: (id: string) => void
+  setActiveVersion: (id: string, versionIdx: number) => void
+}
+
+function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: AssistantMessageContext) {
   return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) {
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
+
+    // Suppress actions on the message currently being streamed into — same
+    // "active" condition ChatThread computes internally, derived here from
+    // data already in scope rather than a ChatThread prop. Regenerate is
+    // scoped to the latest assistant message only (see MessageActions.tsx).
+    const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
+    const isActive = ctx.isStreaming && isLast
+    const versions = msg.versions ?? []
+    const versionIdx = msg.versionIdx ?? 0
+
     return (
-      <SageReply
-        key={msg.id}
-        prose={parsed.prose}
-        markdown={markdown}
-        cards={cards}
-        sageParameters={sageParameters}
-      />
+      <div key={msg.id} className="group">
+        <SageReply
+          prose={parsed.prose}
+          markdown={markdown}
+          cards={cards}
+          sageParameters={sageParameters}
+        />
+        {!isActive && (
+          <div className="mt-1 pl-4">
+            <MessageActions
+              content={msg.content}
+              stopped={msg.stopped}
+              versionIdx={versionIdx}
+              versionCount={versions.length}
+              onRegenerate={isLast ? () => ctx.regenerate(msg.id) : undefined}
+              onVersionChange={(dir) => ctx.setActiveVersion(msg.id, versionIdx + dir)}
+            />
+          </div>
+        )}
+      </div>
     )
   }
 }
@@ -114,7 +145,8 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, isStreaming, isError, mode, send, retry, stop, setMode } = useChatSessionContext()
+  const { messages, isStreaming, isError, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
+    useChatSessionContext()
 
   const [input, setInput] = useState('')
   const sageParameters = useSageParameters()
@@ -176,7 +208,12 @@ export function WidgetShellChat() {
     }
   }
 
-  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters, {
+    messages,
+    isStreaming,
+    regenerate,
+    setActiveVersion,
+  })
   const renderUserMessage = makeRenderUserMessage(retry)
 
   return (
@@ -399,7 +436,8 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, isStreaming, isError, send, retry, stop, setMode } = useChatSessionContext()
+  const { messages, isStreaming, isError, send, retry, stop, regenerate, setActiveVersion, setMode } =
+    useChatSessionContext()
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -484,7 +522,12 @@ export function WidgetShellHero() {
     }
   }
 
-  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters, {
+    messages,
+    isStreaming,
+    regenerate,
+    setActiveVersion,
+  })
   const renderUserMessage = makeRenderUserMessage(retry)
 
   return (

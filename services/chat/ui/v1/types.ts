@@ -216,6 +216,13 @@ export interface UseChatTurnReturn {
    * flight or `messageId` doesn't resolve to an assistant message.
    */
   regenerate(messageId: string): Promise<void>
+  /**
+   * Switches which cached `versions` entry a message displays (the carousel
+   * arrows) — no network call, just a local content swap — and persists it
+   * so the choice survives a reload. No-ops if `versionIdx` is out of range
+   * or the message has no `versions`.
+   */
+  setActiveVersion(messageId: string, versionIdx: number): void
   isStreaming: boolean
   isError: boolean
 }

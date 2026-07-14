@@ -395,5 +395,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors, setStreaming, persist],
   )
 
-  return { send, sendHidden, retry, stop, regenerate, isStreaming, isError }
+  const setActiveVersion = useCallback(
+    (messageId: string, versionIdx: number) => {
+      const msg = accessors.getMessages().find(m => m.id === messageId)
+      if (!msg?.versions || versionIdx < 0 || versionIdx >= msg.versions.length) return
+      accessors.patchMessageById(messageId, { content: msg.versions[versionIdx], versionIdx })
+      const sessionId = accessors.getSessionId()
+      if (sessionId) persist(sessionId, null)
+    },
+    [accessors, persist],
+  )
+
+  return { send, sendHidden, retry, stop, regenerate, setActiveVersion, isStreaming, isError }
 }
