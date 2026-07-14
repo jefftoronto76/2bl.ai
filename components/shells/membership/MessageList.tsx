@@ -9,6 +9,7 @@ import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
+import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
 import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
@@ -336,6 +337,7 @@ interface AssistantRenderConfig {
   isStreaming: boolean;
   regenerate: (id: string) => void;
   setActiveVersion: (id: string, versionIdx: number) => void;
+  feedback: UseMessageFeedbackReturn;
 }
 
 // Renders an assistant message exactly as before: prose bubble, the
@@ -360,10 +362,12 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
 
     // Suppress actions on the message currently being streamed into; scope
     // Regenerate to the latest assistant message only (see MessageActions.tsx).
+    const messageIndex = config.messages.findIndex((m) => m.id === msg.id);
     const isLast = config.messages[config.messages.length - 1]?.id === msg.id;
     const isActive = config.isStreaming && isLast;
     const versions = msg.versions ?? [];
     const versionIdx = msg.versionIdx ?? 0;
+    const { rating } = config.feedback.getFeedback(messageIndex);
 
     return (
       <div key={msg.id} className="group flex flex-col gap-3">
@@ -377,6 +381,9 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
               versionCount={versions.length}
               onRegenerate={isLast ? () => config.regenerate(msg.id) : undefined}
               onVersionChange={(dir) => config.setActiveVersion(msg.id, versionIdx + dir)}
+              rating={rating}
+              onRate={(val) => config.feedback.rate(messageIndex, val)}
+              onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
             />
           </div>
         )}
@@ -411,7 +418,9 @@ function renderStreamingIndicator(): ReactNode {
 }
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
-  const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
+    useChatStore();
+  const feedback = useMessageFeedback(state.sessionId);
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -484,6 +493,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
             isStreaming: isLoading,
             regenerate,
             setActiveVersion,
+            feedback,
           })}
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}

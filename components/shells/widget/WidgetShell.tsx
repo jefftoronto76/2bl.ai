@@ -7,6 +7,7 @@ import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionPro
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
+import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { MessageActions } from '@/components/chat/MessageActions'
@@ -14,6 +15,7 @@ import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
 import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
+import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
 // WidgetShellHero (the marketing hero's inline composer) and WidgetShellChat
 // (the #chat anchor section + full-viewport overlay) are consolidated here
@@ -42,6 +44,7 @@ interface AssistantMessageContext {
   isStreaming: boolean
   regenerate: (id: string) => void
   setActiveVersion: (id: string, versionIdx: number) => void
+  feedback: UseMessageFeedbackReturn
 }
 
 function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: AssistantMessageContext) {
@@ -53,10 +56,12 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
     // "active" condition ChatThread computes internally, derived here from
     // data already in scope rather than a ChatThread prop. Regenerate is
     // scoped to the latest assistant message only (see MessageActions.tsx).
+    const messageIndex = ctx.messages.findIndex((m) => m.id === msg.id)
     const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
     const isActive = ctx.isStreaming && isLast
     const versions = msg.versions ?? []
     const versionIdx = msg.versionIdx ?? 0
+    const { rating } = ctx.feedback.getFeedback(messageIndex)
 
     return (
       <div key={msg.id} className="group">
@@ -75,6 +80,9 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
               versionCount={versions.length}
               onRegenerate={isLast ? () => ctx.regenerate(msg.id) : undefined}
               onVersionChange={(dir) => ctx.setActiveVersion(msg.id, versionIdx + dir)}
+              rating={rating}
+              onRate={(val) => ctx.feedback.rate(messageIndex, val)}
+              onFeedback={(reasons, note) => ctx.feedback.submitFeedback(messageIndex, reasons, note)}
             />
           </div>
         )}
@@ -145,8 +153,9 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, isStreaming, isError, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, isError, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
     useChatSessionContext()
+  const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
   const sageParameters = useSageParameters()
@@ -213,6 +222,7 @@ export function WidgetShellChat() {
     isStreaming,
     regenerate,
     setActiveVersion,
+    feedback,
   })
   const renderUserMessage = makeRenderUserMessage(retry)
 
@@ -436,8 +446,9 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, isStreaming, isError, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, isError, send, retry, stop, regenerate, setActiveVersion, setMode } =
     useChatSessionContext()
+  const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -527,6 +538,7 @@ export function WidgetShellHero() {
     isStreaming,
     regenerate,
     setActiveVersion,
+    feedback,
   })
   const renderUserMessage = makeRenderUserMessage(retry)
 
