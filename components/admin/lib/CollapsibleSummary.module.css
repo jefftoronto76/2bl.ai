@@ -1,0 +1,83 @@
+/* CollapsibleSummary — shared collapse mechanics + recall strip, extracted
+   from app/admin/prompt-studio/blocks/BlocksLayout.module.css (Blocks was the
+   first screen to ship this pattern; Inbound Chats is the second consumer).
+   Status-specific styling (e.g. Blocks' live/draft dot) stays local to each
+   caller — this file only owns the generic collapse/recall structure. */
+
+.summarySection {
+  position: relative;
+  margin-top: var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-md);
+}
+@media (min-width: 48em) {
+  .summarySection { margin-top: var(--mantine-spacing-lg); }
+}
+
+.summaryCollapse {
+  overflow: hidden;
+  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .summaryCollapse { transition: none; }
+}
+
+/* Collapsed recall bar — keeps headline stats visible while the summary/
+   dashboard is hidden. */
+.recall {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--mantine-color-gray-2);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-gray-0);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.recall:hover {
+  background: var(--mantine-color-gray-1);
+  border-color: var(--mantine-color-gray-3);
+}
+
+.recallLabel {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--mantine-color-gray-9);
+  white-space: nowrap;
+}
+.recallStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 12.5px;
+  color: var(--mantine-color-dimmed);
+}
+.recallStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.recallStat b {
+  color: var(--mantine-color-gray-7);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.recallShow {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mantine-color-green-7, #245741);
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+@media (max-width: 40em) {
+  .recall { flex-wrap: wrap; gap: 8px 12px; }
+  .recallShow { margin-left: 0; }
+}
