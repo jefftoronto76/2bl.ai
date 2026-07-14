@@ -11,6 +11,16 @@
 
 import type { ChatMessage, ChatMode, ChatRole, MediaAttachmentInput } from '@/services/chat/server/types'
 
+// ── Error classification ────────────────────────────────────────────────────
+
+/**
+ * Classifies why a chat turn failed, so each surface can show on-brand,
+ * specific copy (see components/chat/errorCopy.ts) instead of one generic
+ * "something went wrong." Persisted per-message (UIMessage.error_type below)
+ * and per-session (chat_sessions.last_error_type) — see useChatTurn.ts.
+ */
+export type ChatErrorType = 'network' | 'rate_limited' | 'stream_interrupted' | 'auth_error' | 'unknown'
+
 // ── Canonical UI message ────────────────────────────────────────────────────
 
 /**
@@ -62,6 +72,13 @@ export interface UIMessage {
   versions?: string[]
   /** Index into `versions` of the currently-displayed version. */
   versionIdx?: number
+  /**
+   * Set when this message's turn ended in an error (see ChatErrorType above).
+   * User messages carry it alongside `status: 'failed'`; the assistant
+   * placeholder carries it for turns with no trackable user message (e.g.
+   * sendHidden). Absent/null on every message whose turn succeeded.
+   */
+  error_type?: ChatErrorType | null
 }
 
 // ── Marker contract ───────────────────────────────────────────────────────
