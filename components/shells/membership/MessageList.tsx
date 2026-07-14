@@ -7,6 +7,9 @@ import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
+import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
+import { MessageActions } from '@/components/chat/MessageActions';
+import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
 import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
@@ -177,25 +180,44 @@ function FailedUploadChip({ filename }: { filename: string }) {
   );
 }
 
-function MessageBubble({ message, content }: { message: Message; content: string }) {
+function MessageBubble({
+  message,
+  content,
+  status,
+  onRetry,
+}: {
+  message: Message;
+  content: string;
+  /** User messages only — delivery status of this message's send attempt. */
+  status?: 'sending' | 'sent' | 'failed';
+  onRetry?: () => void;
+}) {
   const isUser = message.role === 'user';
+  const deliveryStatus = isUser ? status ?? 'sent' : 'sent';
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
-          <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
+    <div className={`flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+        {!isUser && (
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+            <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
+          </div>
+        )}
+        <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
+          <div
+            onClick={deliveryStatus === 'failed' ? onRetry : undefined}
+            className={[
+              'max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap',
+              isUser ? 'bg-surface text-text-primary rounded-br-sm' : 'bg-transparent text-text-primary rounded-bl-sm',
+              deliveryStatus === 'sending' ? 'opacity-55' : '',
+              deliveryStatus === 'failed' ? 'cursor-pointer border border-red-400/60' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            {content}
+          </div>
         </div>
-      )}
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap ${
-          isUser
-            ? 'bg-surface text-text-primary rounded-br-sm'
-            : 'bg-transparent text-text-primary rounded-bl-sm'
-        }`}
-      >
-        {content}
       </div>
+      {isUser && onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
     </div>
   );
 }
@@ -251,7 +273,7 @@ function TypingIndicator() {
 
 // Renders a user message exactly as before: the admin-only [SYSTEM:] debug
 // branch, then media chips (image/audio/document/failed), then prose.
-function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[]) {
+function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[], retry: () => void) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
     // added to the store, so this branch handles any future case where
@@ -296,7 +318,9 @@ function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[]) 
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}
         {/* Prose — only when there's actual text alongside the upload */}
-        {userMsg.text && <MessageBubble message={msg} content={userMsg.text} />}
+        {userMsg.text && (
+          <MessageBubble message={msg} content={userMsg.text} status={msg.status} onRetry={retry} />
+        )}
       </div>
     );
   };
@@ -309,11 +333,17 @@ interface AssistantRenderConfig {
   visitorEmail: string | null;
   visitorPhone: string | null;
   handleAuthSuccess: (name: string) => void;
+  messages: Message[];
+  isStreaming: boolean;
+  regenerate: (id: string) => void;
+  setActiveVersion: (id: string, versionIdx: number) => void;
+  feedback: UseMessageFeedbackReturn;
 }
 
 // Renders an assistant message exactly as before: prose bubble, the
 // ACCOUNT_CREATE → MagicLinkCard prompt, and admin-only debug pills for every
-// parsed marker.
+// parsed marker. Adds the MessageActions row (Copy/Regenerate/version
+// carousel) below the prose, aligned under the avatar like the debug pills.
 function makeRenderAssistantMessage(config: AssistantRenderConfig) {
   return function renderAssistantMessage(
     msg: Message,
@@ -330,9 +360,33 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
     // Skip empty assistant messages — no prose, no auth prompt, no debug.
     if (!prose && !authPrompt && debugMarkers.length === 0) return null;
 
+    // Suppress actions on the message currently being streamed into; scope
+    // Regenerate to the latest assistant message only (see MessageActions.tsx).
+    const messageIndex = config.messages.findIndex((m) => m.id === msg.id);
+    const isLast = config.messages[config.messages.length - 1]?.id === msg.id;
+    const isActive = config.isStreaming && isLast;
+    const versions = msg.versions ?? [];
+    const versionIdx = msg.versionIdx ?? 0;
+    const { rating } = config.feedback.getFeedback(messageIndex);
+
     return (
-      <div key={msg.id} className="flex flex-col gap-3">
+      <div key={msg.id} className="group flex flex-col gap-3">
         {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
+        {prose && !isActive && (
+          <div className="ml-11">
+            <MessageActions
+              content={msg.content}
+              stopped={msg.stopped}
+              versionIdx={versionIdx}
+              versionCount={versions.length}
+              onRegenerate={isLast ? () => config.regenerate(msg.id) : undefined}
+              onVersionChange={(dir) => config.setActiveVersion(msg.id, versionIdx + dir)}
+              rating={rating}
+              onRate={(val) => config.feedback.rate(messageIndex, val)}
+              onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
+            />
+          </div>
+        )}
         {authPrompt && (
           <MagicLinkCard
             reason={authPrompt.fields[0] || undefined}
@@ -364,7 +418,9 @@ function renderStreamingIndicator(): ReactNode {
 }
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
-  const { claimCurrentSession, inviteToken, mediaItems } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
+    useChatStore();
+  const feedback = useMessageFeedback(state.sessionId);
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -425,7 +481,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           // button reads this) — renderError below never invokes it. Passed
           // as a no-op only to satisfy ChatThread's shared contract.
           retry={() => {}}
-          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems)}
+          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
             inviteToken,
@@ -433,6 +489,11 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
             visitorEmail,
             visitorPhone,
             handleAuthSuccess,
+            messages,
+            isStreaming: isLoading,
+            regenerate,
+            setActiveVersion,
+            feedback,
           })}
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}

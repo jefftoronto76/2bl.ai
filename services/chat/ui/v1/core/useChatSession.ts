@@ -70,6 +70,12 @@ export interface ChatSession {
   /** Send without rendering the user message — see useChatTurn.sendHidden. */
   sendHidden(content: string): Promise<void>
   retry(): Promise<void>
+  /** Aborts the in-flight turn, keeping whatever content already streamed in. */
+  stop(): void
+  /** Re-generates one assistant message — see useChatTurn.ts `regenerate`. */
+  regenerate(messageId: string): Promise<void>
+  /** Switches the displayed `versions` entry for a message — see useChatTurn.ts. */
+  setActiveVersion(messageId: string, versionIdx: number): void
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
@@ -117,6 +123,16 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
         }
         store.setState({ messages })
       },
+      patchMessageById: (id, patch) => {
+        const messages = store.getState().messages.slice()
+        const idx = messages.findIndex((m) => m.id === id)
+        if (idx === -1) return
+        messages[idx] = { ...messages[idx], ...patch }
+        store.setState({ messages })
+      },
+      removeMessageById: (id) => {
+        store.setState({ messages: store.getState().messages.filter((m) => m.id !== id) })
+      },
       setStreaming: (val) => store.setState({ isStreaming: val }),
       setSessionId: (id) => store.setState({ sessionId: id }),
       getSessionId: () => store.getState().sessionId,
@@ -158,6 +174,9 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     send: turn.send,
     sendHidden: turn.sendHidden,
     retry: turn.retry,
+    stop: turn.stop,
+    regenerate: turn.regenerate,
+    setActiveVersion: turn.setActiveVersion,
     setMode,
     hydrate,
     reset,

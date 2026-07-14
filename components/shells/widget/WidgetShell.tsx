@@ -1,16 +1,21 @@
 'use client'
 
 import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
+import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
+import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
 import { ChatThread } from '@/components/chat/ChatThread'
+import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
+import { MessageActions } from '@/components/chat/MessageActions'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
 import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
+import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
 // WidgetShellHero (the marketing hero's inline composer) and WidgetShellChat
 // (the #chat anchor section + full-viewport overlay) are consolidated here
@@ -34,30 +39,81 @@ function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
     }))
 }
 
-function makeRenderAssistantMessage(sageParameters: SageParameterPublic[]) {
+interface AssistantMessageContext {
+  messages: UIMessage[]
+  isStreaming: boolean
+  regenerate: (id: string) => void
+  setActiveVersion: (id: string, versionIdx: number) => void
+  feedback: UseMessageFeedbackReturn
+}
+
+function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: AssistantMessageContext) {
   return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) {
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
+
+    // Suppress actions on the message currently being streamed into — same
+    // "active" condition ChatThread computes internally, derived here from
+    // data already in scope rather than a ChatThread prop. Regenerate is
+    // scoped to the latest assistant message only (see MessageActions.tsx).
+    const messageIndex = ctx.messages.findIndex((m) => m.id === msg.id)
+    const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
+    const isActive = ctx.isStreaming && isLast
+    const versions = msg.versions ?? []
+    const versionIdx = msg.versionIdx ?? 0
+    const { rating } = ctx.feedback.getFeedback(messageIndex)
+
     return (
-      <SageReply
-        key={msg.id}
-        prose={parsed.prose}
-        markdown={markdown}
-        cards={cards}
-        sageParameters={sageParameters}
-      />
+      <div key={msg.id} className="group">
+        <SageReply
+          prose={parsed.prose}
+          markdown={markdown}
+          cards={cards}
+          sageParameters={sageParameters}
+        />
+        {!isActive && (
+          <div className="mt-1 pl-4">
+            <MessageActions
+              content={msg.content}
+              stopped={msg.stopped}
+              versionIdx={versionIdx}
+              versionCount={versions.length}
+              onRegenerate={isLast ? () => ctx.regenerate(msg.id) : undefined}
+              onVersionChange={(dir) => ctx.setActiveVersion(msg.id, versionIdx + dir)}
+              rating={rating}
+              onRate={(val) => ctx.feedback.rate(messageIndex, val)}
+              onFeedback={(reasons, note) => ctx.feedback.submitFeedback(messageIndex, reasons, note)}
+            />
+          </div>
+        )}
+      </div>
     )
   }
 }
 
-function renderUserMessage(msg: UIMessage): ReactNode {
-  return (
-    <div key={msg.id} className="flex justify-end">
-      <p className="sage-visitor-msg sage-animate max-w-[560px] whitespace-pre-wrap text-right font-display text-[18px] italic leading-[1.5] text-[color:var(--color-text-muted)] [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]">
-        {msg.content}
-      </p>
-    </div>
-  )
+function makeRenderUserMessage(retry: () => void) {
+  return function renderUserMessage(msg: UIMessage): ReactNode {
+    const status = msg.status ?? 'sent'
+    return (
+      <div key={msg.id} className="flex flex-col items-end gap-1">
+        {/* Shake lives on this wrapper (not the <p>) so it doesn't collide
+            with the <p>'s own entrance-animation `animation` shorthand. */}
+        <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
+          <p
+            onClick={status === 'failed' ? retry : undefined}
+            className={[
+              'sage-visitor-msg sage-animate max-w-[560px] whitespace-pre-wrap text-right font-display text-[18px] italic leading-[1.5] text-[color:var(--color-text-muted)] [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+              status === 'sending' ? 'opacity-55' : '',
+              status === 'failed' ? 'cursor-pointer rounded-md border border-red-400/60 px-2 py-1' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            {msg.content}
+          </p>
+        </div>
+        <DeliveryStatus status={status} onRetry={retry} />
+      </div>
+    )
+  }
 }
 
 function renderError(retry: () => void): ReactNode {
@@ -97,7 +153,9 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, isStreaming, isError, mode, send, retry, setMode } = useChatSessionContext()
+  const { messages, sessionId, isStreaming, isError, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
+    useChatSessionContext()
+  const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
   const sageParameters = useSageParameters()
@@ -159,7 +217,14 @@ export function WidgetShellChat() {
     }
   }
 
-  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters, {
+    messages,
+    isStreaming,
+    regenerate,
+    setActiveVersion,
+    feedback,
+  })
+  const renderUserMessage = makeRenderUserMessage(retry)
 
   return (
     <>
@@ -332,14 +397,24 @@ export function WidgetShellChat() {
                   rows={1}
                   className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
                 />
-                <button
-                  onClick={submit}
-                  disabled={isStreaming || !input.trim()}
-                  aria-label="Send message"
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  →
-                </button>
+                {isStreaming ? (
+                  <button
+                    onClick={stop}
+                    aria-label="Stop generating"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity"
+                  >
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={submit}
+                    disabled={!input.trim()}
+                    aria-label="Send message"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    →
+                  </button>
+                )}
               </div>
               <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
                 Sage knows Jeff&apos;s background and will give you a straight answer.
@@ -371,7 +446,9 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, isStreaming, isError, send, retry, setMode } = useChatSessionContext()
+  const { messages, sessionId, isStreaming, isError, send, retry, stop, regenerate, setActiveVersion, setMode } =
+    useChatSessionContext()
+  const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -456,7 +533,14 @@ export function WidgetShellHero() {
     }
   }
 
-  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderAssistantMessage = makeRenderAssistantMessage(sageParameters, {
+    messages,
+    isStreaming,
+    regenerate,
+    setActiveVersion,
+    feedback,
+  })
+  const renderUserMessage = makeRenderUserMessage(retry)
 
   return (
     <section
@@ -537,16 +621,17 @@ export function WidgetShellHero() {
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />
-            <button
-              className="send"
-              onClick={submit}
-              disabled={!input.trim() || isStreaming}
-              aria-label="Send"
-            >
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 10L17 10M11 4L17 10L11 16"/>
-              </svg>
-            </button>
+            {isStreaming ? (
+              <button className="send" onClick={stop} aria-label="Stop generating">
+                <Square size={15} fill="currentColor" />
+              </button>
+            ) : (
+              <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10L17 10M11 4L17 10L11 16"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="meta">
             <span className="left">
