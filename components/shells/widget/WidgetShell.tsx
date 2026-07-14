@@ -8,6 +8,7 @@ import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { SageReply } from './sage/SageReply'
+import { markdownComponents } from './sage/markdownComponents'
 import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 
@@ -34,11 +35,17 @@ function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
 }
 
 function makeRenderAssistantMessage(sageParameters: SageParameterPublic[]) {
-  return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult) {
+  return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) {
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
     return (
-      <SageReply key={msg.id} prose={parsed.prose} cards={cards} sageParameters={sageParameters} />
+      <SageReply
+        key={msg.id}
+        prose={parsed.prose}
+        markdown={markdown}
+        cards={cards}
+        sageParameters={sageParameters}
+      />
     )
   }
 }
@@ -299,6 +306,7 @@ export function WidgetShellChat() {
                   renderError={renderError}
                   renderStreamingIndicator={renderStreamingIndicator}
                   showStreamingIndicator={isStreaming && messages[messages.length - 1]?.content === ''}
+                  markdownComponents={markdownComponents}
                   scrollBehavior="instant"
                   scrollDeps={[messages, isExpanded]}
                   scrollGuard={() => isExpanded}
@@ -492,6 +500,7 @@ export function WidgetShellHero() {
             renderError={renderError}
             renderStreamingIndicator={renderStreamingIndicator}
             showStreamingIndicator={isStreaming && messages[messages.length - 1]?.content === ''}
+            markdownComponents={markdownComponents}
             scrollBehavior="instant"
             scrollDeps={[messages.length, conversationVisible]}
             useRaf

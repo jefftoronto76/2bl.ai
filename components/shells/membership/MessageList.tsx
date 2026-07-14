@@ -7,6 +7,7 @@ import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
+import { membershipMarkdownComponents } from './markdownComponents';
 import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
@@ -199,6 +200,22 @@ function MessageBubble({ message, content }: { message: Message; content: string
   );
 }
 
+// Same avatar + bubble chrome as MessageBubble's assistant branch, but
+// renders a markdown ReactNode instead of a plain string — markdown owns its
+// own block spacing, so whitespace-pre-wrap is dropped here.
+function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex gap-3 justify-start">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+        <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
+      </div>
+      <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed text-text-primary">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function ErrorBubble() {
   return (
     <div className="flex gap-3 justify-start">
@@ -298,7 +315,11 @@ interface AssistantRenderConfig {
 // ACCOUNT_CREATE → MagicLinkCard prompt, and admin-only debug pills for every
 // parsed marker.
 function makeRenderAssistantMessage(config: AssistantRenderConfig) {
-  return function renderAssistantMessage(msg: Message, parsed: MarkerParseResult): ReactNode {
+  return function renderAssistantMessage(
+    msg: Message,
+    parsed: MarkerParseResult,
+    markdown: ReactNode,
+  ): ReactNode {
     const prose = parsed.prose;
     const authPrompt = parsed.markers.find((m) => m.type === 'ACCOUNT_CREATE');
     // All parsed markers (NAME, EMAIL, PHONE, BOOKING, ACCOUNT_CREATE) are
@@ -311,7 +332,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
 
     return (
       <div key={msg.id} className="flex flex-col gap-3">
-        {prose && <MessageBubble message={msg} content={prose} />}
+        {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
         {authPrompt && (
           <MagicLinkCard
             reason={authPrompt.fields[0] || undefined}
@@ -409,6 +430,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}
           showStreamingIndicator={isLoading}
+          markdownComponents={membershipMarkdownComponents}
           scrollBehavior="smooth"
           scrollDeps={[messages, isLoading, isError]}
         />

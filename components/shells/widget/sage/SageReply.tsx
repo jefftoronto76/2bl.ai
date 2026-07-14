@@ -1,16 +1,17 @@
 'use client'
 
-import ReactMarkdown from 'react-markdown'
+import type { ReactNode } from 'react'
 import { BookingCard } from './BookingCard'
-import { markdownComponents } from './markdownComponents'
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 
 export function SageReply({
   prose,
+  markdown,
   cards,
   sageParameters,
 }: {
   prose: string
+  markdown: ReactNode
   cards: BookingCardData[]
   sageParameters: SageParameterPublic[]
 }) {
@@ -23,7 +24,7 @@ export function SageReply({
     >
       {prose && (
         <div className="font-display text-[18px] font-normal leading-[1.55] tracking-[-0.005em] text-[color:var(--color-text-primary)] [text-wrap:pretty]">
-          <ReactMarkdown components={markdownComponents}>{prose}</ReactMarkdown>
+          {markdown}
         </div>
       )}
 
