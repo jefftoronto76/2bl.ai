@@ -74,12 +74,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   // flow through accessors.getMessages() so the persisted jsonb shape is
   // unchanged.
   const persist = useCallback(
-    (sessionId: string) => {
+    (sessionId: string, ttftMs: number | null) => {
       const finalMessages = accessors.getMessages()
       fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: finalMessages, visitorName: null }),
+        body: JSON.stringify({
+          messages: finalMessages,
+          visitorName: null,
+          ...(ttftMs !== null ? { ttft_ms: ttftMs } : {}),
+        }),
       })
         .then(r =>
           r
@@ -97,6 +101,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     async (input: string) => {
       const text = input.trim()
       if (!text || streamingRef.current) return
+
+      // TTFT: start the clock before any async work (session create + stream
+      // fetch) so the measurement reflects the full wait the visitor actually
+      // experiences, and stamp firstChunkAt on the first streamed chunk only.
+      const sendStartedAt = performance.now()
+      let firstChunkAt: number | null = null
 
       setIsError(false)
       const userMsg: ChatMessage = { role: 'user', content: text }
@@ -126,8 +136,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       retryMediaItemsRef.current = currentMediaItems
 
       try {
-        await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
-          accessors.updateLastMessage(chunk),
+        await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk => {
+          if (firstChunkAt === null) firstChunkAt = performance.now()
+          accessors.updateLastMessage(chunk)
+        },
           accessors.getInviteToken?.() ?? null,
           currentMediaItems,
         )
@@ -139,7 +151,8 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       }
       setStreaming(false)
 
-      if (activeSessionId) persist(activeSessionId)
+      const ttftMs = firstChunkAt !== null ? Math.round(firstChunkAt - sendStartedAt) : null
+      if (activeSessionId) persist(activeSessionId, ttftMs)
     },
     [accessors, setStreaming, persist],
   )
@@ -187,7 +200,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       }
       setStreaming(false)
 
-      if (activeSessionId) persist(activeSessionId)
+      if (activeSessionId) persist(activeSessionId, null)
     },
     [accessors, setStreaming, persist],
   )
@@ -216,7 +229,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     setStreaming(false)
 
     const sessionId = retrySessionIdRef.current
-    if (sessionId) persist(sessionId)
+    if (sessionId) persist(sessionId, null)
   }, [accessors, setStreaming, persist])
 
   return { send, sendHidden, retry, isStreaming, isError }
