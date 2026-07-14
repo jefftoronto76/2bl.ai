@@ -87,7 +87,23 @@ export interface SessionUpdateInput {
    * not the first).
    */
   ttftMs?: unknown
+  /**
+   * The classified error type of the most recent failed turn (see
+   * services/chat/ui/v1/types.ts ChatErrorType). Written only when it is one
+   * of the known values — same "only write when present/valid" pattern as
+   * phone/email/title; a successful turn simply omits this field rather than
+   * clearing a prior value back to null.
+   */
+  lastErrorType?: unknown
 }
+
+const VALID_ERROR_TYPES = new Set([
+  'network',
+  'rate_limited',
+  'stream_interrupted',
+  'auth_error',
+  'unknown',
+])
 
 /**
  * A chat session row for the signed-in recovery + Recent list. `messages` is
@@ -152,7 +168,7 @@ export async function updateSession(
   // from Sage's response, and client PATCHes still send `visitorName: null`
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
-  const { messages, visitorName, phone, email, title, starred, ttftMs } = input
+  const { messages, visitorName, phone, email, title, starred, ttftMs, lastErrorType } = input
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
   // Contact card → dedicated columns. The visitor may supply phone, email, or
   // both; each non-empty value writes to its own column (no more funneling
@@ -164,6 +180,8 @@ export async function updateSession(
     typeof ttftMs === 'number' && Number.isFinite(ttftMs) && ttftMs >= 0
       ? Math.round(ttftMs)
       : null
+  const validErrorType =
+    typeof lastErrorType === 'string' && VALID_ERROR_TYPES.has(lastErrorType) ? lastErrorType : null
 
   // Build the update with only the fields actually supplied, so a contact-only
   // PATCH (contact value, no messages) never clobbers the persisted transcript.
@@ -177,6 +195,7 @@ export async function updateSession(
     title?: string
     starred?: boolean
     ttft_ms?: number
+    last_error_type?: string
   } = {
     updated_at: new Date().toISOString(),
     status: 'in_progress',
@@ -188,6 +207,7 @@ export async function updateSession(
   if (trimmedTitle.length > 0) update.title = trimmedTitle
   if (typeof starred === 'boolean') update.starred = starred
   if (validTtftMs !== null) update.ttft_ms = validTtftMs
+  if (validErrorType !== null) update.last_error_type = validErrorType
 
   const { data, error } = await supabase
     .from('chat_sessions')
