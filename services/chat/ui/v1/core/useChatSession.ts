@@ -43,6 +43,14 @@ function nonEmptyMessages(messages: UIMessage[]): UIMessage[] {
   return messages.filter((m) => !(m.role === 'assistant' && m.content === ''))
 }
 
+/**
+ * How often the in-flight assistant reply is buffered WHILE streaming (not
+ * just at turn boundaries) — enables recovering a partial reply on a
+ * mid-stream reload rather than only the user's message. 1s balances recovery
+ * granularity against IndexedDB write frequency for a multi-second reply.
+ */
+const STREAM_BUFFER_INTERVAL_MS = 1000
+
 export interface ChatSessionConfig {
   /**
    * Provided → singleton mode: the conversation is shared via the registry
@@ -212,6 +220,22 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     const messages = nonEmptyMessages(store.getState().messages)
     void bufferThread(persistNamespace, toPersistedMessages(messages), store.getState().sessionId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistNamespace, state.isStreaming, store])
+
+  // Buffer WHILE STREAMING, at a fixed interval — not just at the turn
+  // boundaries above. Reuses the exact same buffer call; this only adds a
+  // timing trigger for the gap between turn start and turn finish, so a
+  // mid-stream reload recovers whatever content arrived, not just the user's
+  // message. The interval only ever runs while state.isStreaming is true, so
+  // it starts/stops with the turn automatically (React clears it on effect
+  // cleanup — turn finish, unmount, or persistNamespace/store changing).
+  useEffect(() => {
+    if (!persistNamespace || !state.isStreaming) return
+    const interval = setInterval(() => {
+      const messages = nonEmptyMessages(store.getState().messages)
+      void bufferThread(persistNamespace, toPersistedMessages(messages), store.getState().sessionId)
+    }, STREAM_BUFFER_INTERVAL_MS)
+    return () => clearInterval(interval)
   }, [persistNamespace, state.isStreaming, store])
 
   // When a real session id arrives mid-turn (engine lazy-create), drop the
