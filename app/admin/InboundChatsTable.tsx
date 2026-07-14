@@ -6,6 +6,7 @@ import { Text } from '@/components/admin/primitives/Text'
 import type { SessionStatus } from '@/services/crm/status'
 import type { ChatSession } from '@/services/crm/inbound'
 import { formatTokens, formatCost } from '@/services/crm/formatting'
+import { FeedbackCounts } from '@/components/admin/lib/primitives'
 import { SessionDrawer } from './SessionDrawer'
 
 function formatDate(iso: string) {
@@ -16,6 +17,17 @@ function formatDate(iso: string) {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+// Flags a session's response time as slow — matches the dashboard's "Over 1s" threshold.
+const TTFT_FLAG_MS = 1000
+
+function formatTtft(ms: number | null): string {
+  return ms != null ? `${ms}ms` : '—'
+}
+
+function ttftColor(ms: number | null): string | undefined {
+  return ms != null && ms > TTFT_FLAG_MS ? 'var(--mantine-color-orange-7)' : undefined
 }
 
 const STATUS_COLORS: Record<SessionStatus, string> = {
@@ -46,6 +58,8 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
               <Table.Th>Messages</Table.Th>
               <Table.Th>Tokens</Table.Th>
               <Table.Th>Cost</Table.Th>
+              <Table.Th>Avg TTFT</Table.Th>
+              <Table.Th>Feedback</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Last Active</Table.Th>
             </Table.Tr>
@@ -84,6 +98,17 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
                     <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
                       {formatCost(session.input_tokens, session.output_tokens)}
                     </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text
+                      variant="muted"
+                      style={{ fontFamily: 'var(--mantine-font-family-monospace)', color: ttftColor(session.ttft_ms) }}
+                    >
+                      {formatTtft(session.ttft_ms)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <FeedbackCounts up={session.feedback_counts.up} down={session.feedback_counts.down} size="xs" />
                   </Table.Td>
                   <Table.Td>
                     <Badge
@@ -156,6 +181,19 @@ export function InboundChatsTable({ rows }: { rows: ChatSession[] }) {
                 <Text variant="muted" style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}>
                   {formatCost(session.input_tokens, session.output_tokens)}
                 </Text>
+              </Group>
+              <Group justify="space-between" mt={4}>
+                <Text
+                  variant="muted"
+                  style={{
+                    fontFamily: 'var(--mantine-font-family-monospace)',
+                    fontSize: 'var(--mantine-font-size-xs)',
+                    color: ttftColor(session.ttft_ms),
+                  }}
+                >
+                  {formatTtft(session.ttft_ms)} response
+                </Text>
+                <FeedbackCounts up={session.feedback_counts.up} down={session.feedback_counts.down} size="xs" />
               </Group>
             </Paper>
           )
