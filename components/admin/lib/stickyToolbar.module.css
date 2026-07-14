@@ -1,0 +1,29 @@
+/* Sticky filter/search toolbar — shared by every list-style admin screen
+   (Blocks, Inbound Chats, Platform Members). Extracted from
+   app/admin/prompt-studio/blocks/BlocksLayout.module.css, which was Blocks'
+   own copy before Inbound Chats needed the same pattern.
+
+   Pins flush to the top of its scroll container because that container
+   drops its own top padding (pt={0}) — see each page's header/scroll-body
+   layout split. The negative inline margins bleed the bar out to the
+   scroll container's padding edges so content scrolls UNDER it
+   edge-to-edge; keep the values in sync with whatever px/pb scroll padding
+   that page uses. */
+.stickyToolbar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--mantine-color-body);
+  border-bottom: 1px solid var(--mantine-color-gray-2);
+  margin-inline: calc(var(--mantine-spacing-md) * -1);
+  margin-bottom: var(--mantine-spacing-md);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+}
+
+/* ≥ sm: scroll padding on most consumers becomes `lg` — match the bleed + inset. */
+@media (min-width: 48em) {
+  .stickyToolbar {
+    margin-inline: calc(var(--mantine-spacing-lg) * -1);
+    padding-inline: var(--mantine-spacing-lg);
+  }
+}
