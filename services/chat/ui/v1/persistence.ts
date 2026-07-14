@@ -1,36 +1,41 @@
 // services/chat/ui/v1/persistence.ts
 //
-// Client-side localStorage buffering for the Heirloom chat. Best-effort
-// durability: every turn is written here as it completes. For SIGNED-IN
-// visitors the buffer is a recovery layer in front of the DB sync (which only
-// lands on turn completion) — reload rehydrates from here, most-recent-wins
-// against the DB. For ANONYMOUS visitors the buffer is NOT rehydrated on
-// reload (a signed-out refresh starts a fresh conversation by design); its
-// role is the claim index — the post-sign-in flow claims every buffered
-// session to the new account, then clears the entries. The DB remains the
-// source of truth throughout.
+// Client-side IndexedDB buffering, shared by both chat surfaces (Heirloom
+// membership + jefflougheed widget). Each surface gets its own isolated
+// database, selected via the `namespace` argument every function takes:
+// 'heirloom' -> the `heirloom:chat:v1` database, 'sage' -> `sage:chat:v1`.
+// Best-effort durability: every turn is buffered here as it completes.
 //
-// Multi-thread by design: each thread is stored under its own session key, with
-// a lightweight index (id + updatedAt + title) that the (currently empty)
-// Recent sidebar can later read. Conversations that have not yet been assigned
-// a server session id buffer under a single draft slot, which is cleared once a
-// real session id arrives.
+// Multi-thread by design: each thread lives in the `threads` store keyed by
+// its session id (or DRAFT_ID for a thread with no server session yet), with
+// a lightweight `threadIndex` store (id + updatedAt + title) that the Recent
+// sidebar can read without loading full transcripts.
 //
 // Pure module — no React, no store dependency. The store converts between its
 // in-memory Message (timestamp: Date) and the PersistedMessage shape here
 // (timestamp: ISO string) so this layer stays JSON-serializable and independent.
+//
+// Rehydration/retention POLICY (when to read this back, when to clear it) is
+// deliberately NOT this module's concern — it lives in the caller (today,
+// core/useChatSession.ts). This module only offers the storage primitives.
 
-const KEY_PREFIX = 'heirloom:chat:v1';
-export const INDEX_KEY = `${KEY_PREFIX}:index`;
-export const DRAFT_KEY = `${KEY_PREFIX}:draft`;
+import { openDB, type IDBPDatabase } from 'idb';
+
+export type PersistenceNamespace = 'heirloom' | 'sage';
+
+const DB_NAMES: Record<PersistenceNamespace, string> = {
+  heirloom: 'heirloom:chat:v1',
+  sage: 'sage:chat:v1',
+};
+
+const THREADS_STORE = 'threads';
+const INDEX_STORE = 'threadIndex';
+const DB_VERSION = 1;
+
 /** Sentinel index id for the not-yet-persisted draft thread. */
 export const DRAFT_ID = 'draft';
 
 const TITLE_MAX = 60;
-
-export function sessionKey(sessionId: string): string {
-  return `${KEY_PREFIX}:session:${sessionId}`;
-}
 
 export interface PersistedMessage {
   id: string;
@@ -57,62 +62,38 @@ export interface ThreadIndexEntry {
   title?: string;
 }
 
-function isStorageAvailable(): boolean {
+function isIndexedDBAvailable(): boolean {
   try {
-    return typeof window !== 'undefined' && !!window.localStorage;
+    return typeof indexedDB !== 'undefined' && !!indexedDB;
   } catch {
-    // Accessing localStorage can throw in some privacy modes / sandboxed frames.
+    // Accessing indexedDB can throw in some privacy modes / sandboxed frames.
     return false;
   }
 }
 
-function safeGet<T>(key: string): T | null {
-  if (!isStorageAvailable()) return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw === null) return null;
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
+// One open connection per namespace, memoized so repeated calls don't reopen
+// the database. A failed open clears its cache entry so a later call retries
+// rather than replaying the same rejected promise forever.
+const dbPromises = new Map<PersistenceNamespace, Promise<IDBPDatabase>>();
+
+function getDB(namespace: PersistenceNamespace): Promise<IDBPDatabase> | null {
+  if (!isIndexedDBAvailable()) return null;
+  let promise = dbPromises.get(namespace);
+  if (!promise) {
+    promise = openDB(DB_NAMES[namespace], DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(THREADS_STORE)) {
+          db.createObjectStore(THREADS_STORE);
+        }
+        if (!db.objectStoreNames.contains(INDEX_STORE)) {
+          db.createObjectStore(INDEX_STORE, { keyPath: 'id' });
+        }
+      },
+    });
+    promise.catch(() => dbPromises.delete(namespace));
+    dbPromises.set(namespace, promise);
   }
-}
-
-function safeSet(key: string, value: unknown): void {
-  if (!isStorageAvailable()) return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Quota exceeded / serialization failure — best-effort, so swallow.
-  }
-}
-
-function safeRemove(key: string): void {
-  if (!isStorageAvailable()) return;
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // best-effort
-  }
-}
-
-export function readIndex(): ThreadIndexEntry[] {
-  const entries = safeGet<ThreadIndexEntry[]>(INDEX_KEY);
-  return Array.isArray(entries) ? entries : [];
-}
-
-function writeIndex(entries: ThreadIndexEntry[]): void {
-  safeSet(INDEX_KEY, entries);
-}
-
-function upsertIndexEntry(entry: ThreadIndexEntry): void {
-  const entries = readIndex().filter(e => e.id !== entry.id);
-  entries.push(entry);
-  writeIndex(entries);
-}
-
-function removeIndexEntry(id: string): void {
-  const entries = readIndex().filter(e => e.id !== id);
-  writeIndex(entries);
+  return promise;
 }
 
 function deriveTitle(messages: PersistedMessage[]): string | undefined {
@@ -124,75 +105,161 @@ function deriveTitle(messages: PersistedMessage[]): string | undefined {
 }
 
 /**
- * Write the current thread to localStorage and refresh its index entry. Stores
- * under the session key when a sessionId exists, otherwise the draft slot.
- * No-op when there are no messages, so empty threads never create index noise.
+ * Write the current thread to IndexedDB and refresh its index entry, in one
+ * transaction. Stores under the session id when one exists, otherwise the
+ * draft slot (DRAFT_ID). No-op when there are no messages, so empty threads
+ * never create index noise.
  */
-export function bufferThread(messages: PersistedMessage[], sessionId: string | null): void {
-  if (!isStorageAvailable() || messages.length === 0) return;
-
-  const updatedAt = new Date().toISOString();
-  const thread: PersistedThread = { sessionId, messages, updatedAt };
-  const key = sessionId ? sessionKey(sessionId) : DRAFT_KEY;
-  const id = sessionId ?? DRAFT_ID;
-
-  safeSet(key, thread);
-  upsertIndexEntry({ id, updatedAt, title: deriveTitle(messages) });
+export async function bufferThread(
+  namespace: PersistenceNamespace,
+  messages: PersistedMessage[],
+  sessionId: string | null,
+): Promise<void> {
+  if (messages.length === 0) return;
+  const dbPromise = getDB(namespace);
+  if (!dbPromise) return;
+  try {
+    const db = await dbPromise;
+    const updatedAt = new Date().toISOString();
+    const id = sessionId ?? DRAFT_ID;
+    const thread: PersistedThread = { sessionId, messages, updatedAt };
+    const entry: ThreadIndexEntry = { id, updatedAt, title: deriveTitle(messages) };
+    const tx = db.transaction([THREADS_STORE, INDEX_STORE], 'readwrite');
+    tx.objectStore(THREADS_STORE).put(thread, id);
+    tx.objectStore(INDEX_STORE).put(entry);
+    await tx.done;
+  } catch {
+    // Quota exceeded / serialization failure / DB unavailable — best-effort, swallow.
+  }
 }
 
 /**
  * Drop the draft slot and its index entry. Called when a server session id
- * arrives: the thread is re-buffered under its real session key by the next
+ * arrives: the thread is re-buffered under its real session id by the next
  * bufferThread call, so the draft would otherwise linger as an orphan and be
  * re-hydrated on the next load.
  */
-export function clearDraft(): void {
-  safeRemove(DRAFT_KEY);
-  removeIndexEntry(DRAFT_ID);
+export async function clearDraft(namespace: PersistenceNamespace): Promise<void> {
+  const dbPromise = getDB(namespace);
+  if (!dbPromise) return;
+  try {
+    const db = await dbPromise;
+    const tx = db.transaction([THREADS_STORE, INDEX_STORE], 'readwrite');
+    tx.objectStore(THREADS_STORE).delete(DRAFT_ID);
+    tx.objectStore(INDEX_STORE).delete(DRAFT_ID);
+    await tx.done;
+  } catch {
+    // best-effort
+  }
 }
 
 /**
  * Drop a session-keyed thread and its index entry. Called by New Chat: once a
- * conversation has had a completed turn it lives under its real session key
+ * conversation has had a completed turn it lives under its real session id
  * (not the draft slot), so clearDraft alone leaves it behind to be re-hydrated
  * on the next mount. Removing the session entry is what actually clears the
  * conversation for good. Mirrors clearDraft for the post-session case.
  */
-export function clearSession(sessionId: string): void {
-  safeRemove(sessionKey(sessionId));
-  removeIndexEntry(sessionId);
+export async function clearSession(namespace: PersistenceNamespace, sessionId: string): Promise<void> {
+  const dbPromise = getDB(namespace);
+  if (!dbPromise) return;
+  try {
+    const db = await dbPromise;
+    const tx = db.transaction([THREADS_STORE, INDEX_STORE], 'readwrite');
+    tx.objectStore(THREADS_STORE).delete(sessionId);
+    tx.objectStore(INDEX_STORE).delete(sessionId);
+    await tx.done;
+  } catch {
+    // best-effort
+  }
 }
 
 /**
- * Drop every buffered transcript while KEEPING the session index. Called on
- * page exit for signed-out visitors: a signed-out reload starts fresh (the
- * rehydration gate), so the transcripts are dead weight — but the index ids
- * must survive so a later sign-in can still claim those sessions to the new
- * account (the DB holds the actual content). The draft slot is dropped
+ * Drop every buffered transcript while KEEPING the session index. Existing
+ * callers use this so the index ids survive for a later claim flow even
+ * though the transcript content is scrubbed. The draft slot is dropped
  * entirely (transcript + index entry): it has no server session, so it is
  * not claimable.
  */
-export function clearTranscripts(): void {
-  for (const entry of readIndex()) {
-    if (entry.id === DRAFT_ID) continue;
-    safeRemove(sessionKey(entry.id));
+export async function clearTranscripts(namespace: PersistenceNamespace): Promise<void> {
+  const dbPromise = getDB(namespace);
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      const entries = await db.getAll(INDEX_STORE) as ThreadIndexEntry[];
+      const tx = db.transaction(THREADS_STORE, 'readwrite');
+      for (const entry of entries) {
+        if (entry.id === DRAFT_ID) continue;
+        tx.objectStore(THREADS_STORE).delete(entry.id);
+      }
+      await tx.done;
+    } catch {
+      // best-effort
+    }
   }
-  clearDraft();
+  await clearDraft(namespace);
 }
 
 /** Load one buffered thread by id (DRAFT_ID resolves to the draft slot). */
-export function readThread(id: string): PersistedThread | null {
-  const key = id === DRAFT_ID ? DRAFT_KEY : sessionKey(id);
-  return safeGet<PersistedThread>(key);
+export async function readThread(namespace: PersistenceNamespace, id: string): Promise<PersistedThread | null> {
+  const dbPromise = getDB(namespace);
+  if (!dbPromise) return null;
+  try {
+    const db = await dbPromise;
+    const thread = await db.get(THREADS_STORE, id) as PersistedThread | undefined;
+    return thread ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function readIndex(namespace: PersistenceNamespace): Promise<ThreadIndexEntry[]> {
+  const dbPromise = getDB(namespace);
+  if (!dbPromise) return [];
+  try {
+    const db = await dbPromise;
+    const entries = await db.getAll(INDEX_STORE) as ThreadIndexEntry[];
+    return Array.isArray(entries) ? entries : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Return the most recently updated buffered thread, or null when none exist.
  * Used on mount to rehydrate the conversation the visitor was last in.
  */
-export function findMostRecentThread(): PersistedThread | null {
-  const index = readIndex();
+export async function findMostRecentThread(namespace: PersistenceNamespace): Promise<PersistedThread | null> {
+  const index = await readIndex(namespace);
   if (index.length === 0) return null;
   const newest = index.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
-  return readThread(newest.id);
+  return readThread(namespace, newest.id);
+}
+
+/**
+ * Test-only: closes and deletes the IndexedDB database for a namespace so
+ * each test starts from a clean slate. Mirrors the `__reset*` test-helper
+ * pattern in core/store-registry.ts.
+ */
+export async function __resetPersistenceForTests(namespace: PersistenceNamespace): Promise<void> {
+  const existing = dbPromises.get(namespace);
+  dbPromises.delete(namespace);
+  if (existing) {
+    try {
+      const db = await existing;
+      db.close();
+    } catch {
+      // ignore — nothing to close if the open itself failed
+    }
+  }
+  await new Promise<void>((resolve) => {
+    try {
+      const req = indexedDB.deleteDatabase(DB_NAMES[namespace]);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
 }

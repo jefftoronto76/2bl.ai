@@ -45,6 +45,7 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.14",
     "eslint-plugin-boundaries": "^4.2.2",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^15.11.7",
     "postcss": "^8.4.0",
     "postcss-preset-mantine": "^1.18.0",

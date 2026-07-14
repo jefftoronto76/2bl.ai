@@ -337,7 +337,7 @@ export function ChatProvider({
     const msgs = messagesRef.current.filter(
       m => !(m.role === 'assistant' && m.content === ''),
     );
-    bufferThread(msgs.map(serialize), sessionIdRef.current);
+    void bufferThread('heirloom', msgs.map(serialize), sessionIdRef.current);
   }, []);
 
   // Hydrate the conversation from a buffer / DB row. Primes prevSessionIdRef so
@@ -372,7 +372,7 @@ export function ChatProvider({
     if (sessionId === prevSessionIdRef.current) return;
     prevSessionIdRef.current = sessionId;
     if (sessionId) {
-      clearDraft();
+      void clearDraft('heirloom');
       persistCurrent();
       const msgs = messagesRef.current.filter(
         m => !(m.role === 'assistant' && m.content === ''),
@@ -408,12 +408,14 @@ export function ChatProvider({
     if (!isLoaded || hasHydratedRef.current) return;
     hasHydratedRef.current = true;
     if (!isSignedIn) return;
-    const thread = findMostRecentThread();
-    if (!thread || thread.messages.length === 0) return;
-    hydrateConversation({
-      messages: reviveUIMessages(thread.messages),
-      sessionId: thread.sessionId,
-    });
+    void (async () => {
+      const thread = await findMostRecentThread('heirloom');
+      if (!thread || thread.messages.length === 0) return;
+      hydrateConversation({
+        messages: reviveUIMessages(thread.messages),
+        sessionId: thread.sessionId,
+      });
+    })();
   }, [isLoaded, isSignedIn, hydrateConversation]);
 
   // On page hide/exit: flush the live transcript, then — signed-out only —
@@ -426,7 +428,7 @@ export function ChatProvider({
   useEffect(() => {
     const flushAndScrub = () => {
       persistCurrent();
-      if (!isSignedInRef.current) clearTranscripts();
+      if (!isSignedInRef.current) void clearTranscripts('heirloom');
     };
     const onPageHide = () => flushAndScrub();
     const onVisibilityChange = () => {
@@ -459,7 +461,7 @@ export function ChatProvider({
 
         const newest = sessions[0]; // GET /api/sessions orders updated_at desc
         if (!newest || newest.messages.length === 0) return;
-        const local = findMostRecentThread();
+        const local = await findMostRecentThread('heirloom');
         const localMs = local ? new Date(local.updatedAt).getTime() : 0;
         if (new Date(newest.updatedAt).getTime() <= localMs) return;
 
@@ -576,7 +578,7 @@ export function ChatProvider({
   // (active via /api/members/sync). Keeping them separate prevents the "sync to
   // active" path from bypassing the invite-gate waitlist.
   const claimSessionsOnly = useCallback(async () => {
-    const realIds = readIndex()
+    const realIds = (await readIndex('heirloom'))
       .map(e => e.id)
       .filter(id => id !== DRAFT_ID);
     const currentId = sessionIdRef.current;
@@ -594,14 +596,14 @@ export function ChatProvider({
               // Claimed → the DB owns it (recovery + Recent sidebar); drop the
               // local buffer entry so localStorage is clean after sign-in. A
               // failed claim keeps its entry for the next attempt.
-              clearSession(id);
+              void clearSession('heirloom', id);
             }
           })
           .catch(err => console.error('[heirloom/chat] post-sign-in claim error:', id, err))
       )
     );
     // The draft slot has no server session — nothing to claim; drop it too.
-    clearDraft();
+    void clearDraft('heirloom');
   }, []); // reads refs synchronously — no reactive deps needed
 
   // Claim all browser-local sessions on the false→true isSignedIn transition.
@@ -640,8 +642,8 @@ export function ChatProvider({
   // state (sidebar/panel) is preserved; recentSessions + DB rows are untouched.
   const newChat = useCallback(() => {
     const cleared = sessionIdRef.current;
-    clearDraft();
-    if (cleared) clearSession(cleared);
+    void clearDraft('heirloom');
+    if (cleared) void clearSession('heirloom', cleared);
     prevSessionIdRef.current = null;
     reset();
   }, [reset]);
@@ -700,7 +702,7 @@ export function ChatProvider({
     );
 
     // 2. Collect all real session IDs from the localStorage index.
-    const realIds = readIndex()
+    const realIds = (await readIndex('heirloom'))
       .map(e => e.id)
       .filter(id => id !== DRAFT_ID);
 
@@ -720,14 +722,14 @@ export function ChatProvider({
               console.log('[heirloom/chat] claimed session:', id);
               // Claimed → DB-owned; drop the local buffer entry (see
               // claimSessionsOnly). Failed claims keep theirs.
-              clearSession(id);
+              void clearSession('heirloom', id);
             }
           })
           .catch(err => console.error('[heirloom/chat] claim error:', id, err))
       )
     );
     // The draft slot has no server session — nothing to claim; drop it too.
-    clearDraft();
+    void clearDraft('heirloom');
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses

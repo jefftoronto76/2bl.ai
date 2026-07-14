@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import 'fake-indexeddb/auto'
 import { vi } from 'vitest'
 
 // Mantine Drawer / Popover / etc. use ResizeObserver. happy-dom
