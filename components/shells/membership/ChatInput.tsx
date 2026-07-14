@@ -6,6 +6,7 @@ import {
   ArrowUp,
   Plus,
   Mic,
+  Square,
   X,
   Check,
   FileText,
@@ -205,7 +206,7 @@ export function ChatInput() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { sendMessage, injectAssistantMessage, state, addMediaItem } = useChatStore();
+  const { sendMessage, injectAssistantMessage, state, addMediaItem, stop } = useChatStore();
   const { isMember } = state;
 
   const overlayHost = useChatOverlayHost();
@@ -607,20 +608,31 @@ export function ChatInput() {
               >
                 {isMember ? <Mic size={18} /> : <Lock size={15} />}
               </button>
-              <button
-                type="button"
-                aria-label="Send message"
-                disabled={!canSend}
-                onClick={() => void handleSend()}
-                className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  canSend
-                    ? 'bg-accent hover:bg-accent-hover text-background'
-                    : 'bg-text-primary/10 text-text-muted cursor-not-allowed',
-                )}
-              >
-                <ArrowUp size={17} />
-              </button>
+              {state.isLoading ? (
+                <button
+                  type="button"
+                  aria-label="Stop generating"
+                  onClick={stop}
+                  className="grid place-items-center w-[34px] h-[34px] rounded-[10px] bg-accent hover:bg-accent-hover text-background transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Square size={15} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label="Send message"
+                  disabled={!canSend}
+                  onClick={() => void handleSend()}
+                  className={cn(
+                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    canSend
+                      ? 'bg-accent hover:bg-accent-hover text-background'
+                      : 'bg-text-primary/10 text-text-muted cursor-not-allowed',
+                  )}
+                >
+                  <ArrowUp size={17} />
+                </button>
+              )}
             </div>
 
             {(transcribeState === 'error' || transcribeState === 'empty') && (

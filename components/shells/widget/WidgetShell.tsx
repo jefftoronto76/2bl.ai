@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
+import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
@@ -113,7 +114,7 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, isStreaming, isError, mode, send, retry, setMode } = useChatSessionContext()
+  const { messages, isStreaming, isError, mode, send, retry, stop, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')
   const sageParameters = useSageParameters()
@@ -349,14 +350,24 @@ export function WidgetShellChat() {
                   rows={1}
                   className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
                 />
-                <button
-                  onClick={submit}
-                  disabled={isStreaming || !input.trim()}
-                  aria-label="Send message"
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  →
-                </button>
+                {isStreaming ? (
+                  <button
+                    onClick={stop}
+                    aria-label="Stop generating"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity"
+                  >
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={submit}
+                    disabled={!input.trim()}
+                    aria-label="Send message"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    →
+                  </button>
+                )}
               </div>
               <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
                 Sage knows Jeff&apos;s background and will give you a straight answer.
@@ -388,7 +399,7 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, isStreaming, isError, send, retry, setMode } = useChatSessionContext()
+  const { messages, isStreaming, isError, send, retry, stop, setMode } = useChatSessionContext()
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -555,16 +566,17 @@ export function WidgetShellHero() {
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />
-            <button
-              className="send"
-              onClick={submit}
-              disabled={!input.trim() || isStreaming}
-              aria-label="Send"
-            >
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 10L17 10M11 4L17 10L11 16"/>
-              </svg>
-            </button>
+            {isStreaming ? (
+              <button className="send" onClick={stop} aria-label="Stop generating">
+                <Square size={15} fill="currentColor" />
+              </button>
+            ) : (
+              <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10L17 10M11 4L17 10L11 16"/>
+                </svg>
+              </button>
+            )}
           </div>
           <div className="meta">
             <span className="left">
