@@ -6,6 +6,7 @@
 import { useState, type ReactNode } from 'react'
 import { Paper, Stack, Text, Group } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { IconThumbUpFilled, IconThumbDownFilled } from '@tabler/icons-react'
 
 /* ── notify — thin wrapper; brand colour by default ── */
 export interface Toast {
@@ -61,6 +62,34 @@ export const Mono = ({ children, size }: { children: ReactNode; size?: number | 
 export const Dim = ({ children }: { children: ReactNode }) => (
   <Text span c="dimmed" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>{children}</Text>
 )
+
+/* ── FeedbackCounts — thumb-up/down icon+count pairs ──
+   Shared by the Inbound Chats table's Feedback column and the session
+   drawer's transcript-header rollup. Renders only the populated side(s);
+   `—` when the session has no feedback at all. ── */
+export function FeedbackCounts({
+  up, down, size = 'sm',
+}: { up: number; down: number; size?: 'xs' | 'sm' }) {
+  if (up === 0 && down === 0) {
+    return <Text c="dimmed" size={size}>—</Text>
+  }
+  return (
+    <Group gap={10} wrap="nowrap">
+      {up > 0 && (
+        <Group gap={4} wrap="nowrap">
+          <IconThumbUpFilled size={14} style={{ color: 'var(--mantine-color-green-7)' }} />
+          <Text size={size} c="green.7" fw={600} style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>{up}</Text>
+        </Group>
+      )}
+      {down > 0 && (
+        <Group gap={4} wrap="nowrap">
+          <IconThumbDownFilled size={14} style={{ color: 'var(--mantine-color-orange-7)' }} />
+          <Text size={size} c="orange.7" fw={600} style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>{down}</Text>
+        </Group>
+      )}
+    </Group>
+  )
+}
 
 /* ── Donut — generic segmented ring ──
    Hover a segment to see its detail in the centre; otherwise shows the total. ── */
