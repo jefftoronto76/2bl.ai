@@ -80,6 +80,13 @@ export interface SessionUpdateInput {
   title?: unknown
   /** User-set star flag. Written only when a boolean is supplied. */
   starred?: unknown
+  /**
+   * Client-measured time-to-first-token for this turn, in milliseconds
+   * (send → first streamed chunk). Written only when a finite, non-negative
+   * number is supplied; overwritten on every turn (reflects the latest turn,
+   * not the first).
+   */
+  ttftMs?: unknown
 }
 
 /**
@@ -145,7 +152,7 @@ export async function updateSession(
   // from Sage's response, and client PATCHes still send `visitorName: null`
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
-  const { messages, visitorName, phone, email, title, starred } = input
+  const { messages, visitorName, phone, email, title, starred, ttftMs } = input
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
   // Contact card → dedicated columns. The visitor may supply phone, email, or
   // both; each non-empty value writes to its own column (no more funneling
@@ -153,6 +160,10 @@ export async function updateSession(
   const trimmedPhone = typeof phone === 'string' ? phone.trim() : ''
   const trimmedEmail = typeof email === 'string' ? email.trim() : ''
   const trimmedTitle = typeof title === 'string' ? title.trim() : ''
+  const validTtftMs =
+    typeof ttftMs === 'number' && Number.isFinite(ttftMs) && ttftMs >= 0
+      ? Math.round(ttftMs)
+      : null
 
   // Build the update with only the fields actually supplied, so a contact-only
   // PATCH (contact value, no messages) never clobbers the persisted transcript.
@@ -165,6 +176,7 @@ export async function updateSession(
     email?: string
     title?: string
     starred?: boolean
+    ttft_ms?: number
   } = {
     updated_at: new Date().toISOString(),
     status: 'in_progress',
@@ -175,6 +187,7 @@ export async function updateSession(
   if (trimmedEmail.length > 0) update.email = trimmedEmail
   if (trimmedTitle.length > 0) update.title = trimmedTitle
   if (typeof starred === 'boolean') update.starred = starred
+  if (validTtftMs !== null) update.ttft_ms = validTtftMs
 
   const { data, error } = await supabase
     .from('chat_sessions')
