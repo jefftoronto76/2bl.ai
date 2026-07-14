@@ -11,6 +11,7 @@ import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
+import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
@@ -240,15 +241,20 @@ function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
 }
 
 function ErrorBubble({ retry, errorType }: { retry: () => void; errorType: ChatErrorType }) {
-  void retry;
-  void errorType;
   return (
     <div className="flex gap-3 justify-start">
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
         <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
-      <div className="max-w-[75%] rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
-        Something went wrong reaching your story guide. Please try again in a moment.
+      <div className="max-w-[75%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
+        <span>{ERROR_COPY[errorType]}</span>
+        <button
+          type="button"
+          onClick={retry}
+          className="rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wide text-text-muted transition-colors hover:border-border/80 hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          Retry
+        </button>
       </div>
     </div>
   );
