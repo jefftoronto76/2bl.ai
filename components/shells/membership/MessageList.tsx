@@ -408,7 +408,14 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
   }, [claimCurrentSession]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6">
+    <div
+      className="flex-1 overflow-y-auto px-4 py-6"
+      role="log"
+      aria-live="polite"
+      aria-label="Conversation"
+      aria-atomic="false"
+      aria-busy={isLoading}
+    >
       <div className="max-w-2xl mx-auto flex flex-col gap-6">
         <ChatThread
           messages={messages}

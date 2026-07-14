@@ -283,7 +283,14 @@ export function WidgetShellChat() {
               </button>
             </header>
 
-            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-[clamp(24px,5vw,48px)]">
+            <div
+              className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-[clamp(24px,5vw,48px)]"
+              role="log"
+              aria-live="polite"
+              aria-label="Conversation"
+              aria-atomic="false"
+              aria-busy={isStreaming}
+            >
               <div className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6">
                 {messages.length === 0 && (
                   <div className="sage-animate max-w-[680px] border-l-2 border-accent/35 pl-4 [animation:sage-slide-up_0.28s_ease-out_both]">
@@ -489,7 +496,14 @@ export function WidgetShellHero() {
         ref={chatSurfaceRef}
       >
       {conversationVisible && (
-        <div className="hero-conversation flex flex-col gap-6" role="log" aria-live="polite">
+        <div
+          className="hero-conversation flex flex-col gap-6"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+          aria-atomic="false"
+          aria-busy={isStreaming}
+        >
           <ChatThread
             messages={messages}
             isStreaming={isStreaming}
