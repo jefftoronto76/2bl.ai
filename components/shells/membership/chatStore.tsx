@@ -70,6 +70,9 @@ interface ChatContextType {
   dispatch: React.Dispatch<ChatAction>;
   sendMessage: (content: string) => Promise<void>;
   isError: boolean;
+  /** Re-runs the last turn (assistant-reply error retry, and per-message
+   *  delivery-status retry on a failed user message — see useChatTurn). */
+  retry: () => Promise<void>;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
   /** Clear the active conversation and start fresh (New Chat). History stays. */
@@ -251,7 +254,7 @@ export function ChatProvider({
       filename: m.original_filename,
     })),
   });
-  const { messages, sessionId, isStreaming, isError, send, sendHidden, hydrate, reset } = session;
+  const { messages, sessionId, isStreaming, isError, send, sendHidden, retry, hydrate, reset } = session;
 
   // Latest-value mirror refs, assigned during render, so event handlers
   // (pagehide / beforeunload) and newChat read the current transcript/session
@@ -921,7 +924,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, isError, retry, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
     >
       {children}
     </ChatContext.Provider>

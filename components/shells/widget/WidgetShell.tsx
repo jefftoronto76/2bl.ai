@@ -7,6 +7,7 @@ import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewp
 import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { ChatThread } from '@/components/chat/ChatThread'
+import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
 import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
@@ -50,14 +51,29 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[]) {
   }
 }
 
-function renderUserMessage(msg: UIMessage): ReactNode {
-  return (
-    <div key={msg.id} className="flex justify-end">
-      <p className="sage-visitor-msg sage-animate max-w-[560px] whitespace-pre-wrap text-right font-display text-[18px] italic leading-[1.5] text-[color:var(--color-text-muted)] [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]">
-        {msg.content}
-      </p>
-    </div>
-  )
+function makeRenderUserMessage(retry: () => void) {
+  return function renderUserMessage(msg: UIMessage): ReactNode {
+    const status = msg.status ?? 'sent'
+    return (
+      <div key={msg.id} className="flex flex-col items-end gap-1">
+        {/* Shake lives on this wrapper (not the <p>) so it doesn't collide
+            with the <p>'s own entrance-animation `animation` shorthand. */}
+        <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
+          <p
+            onClick={status === 'failed' ? retry : undefined}
+            className={[
+              'sage-visitor-msg sage-animate max-w-[560px] whitespace-pre-wrap text-right font-display text-[18px] italic leading-[1.5] text-[color:var(--color-text-muted)] [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+              status === 'sending' ? 'opacity-55' : '',
+              status === 'failed' ? 'cursor-pointer rounded-md border border-red-400/60 px-2 py-1' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            {msg.content}
+          </p>
+        </div>
+        <DeliveryStatus status={status} onRetry={retry} />
+      </div>
+    )
+  }
 }
 
 function renderError(retry: () => void): ReactNode {
@@ -160,6 +176,7 @@ export function WidgetShellChat() {
   }
 
   const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderUserMessage = makeRenderUserMessage(retry)
 
   return (
     <>
@@ -457,6 +474,7 @@ export function WidgetShellHero() {
   }
 
   const renderAssistantMessage = makeRenderAssistantMessage(sageParameters)
+  const renderUserMessage = makeRenderUserMessage(retry)
 
   return (
     <section

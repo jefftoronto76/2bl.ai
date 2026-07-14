@@ -7,6 +7,7 @@ import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
+import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { membershipMarkdownComponents } from './markdownComponents';
 import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
 
@@ -177,25 +178,44 @@ function FailedUploadChip({ filename }: { filename: string }) {
   );
 }
 
-function MessageBubble({ message, content }: { message: Message; content: string }) {
+function MessageBubble({
+  message,
+  content,
+  status,
+  onRetry,
+}: {
+  message: Message;
+  content: string;
+  /** User messages only — delivery status of this message's send attempt. */
+  status?: 'sending' | 'sent' | 'failed';
+  onRetry?: () => void;
+}) {
   const isUser = message.role === 'user';
+  const deliveryStatus = isUser ? status ?? 'sent' : 'sent';
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
-          <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
+    <div className={`flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+        {!isUser && (
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
+            <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
+          </div>
+        )}
+        <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
+          <div
+            onClick={deliveryStatus === 'failed' ? onRetry : undefined}
+            className={[
+              'max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap',
+              isUser ? 'bg-surface text-text-primary rounded-br-sm' : 'bg-transparent text-text-primary rounded-bl-sm',
+              deliveryStatus === 'sending' ? 'opacity-55' : '',
+              deliveryStatus === 'failed' ? 'cursor-pointer border border-red-400/60' : '',
+            ].filter(Boolean).join(' ')}
+          >
+            {content}
+          </div>
         </div>
-      )}
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap ${
-          isUser
-            ? 'bg-surface text-text-primary rounded-br-sm'
-            : 'bg-transparent text-text-primary rounded-bl-sm'
-        }`}
-      >
-        {content}
       </div>
+      {isUser && onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
     </div>
   );
 }
@@ -251,7 +271,7 @@ function TypingIndicator() {
 
 // Renders a user message exactly as before: the admin-only [SYSTEM:] debug
 // branch, then media chips (image/audio/document/failed), then prose.
-function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[]) {
+function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[], retry: () => void) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
     // added to the store, so this branch handles any future case where
@@ -296,7 +316,9 @@ function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[]) 
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}
         {/* Prose — only when there's actual text alongside the upload */}
-        {userMsg.text && <MessageBubble message={msg} content={userMsg.text} />}
+        {userMsg.text && (
+          <MessageBubble message={msg} content={userMsg.text} status={msg.status} onRetry={retry} />
+        )}
       </div>
     );
   };
@@ -364,7 +386,7 @@ function renderStreamingIndicator(): ReactNode {
 }
 
 export function MessageList({ messages, isLoading, isError }: MessageListProps) {
-  const { claimCurrentSession, inviteToken, mediaItems } = useChatStore();
+  const { claimCurrentSession, inviteToken, mediaItems, retry } = useChatStore();
   const { user } = useAuthUser();
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
@@ -425,7 +447,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           // button reads this) — renderError below never invokes it. Passed
           // as a no-op only to satisfy ChatThread's shared contract.
           retry={() => {}}
-          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems)}
+          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
             inviteToken,
