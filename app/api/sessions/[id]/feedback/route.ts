@@ -16,6 +16,7 @@ export async function GET(
 
   const tenantId = await getTenantFromRequest(req)
   if (!tenantId) {
+    console.error('[sessions/[id]/feedback] tenant resolution failed for host:', req.headers.get('host'))
     return NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 })
   }
 
@@ -44,6 +45,7 @@ export async function POST(
 
   const tenantId = await getTenantFromRequest(req)
   if (!tenantId) {
+    console.error('[sessions/[id]/feedback] tenant resolution failed for host:', req.headers.get('host'))
     return NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 })
   }
 

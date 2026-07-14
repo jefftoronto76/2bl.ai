@@ -148,22 +148,26 @@ export function MessageActions({
 
       <span className="mx-1.5 h-3.5 w-px bg-border" />
 
+      {/* Thumb active colors are deliberately hardcoded hex, not tenant/CSS-var
+          tokens (text-accent etc.) — rating color is a fixed product
+          convention, not brand-themed. */}
       <ActionIconButton
         label="Good response"
         pressed={rating === 'up'}
         active={rating === 'up'}
+        activeClassName="text-[#16a34a]"
         onClick={() => clickThumb('up')}
       >
-        <ThumbsUp size={14} />
+        <ThumbsUp size={14} fill={rating === 'up' ? '#16a34a' : 'none'} />
       </ActionIconButton>
       <ActionIconButton
         label="Bad response"
         pressed={rating === 'down'}
         active={rating === 'down'}
-        activeClassName="text-red-400"
+        activeClassName="text-[#dc2626]"
         onClick={() => clickThumb('down')}
       >
-        <ThumbsDown size={14} />
+        <ThumbsDown size={14} fill={rating === 'down' ? '#dc2626' : 'none'} />
       </ActionIconButton>
 
       {popover && (

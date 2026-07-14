@@ -57,7 +57,21 @@ export async function resolveMemberId(
   tenantId: string,
   clientMemberId: string | null,
 ): Promise<string | null> {
-  const userId = await getCurrentUserId()
+  // Wrapped in try/catch: unlike PATCH/DELETE /api/sessions/[id] (pure
+  // Host-header tenant resolution, no Clerk touch at all), this is the one
+  // path in the feedback route that reaches into Clerk — and it runs
+  // unconditionally, including for fully anonymous jefflougheed widget
+  // visitors. If auth() ever throws for that anonymous-request shape (rather
+  // than cleanly resolving to no session), the exception must not surface as
+  // an uncaught 500 — it's just another way of having "no server-verified
+  // identity", the same case the null-userId branch below already handles.
+  let userId: string | null
+  try {
+    userId = await getCurrentUserId()
+  } catch (err) {
+    console.error('[sessions/feedback resolveMemberId] getCurrentUserId threw:', err)
+    return clientMemberId
+  }
   if (!userId) return clientMemberId
 
   const supabase = getAdminClient('[sessions/feedback resolveMemberId]')
