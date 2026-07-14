@@ -91,6 +91,60 @@ export function FeedbackCounts({
   )
 }
 
+/* ── Sparkline — single-polyline trend line ──
+   No built-in color logic — callers pass a CSS-var/color string so the
+   same primitive can render "over threshold" red or brand color. Values
+   with `null` (no data for that bucket) are skipped when plotting rather
+   than fabricated — a run of nulls just means fewer points on the line,
+   never a break, since a genuinely gapped polyline reads as a rendering
+   bug rather than "no data here." ── */
+export function Sparkline({
+  values, width = 64, height = 24, color = 'var(--mantine-color-gray-5)',
+}: { values: (number | null)[]; width?: number; height?: number; color?: string }) {
+  const pad = 2
+  const usableW = width - pad * 2
+  const usableH = height - pad * 2
+
+  const points = values
+    .map((v, i) => ({
+      v,
+      x: values.length > 1 ? (i / (values.length - 1)) * usableW + pad : usableW / 2 + pad,
+    }))
+    .filter((p): p is { v: number; x: number } => p.v != null)
+
+  if (points.length === 0) {
+    return <svg width={width} height={height} role="img" aria-label="No trend data" />
+  }
+
+  const nums = points.map((p) => p.v)
+  const min = Math.min(...nums)
+  const max = Math.max(...nums)
+  const range = max - min || 1
+  const toY = (v: number) => pad + usableH - ((v - min) / range) * usableH
+
+  if (points.length === 1) {
+    const p = points[0]
+    return (
+      <svg width={width} height={height} role="img" aria-label="Trend (single data point)">
+        <circle cx={p.x} cy={toY(p.v)} r={2} fill={color} />
+      </svg>
+    )
+  }
+
+  return (
+    <svg width={width} height={height} role="img" aria-label="Trend over time">
+      <polyline
+        points={points.map((p) => `${p.x},${toY(p.v)}`).join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /* ── Donut — generic segmented ring ──
    Hover a segment to see its detail in the centre; otherwise shows the total. ── */
 export interface DonutSegment {
