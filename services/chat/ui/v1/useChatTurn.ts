@@ -26,6 +26,7 @@ async function streamTurn(
   onChunk: (accumulated: string) => void,
   inviteToken?: string | null,
   mediaItems?: MediaAttachmentInput[] | null,
+  signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch('/api/sage', {
     method: 'POST',
@@ -37,6 +38,7 @@ async function streamTurn(
       invite_token: inviteToken ?? null,
       media_items: mediaItems?.length ? mediaItems : null,
     }),
+    signal,
   })
 
   if (!response.ok) {
@@ -44,6 +46,10 @@ async function streamTurn(
   }
 
   await readDataStream(response, onChunk)
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
 }
 
 export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnReturn {
@@ -60,6 +66,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   // delivery `status` can be updated by id — retry() re-runs the same
   // transition on the same message rather than adding a new one.
   const retryUserMsgIdRef = useRef<string | null>(null)
+  // The controller backing the in-flight send()/retry() fetch, if any —
+  // stop() aborts it. A fresh controller is created per turn so a stale one
+  // from a prior (already-settled) turn is never accidentally reused.
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Drive both the local mirror and the consumer's store (so other readers of
   // streaming state — e.g. the Nav status pip — stay in sync).
@@ -101,6 +111,24 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors],
   )
 
+  // Resolves the assistant side of a Stop: if nothing streamed in yet, the
+  // still-empty placeholder is dropped entirely (never rendered or
+  // persisted); otherwise the partial content is kept and flagged `stopped`.
+  const finishAbortedTurn = useCallback(
+    (assistantMsgId: string | null) => {
+      if (!assistantMsgId) return
+      const current = accessors.getMessages()
+      const assistantMsg = current.find(m => m.id === assistantMsgId)
+      if (!assistantMsg) return
+      if (assistantMsg.content === '') {
+        accessors.removeMessageById(assistantMsgId)
+      } else {
+        accessors.patchMessageById(assistantMsgId, { stopped: true })
+      }
+    },
+    [accessors],
+  )
+
   const send = useCallback(
     async (input: string) => {
       const text = input.trim()
@@ -125,6 +153,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sending' })
       setStreaming(true)
       accessors.addMessage({ role: 'assistant', content: '' })
+      const withAssistant = accessors.getMessages()
+      const assistantMsgId = withAssistant[withAssistant.length - 1]?.id ?? null
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
       let activeSessionId = accessors.getSessionId()
       if (!activeSessionId) {
@@ -153,8 +186,19 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         },
           accessors.getInviteToken?.() ?? null,
           currentMediaItems,
+          controller.signal,
         )
-      } catch {
+      } catch (err) {
+        if (isAbortError(err)) {
+          // The user's message genuinely reached the server (the fetch was in
+          // flight) — Stop is a client-side choice to cut the reply short, not
+          // a delivery failure, so this still counts as 'sent'.
+          if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
+          finishAbortedTurn(assistantMsgId)
+          setStreaming(false)
+          if (activeSessionId) persist(activeSessionId, null)
+          return
+        }
         accessors.updateLastMessage('')
         if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
         setIsError(true)
@@ -167,7 +211,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const ttftMs = firstChunkAt !== null ? Math.round(firstChunkAt - sendStartedAt) : null
       if (activeSessionId) persist(activeSessionId, ttftMs)
     },
-    [accessors, setStreaming, persist],
+    [accessors, setStreaming, persist, finishAbortedTurn],
   )
 
   // Like send(), but the user message is included in msgsToSend for the API
@@ -184,6 +228,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       // Deliberately NOT calling accessors.addMessage(hiddenMsg) — hidden from UI.
       setStreaming(true)
       accessors.addMessage({ role: 'assistant', content: '' })
+      const withAssistant = accessors.getMessages()
+      const assistantMsgId = withAssistant[withAssistant.length - 1]?.id ?? null
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
       let activeSessionId = accessors.getSessionId()
       if (!activeSessionId) {
@@ -204,8 +253,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         await streamTurn(msgsToSend, accessors.getMode?.() ?? null, activeSessionId, chunk =>
           accessors.updateLastMessage(chunk),
           accessors.getInviteToken?.() ?? null,
+          undefined,
+          controller.signal,
         )
-      } catch {
+      } catch (err) {
+        if (isAbortError(err)) {
+          finishAbortedTurn(assistantMsgId)
+          setStreaming(false)
+          if (activeSessionId) persist(activeSessionId, null)
+          return
+        }
         accessors.updateLastMessage('')
         setIsError(true)
         setStreaming(false)
@@ -215,7 +272,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
       if (activeSessionId) persist(activeSessionId, null)
     },
-    [accessors, setStreaming, persist],
+    [accessors, setStreaming, persist, finishAbortedTurn],
   )
 
   const retry = useCallback(async () => {
@@ -228,6 +285,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sending' })
     setStreaming(true)
     accessors.updateLastMessage('')
+    const current = accessors.getMessages()
+    const assistantMsgId = current[current.length - 1]?.id ?? null
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
       await streamTurn(
@@ -237,8 +299,17 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         chunk => accessors.updateLastMessage(chunk),
         accessors.getInviteToken?.() ?? null,
         retryMediaItemsRef.current,
+        controller.signal,
       )
-    } catch {
+    } catch (err) {
+      if (isAbortError(err)) {
+        if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
+        finishAbortedTurn(assistantMsgId)
+        setStreaming(false)
+        const sessionId = retrySessionIdRef.current
+        if (sessionId) persist(sessionId, null)
+        return
+      }
       accessors.updateLastMessage('')
       if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
       setIsError(true)
@@ -250,7 +321,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
     const sessionId = retrySessionIdRef.current
     if (sessionId) persist(sessionId, null)
-  }, [accessors, setStreaming, persist])
+  }, [accessors, setStreaming, persist, finishAbortedTurn])
 
-  return { send, sendHidden, retry, isStreaming, isError }
+  const stop = useCallback(() => {
+    abortControllerRef.current?.abort()
+  }, [])
+
+  return { send, sendHidden, retry, stop, isStreaming, isError }
 }

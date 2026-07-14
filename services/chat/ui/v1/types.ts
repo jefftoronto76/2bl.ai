@@ -51,8 +51,6 @@ export interface UIMessage {
    * equivalent to 'sent' for any pre-existing persisted message.
    */
   status?: 'sending' | 'sent' | 'failed'
-  /** True while this assistant message is still being streamed into. */
-  streaming?: boolean
   /** True if the user hit Stop mid-stream for this assistant message. */
   stopped?: boolean
   /**
@@ -153,10 +151,16 @@ export interface ChatEngineAccessors {
    * Merges a partial patch onto the message matching `id` — the general form
    * `updateLastMessage` doesn't cover (targeting a message by id rather than
    * "whichever is last", and patching fields other than `content`: delivery
-   * `status`, `streaming`/`stopped`, `versions`/`versionIdx`). Used by
-   * delivery-status tracking, stop/regenerate, and the version carousel.
+   * `status`, `stopped`, `versions`/`versionIdx`). Used by delivery-status
+   * tracking, stop/regenerate, and the version carousel.
    */
   patchMessageById(id: string, patch: Partial<UIMessage>): void
+  /**
+   * Removes the message matching `id` — used only when Stop is hit before any
+   * chunk has arrived, so the still-empty assistant placeholder never renders
+   * or persists (see useChatTurn.ts `send`/`retry`).
+   */
+  removeMessageById(id: string): void
   setStreaming(val: boolean): void
   setSessionId(id: string): void
   getSessionId(): string | null
@@ -195,6 +199,13 @@ export interface UseChatTurnReturn {
    */
   sendHidden(content: string): Promise<void>
   retry(): Promise<void>
+  /**
+   * Aborts the in-flight send()/retry() turn, if any. Whatever content
+   * already streamed in is kept (marked `stopped: true`) rather than
+   * discarded; if no chunk had arrived yet, the empty assistant placeholder
+   * is removed instead. No-ops when nothing is in flight.
+   */
+  stop(): void
   isStreaming: boolean
   isError: boolean
 }
