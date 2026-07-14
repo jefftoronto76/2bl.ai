@@ -1,12 +1,32 @@
 'use client'
 
 import { useEffect, useRef, type ReactNode } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
+import { useBufferedMarkdown } from '@/services/chat/ui/v1/useBufferedMarkdown'
 import type { MarkerParseResult, UIMessage } from '@/services/chat/ui/v1/types'
 
 // One registry instance, shared across every ChatThread render — mirrors the
 // module-level singleton pattern already used in parseBookingCards.ts.
 const registry = createDefaultRegistry()
+
+// A real component (not a bare hook call inside .map) so useBufferedMarkdown
+// stays legal under the Rules of Hooks — every instance calls it exactly
+// once in its own render. `active` gates buffering to only the message
+// currently being streamed into; settled messages render in full.
+function BufferedMarkdown({
+  content,
+  active,
+  components,
+}: {
+  content: string
+  active: boolean
+  components: Components
+}) {
+  const buffered = useBufferedMarkdown(content, active)
+  if (!buffered) return null
+  return <ReactMarkdown components={components}>{buffered}</ReactMarkdown>
+}
 
 export interface ChatThreadProps {
   messages: UIMessage[]
@@ -15,11 +35,13 @@ export interface ChatThreadProps {
   retry: () => void
 
   renderUserMessage: (msg: UIMessage) => ReactNode
-  renderAssistantMessage: (msg: UIMessage, parsed: MarkerParseResult) => ReactNode
+  renderAssistantMessage: (msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) => ReactNode
   renderError: (retry: () => void) => ReactNode
   renderStreamingIndicator: () => ReactNode
   /** Caller-computed — each surface's "show the dots" trigger differs (e.g. gated on the last message being empty vs. a plain isLoading flag), so ChatThread does not derive this itself. */
   showStreamingIndicator: boolean
+  /** react-markdown components map for the assistant prose — each surface owns its own styling (widget's markdownComponents.tsx vs. membership's warm-prose set). */
+  markdownComponents: Components
 
   scrollBehavior: 'instant' | 'smooth'
   /**
@@ -48,6 +70,7 @@ export function ChatThread({
   renderError,
   renderStreamingIndicator,
   showStreamingIndicator,
+  markdownComponents,
   scrollBehavior,
   scrollDeps,
   useRaf = false,
@@ -78,7 +101,7 @@ export function ChatThread({
 
   return (
     <>
-      {messages.map((msg) => {
+      {messages.map((msg, index) => {
         if (msg.role === 'user') {
           return renderUserMessage(msg)
         }
@@ -87,7 +110,13 @@ export function ChatThread({
         // content) changes nothing observable — each surface's render slot
         // still decides whether an empty result renders as null.
         const parsed = registry.parse(msg.content)
-        return renderAssistantMessage(msg, parsed)
+        // Only the last message while streaming is still being appended to
+        // — every earlier (settled) message renders in full, unbuffered.
+        const active = isStreaming && index === messages.length - 1
+        const markdown = (
+          <BufferedMarkdown content={parsed.prose} active={active} components={markdownComponents} />
+        )
+        return renderAssistantMessage(msg, parsed, markdown)
       })}
       {isError && !isStreaming && renderError(retry)}
       {showStreamingIndicator && renderStreamingIndicator()}
