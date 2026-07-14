@@ -5,6 +5,7 @@ import { Table, Badge, Box, Center, Group, Paper, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import type { SessionStatus } from '@/services/crm/status'
 import type { ChatSession } from '@/services/crm/inbound'
+import { formatTokens, formatCost } from '@/services/crm/formatting'
 import { SessionDrawer } from './SessionDrawer'
 
 function formatDate(iso: string) {
@@ -15,23 +16,6 @@ function formatDate(iso: string) {
     hour: 'numeric',
     minute: '2-digit',
   })
-}
-
-// Anthropic pricing (claude-sonnet-4-6) used for the Inbound Chats list cost
-// estimate: $3 / 1M input tokens, $15 / 1M output tokens. Approximate — does
-// not reflect cache discounts or fallback model usage.
-const INPUT_COST_PER_MILLION = 3
-const OUTPUT_COST_PER_MILLION = 15
-
-function formatTokens(input: number | null, output: number | null): string {
-  const total = (input ?? 0) + (output ?? 0)
-  return total.toLocaleString('en-US')
-}
-
-function formatCost(input: number | null, output: number | null): string {
-  const dollars =
-    ((input ?? 0) * INPUT_COST_PER_MILLION + (output ?? 0) * OUTPUT_COST_PER_MILLION) / 1_000_000
-  return `$${dollars.toFixed(4)}`
 }
 
 const STATUS_COLORS: Record<SessionStatus, string> = {

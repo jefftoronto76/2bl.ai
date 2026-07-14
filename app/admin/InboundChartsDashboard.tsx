@@ -7,10 +7,7 @@ import { useMemo } from 'react'
 import { Card, Group, SimpleGrid, Stack, Text } from '@mantine/core'
 import { StatTile } from '@/components/admin/lib/primitives'
 import type { ChatSession } from '@/services/crm/inbound'
-
-// Anthropic pricing (claude-sonnet-4-6): $3 / 1M input, $15 / 1M output.
-const IN_COST = 3
-const OUT_COST = 15
+import { INPUT_COST_PER_MILLION, OUTPUT_COST_PER_MILLION } from '@/services/crm/formatting'
 
 function fmtK(n: number): string {
   return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
@@ -42,7 +39,8 @@ export function InboundChartsDashboard({ rows }: { rows: ChatSession[] }) {
 
   const started = rows.length
   const totalTokens = stats.tin + stats.tout
-  const cost = '$' + ((stats.tin * IN_COST + stats.tout * OUT_COST) / 1e6).toFixed(2)
+  const cost =
+    '$' + ((stats.tin * INPUT_COST_PER_MILLION + stats.tout * OUTPUT_COST_PER_MILLION) / 1e6).toFixed(2)
   const convPct = started > 0 ? Math.round((stats.converted / started) * 100) : 0
 
   const funnelValues: Record<string, number> = {
