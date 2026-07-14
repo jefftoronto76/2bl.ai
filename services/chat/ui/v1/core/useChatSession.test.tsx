@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { ChatSessionProvider, useChatSessionContext } from './ChatSessionProvider'
 import { __clearSingletonRegistry } from './store-registry'
+import { bufferThread, readThread, findMostRecentThread, __resetPersistenceForTests, DRAFT_ID } from '../persistence'
 
 // ── fetch mock ──────────────────────────────────────────────────────────────
 // Reproduces the three calls useChatTurn makes per turn: POST /api/sessions
@@ -77,10 +78,12 @@ function Consumer({ id }: { id: string }) {
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   sageShouldFail = false
   fetchMock.mockClear()
   __clearSingletonRegistry()
+  await __resetPersistenceForTests('heirloom')
+  await __resetPersistenceForTests('sage')
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -302,6 +305,137 @@ describe('reset (additive API)', () => {
     await waitFor(() => expect(screen.getByTestId('a-text').textContent).toBe(''))
     // b is a separate isolated instance — untouched by a's reset.
     expect(screen.getByTestId('b-text').textContent).toContain('user:recovered')
+  })
+})
+
+describe('IndexedDB persistence (opt-in via persistNamespace)', () => {
+  it('persists nothing when persistNamespace is omitted', async () => {
+    render(
+      <ChatSessionProvider>
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(await findMostRecentThread('heirloom')).toBeNull()
+    expect(await findMostRecentThread('sage')).toBeNull()
+  })
+
+  it('buffers at turn boundaries, re-keys draft to the session id, and rehydrates a fresh mount', async () => {
+    const { unmount } = render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+
+    await waitFor(async () => {
+      expect(await readThread('sage', DRAFT_ID)).toBeNull()
+      const thread = await readThread('sage', 'sess-1')
+      expect(thread?.messages.map((m) => m.content)).toEqual(['hi', 'Hello there'])
+    })
+
+    unmount()
+
+    render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(screen.getByTestId('b-sid').textContent).toBe('sess-1')
+  })
+
+  it('buffers partial stream content at an interval while streaming, before the turn finishes', async () => {
+    // A controllable /api/sage stream — chunks arrive only when we push them,
+    // so the turn stays "in flight" for as long as the test needs. Spying on
+    // setInterval (rather than vi.useFakeTimers) lets us invoke the exact
+    // callback our persistence effect registered, deterministically, without
+    // faking global time — @testing-library's own waitFor polls via a real
+    // setInterval internally, so faking it globally would fight that.
+    let pushChunk: ((text: string) => void) | null = null
+    let closeStream: (() => void) | null = null
+    const encoder = new TextEncoder()
+    const slowStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        pushChunk = (text) => controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`))
+        closeStream = () => controller.close()
+      },
+    })
+    const slowResponse = new Response(slowStream, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+
+    const defaultImpl = fetchMock.getMockImplementation()
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === '/api/sessions' && method === 'POST') return jsonResponse({ id: 'sess-1' })
+      if (url.startsWith('/api/sessions/')) return jsonResponse({ ok: true })
+      if (url === '/api/sage') return slowResponse
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+
+    try {
+      render(
+        <ChatSessionProvider persistNamespace="sage">
+          <Consumer id="a" />
+        </ChatSessionProvider>,
+      )
+      fireEvent.click(screen.getByTestId('a-send'))
+
+      await waitFor(() => expect(pushChunk).not.toBeNull())
+      pushChunk!('partial reply')
+      await waitFor(() =>
+        expect(screen.getByTestId('a-text').textContent).toContain('assistant:partial reply'),
+      )
+
+      // Invoke the registered interval callback directly — simulates one
+      // tick without waiting on real wall-clock time.
+      const call = setIntervalSpy.mock.calls.find(([, delay]) => delay === 1000)
+      expect(call).toBeDefined()
+      ;(call![0] as () => void)()
+
+      await waitFor(async () => {
+        const thread = await readThread('sage', 'sess-1')
+        expect(thread?.messages.find((m) => m.role === 'assistant')?.content).toBe('partial reply')
+      })
+
+      // The turn is still in flight — this really was a mid-stream capture,
+      // not the turn-finish boundary write.
+      expect(screen.getByTestId('a-text').textContent).not.toContain('final content')
+
+      closeStream!()
+      await waitFor(() =>
+        expect(screen.getByTestId('a-text').textContent).toContain('assistant:partial reply'),
+      )
+    } finally {
+      setIntervalSpy.mockRestore()
+      fetchMock.mockImplementation(defaultImpl!)
+    }
+  })
+
+  it('flushes the live transcript on pagehide even without a turn boundary', async () => {
+    render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-hydrate')) // hydrate never touches isStreaming
+    expect(await findMostRecentThread('sage')).toBeNull() // not buffered by hydrate itself
+
+    window.dispatchEvent(new Event('pagehide'))
+
+    await waitFor(async () => {
+      const thread = await findMostRecentThread('sage')
+      expect(thread?.sessionId).toBe('recovered-1')
+    })
   })
 })
 

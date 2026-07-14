@@ -15,10 +15,13 @@ export default function Page() {
   return (
     // Singleton session shared by the two conversation surfaces, Hero and Chat
     // (the overlay), so a message sent on one appears on the other. instanceKey
-    // "sage" resolves the same store for both. Nav/SectionProcess sit inside
-    // harmlessly — they use only the shell action expand(), never the session
-    // context. (Hero/Chat are wired to consume this in the following commits.)
-    <ChatSessionProvider instanceKey="sage">
+    // "sage" resolves the same store for both. persistNamespace="sage" opts
+    // into the shared core's IndexedDB persistence (turn-boundary buffering,
+    // pagehide flush, unconditional mount-time rehydration — see
+    // core/useChatSession.ts); mounted once here so both surfaces share it
+    // with no double-buffering risk. Nav/SectionProcess sit inside harmlessly
+    // — they use only the shell action expand(), never the session context.
+    <ChatSessionProvider instanceKey="sage" persistNamespace="sage">
       <Nav />
       <main>
         <WidgetShellHero />

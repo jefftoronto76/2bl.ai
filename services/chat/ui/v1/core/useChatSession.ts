@@ -27,9 +27,29 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'r
 import { useChatTurn } from '../useChatTurn'
 import type { ChatEngineAccessors, ChatErrorType, UIMessage } from '../types'
 import type { ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
-import { createUIMessage } from '../message'
+import { createUIMessage, reviveUIMessages } from '../message'
 import { createChatSessionStore, type ChatSessionStore, type HydrateInput } from './store'
 import { getSingletonStore } from './store-registry'
+import {
+  bufferThread,
+  clearDraft,
+  findMostRecentThread,
+  toPersistedMessages,
+  type PersistenceNamespace,
+} from '../persistence'
+
+/** Drops the empty streaming-assistant placeholder — it is never buffered. */
+function nonEmptyMessages(messages: UIMessage[]): UIMessage[] {
+  return messages.filter((m) => !(m.role === 'assistant' && m.content === ''))
+}
+
+/**
+ * How often the in-flight assistant reply is buffered WHILE streaming (not
+ * just at turn boundaries) — enables recovering a partial reply on a
+ * mid-stream reload rather than only the user's message. 1s balances recovery
+ * granularity against IndexedDB write frequency for a multi-second reply.
+ */
+const STREAM_BUFFER_INTERVAL_MS = 1000
 
 export interface ChatSessionConfig {
   /**
@@ -57,6 +77,14 @@ export interface ChatSessionConfig {
    * and injects an ATTACHED MEDIA section into the system prompt.
    */
   getMediaItems?: () => MediaAttachmentInput[]
+  /**
+   * Enables IndexedDB persistence for this session when provided: turn-
+   * boundary buffering, a pagehide/visibility flush, and unconditional
+   * mount-time rehydration — no signed-in/anonymous gate, for either product.
+   * Omit to opt out of persistence entirely (the default for any caller that
+   * hasn't been migrated onto it yet).
+   */
+  persistNamespace?: PersistenceNamespace
 }
 
 /** The session value every surface consumes (via context). */
@@ -85,7 +113,7 @@ export interface ChatSession {
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
-  const { instanceKey, getMemberId, getInviteToken, getMediaItems } = config
+  const { instanceKey, getMemberId, getInviteToken, getMediaItems, persistNamespace } = config
 
   // Resolve the backing store. Singleton mode uses the client registry; on the
   // server (where a client component still renders for initial HTML) we never
@@ -160,8 +188,107 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
   }, [turn.errorType, store])
 
   const setMode = useCallback((mode: ChatMode) => store.setState({ mode }), [store])
-  const hydrate = useCallback((input: HydrateInput) => store.hydrate(input), [store])
+
+  // Primed on every hydrate() call so the session-id-transition persistence
+  // effect below never mistakes a restored session id for a freshly-created
+  // one — which would needlessly clearDraft + re-buffer, bumping updatedAt
+  // and breaking most-recent-wins recovery. Harmless when persistence is
+  // disabled (persistNamespace undefined): the ref just goes unread.
+  const prevSessionIdRef = useRef<string | null>(state.sessionId)
+  const hydrate = useCallback(
+    (input: HydrateInput) => {
+      prevSessionIdRef.current = input.sessionId
+      store.hydrate(input)
+    },
+    [store],
+  )
   const reset = useCallback(() => store.reset(), [store])
+
+  // ── IndexedDB persistence (opt-in via persistNamespace) ───────────────────
+  // Identical policy for both products: turn-boundary buffering, a
+  // pagehide/visibility flush, and unconditional mount-time rehydration (no
+  // signed-in/anonymous gate — best experience always). One effect set here
+  // serves every surface, since exactly one useChatSession() call backs a
+  // conversation regardless of how many surfaces read it via context.
+
+  // Buffer on TURN BOUNDARIES only — keyed on isStreaming, never on messages,
+  // so there is no per-token IndexedDB thrash. Fires on turn start (the user
+  // message is present → recoverable if the reply is interrupted) and turn
+  // finish (final assistant content). hydrate() does not touch isStreaming,
+  // so restoring a thread never triggers a write here.
+  useEffect(() => {
+    if (!persistNamespace) return
+    const messages = nonEmptyMessages(store.getState().messages)
+    void bufferThread(persistNamespace, toPersistedMessages(messages), store.getState().sessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistNamespace, state.isStreaming, store])
+
+  // Buffer WHILE STREAMING, at a fixed interval — not just at the turn
+  // boundaries above. Reuses the exact same buffer call; this only adds a
+  // timing trigger for the gap between turn start and turn finish, so a
+  // mid-stream reload recovers whatever content arrived, not just the user's
+  // message. The interval only ever runs while state.isStreaming is true, so
+  // it starts/stops with the turn automatically (React clears it on effect
+  // cleanup — turn finish, unmount, or persistNamespace/store changing).
+  useEffect(() => {
+    if (!persistNamespace || !state.isStreaming) return
+    const interval = setInterval(() => {
+      const messages = nonEmptyMessages(store.getState().messages)
+      void bufferThread(persistNamespace, toPersistedMessages(messages), store.getState().sessionId)
+    }, STREAM_BUFFER_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [persistNamespace, state.isStreaming, store])
+
+  // When a real session id arrives mid-turn (engine lazy-create), drop the
+  // orphan draft slot and re-buffer under the session id. Guarded by a
+  // prev-value compare so it fires only on an actual null→id transition — not
+  // on every render, and not when hydrate() restored the id (hydrate primes
+  // prevSessionIdRef to match, above).
+  useEffect(() => {
+    if (!persistNamespace) return
+    if (state.sessionId === prevSessionIdRef.current) return
+    prevSessionIdRef.current = state.sessionId
+    if (state.sessionId) {
+      void clearDraft(persistNamespace)
+      const messages = nonEmptyMessages(store.getState().messages)
+      void bufferThread(persistNamespace, toPersistedMessages(messages), state.sessionId)
+    }
+  }, [persistNamespace, state.sessionId, store])
+
+  // Unconditional mount-time rehydration — no signed-in/anonymous gate, for
+  // either product. Runs once per session instance (hasHydratedRef), so a
+  // later mid-session hydrate() call is never retro-triggered by this.
+  const hasHydratedRef = useRef(false)
+  useEffect(() => {
+    if (!persistNamespace || hasHydratedRef.current) return
+    hasHydratedRef.current = true
+    void (async () => {
+      const thread = await findMostRecentThread(persistNamespace)
+      if (!thread || thread.messages.length === 0) return
+      hydrate({ messages: reviveUIMessages(thread.messages), sessionId: thread.sessionId })
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistNamespace])
+
+  // On page hide/exit: flush the live transcript so the last turn is captured
+  // even if the visitor never returns.
+  useEffect(() => {
+    if (!persistNamespace) return
+    const flush = () => {
+      const messages = nonEmptyMessages(store.getState().messages)
+      void bufferThread(persistNamespace, toPersistedMessages(messages), store.getState().sessionId)
+    }
+    const onPageHide = () => flush()
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [persistNamespace, store])
 
   // All conversation state is read from the shared store so every surface under
   // the provider observes the same values (and reset()/hydrate() are visible to

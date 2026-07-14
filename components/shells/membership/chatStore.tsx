@@ -21,14 +21,11 @@ export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
-  bufferThread,
   clearDraft,
   clearSession,
-  clearTranscripts,
   findMostRecentThread,
   readIndex,
   DRAFT_ID,
-  type PersistedMessage,
 } from '@/services/chat/ui/v1/persistence';
 import { createUIMessage } from '@/services/chat/ui/v1/message';
 import {
@@ -178,13 +175,6 @@ function toRecentSession(row: ApiSession): RecentSession {
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
-// Bridge the canonical UIMessage (timestamp: number) to the JSON-serializable
-// PersistedMessage (timestamp: ISO string) the localStorage buffer stores. Reads
-// go through reviveUIMessage(s), which also accept legacy ISO-string timestamps.
-function serialize(m: Message): PersistedMessage {
-  return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp).toISOString() };
-}
-
 // Set true immediately before calling openSignIn / openSignUp so the beforeunload
 // handler does not fire a false positive when the OAuth popup opens. Reset to
 // false on window focus (popup closed / user returned). Module-level so it is
@@ -253,6 +243,9 @@ export function ChatProvider({
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
   // The conversation engine + state, isolated to this provider (no instanceKey).
+  // persistNamespace: 'heirloom' opts into the shared core's IndexedDB
+  // persistence (turn-boundary buffering, pagehide flush, unconditional
+  // mount-time rehydration — no signed-in gate; see core/useChatSession.ts).
   const session = useChatSession({
     getMemberId: () => memberIdRef.current,
     getInviteToken: () => inviteTokenRef.current,
@@ -261,6 +254,7 @@ export function ChatProvider({
       type: m.type,
       filename: m.original_filename,
     })),
+    persistNamespace: 'heirloom',
   });
   const {
     messages,
@@ -325,27 +319,18 @@ export function ChatProvider({
   // needing to be recreated (same pattern as memberIdRef above).
   const mediaItemsRef = useRef<ClientMediaItem[]>([]);
 
-  // Last sessionId the buffering effect acted on. Lets clearDraft + re-buffer
-  // fire only on a genuine null→id transition (a live send creating a session) —
-  // never on every render, and never when hydrate() restores an id (primed in
-  // hydrateConversation below).
+  // Tracks the sessionId this component last observed, so the recentSessions-
+  // immediate-add effect below fires only on a genuine transition — not on
+  // every render, and not when hydrate() restores an id (primed in
+  // hydrateConversation below). IndexedDB persistence itself (buffering,
+  // draft re-keying, mount-time rehydration, pagehide flush) is now owned
+  // entirely by the shared core (persistNamespace: 'heirloom' above) — this
+  // ref exists only to drive the Recent-sidebar bookkeeping below.
   const prevSessionIdRef = useRef<string | null>(sessionId);
 
-  // Write the current transcript to localStorage. Reads the mirror ref so a
-  // mid-stream flush sees the latest tokens. Drops the empty streaming-assistant
-  // placeholder so it is never persisted (it is skipped on render too). No-ops
-  // on an empty thread (bufferThread guards length 0).
-  const persistCurrent = useCallback(() => {
-    const msgs = messagesRef.current.filter(
-      m => !(m.role === 'assistant' && m.content === ''),
-    );
-    bufferThread(msgs.map(serialize), sessionIdRef.current);
-  }, []);
-
-  // Hydrate the conversation from a buffer / DB row. Primes prevSessionIdRef so
-  // the sessionId effect does NOT treat a restored session id as a new draft→
-  // session transition — which would needlessly clearDraft + re-buffer, bumping
-  // updatedAt and breaking most-recent-wins recovery.
+  // Hydrate the conversation from a DB row / Recent-sidebar entry. Primes
+  // prevSessionIdRef so the recentSessions-immediate-add effect does NOT treat
+  // a restored session id as a newly-created one.
   const hydrateConversation = useCallback(
     (input: { messages: Message[]; sessionId: string | null }) => {
       prevSessionIdRef.current = input.sessionId;
@@ -354,28 +339,19 @@ export function ChatProvider({
     [hydrate],
   );
 
-  // Buffer on TURN BOUNDARIES only — keyed on isStreaming, never on messages, so
-  // there is no per-token localStorage thrash. Fires on turn start (false→true:
-  // the user message is present → recoverable if the reply is interrupted) and
-  // turn finish (true→false: final assistant content). hydrate() does not touch
-  // isStreaming, so restoring a thread never triggers a write here.
-  useEffect(() => {
-    persistCurrent();
-  }, [isStreaming, persistCurrent]);
-
-  // When a real session id arrives mid-turn (engine lazy-create), drop the orphan
-  // draft slot and re-buffer under the session key. Guarded by a prev-value
-  // compare so it fires only on an actual transition — not on every render, and
-  // not when hydrate() restored the id (prevSessionIdRef was primed to match).
-  // Also adds the new session to the sidebar immediately for signed-in users so
-  // the entry appears as soon as the session is created rather than waiting for
-  // the turn to finish.
+  // Add a newly-created session to the Recent sidebar immediately (mid-turn),
+  // rather than waiting for the reply to finish streaming (the "turn finishes"
+  // effect further down also covers it, but this makes it feel instant).
+  // Guarded on isStreamingRef.current — true only while a live send() is in
+  // flight — because the core's own mount-time rehydration is now
+  // unconditional (see persistNamespace above) and invisible to this
+  // component: a restored session id also transitions sessionId from null to
+  // a real id, and without this guard it would be misfiled here as "just
+  // created" with a fabricated title/timestamp instead of a real restore.
   useEffect(() => {
     if (sessionId === prevSessionIdRef.current) return;
     prevSessionIdRef.current = sessionId;
-    if (sessionId) {
-      clearDraft();
-      persistCurrent();
+    if (sessionId && isStreamingRef.current) {
       const msgs = messagesRef.current.filter(
         m => !(m.role === 'assistant' && m.content === ''),
       );
@@ -395,52 +371,7 @@ export function ChatProvider({
         });
       }
     }
-  }, [sessionId, persistCurrent]);
-
-  // Rehydrate the most recently buffered thread once the auth provider has
-  // loaded — SIGNED-IN ONLY. A signed-out reload starts fresh by design: the
-  // buffers stay on disk so the post-sign-in claim flow can still link those
-  // sessions (they are cleared after a successful claim), but the
-  // conversation is not restored. Signed-in users get the local buffer
-  // immediately; the DB-recovery effect below may override it with a strictly
-  // newer DB thread (most-recent-wins). Runs once per page load — a
-  // mid-session sign-in does not retro-hydrate over a live conversation.
-  const hasHydratedRef = useRef(false);
-  useEffect(() => {
-    if (!isLoaded || hasHydratedRef.current) return;
-    hasHydratedRef.current = true;
-    if (!isSignedIn) return;
-    const thread = findMostRecentThread();
-    if (!thread || thread.messages.length === 0) return;
-    hydrateConversation({
-      messages: reviveUIMessages(thread.messages),
-      sessionId: thread.sessionId,
-    });
-  }, [isLoaded, isSignedIn, hydrateConversation]);
-
-  // On page hide/exit: flush the live transcript, then — signed-out only —
-  // scrub the buffered transcripts. The flush keeps the index entry for the
-  // current session up to date; the scrub drops the transcript payloads
-  // (signed-out reloads start fresh, so they are never read back) while
-  // KEEPING the index so a later sign-in can still claim those sessions.
-  // Signed-in visitors keep their transcripts: the buffer is their recovery
-  // layer in front of the DB (most-recent-wins on the next load).
-  useEffect(() => {
-    const flushAndScrub = () => {
-      persistCurrent();
-      if (!isSignedInRef.current) clearTranscripts();
-    };
-    const onPageHide = () => flushAndScrub();
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') flushAndScrub();
-    };
-    window.addEventListener('pagehide', onPageHide);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      window.removeEventListener('pagehide', onPageHide);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [persistCurrent]);
+  }, [sessionId]);
 
   // Signed-in cross-device recovery + Recent list. Fetch the user's DB sessions,
   // populate the Recent sidebar, and — most-recent-wins — hydrate from the newest
@@ -461,7 +392,7 @@ export function ChatProvider({
 
         const newest = sessions[0]; // GET /api/sessions orders updated_at desc
         if (!newest || newest.messages.length === 0) return;
-        const local = findMostRecentThread();
+        const local = await findMostRecentThread('heirloom');
         const localMs = local ? new Date(local.updatedAt).getTime() : 0;
         if (new Date(newest.updatedAt).getTime() <= localMs) return;
 
@@ -492,8 +423,8 @@ export function ChatProvider({
     if (!finished || !isSignedInRef.current) return;
     const id = sessionIdRef.current;
     if (!id) return;
-    // Mirror persistCurrent: never store the empty streaming placeholder (or
-    // the error-cleared assistant message) into the Recent entry.
+    // Never store the empty streaming placeholder (or the error-cleared
+    // assistant message) into the Recent entry.
     const msgs = messagesRef.current.filter(
       m => !(m.role === 'assistant' && m.content === ''),
     );
@@ -578,7 +509,7 @@ export function ChatProvider({
   // (active via /api/members/sync). Keeping them separate prevents the "sync to
   // active" path from bypassing the invite-gate waitlist.
   const claimSessionsOnly = useCallback(async () => {
-    const realIds = readIndex()
+    const realIds = (await readIndex('heirloom'))
       .map(e => e.id)
       .filter(id => id !== DRAFT_ID);
     const currentId = sessionIdRef.current;
@@ -596,14 +527,14 @@ export function ChatProvider({
               // Claimed → the DB owns it (recovery + Recent sidebar); drop the
               // local buffer entry so localStorage is clean after sign-in. A
               // failed claim keeps its entry for the next attempt.
-              clearSession(id);
+              void clearSession('heirloom', id);
             }
           })
           .catch(err => console.error('[heirloom/chat] post-sign-in claim error:', id, err))
       )
     );
     // The draft slot has no server session — nothing to claim; drop it too.
-    clearDraft();
+    void clearDraft('heirloom');
   }, []); // reads refs synchronously — no reactive deps needed
 
   // Claim all browser-local sessions on the false→true isSignedIn transition.
@@ -642,8 +573,8 @@ export function ChatProvider({
   // state (sidebar/panel) is preserved; recentSessions + DB rows are untouched.
   const newChat = useCallback(() => {
     const cleared = sessionIdRef.current;
-    clearDraft();
-    if (cleared) clearSession(cleared);
+    void clearDraft('heirloom');
+    if (cleared) void clearSession('heirloom', cleared);
     prevSessionIdRef.current = null;
     reset();
   }, [reset]);
@@ -702,7 +633,7 @@ export function ChatProvider({
     );
 
     // 2. Collect all real session IDs from the localStorage index.
-    const realIds = readIndex()
+    const realIds = (await readIndex('heirloom'))
       .map(e => e.id)
       .filter(id => id !== DRAFT_ID);
 
@@ -722,14 +653,14 @@ export function ChatProvider({
               console.log('[heirloom/chat] claimed session:', id);
               // Claimed → DB-owned; drop the local buffer entry (see
               // claimSessionsOnly). Failed claims keep theirs.
-              clearSession(id);
+              void clearSession('heirloom', id);
             }
           })
           .catch(err => console.error('[heirloom/chat] claim error:', id, err))
       )
     );
     // The draft slot has no server session — nothing to claim; drop it too.
-    clearDraft();
+    void clearDraft('heirloom');
   }, []);
 
   // Append a synthetic assistant message without a network round-trip. Uses
