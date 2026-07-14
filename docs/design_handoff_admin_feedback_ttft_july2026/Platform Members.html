@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Platform Members — Mantine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/core@7.17.8/styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/notifications@7.17.8/styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+    "@mantine/hooks": "https://esm.sh/@mantine/hooks@7.17.8?external=react",
+    "@mantine/core": "https://esm.sh/@mantine/core@7.17.8?external=react,react-dom,@mantine/hooks",
+    "@mantine/notifications": "https://esm.sh/@mantine/notifications@7.17.8?external=react,react-dom,@mantine/core,@mantine/hooks",
+    "@tabler/icons-react": "https://esm.sh/@tabler/icons-react@3.41.1?external=react",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+</head>
+<body>
+<div id="boot">loading…</div>
+<div id="root"></div>
+<script type="module">
+import { React, html, M, Ic, D, useState, useMemo, TintBadge, StatTile, Donut, DonutLegend, mountScreen } from './harness.js'
+window.addEventListener('error', (e) => { const b = document.getElementById('boot'); if (b) { b.style.display = 'block'; b.textContent += '\n[error] ' + (e.message || '') } })
+
+const Avatar = ({ user, lg }) => {
+  const av = D.avatarColor(user.id)
+  const s = lg ? 44 : 32
+  return html`<span style=${{ width: s, height: s, flex: `0 0 ${s}px`, borderRadius: 999, background: av.bg, color: av.fg,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: lg ? 15 : 12, fontWeight: 600 }}>${D.initials(user.name)}</span>`
+}
+const TenantPills = ({ memberships }) => {
+  const names = memberships.map((m) => m.tenant)
+  const shown = names.slice(0, 3), extra = names.length - shown.length
+  return html`<div style=${{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+    ${shown.map((n) => html`<span key=${n} title=${n} style=${{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'var(--mantine-color-gray-1)', color: 'var(--mantine-color-gray-7)', whiteSpace: 'nowrap' }}>${n}</span>`)}
+    ${extra > 0 && html`<span style=${{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'var(--mantine-color-gray-1)', color: 'var(--mantine-color-gray-6)' }}>+${extra} more</span>`}
+  </div>`
+}
+
+const STATUS_ORDER = [
+  { key: 'all', label: 'All' }, { key: 'active', label: 'Active' }, { key: 'invited', label: 'Invited' },
+  { key: 'suspended', label: 'Suspended' }, { key: 'deleted', label: 'Deleted' },
+]
+const primaryStatus = (u) => u.memberships.every((m) => m.status === 'deleted') ? 'deleted' : u.memberships[0].status
+const bumpPlan = (p) => (p === 'free' ? 'pro' : 'team')
+
+function DetailDrawer({ user, onClose, onSaveRoles }) {
+  const [roles, setRoles] = useState(user.memberships.map((m) => m.role))
+  const dirty = roles.some((r, i) => r !== user.memberships[i].role)
+  return html`
+    <${M.Drawer} opened=${true} onClose=${onClose} position="right" size=${420} padding=${0}
+      withCloseButton=${false} title=${null}>
+      <${M.Stack} gap=${0} style=${{ height: '100vh' }}>
+        <${M.Group} gap="sm" wrap="nowrap" p="md" style=${{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <${Avatar} user=${user} lg=${true} />
+          <${M.Stack} gap=${0} style=${{ flex: 1, minWidth: 0 }}>
+            <${M.Text} fw=${600}>${user.name}<//>
+            <${M.Text} c="dimmed" size="sm" truncate>${user.email}<//>
+            <${M.Text} c="dimmed" size="xs" truncate>${D.INVITED_BY[user.id] ? `Invited by ${D.INVITED_BY[user.id]}` : 'Seeded · no inviter'}<//>
+          <//>
+          <${M.ActionIcon} variant="subtle" color="gray" onClick=${onClose} aria-label="Close"><${Ic.IconX} size=${18} /><//>
+        <//>
+        <${M.Box} style=${{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <${M.Stack} gap="lg">
+            ${user.memberships.map((m, i) => html`
+              <${M.Stack} key=${m.tenant} gap="sm">
+                <${M.Divider} label=${m.tenant} labelPosition="center" />
+                <${M.SimpleGrid} cols=${2} spacing="xs" verticalSpacing=${6}>
+                  <${M.Text} c="dimmed" size="sm">Status<//><div><${TintBadge} tint=${D.STATUS_BADGE[m.status]}>${D.STATUS_BADGE[m.status].label}<//></div>
+                  <${M.Text} c="dimmed" size="sm">Plan<//><div><${TintBadge} tint=${D.PLAN_BADGE[m.plan]}>${D.PLAN_BADGE[m.plan].label}<//></div>
+                  <${M.Text} c="dimmed" size="sm">Joined<//><${M.Text} size="sm">${m.joined}<//>
+                  <${M.Text} c="dimmed" size="sm">Last active<//><${M.Text} size="sm">${m.lastActive}<//>
+                <//>
+                <${M.Select} label="Role" data=${D.ROLE_OPTIONS} value=${roles[i]} allowDeselect=${false}
+                  onChange=${(v) => setRoles((prev) => prev.map((r, j) => (j === i ? v : r)))} />
+              <//>`)}
+          <//>
+        <//>
+        <${M.Group} justify="flex-end" gap="sm" p="md" style=${{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+          <${M.Button} variant="subtle" color="gray" onClick=${onClose}>Cancel<//>
+          <${M.Button} disabled=${!dirty} onClick=${() => onSaveRoles(user.id, roles)}>Save changes<//>
+        <//>
+      <//>
+    <//>`
+}
+
+const STATUS_COLOR = { active: '#2d6a4f', invited: '#1c7ed6', suspended: '#d9480f', deleted: '#868e96' }
+
+function Dashboard({ users }) {
+  const dist = useMemo(() => {
+    const d = { active: 0, invited: 0, suspended: 0, deleted: 0 }
+    for (const u of users) d[primaryStatus(u)]++
+    return d
+  }, [users])
+  const total = users.length
+  const segments = ['active', 'invited', 'suspended', 'deleted']
+    .filter((k) => dist[k] > 0)
+    .map((k) => ({ key: k, label: D.STATUS_BADGE[k].label, value: dist[k], color: STATUS_COLOR[k] }))
+  const tenantsRepresented = new Set(users.flatMap((u) => u.memberships.map((m) => m.tenant))).size
+
+  return html`
+    <${M.SimpleGrid} cols=${{ base: 1, sm: 2 }} spacing="md">
+      <${M.SimpleGrid} cols=${2} spacing="md">
+        <${StatTile} label="Total members" value=${total} sub=${`across ${tenantsRepresented} tenants`} />
+        <${StatTile} label="Active" value=${dist.active} accent=${STATUS_COLOR.active} />
+        <${StatTile} label="Invited / Accepted" value=${`${dist.invited + dist.active} / ${dist.active}`} sub=${`${dist.invited} pending`} accent=${STATUS_COLOR.invited} />
+        <${StatTile} label="Suspended" value=${dist.suspended} accent=${STATUS_COLOR.suspended} />
+      <//>
+      <${M.Card} withBorder radius="md" p="lg" style=${{ background: 'transparent' }}>
+        <${M.Stack} gap=${4} align="center" justify="center" style=${{ height: '100%' }}>
+          <${Donut} segments=${segments} total=${total} centerSub="members" />
+          <${M.Text} c="dimmed" size="xs">Hover a segment for its breakdown<//>
+        <//>
+      <//>
+    <//>`
+}
+
+function MembersPage({ notify }) {
+  const [users, setUsers] = useState(D.USERS)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
+  const [selected, setSelected] = useState(new Set())
+  const [detail, setDetail] = useState(null)
+  const [dashHidden, setDashHidden] = useState(false)
+
+  const counts = useMemo(() => {
+    const c = { all: users.length, active: 0, invited: 0, suspended: 0, deleted: 0 }
+    for (const u of users) { const seen = new Set(u.memberships.map((m) => m.status)); for (const s of ['active', 'invited', 'suspended', 'deleted']) if (seen.has(s)) c[s]++ }
+    return c
+  }, [users])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return users.filter((u) => {
+      if (filter !== 'all' && !u.memberships.some((m) => m.status === filter)) return false
+      if (!q) return true
+      return (u.name + ' ' + u.email + ' ' + u.memberships.map((m) => m.tenant).join(' ')).toLowerCase().includes(q)
+    })
+  }, [users, query, filter])
+
+  const visibleIds = visible.map((u) => u.id)
+  const selectedVisible = visibleIds.filter((id) => selected.has(id))
+  const allChecked = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
+  const someChecked = selectedVisible.length > 0 && !allChecked
+
+  const toggleOne = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSelected((prev) => { const n = new Set(prev); if (allChecked) visibleIds.forEach((id) => n.delete(id)); else visibleIds.forEach((id) => n.add(id)); return n })
+  const clearSel = () => setSelected(new Set())
+
+  const mapUser = (id, fn, toast) => { setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, memberships: u.memberships.map(fn) } : u))); if (toast) notify(toast) }
+  const removeUser = (id, toast) => { setUsers((prev) => prev.filter((u) => u.id !== id)); setSelected((prev) => { const n = new Set(prev); n.delete(id); return n }); if (toast) notify(toast) }
+
+  const selArr = () => users.filter((u) => selected.has(u.id))
+  const bulkUpgrade = () => {
+    const targets = selArr().filter((u) => u.memberships.some((m) => m.plan !== 'team' && m.status !== 'deleted'))
+    if (!targets.length) return notify({ color: 'green', title: 'Nothing to upgrade', message: 'Selected members are already on Team.' })
+    const ids = new Set(targets.map((u) => u.id))
+    setUsers((prev) => prev.map((u) => ids.has(u.id) ? { ...u, memberships: u.memberships.map((m) => (m.plan !== 'team' && m.status !== 'deleted') ? { ...m, plan: bumpPlan(m.plan) } : m) } : u))
+    notify({ color: 'green', title: 'Plans upgraded', message: `${targets.length} member${targets.length > 1 ? 's' : ''} upgraded.` })
+  }
+  const bulkStatus = (pred, to, title) => {
+    const targets = selArr().filter((u) => u.memberships.some(pred))
+    if (!targets.length) return notify({ color: 'green', title: 'No eligible members', message: 'Nothing in the selection applies.' })
+    const ids = new Set(targets.map((u) => u.id))
+    setUsers((prev) => prev.map((u) => ids.has(u.id) ? { ...u, memberships: u.memberships.map((m) => (pred(m) ? { ...m, status: to } : m)) } : u))
+    notify({ color: 'green', title, message: `${targets.length} member${targets.length > 1 ? 's' : ''} updated.` })
+  }
+
+  function MenuFor({ u }) {
+    const st = primaryStatus(u)
+    const items = []
+    if ((st === 'active' || st === 'suspended') && u.memberships.some((m) => m.plan !== 'team' && m.status !== 'deleted'))
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconArrowUp} size=${16} />`} onClick=${() => mapUser(u.id, (m) => (m.plan !== 'team' && m.status !== 'deleted') ? { ...m, plan: bumpPlan(m.plan) } : m, { color: 'green', title: 'Plan upgraded', message: `${u.name}'s memberships upgraded.` })}>Upgrade plan<//>`)
+    if (st === 'active') items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconPlayerPause} size=${16} />`} onClick=${() => mapUser(u.id, (m) => m.status === 'active' ? { ...m, status: 'suspended' } : m, { color: 'green', title: 'Member suspended', message: `${u.name} can no longer sign in.` })}>Suspend<//>`)
+    if (st === 'suspended') items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconPlayerPlay} size=${16} />`} onClick=${() => mapUser(u.id, (m) => m.status === 'suspended' ? { ...m, status: 'active' } : m, { color: 'green', title: 'Member reactivated', message: `${u.name} is active again.` })}>Reactivate<//>`)
+    if (st === 'invited') {
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconSend} size=${16} />`} onClick=${() => notify({ color: 'green', title: 'Invite resent', message: `Sent to ${u.email}.` })}>Resend invite<//>`)
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconX} size=${16} />`} onClick=${() => removeUser(u.id, { color: 'green', title: 'Invite revoked', message: `${u.email} was removed.` })}>Revoke invite<//>`)
+    } else if (st === 'deleted') {
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconRestore} size=${16} />`} onClick=${() => mapUser(u.id, (m) => ({ ...m, status: 'active' }), { color: 'green', title: 'Member restored', message: `${u.name} was restored.` })}>Restore<//>`)
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconTrash} size=${16} />`} onClick=${() => removeUser(u.id, { color: 'green', title: 'Member deleted', message: `${u.name} was permanently removed.` })}>Delete permanently<//>`)
+    } else {
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconTrash} size=${16} />`} onClick=${() => mapUser(u.id, (m) => ({ ...m, status: 'deleted' }), { color: 'green', title: 'Member deleted', message: `${u.name} moved to deleted.` })}>Delete<//>`)
+    }
+    return html`
+      <${M.Menu} position="bottom-end" withinPortal shadow="md" width=${190}>
+        <${M.Menu.Target}>
+          <${M.ActionIcon} variant="subtle" color="gray" aria-label="Member actions" onClick=${(e) => e.stopPropagation()}><${Ic.IconDots} size=${18} /><//>
+        <//>
+        <${M.Menu.Dropdown} onClick=${(e) => e.stopPropagation()}>
+          <${M.Menu.Label}>Actions<//>
+          ${items}
+        <//>
+      <//>`
+  }
+
+  const saveRoles = (id, roles) => {
+    const u = users.find((x) => x.id === id)
+    const changed = roles.filter((r, i) => r !== u.memberships[i].role).length
+    setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, memberships: x.memberships.map((m, i) => ({ ...m, role: roles[i] })) } : x)))
+    notify({ color: 'green', title: 'Roles updated', message: `${changed} role${changed > 1 ? 's' : ''} updated for ${u.name}.` })
+    setDetail(null)
+  }
+  const detailUser = detail ? users.find((u) => u.id === detail) : null
+
+  return html`
+    <${M.Stack} gap="lg" data-screen-label="Platform · Members">
+      <${M.Stack} gap=${4}>
+        <${M.Title} order=${1} size="h2">Members<//>
+        <${M.Text} c="dimmed">Everyone with access across all tenants.<//>
+      <//>
+
+      ${!dashHidden && html`
+        <${M.Group} justify="flex-end"><${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsUp} size=${14} />`} onClick=${() => setDashHidden(true)}>Hide dashboard<//><//>`}
+
+      ${dashHidden
+        ? html`<${M.Paper} withBorder radius="md" p="sm" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+            <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+              <${M.Group} gap="lg" wrap="wrap">
+                <${M.Text} fw=${600} size="sm">Dashboard summary<//>
+                <${M.Text} size="sm" c="dimmed"><b>${users.length}</b> total members<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.active}</b> active<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.invited}</b> invited<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.suspended}</b> suspended<//>
+              <//>
+              <${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsDown} size=${14} />`} onClick=${() => setDashHidden(false)}>Show dashboard<//>
+            <//>
+          <//>`
+        : html`<${Dashboard} users=${users} />`}
+
+      <${M.Box} style=${{ position: 'sticky', top: 0, zIndex: 15, background: '#FAF6EE', paddingBlock: 10, borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <${M.Group} gap="sm" wrap="wrap" align="center">
+          <${M.TextInput} value=${query} onChange=${(e) => setQuery(e.currentTarget.value)} placeholder="Search name, email, or tenant"
+            leftSection=${html`<${Ic.IconSearch} size=${15} />`} style=${{ flex: '1 1 260px', minWidth: 220 }}
+            rightSection=${query ? html`<${M.ActionIcon} variant="subtle" color="gray" size="sm" onClick=${() => setQuery('')}><${Ic.IconX} size=${13} /><//>` : null} />
+          <${M.SegmentedControl} value=${filter} onChange=${setFilter}
+            data=${STATUS_ORDER.map((s) => ({ value: s.key, label: html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>${s.label}<span style=${{ fontSize: 11, color: 'var(--mantine-color-dimmed)' }}>${counts[s.key]}</span></span>` }))} />
+          <div style=${{ flex: 1 }} />
+          <${M.Button} leftSection=${html`<${Ic.IconUserPlus} size=${16} />`} onClick=${() => notify({ color: 'green', title: 'Invite member', message: 'Invite flow would open here.' })}>Invite member<//>
+        <//>
+      <//>
+
+      ${selectedVisible.length > 0 && html`
+        <${M.Paper} withBorder radius="md" p="xs" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+          <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+            <${M.Text} fw=${500} size="sm" pl=${8}>${selectedVisible.length} selected<//>
+            <${M.Group} gap=${6} wrap="wrap">
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconArrowUp} size=${15} />`} onClick=${bulkUpgrade}>Upgrade<//>
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconPlayerPause} size=${15} />`} onClick=${() => bulkStatus((m) => m.status === 'active', 'suspended', 'Members suspended')}>Suspend<//>
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconPlayerPlay} size=${15} />`} onClick=${() => bulkStatus((m) => m.status === 'suspended' || m.status === 'deleted', 'active', 'Members reactivated')}>Reactivate<//>
+              <${M.Button} size="xs" variant="default" color="red" leftSection=${html`<${Ic.IconTrash} size=${15} />`} onClick=${() => bulkStatus((m) => m.status !== 'deleted', 'deleted', 'Members deleted')}>Delete<//>
+              <${M.ActionIcon} variant="subtle" color="gray" onClick=${clearSel} aria-label="Clear selection"><${Ic.IconX} size=${16} /><//>
+            <//>
+          <//>
+        <//>`}
+
+      ${visible.length === 0
+        ? html`<${M.Card} withBorder radius="md" p="xl" style=${{ background: 'transparent' }}>
+            <${M.Stack} gap=${4} align="center">
+              <${M.Text} fw=${500}>No members found<//>
+              <${M.Text} c="dimmed" size="sm">${query ? `Nothing matches "${query}".` : 'No members in this view.'}<//>
+            <//>
+          <//>`
+        : html`
+        <${M.Card} withBorder radius="md" p=${0} style=${{ backgroundColor: 'transparent', overflow: 'visible' }}>
+          <${M.Table} highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
+            <${M.Table.Thead}>
+              <${M.Table.Tr}>
+                <${M.Table.Th} style=${{ width: 40 }}><${M.Checkbox} size="xs" checked=${allChecked} indeterminate=${someChecked} onChange=${toggleAll} aria-label="Select all" /><//>
+                <${M.Table.Th}>Member<//><${M.Table.Th}>Tenant<//><${M.Table.Th}>Role<//><${M.Table.Th}>Plan<//><${M.Table.Th}>Status<//><${M.Table.Th}>Last active<//><${M.Table.Th} style=${{ width: 40 }} />
+              <//>
+            <//>
+            <${M.Table.Tbody}>
+              ${visible.map((u) => {
+                const p = u.memberships[0], deleted = primaryStatus(u) === 'deleted'
+                return html`
+                  <${M.Table.Tr} key=${u.id} style=${{ cursor: 'pointer', opacity: deleted ? 0.55 : 1 }} onClick=${() => setDetail(u.id)}>
+                    <${M.Table.Td} onClick=${(e) => e.stopPropagation()}><${M.Checkbox} size="xs" checked=${selected.has(u.id)} onChange=${() => toggleOne(u.id)} aria-label=${`Select ${u.name}`} /><//>
+                    <${M.Table.Td}>
+                      <${M.Group} gap="sm" wrap="nowrap">
+                        <${Avatar} user=${u} />
+                        <${M.Stack} gap=${0} style=${{ minWidth: 0 }}>
+                          <${M.Text} fw=${500} size="sm" truncate>${u.name}<//>
+                          <${M.Text} c="dimmed" size="xs" truncate>${u.email}<//>
+                        <//>
+                      <//>
+                    <//>
+                    <${M.Table.Td}><${TenantPills} memberships=${u.memberships} /><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.ROLE_BADGE[p.role]}>${D.ROLE_BADGE[p.role].label}<//><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.PLAN_BADGE[p.plan]}>${D.PLAN_BADGE[p.plan].label}<//><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.STATUS_BADGE[p.status]}>${D.STATUS_BADGE[p.status].label}<//><//>
+                    <${M.Table.Td}><${M.Text} c="dimmed" size="sm">${p.lastActive}<//><//>
+                    <${M.Table.Td} onClick=${(e) => e.stopPropagation()}><${MenuFor} u=${u} /><//>
+                  <//>`
+              })}
+            <//>
+          <//>
+        <//>`}
+
+      ${detailUser && html`<${DetailDrawer} user=${detailUser} onClose=${() => setDetail(null)} onSaveRoles=${saveRoles} />`}
+    <//>`
+}
+
+mountScreen('/platform/members', MembersPage)
+</script>
+</body>
+</html>

@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Combined Admin — Mantine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/core@7.17.8/styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/notifications@7.17.8/styles.css" />
+<style>@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 0.9s linear infinite; }</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+    "@mantine/hooks": "https://esm.sh/@mantine/hooks@7.17.8?external=react",
+    "@mantine/core": "https://esm.sh/@mantine/core@7.17.8?external=react,react-dom,@mantine/hooks",
+    "@mantine/notifications": "https://esm.sh/@mantine/notifications@7.17.8?external=react,react-dom,@mantine/core,@mantine/hooks",
+    "@tabler/icons-react": "https://esm.sh/@tabler/icons-react@3.41.1?external=react",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; }
+  #root { min-height: 100vh; }
+  #boot { font-family: monospace; color: #b00; white-space: pre-wrap; padding: 14px; }
+  .shell { display: flex; min-height: 100vh; }
+  .sb { width: 248px; flex: 0 0 248px; background: #17130E; color: #cfc9bf; display: flex; flex-direction: column;
+        padding: 20px 14px; box-sizing: border-box; position: sticky; top: 0; height: 100vh; }
+  .sb-head { padding: 2px 8px 4px; }
+  .sb-brand { font-family: 'Newsreader', serif; font-size: 19px; color: #F5F1E8; line-height: 1.15; }
+  .sb-kicker { font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: 0.18em; color: #C8542E; text-transform: uppercase; margin-top: 3px; }
+  .sb-scroll { flex: 1 1 auto; overflow-y: auto; margin-top: 8px; }
+  .sb-scroll::-webkit-scrollbar { width: 0; }
+  .sb-sec { font-family: 'DM Mono', monospace; font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #6f685c; margin: 18px 8px 7px; }
+  .sb-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: transparent;
+             padding: 9px 12px; border-radius: 7px; color: #cfc9bf; font-size: 14px; font-family: inherit; cursor: pointer; }
+  .sb-item:hover { background: rgba(255,255,255,0.05); color: #F5F1E8; }
+  .sb-item.active { background: #C8542E; color: #fff; }
+  .sb-item.disabled { color: #6b6358; cursor: default; }
+  .sb-item.disabled:hover { background: transparent; color: #6b6358; }
+  .sb-soon { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #6b6358; }
+  .sb-foot { display: flex; align-items: center; gap: 10px; padding: 14px 8px 4px; border-top: 1px solid rgba(255,255,255,0.07); margin-top: 8px; }
+  .sb-ava { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 999px; background: #2E854D; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .sb-uname { font-size: 13px; color: #F5F1E8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sb-umail { font-size: 11px; color: #8a8276; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .main { flex: 1 1 auto; min-width: 0; background: #FAF6EE; max-height: 100vh; overflow-y: auto; }
+  .main-inner { max-width: 1100px; padding: 40px 56px 90px; box-sizing: border-box; }
+  .main-bleed { min-width: 0; }
+  /* Mobile nav: hamburger + off-canvas sidebar (shown only ≤760px) */
+  .sb-burger { display: none; position: fixed; top: 12px; left: 12px; z-index: 80;
+    width: 40px; height: 40px; align-items: center; justify-content: center;
+    border: none; border-radius: 8px; background: #17130E; color: #F5F1E8; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+  .sb-backdrop { display: none; }
+  .blocks-rail-grid { display: grid; grid-template-columns: 208px 1fr; gap: 28px; }
+  @media (max-width: 860px) { .blocks-rail-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
+    .sb { position: fixed; top: 0; left: 0; z-index: 90; height: 100vh;
+      transform: translateX(-100%); transition: transform 220ms ease;
+      box-shadow: 2px 0 28px rgba(0,0,0,0.35); }
+    .sb.open { transform: translateX(0); }
+    .sb-burger { display: flex; }
+    .sb-backdrop.show { display: block; position: fixed; inset: 0; z-index: 85;
+      background: rgba(0,0,0,0.45); }
+    .main-inner { padding: 64px 18px 70px; }
+    .main-bleed { padding-top: 60px; }
+  }
+</style>
+</head>
+<body>
+<div id="boot">loading…</div>
+<div id="root"></div>
+<script type="module">
+import { React, html, M, Ic, D, useState, useMemo, theme, SCREENS, TintBadge, StatTile, Donut, notify } from './harness.js'
+import { Blocks } from './blocks-screen.js'
+import { Settings } from './settings-screen.js'
+import { Notifications } from '@mantine/notifications'
+import { createRoot } from 'react-dom/client'
+window.addEventListener('error', (e) => { const b = document.getElementById('boot'); if (b) { b.style.display = 'block'; b.textContent += '\n[error] ' + (e.message || '') } })
+
+const USER = { name: 'Jeff Lougheed', email: 'jeff@2bl.ai', initials: 'JL' }
+
+/* ════════════════ Inbound Chats (Tenant · /admin) ════════════════ */
+const IN_COST = 3, OUT_COST = 15
+const fmtDateTime = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+const fmtTokens = (i, o) => ((i || 0) + (o || 0)).toLocaleString('en-US')
+const fmtCost = (i, o) => '$' + (((i || 0) * IN_COST + (o || 0) * OUT_COST) / 1e6).toFixed(4)
+const Mono = ({ children, dim }) => html`<${M.Text} span c=${dim ? 'dimmed' : undefined} style=${{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: dim ? 12 : 'var(--mantine-font-size-sm)' }}>${children}<//>`
+const SBadge = ({ status }) => html`<${TintBadge} tint=${D.SESSION_STATUS_BADGE[status]}>${D.SESSION_STATUS_BADGE[status].label}<//>`
+
+function FeedbackCounts({ sessionId, size = 13 }) {
+  const { up, down } = D.feedbackCounts(sessionId)
+  if (!up && !down) return html`<${M.Text} c="dimmed" size="sm">—<//>`
+  return html`
+    <${M.Group} gap=${10} wrap="nowrap">
+      ${up > 0 && html`<${M.Group} gap=${4} wrap="nowrap"><${Ic.IconThumbUp} size=${size} color="#2d6a4f" /><${Mono}>${up}<//><//>`}
+      ${down > 0 && html`<${M.Group} gap=${4} wrap="nowrap"><${Ic.IconThumbDown} size=${size} color="#d9480f" /><${Mono}>${down}<//><//>`}
+    <//>`
+}
+
+function DeliveryRow({ status }) {
+  if (!status || status === 'sent') return null
+  if (status === 'sending') {
+    return html`<${M.Group} gap=${6} wrap="nowrap" mt=${4}><${Ic.IconLoader2} size=${12} className="spin" /><${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>Sending…<//><//>`
+  }
+  return html`<${M.Group} gap=${6} wrap="nowrap" mt=${4}><${Ic.IconAlertTriangle} size=${12} color="#d9480f" /><${M.Text} size="xs" style=${{ fontFamily: 'var(--mantine-font-family-monospace)', color: '#d9480f' }}>Not delivered<//><//>`
+}
+
+function FeedbackDetail({ fb }) {
+  return html`
+    <${M.Stack} gap=${6} mt=${6} p=${10} style=${{ borderRadius: 'var(--mantine-radius-sm)', background: fb.rating === 'up' ? 'rgba(45,106,79,0.07)' : 'rgba(217,72,15,0.07)' }}>
+      <${M.Group} gap=${6} wrap="wrap">
+        ${fb.tags.map((t) => html`<${M.Badge} key=${t} size="xs" radius="sm" variant="light" color=${fb.rating === 'up' ? 'green' : 'orange'} style=${{ textTransform: 'none' }}>${t}<//>`)}
+      <//>
+      ${fb.detail && html`<${M.Text} size="sm" fs="italic" c="dimmed">"${fb.detail}"<//>`}
+    <//>`
+}
+
+function MessageRow({ msg, sessionId, index }) {
+  const [open, setOpen] = useState(false)
+  const isUser = msg.role === 'user'
+  const fb = !isUser ? D.feedbackFor(sessionId, index) : null
+  const hasVersions = !isUser && msg.versions && msg.versions.length > 1
+  return html`
+    <${M.Stack} gap=${0}>
+      <${M.Paper} p=${10} radius="md" withBorder=${isUser}
+        style=${{ background: isUser ? 'var(--mantine-color-white)' : 'var(--mantine-color-gray-0)', maxWidth: '92%', alignSelf: isUser ? 'flex-start' : 'flex-end' }}>
+        <${M.Text} size="sm" style=${{ whiteSpace: 'pre-wrap' }}>${msg.content}<//>
+      <//>
+      ${isUser && html`<${DeliveryRow} status=${msg.status} />`}
+      ${!isUser && (msg.stopped || hasVersions || fb || msg.ttft_ms != null) && html`
+        <${M.Group} gap=${8} mt=${4} wrap="nowrap" justify="flex-end">
+          ${msg.ttft_ms != null && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>↩ ${msg.ttft_ms}ms<//>`}
+          ${msg.stopped && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>Stopped<//>`}
+          ${hasVersions && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>v${msg.versionIdx + 1}/${msg.versions.length} shown<//>`}
+          ${fb && html`
+            <${M.ActionIcon} size="sm" variant="subtle" color=${fb.rating === 'up' ? 'green' : 'orange'} onClick=${() => setOpen((o) => !o)} aria-label="Toggle feedback detail">
+              <${fb.rating === 'up' ? Ic.IconThumbUpFilled : Ic.IconThumbDownFilled} size=${14} />
+            <//>`}
+        <//>`}
+      ${!isUser && fb && open && html`<${FeedbackDetail} fb=${fb} />`}
+    <//>`
+}
+
+function Transcript({ session }) {
+  const msgs = D.SESSION_MESSAGES[session.id] || []
+  const { up, down } = D.feedbackCounts(session.id)
+  return html`
+    <${M.Stack} gap="sm">
+      <${M.Group} justify="space-between" align="center">
+        <${M.Text} tt="uppercase" fw=${600} size="xs" c="dimmed" style=${{ letterSpacing: '0.08em' }}>Transcript<//>
+        ${(up > 0 || down > 0) && html`<${FeedbackCounts} sessionId=${session.id} />`}
+      <//>
+      ${msgs.length === 0
+        ? html`<${M.Text} size="sm" c="dimmed">No messages recorded for this session.<//>`
+        : html`<${M.Stack} gap="sm">${msgs.map((m, i) => html`<${MessageRow} key=${i} msg=${m} sessionId=${session.id} index=${i} />`)}<//>`}
+    <//>`
+}
+
+function SessionDrawer({ session, onClose }) {
+  if (!session) return null
+  const name = session.visitor_name ?? 'Anonymous'
+  return html`
+    <${M.Drawer} opened=${true} onClose=${onClose} position="right" size=${460} padding=${0} withCloseButton=${false}>
+      <${M.Stack} gap=${0} style=${{ height: '100vh' }}>
+        <${M.Group} gap="sm" wrap="nowrap" justify="space-between" p="md" style=${{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <${M.Stack} gap=${0} style=${{ minWidth: 0 }}>
+            <${M.Text} fw=${600} fs=${session.visitor_name ? 'normal' : 'italic'}>${name}<//>
+            ${session.email && html`<${M.Text} c="dimmed" size="sm" truncate>${session.email}<//>`}
+          <//>
+          <${M.ActionIcon} variant="subtle" color="gray" onClick=${onClose} aria-label="Close"><${Ic.IconX} size=${18} /><//>
+        <//>
+        <${M.Box} p="md" style=${{ flex: 1, overflowY: 'auto' }}>
+          <${M.Stack} gap="lg">
+            <${M.Stack} gap="sm">
+              <${M.Text} tt="uppercase" fw=${600} size="xs" c="dimmed" style=${{ letterSpacing: '0.08em' }}>Session<//>
+              <${M.SimpleGrid} cols=${2} spacing="xs" verticalSpacing=${8}>
+                <${M.Text} c="dimmed" size="sm">Status<//><div><${SBadge} status=${session.status} /></div>
+                <${M.Text} c="dimmed" size="sm">Messages<//><${Mono}>${session.msgs}<//>
+                <${M.Text} c="dimmed" size="sm">Tokens<//><${Mono}>${fmtTokens(session.input_tokens, session.output_tokens)}<//>
+                <${M.Text} c="dimmed" size="sm">Cost<//><${Mono}>${fmtCost(session.input_tokens, session.output_tokens)}<//>
+                <${M.Text} c="dimmed" size="sm">Response time<//><${Mono}>${D.avgTtft(session.id) != null ? D.avgTtft(session.id) + 'ms avg' : '—'}<//>
+                <${M.Text} c="dimmed" size="sm">Last active<//><${Mono}>${fmtDateTime(session.updated_at)}<//>
+              <//>
+            <//>
+            <${Transcript} session=${session} />
+          <//>
+        <//>
+      <//>
+    <//>`
+}
+
+// Tiny inline trend line for the TTFT dashboard tile.
+function Sparkline({ points, width = 64, height = 24, flagAt }) {
+  if (!points || points.length < 2) return null
+  const max = Math.max(...points, flagAt || 0)
+  const min = Math.min(...points, 0)
+  const range = max - min || 1
+  const stepX = width / (points.length - 1)
+  const coords = points.map((p, i) => `${i * stepX},${height - ((p - min) / range) * height}`).join(' ')
+  const overFlag = flagAt != null && points[points.length - 1] > flagAt
+  return html`
+    <svg width=${width} height=${height} viewBox=${`0 0 ${width} ${height}`} style=${{ flex: '0 0 auto' }}>
+      <polyline points=${coords} fill="none" stroke=${overFlag ? '#d9480f' : 'var(--mantine-color-brand-6)'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>`
+}
+
+function InboundDashboard({ rows }) {
+  const stats = useMemo(() => {
+    let tin = 0, tout = 0, msgs = 0
+    const dist = { in_progress: 0, active: 0, abandoned: 0 }
+    for (const s of rows) { tin += s.input_tokens || 0; tout += s.output_tokens || 0; msgs += s.msgs || 0; dist[s.status]++ }
+    const presentedCTA = rows.filter((s) => s.msgs >= 6).length
+    const converted = rows.filter((s) => s.msgs >= 12).length
+    const negFeedback = rows.reduce((n, s) => n + D.feedbackCounts(s.id).down, 0)
+    return { tin, tout, msgs, dist, presentedCTA, converted, negFeedback }
+  }, [rows])
+  const ttftTrend = useMemo(() => D.ttftTrend(), [rows])
+  const ttftAvg = useMemo(() => D.overallAvgTtft(), [rows])
+  const ttftFlagged = ttftAvg != null && ttftAvg > D.TTFT_FLAG_MS
+  const totalTokens = stats.tin + stats.tout
+  const cost = '$' + ((stats.tin * IN_COST + stats.tout * OUT_COST) / 1e6).toFixed(2)
+  const fmtK = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
+  const started = rows.length
+  const funnel = [
+    { key: 'started', label: 'Chats started', value: started, color: '#1c7ed6' },
+    { key: 'cta', label: 'Presented CTA', value: stats.presentedCTA, color: '#e67700' },
+    { key: 'converted', label: 'Converted', value: stats.converted, color: '#2d6a4f' },
+    { key: 'abandoned', label: 'Abandoned', value: stats.dist.abandoned, color: '#868e96' },
+  ]
+  return html`
+    <${M.SimpleGrid} cols=${{ base: 1, sm: 2 }} spacing="md">
+      <${M.SimpleGrid} cols=${2} spacing="md">
+        <${StatTile} label="Sessions" value=${started} sub=${`${stats.msgs} messages`} />
+        <${StatTile} label="Tokens" value=${fmtK(totalTokens)} sub="input + output" />
+        <${StatTile} label="Est. cost" value=${cost} sub="sonnet-4-6 rates" />
+        <${StatTile} label="Converted" value=${`${started > 0 ? Math.round((stats.converted / started) * 100) : 0}%`} sub=${`${stats.converted} of ${started}`} accent="#2d6a4f" />
+        <${StatTile} label="Negative feedback" value=${stats.negFeedback} sub="thumbs down, all sessions" accent=${stats.negFeedback > 0 ? '#d9480f' : undefined} />
+        <${M.Paper} withBorder radius="md" p="md" style=${{ background: 'transparent', overflow: 'hidden' }}>
+          <${M.Stack} gap=${4}>
+            <${M.Group} justify="space-between" align="center" wrap="nowrap">
+              <${M.Text} c="dimmed" size="xs" tt="uppercase" fw=${600} style=${{ letterSpacing: '0.06em' }}>Response time<//>
+              ${ttftFlagged && html`<${M.Badge} size="xs" color="red" variant="light">Over 1s<//>`}
+            <//>
+            <${M.Text} style=${{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 26, fontWeight: 500, lineHeight: 1.1, color: ttftFlagged ? '#d9480f' : 'var(--mantine-color-text)' }}>${ttftAvg != null ? ttftAvg + 'ms' : '—'}<//>
+            ${ttftTrend.length > 1 && html`<${Sparkline} points=${ttftTrend.map((t) => t.avg)} flagAt=${D.TTFT_FLAG_MS} />`}
+            <${M.Text} c="dimmed" size="xs">avg TTFT · last 7 days<//>
+          <//>
+        <//>
+      <//>
+      <${M.Card} withBorder radius="md" p="lg" style=${{ background: 'transparent' }}>
+        <${M.Stack} gap="sm">
+          <${M.Text} fw=${600} size="sm">Conversion pipeline<//>
+          <${M.Stack} gap=${12}>
+            ${funnel.map((s) => {
+              const pct = started > 0 ? Math.round((s.value / started) * 100) : 0
+              return html`<${M.Stack} key=${s.key} gap=${4}>
+                <${M.Group} justify="space-between" align="baseline">
+                  <${M.Group} gap=${8} align="center" wrap="nowrap">
+                    <span style=${{ width: 9, height: 9, borderRadius: 3, background: s.color, flex: '0 0 auto' }} />
+                    <${M.Text} size="sm">${s.label}<//>
+                  <//>
+                  <${M.Text} size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>${s.value} <${M.Text} span c="dimmed" size="xs">· ${pct}%<//><//>
+                <//>
+                <div style=${{ height: 8, borderRadius: 4, background: 'var(--mantine-color-gray-2)', overflow: 'hidden' }}>
+                  <div style=${{ width: `${pct}%`, height: '100%', background: s.color, transition: 'width 200ms ease' }} />
+                </div>
+              <//>`
+            })}
+          <//>
+        <//>
+      <//>
+    <//>`
+}
+
+const INBOUND_STATUS_ORDER = [
+  { key: 'all', label: 'All' }, { key: 'in_progress', label: 'In progress' },
+  { key: 'active', label: 'Active' }, { key: 'abandoned', label: 'Abandoned' },
+]
+
+function InboundChats() {
+  const [sel, setSel] = useState(null)
+  const rows = D.INBOUND_CHATS
+  const [dashHidden, setDashHidden] = useState(false)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [feedbackOnly, setFeedbackOnly] = useState(false)
+  const [ttftOnly, setTtftOnly] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const counts = useMemo(() => {
+    const c = { all: rows.length, in_progress: 0, active: 0, abandoned: 0 }
+    for (const s of rows) c[s.status]++
+    return c
+  }, [rows])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter((s) => {
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false
+      if (feedbackOnly && D.feedbackCounts(s.id).down === 0) return false
+      if (ttftOnly && !(D.avgTtft(s.id) != null && D.avgTtft(s.id) > D.TTFT_FLAG_MS)) return false
+      const day = s.updated_at.slice(0, 10)
+      if (dateFrom && day < dateFrom) return false
+      if (dateTo && day > dateTo) return false
+      if (!q) return true
+      return ((s.visitor_name || '') + ' ' + (s.email || '')).toLowerCase().includes(q)
+    })
+  }, [rows, query, statusFilter, feedbackOnly, ttftOnly, dateFrom, dateTo])
+
+  const started = rows.length
+  const converted = rows.filter((s) => s.msgs >= 12).length
+  const negFeedback = rows.reduce((n, s) => n + D.feedbackCounts(s.id).down, 0)
+  const ttftAvg = D.overallAvgTtft()
+
+  return html`
+    <${M.Stack} gap="lg" data-screen-label="Admin · Inbound Chats">
+      <${M.Stack} gap=${4}>
+        <${M.Title} order=${1} size="h2">Inbound Chats<//>
+        <${M.Text} c="dimmed">Sage conversation history.<//>
+      <//>
+
+      ${!dashHidden && html`
+        <${M.Group} justify="flex-end"><${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsUp} size=${14} />`} onClick=${() => setDashHidden(true)}>Hide dashboard<//><//>`}
+
+      ${dashHidden
+        ? html`<${M.Paper} withBorder radius="md" p="sm" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+            <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+              <${M.Group} gap="lg" wrap="wrap">
+                <${M.Text} fw=${600} size="sm">Dashboard summary<//>
+                <${M.Text} size="sm" c="dimmed"><b>${started}</b> sessions<//>
+                <${M.Text} size="sm" c="dimmed"><b>${converted}</b> converted<//>
+                <${M.Text} size="sm" c="dimmed"><b>${negFeedback}</b> negative feedback<//>
+                <${M.Text} size="sm" c="dimmed">avg TTFT <b>${ttftAvg != null ? ttftAvg + 'ms' : '—'}</b><//>
+              <//>
+              <${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsDown} size=${14} />`} onClick=${() => setDashHidden(false)}>Show dashboard<//>
+            <//>
+          <//>`
+        : html`<${InboundDashboard} rows=${rows} />`}
+
+      <${M.Box} style=${{ position: 'sticky', top: 0, zIndex: 15, background: '#FAF6EE', paddingBlock: 10, borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <${M.Stack} gap=${8}>
+          <${M.Group} gap="sm" wrap="wrap" align="center">
+            <${M.TextInput} value=${query} onChange=${(e) => setQuery(e.currentTarget.value)} placeholder="Search visitor or email"
+              leftSection=${html`<${Ic.IconSearch} size=${15} />`} style=${{ flex: '1 1 240px', minWidth: 200 }}
+              rightSection=${query ? html`<${M.ActionIcon} variant="subtle" color="gray" size="sm" onClick=${() => setQuery('')}><${Ic.IconX} size=${13} /><//>` : null} />
+            <${M.SegmentedControl} value=${statusFilter} onChange=${setStatusFilter}
+              data=${INBOUND_STATUS_ORDER.map((s) => ({ value: s.key, label: html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>${s.label}<span style=${{ fontSize: 11, color: 'var(--mantine-color-dimmed)' }}>${counts[s.key]}</span></span>` }))} />
+          <//>
+          <${M.Group} gap="sm" wrap="wrap" align="center">
+            <${M.Chip} checked=${feedbackOnly} onChange=${setFeedbackOnly} size="sm" variant="light" color="orange">Negative feedback<//>
+            <${M.Chip} checked=${ttftOnly} onChange=${setTtftOnly} size="sm" variant="light" color="red">TTFT over 1s<//>
+            <${M.TextInput} type="date" value=${dateFrom} onChange=${(e) => setDateFrom(e.currentTarget.value)} size="sm" style=${{ width: 150 }} placeholder="From" />
+            <${M.Text} c="dimmed" size="sm">–<//>
+            <${M.TextInput} type="date" value=${dateTo} onChange=${(e) => setDateTo(e.currentTarget.value)} size="sm" style=${{ width: 150 }} placeholder="To" />
+            ${(dateFrom || dateTo || feedbackOnly || ttftOnly) && html`<${M.Button} variant="subtle" color="gray" size="xs" onClick=${() => { setDateFrom(''); setDateTo(''); setFeedbackOnly(false); setTtftOnly(false) }}>Clear filters<//>`}
+            <div style=${{ flex: 1 }} />
+            <${M.Text} c="dimmed" size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>${visible.length} / ${rows.length}<//>
+          <//>
+        <//>
+      <//>
+
+      ${visible.length === 0
+        ? html`<${M.Card} withBorder radius="md" p="xl" style=${{ background: 'transparent' }}>
+            <${M.Stack} gap=${4} align="center">
+              <${M.Text} fw=${500}>No sessions found<//>
+              <${M.Text} c="dimmed" size="sm">Try adjusting your search or filters.<//>
+            <//>
+          <//>`
+        : html`
+      <${M.Card} withBorder radius="md" p=${0} style=${{ background: 'transparent', overflow: 'hidden' }}>
+        <${M.Table} highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
+          <${M.Table.Thead}>
+            <${M.Table.Tr}>
+              <${M.Table.Th}>Visitor<//><${M.Table.Th}>Messages<//><${M.Table.Th}>Tokens<//><${M.Table.Th}>Cost<//><${M.Table.Th}>Avg TTFT<//><${M.Table.Th}>Feedback<//><${M.Table.Th}>Status<//><${M.Table.Th}>Last Active<//>
+            <//>
+          <//>
+          <${M.Table.Tbody}>
+            ${visible.map((s) => html`
+              <${M.Table.Tr} key=${s.id} style=${{ cursor: 'pointer' }} onClick=${() => setSel(s)}>
+                <${M.Table.Td}>
+                  <${M.Stack} gap=${0}>
+                    <${M.Text} fw=${500} size="sm" fs=${s.visitor_name ? 'normal' : 'italic'}>${s.visitor_name ?? 'Anonymous'}<//>
+                    ${s.email && html`<${M.Text} c="dimmed" size="xs">${s.email}<//>`}
+                  <//>
+                <//>
+                <${M.Table.Td}><${Mono}>${s.msgs}<//><//>
+                <${M.Table.Td}><${Mono}>${fmtTokens(s.input_tokens, s.output_tokens)}<//><//>
+                <${M.Table.Td}><${Mono}>${fmtCost(s.input_tokens, s.output_tokens)}<//><//>
+                <${M.Table.Td}>${D.avgTtft(s.id) != null ? html`<${M.Text} size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)', color: D.avgTtft(s.id) > D.TTFT_FLAG_MS ? '#d9480f' : undefined }}>${D.avgTtft(s.id)}ms<//>` : html`<${M.Text} c="dimmed" size="sm">—<//>`}<//>
+                <${M.Table.Td}><${FeedbackCounts} sessionId=${s.id} /><//>
+                <${M.Table.Td}><${SBadge} status=${s.status} /><//>
+                <${M.Table.Td}><${Mono} dim=${true}>${fmtDateTime(s.updated_at)}<//><//>
+              <//>`)}
+          <//>
+        <//>
+      <//>`}
+      <${SessionDrawer} session=${sel} onClose=${() => setSel(null)} />
+    <//>`
+}
+
+/* ════════════════ Members (Platform · /platform/members) ════════════════ */
+const Avatar = ({ user, lg }) => {
+  const av = D.avatarColor(user.id)
+  const s = lg ? 44 : 32
+  return html`<span style=${{ width: s, height: s, flex: `0 0 ${s}px`, borderRadius: 999, background: av.bg, color: av.fg,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: lg ? 15 : 12, fontWeight: 600 }}>${D.initials(user.name)}</span>`
+}
+const TenantPills = ({ memberships }) => {
+  const names = memberships.map((m) => m.tenant)
+  const shown = names.slice(0, 3), extra = names.length - shown.length
+  return html`<div style=${{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+    ${shown.map((n) => html`<span key=${n} title=${n} style=${{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'var(--mantine-color-gray-1)', color: 'var(--mantine-color-gray-7)', whiteSpace: 'nowrap' }}>${n}</span>`)}
+    ${extra > 0 && html`<span style=${{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: 'var(--mantine-color-gray-1)', color: 'var(--mantine-color-gray-6)' }}>+${extra} more</span>`}
+  </div>`
+}
+const MEM_STATUS_ORDER = [
+  { key: 'all', label: 'All' }, { key: 'active', label: 'Active' }, { key: 'invited', label: 'Invited' },
+  { key: 'suspended', label: 'Suspended' }, { key: 'deleted', label: 'Deleted' },
+]
+const primaryStatus = (u) => u.memberships.every((m) => m.status === 'deleted') ? 'deleted' : u.memberships[0].status
+const bumpPlan = (p) => (p === 'free' ? 'pro' : 'team')
+const MEM_STATUS_COLOR = { active: '#2d6a4f', invited: '#1c7ed6', suspended: '#d9480f', deleted: '#868e96' }
+
+function MemberDetailDrawer({ user, onClose, onSaveRoles }) {
+  const [roles, setRoles] = useState(user.memberships.map((m) => m.role))
+  const dirty = roles.some((r, i) => r !== user.memberships[i].role)
+  return html`
+    <${M.Drawer} opened=${true} onClose=${onClose} position="right" size=${420} padding=${0} withCloseButton=${false} title=${null}>
+      <${M.Stack} gap=${0} style=${{ height: '100vh' }}>
+        <${M.Group} gap="sm" wrap="nowrap" p="md" style=${{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <${Avatar} user=${user} lg=${true} />
+          <${M.Stack} gap=${0} style=${{ flex: 1, minWidth: 0 }}>
+            <${M.Text} fw=${600}>${user.name}<//>
+            <${M.Text} c="dimmed" size="sm" truncate>${user.email}<//>
+            <${M.Text} c="dimmed" size="xs" truncate>${D.INVITED_BY[user.id] ? `Invited by ${D.INVITED_BY[user.id]}` : 'Seeded · no inviter'}<//>
+          <//>
+          <${M.ActionIcon} variant="subtle" color="gray" onClick=${onClose} aria-label="Close"><${Ic.IconX} size=${18} /><//>
+        <//>
+        <${M.Box} style=${{ flex: 1, overflowY: 'auto', padding: 16 }}>
+          <${M.Stack} gap="lg">
+            ${user.memberships.map((m, i) => html`
+              <${M.Stack} key=${m.tenant} gap="sm">
+                <${M.Divider} label=${m.tenant} labelPosition="center" />
+                <${M.SimpleGrid} cols=${2} spacing="xs" verticalSpacing=${6}>
+                  <${M.Text} c="dimmed" size="sm">Status<//><div><${TintBadge} tint=${D.STATUS_BADGE[m.status]}>${D.STATUS_BADGE[m.status].label}<//></div>
+                  <${M.Text} c="dimmed" size="sm">Plan<//><div><${TintBadge} tint=${D.PLAN_BADGE[m.plan]}>${D.PLAN_BADGE[m.plan].label}<//></div>
+                  <${M.Text} c="dimmed" size="sm">Joined<//><${M.Text} size="sm">${m.joined}<//>
+                  <${M.Text} c="dimmed" size="sm">Last active<//><${M.Text} size="sm">${m.lastActive}<//>
+                <//>
+                <${M.Select} label="Role" data=${D.ROLE_OPTIONS} value=${roles[i]} allowDeselect=${false}
+                  onChange=${(v) => setRoles((prev) => prev.map((r, j) => (j === i ? v : r)))} />
+              <//>`)}
+          <//>
+        <//>
+        <${M.Group} justify="flex-end" gap="sm" p="md" style=${{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+          <${M.Button} variant="subtle" color="gray" onClick=${onClose}>Cancel<//>
+          <${M.Button} disabled=${!dirty} onClick=${() => onSaveRoles(user.id, roles)}>Save changes<//>
+        <//>
+      <//>
+    <//>`
+}
+
+function MembersDashboard({ users }) {
+  const dist = useMemo(() => {
+    const d = { active: 0, invited: 0, suspended: 0, deleted: 0 }
+    for (const u of users) d[primaryStatus(u)]++
+    return d
+  }, [users])
+  const total = users.length
+  const segments = ['active', 'invited', 'suspended', 'deleted']
+    .filter((k) => dist[k] > 0)
+    .map((k) => ({ key: k, label: D.STATUS_BADGE[k].label, value: dist[k], color: MEM_STATUS_COLOR[k] }))
+  const tenantsRepresented = new Set(users.flatMap((u) => u.memberships.map((m) => m.tenant))).size
+  return html`
+    <${M.SimpleGrid} cols=${{ base: 1, sm: 2 }} spacing="md">
+      <${M.SimpleGrid} cols=${2} spacing="md">
+        <${StatTile} label="Total members" value=${total} sub=${`across ${tenantsRepresented} tenants`} />
+        <${StatTile} label="Active" value=${dist.active} accent=${MEM_STATUS_COLOR.active} />
+        <${StatTile} label="Invited / Accepted" value=${`${dist.invited + dist.active} / ${dist.active}`} sub=${`${dist.invited} pending`} accent=${MEM_STATUS_COLOR.invited} />
+        <${StatTile} label="Suspended" value=${dist.suspended} accent=${MEM_STATUS_COLOR.suspended} />
+      <//>
+      <${M.Card} withBorder radius="md" p="lg" style=${{ background: 'transparent' }}>
+        <${M.Stack} gap=${4} align="center" justify="center" style=${{ height: '100%' }}>
+          <${Donut} segments=${segments} total=${total} centerSub="members" />
+          <${M.Text} c="dimmed" size="xs">Hover a segment for its breakdown<//>
+        <//>
+      <//>
+    <//>`
+}
+
+function MembersPage({ notify }) {
+  const [users, setUsers] = useState(D.USERS)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
+  const [selected, setSelected] = useState(new Set())
+  const [detail, setDetail] = useState(null)
+  const [dashHidden, setDashHidden] = useState(false)
+
+  const counts = useMemo(() => {
+    const c = { all: users.length, active: 0, invited: 0, suspended: 0, deleted: 0 }
+    for (const u of users) { const seen = new Set(u.memberships.map((m) => m.status)); for (const s of ['active', 'invited', 'suspended', 'deleted']) if (seen.has(s)) c[s]++ }
+    return c
+  }, [users])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return users.filter((u) => {
+      if (filter !== 'all' && !u.memberships.some((m) => m.status === filter)) return false
+      if (!q) return true
+      return (u.name + ' ' + u.email + ' ' + u.memberships.map((m) => m.tenant).join(' ')).toLowerCase().includes(q)
+    })
+  }, [users, query, filter])
+
+  const visibleIds = visible.map((u) => u.id)
+  const selectedVisible = visibleIds.filter((id) => selected.has(id))
+  const allChecked = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
+  const someChecked = selectedVisible.length > 0 && !allChecked
+
+  const toggleOne = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSelected((prev) => { const n = new Set(prev); if (allChecked) visibleIds.forEach((id) => n.delete(id)); else visibleIds.forEach((id) => n.add(id)); return n })
+  const clearSel = () => setSelected(new Set())
+
+  const mapUser = (id, fn, toast) => { setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, memberships: u.memberships.map(fn) } : u))); if (toast) notify(toast) }
+  const removeUser = (id, toast) => { setUsers((prev) => prev.filter((u) => u.id !== id)); setSelected((prev) => { const n = new Set(prev); n.delete(id); return n }); if (toast) notify(toast) }
+
+  const selArr = () => users.filter((u) => selected.has(u.id))
+  const bulkUpgrade = () => {
+    const targets = selArr().filter((u) => u.memberships.some((m) => m.plan !== 'team' && m.status !== 'deleted'))
+    if (!targets.length) return notify({ color: 'green', title: 'Nothing to upgrade', message: 'Selected members are already on Team.' })
+    const ids = new Set(targets.map((u) => u.id))
+    setUsers((prev) => prev.map((u) => ids.has(u.id) ? { ...u, memberships: u.memberships.map((m) => (m.plan !== 'team' && m.status !== 'deleted') ? { ...m, plan: bumpPlan(m.plan) } : m) } : u))
+    notify({ color: 'green', title: 'Plans upgraded', message: `${targets.length} member${targets.length > 1 ? 's' : ''} upgraded.` })
+  }
+  const bulkStatus = (pred, to, title) => {
+    const targets = selArr().filter((u) => u.memberships.some(pred))
+    if (!targets.length) return notify({ color: 'green', title: 'No eligible members', message: 'Nothing in the selection applies.' })
+    const ids = new Set(targets.map((u) => u.id))
+    setUsers((prev) => prev.map((u) => ids.has(u.id) ? { ...u, memberships: u.memberships.map((m) => (pred(m) ? { ...m, status: to } : m)) } : u))
+    notify({ color: 'green', title, message: `${targets.length} member${targets.length > 1 ? 's' : ''} updated.` })
+  }
+
+  function MenuFor({ u }) {
+    const st = primaryStatus(u)
+    const items = []
+    if ((st === 'active' || st === 'suspended') && u.memberships.some((m) => m.plan !== 'team' && m.status !== 'deleted'))
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconArrowUp} size=${16} />`} onClick=${() => mapUser(u.id, (m) => (m.plan !== 'team' && m.status !== 'deleted') ? { ...m, plan: bumpPlan(m.plan) } : m, { color: 'green', title: 'Plan upgraded', message: `${u.name}'s memberships upgraded.` })}>Upgrade plan<//>`)
+    if (st === 'active') items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconPlayerPause} size=${16} />`} onClick=${() => mapUser(u.id, (m) => m.status === 'active' ? { ...m, status: 'suspended' } : m, { color: 'green', title: 'Member suspended', message: `${u.name} can no longer sign in.` })}>Suspend<//>`)
+    if (st === 'suspended') items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconPlayerPlay} size=${16} />`} onClick=${() => mapUser(u.id, (m) => m.status === 'suspended' ? { ...m, status: 'active' } : m, { color: 'green', title: 'Member reactivated', message: `${u.name} is active again.` })}>Reactivate<//>`)
+    if (st === 'invited') {
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconSend} size=${16} />`} onClick=${() => notify({ color: 'green', title: 'Invite resent', message: `Sent to ${u.email}.` })}>Resend invite<//>`)
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconX} size=${16} />`} onClick=${() => removeUser(u.id, { color: 'green', title: 'Invite revoked', message: `${u.email} was removed.` })}>Revoke invite<//>`)
+    } else if (st === 'deleted') {
+      items.push(html`<${M.Menu.Item} leftSection=${html`<${Ic.IconRestore} size=${16} />`} onClick=${() => mapUser(u.id, (m) => ({ ...m, status: 'active' }), { color: 'green', title: 'Member restored', message: `${u.name} was restored.` })}>Restore<//>`)
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconTrash} size=${16} />`} onClick=${() => removeUser(u.id, { color: 'green', title: 'Member deleted', message: `${u.name} was permanently removed.` })}>Delete permanently<//>`)
+    } else {
+      items.push(html`<${M.Menu.Divider} />`)
+      items.push(html`<${M.Menu.Item} color="red" leftSection=${html`<${Ic.IconTrash} size=${16} />`} onClick=${() => mapUser(u.id, (m) => ({ ...m, status: 'deleted' }), { color: 'green', title: 'Member deleted', message: `${u.name} moved to deleted.` })}>Delete<//>`)
+    }
+    return html`
+      <${M.Menu} position="bottom-end" withinPortal shadow="md" width=${190}>
+        <${M.Menu.Target}>
+          <${M.ActionIcon} variant="subtle" color="gray" aria-label="Member actions" onClick=${(e) => e.stopPropagation()}><${Ic.IconDots} size=${18} /><//>
+        <//>
+        <${M.Menu.Dropdown} onClick=${(e) => e.stopPropagation()}>
+          <${M.Menu.Label}>Actions<//>
+          ${items}
+        <//>
+      <//>`
+  }
+
+  const saveRoles = (id, roles) => {
+    const u = users.find((x) => x.id === id)
+    const changed = roles.filter((r, i) => r !== u.memberships[i].role).length
+    setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, memberships: x.memberships.map((m, i) => ({ ...m, role: roles[i] })) } : x)))
+    notify({ color: 'green', title: 'Roles updated', message: `${changed} role${changed > 1 ? 's' : ''} updated for ${u.name}.` })
+    setDetail(null)
+  }
+  const detailUser = detail ? users.find((u) => u.id === detail) : null
+
+  return html`
+    <${M.Stack} gap="lg" data-screen-label="Platform · Members">
+      <${M.Stack} gap=${4}>
+        <${M.Title} order=${1} size="h2">Members<//>
+        <${M.Text} c="dimmed">Everyone with access across all tenants.<//>
+      <//>
+
+      ${!dashHidden && html`
+        <${M.Group} justify="flex-end"><${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsUp} size=${14} />`} onClick=${() => setDashHidden(true)}>Hide dashboard<//><//>`}
+
+      ${dashHidden
+        ? html`<${M.Paper} withBorder radius="md" p="sm" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+            <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+              <${M.Group} gap="lg" wrap="wrap">
+                <${M.Text} fw=${600} size="sm">Dashboard summary<//>
+                <${M.Text} size="sm" c="dimmed"><b>${users.length}</b> total members<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.active}</b> active<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.invited}</b> invited<//>
+                <${M.Text} size="sm" c="dimmed"><b>${counts.suspended}</b> suspended<//>
+              <//>
+              <${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsDown} size=${14} />`} onClick=${() => setDashHidden(false)}>Show dashboard<//>
+            <//>
+          <//>`
+        : html`<${MembersDashboard} users=${users} />`}
+
+      <${M.Box} style=${{ position: 'sticky', top: 0, zIndex: 15, background: '#FAF6EE', paddingBlock: 10, borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <${M.Group} gap="sm" wrap="wrap" align="center">
+          <${M.TextInput} value=${query} onChange=${(e) => setQuery(e.currentTarget.value)} placeholder="Search name, email, or tenant"
+            leftSection=${html`<${Ic.IconSearch} size=${15} />`} style=${{ flex: '1 1 260px', minWidth: 220 }}
+            rightSection=${query ? html`<${M.ActionIcon} variant="subtle" color="gray" size="sm" onClick=${() => setQuery('')}><${Ic.IconX} size=${13} /><//>` : null} />
+          <${M.SegmentedControl} value=${filter} onChange=${setFilter}
+            data=${MEM_STATUS_ORDER.map((s) => ({ value: s.key, label: html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>${s.label}<span style=${{ fontSize: 11, color: 'var(--mantine-color-dimmed)' }}>${counts[s.key]}</span></span>` }))} />
+          <div style=${{ flex: 1 }} />
+          <${M.Button} leftSection=${html`<${Ic.IconUserPlus} size=${16} />`} onClick=${() => notify({ color: 'green', title: 'Invite member', message: 'Invite flow would open here.' })}>Invite member<//>
+        <//>
+      <//>
+
+      ${selectedVisible.length > 0 && html`
+        <${M.Paper} withBorder radius="md" p="xs" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+          <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+            <${M.Text} fw=${500} size="sm" pl=${8}>${selectedVisible.length} selected<//>
+            <${M.Group} gap=${6} wrap="wrap">
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconArrowUp} size=${15} />`} onClick=${bulkUpgrade}>Upgrade<//>
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconPlayerPause} size=${15} />`} onClick=${() => bulkStatus((m) => m.status === 'active', 'suspended', 'Members suspended')}>Suspend<//>
+              <${M.Button} size="xs" variant="default" leftSection=${html`<${Ic.IconPlayerPlay} size=${15} />`} onClick=${() => bulkStatus((m) => m.status === 'suspended' || m.status === 'deleted', 'active', 'Members reactivated')}>Reactivate<//>
+              <${M.Button} size="xs" variant="default" color="red" leftSection=${html`<${Ic.IconTrash} size=${15} />`} onClick=${() => bulkStatus((m) => m.status !== 'deleted', 'deleted', 'Members deleted')}>Delete<//>
+              <${M.ActionIcon} variant="subtle" color="gray" onClick=${clearSel} aria-label="Clear selection"><${Ic.IconX} size=${16} /><//>
+            <//>
+          <//>
+        <//>`}
+
+      ${visible.length === 0
+        ? html`<${M.Card} withBorder radius="md" p="xl" style=${{ background: 'transparent' }}>
+            <${M.Stack} gap=${4} align="center">
+              <${M.Text} fw=${500}>No members found<//>
+              <${M.Text} c="dimmed" size="sm">${query ? `Nothing matches "${query}".` : 'No members in this view.'}<//>
+            <//>
+          <//>`
+        : html`
+        <${M.Card} withBorder radius="md" p=${0} style=${{ backgroundColor: 'transparent', overflow: 'visible' }}>
+          <${M.Table} highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
+            <${M.Table.Thead}>
+              <${M.Table.Tr}>
+                <${M.Table.Th} style=${{ width: 40 }}><${M.Checkbox} size="xs" checked=${allChecked} indeterminate=${someChecked} onChange=${toggleAll} aria-label="Select all" /><//>
+                <${M.Table.Th}>Member<//><${M.Table.Th}>Tenant<//><${M.Table.Th}>Role<//><${M.Table.Th}>Plan<//><${M.Table.Th}>Status<//><${M.Table.Th}>Last active<//><${M.Table.Th} style=${{ width: 40 }} />
+              <//>
+            <//>
+            <${M.Table.Tbody}>
+              ${visible.map((u) => {
+                const p = u.memberships[0], deleted = primaryStatus(u) === 'deleted'
+                return html`
+                  <${M.Table.Tr} key=${u.id} style=${{ cursor: 'pointer', opacity: deleted ? 0.55 : 1 }} onClick=${() => setDetail(u.id)}>
+                    <${M.Table.Td} onClick=${(e) => e.stopPropagation()}><${M.Checkbox} size="xs" checked=${selected.has(u.id)} onChange=${() => toggleOne(u.id)} aria-label=${`Select ${u.name}`} /><//>
+                    <${M.Table.Td}>
+                      <${M.Group} gap="sm" wrap="nowrap">
+                        <${Avatar} user=${u} />
+                        <${M.Stack} gap=${0} style=${{ minWidth: 0 }}>
+                          <${M.Text} fw=${500} size="sm" truncate>${u.name}<//>
+                          <${M.Text} c="dimmed" size="xs" truncate>${u.email}<//>
+                        <//>
+                      <//>
+                    <//>
+                    <${M.Table.Td}><${TenantPills} memberships=${u.memberships} /><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.ROLE_BADGE[p.role]}>${D.ROLE_BADGE[p.role].label}<//><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.PLAN_BADGE[p.plan]}>${D.PLAN_BADGE[p.plan].label}<//><//>
+                    <${M.Table.Td}><${TintBadge} tint=${D.STATUS_BADGE[p.status]}>${D.STATUS_BADGE[p.status].label}<//><//>
+                    <${M.Table.Td}><${M.Text} c="dimmed" size="sm">${p.lastActive}<//><//>
+                    <${M.Table.Td} onClick=${(e) => e.stopPropagation()}><${MenuFor} u=${u} /><//>
+                  <//>`
+              })}
+            <//>
+          <//>
+        <//>`}
+
+      ${detailUser && html`<${DetailDrawer} user=${detailUser} onClose=${() => setDetail(null)} onSaveRoles=${saveRoles} />`}
+    <//>`
+}
+
+const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+const TypeBadge = ({ type }) => type ? html`<${TintBadge} tint=${D.BADGE_COLORS[D.typeColor(type)]}>${type}<//>` : html`<${M.Text} span c="dimmed">—<//>`
+
+function useVisibleNodes(tenants, expandedIds) {
+  return useMemo(() => {
+    const ids = new Set(tenants.map((t) => t.id))
+    const childrenByParent = new Map()
+    for (const t of tenants) {
+      const pid = t.parent_id && ids.has(t.parent_id) ? t.parent_id : null
+      if (pid) { const arr = childrenByParent.get(pid) ?? []; arr.push(t); childrenByParent.set(pid, arr) }
+    }
+    const roots = tenants.filter((t) => !(t.parent_id && ids.has(t.parent_id)))
+    const out = []
+    const walk = (node, depth) => {
+      const kids = childrenByParent.get(node.id) ?? []
+      out.push({ tenant: node, depth, childCount: kids.length })
+      if (expandedIds.has(node.id)) for (const k of kids) walk(k, depth + 1)
+    }
+    for (const r of roots) walk(r, 0)
+    return out
+  }, [tenants, expandedIds])
+}
+
+function TenantModal({ mode, tenant, tenants, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(tenant ? tenant.name : '')
+  const [type, setType] = useState(tenant ? tenant.type : null)
+  const [parentId, setParentId] = useState(tenant ? tenant.parent_id : null)
+  const [slug, setSlug] = useState(tenant ? (tenant.slug ?? '') : '')
+  const [slugEdited, setSlugEdited] = useState(false)
+  const [domain, setDomain] = useState(tenant ? (tenant.domain ?? '') : '')
+  const [confirming, setConfirming] = useState(false)
+  const [err, setErr] = useState({})
+
+  const parentOptions = tenants.filter((t) => !tenant || t.id !== tenant.id).map((t) => ({ value: t.id, label: t.name }))
+  const onName = (v) => { setName(v); if (mode === 'new' && !slugEdited) setSlug(slugify(v)) }
+  const onSlug = (v) => { setSlugEdited(true); setSlug(slugify(v)) }
+
+  const save = () => {
+    const next = {}
+    if (!name.trim()) next.name = 'Name is required'
+    if (!type) next.type = 'Type is required'
+    if (!slug.trim()) next.slug = 'Slug is required'
+    setErr(next)
+    if (Object.keys(next).length) return
+    onSave({ id: tenant ? tenant.id : (slug.trim() || `t-${Date.now()}`), parent_id: parentId, name: name.trim(), type, slug: slug.trim(), domain: domain.trim() || null })
+  }
+
+  return html`
+    <${M.Modal} opened=${true} onClose=${onClose} size="md" radius="md" centered title=${html`<${M.Text} fw=${600}>${mode === 'new' ? 'New tenant' : 'Edit tenant'}<//>`}>
+      <${M.Stack} gap="md">
+        <${M.TextInput} label="Name" placeholder="Acme Coaching" required value=${name} error=${err.name} onChange=${(e) => onName(e.currentTarget.value)} data-autofocus />
+        <${M.Select} label="Type" placeholder="Select a type" required data=${D.TENANT_TYPES} value=${type} error=${err.type} onChange=${setType} />
+        <${M.Select} label="Parent tenant" placeholder="None (top-level)" data=${parentOptions} value=${parentId} onChange=${setParentId}
+          searchable clearable nothingFoundMessage="No tenants" description="Optional — leave empty for a top-level tenant." />
+        <${M.TextInput} label="Slug" placeholder="acme-coaching" required value=${slug} error=${err.slug} onChange=${(e) => onSlug(e.currentTarget.value)}
+          description=${mode === 'new' ? 'Auto-generated from the name. Lowercase letters, numbers, and hyphens.' : 'Lowercase letters, numbers, and hyphens.'} />
+        <${M.TextInput} label="Domain" placeholder="acme.com" value=${domain} onChange=${(e) => setDomain(e.currentTarget.value)} description="Optional — leave blank for a subdomain off 2bl.ai." />
+
+        ${mode === 'new'
+          ? html`<${M.Group} justify="flex-end" gap="sm" mt=${4}>
+              <${M.Button} variant="subtle" color="gray" onClick=${onClose}>Cancel<//>
+              <${M.Button} onClick=${save}>Create tenant<//>
+            <//>`
+          : html`<${M.Group} justify="space-between" mt=${4}>
+              <${M.Button} variant="subtle" color="red" leftSection=${html`<${Ic.IconTrash} size=${16} />`} onClick=${() => setConfirming(true)}>Delete<//>
+              <${M.Group} gap="sm">
+                <${M.Button} variant="subtle" color="gray" onClick=${onClose}>Cancel<//>
+                <${M.Button} onClick=${save}>Save changes<//>
+              <//>
+            <//>`}
+
+        ${confirming && html`
+          <${M.Divider} />
+          <${M.Group} gap="sm" wrap="nowrap" align="flex-start"
+            style=${{ padding: '12px 14px', borderRadius: 'var(--mantine-radius-sm)', background: 'rgba(245,159,0,0.10)', border: '1px solid rgba(245,159,0,0.28)' }}>
+            <${Ic.IconAlertTriangle} size=${18} style=${{ color: '#b07c0c', flex: '0 0 auto', marginTop: 1 }} />
+            <${M.Stack} gap=${8} style=${{ flex: 1 }}>
+              <${M.Text} fw=${600} size="sm">Delete this tenant?<//>
+              <${M.Text} size="sm" c="dimmed">This permanently removes <b>${tenant.name}</b> and any sub-tenants. This cannot be undone.<//>
+              <${M.Group} justify="flex-end" gap="sm">
+                <${M.Button} variant="subtle" color="gray" size="xs" onClick=${() => setConfirming(false)}>Cancel<//>
+                <${M.Button} color="red" size="xs" onClick=${() => onDelete(tenant)}>Delete tenant<//>
+              <//>
+            <//>
+          <//>`}
+      <//>
+    <//>`
+}
+
+function Tenants({ notify }) {
+  const [tenants, setTenants] = useState(D.TENANTS)
+  const [expandedIds, setExpandedIds] = useState(new Set(['sbl', 'sage']))
+  const [modal, setModal] = useState(null)
+  const visible = useVisibleNodes(tenants, expandedIds)
+
+  const toggle = (id) => setExpandedIds((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  const commit = (next) => setTenants([...next].sort((a, b) => a.name.localeCompare(b.name)))
+
+  const onSave = (t) => {
+    const exists = tenants.some((x) => x.id === t.id)
+    if (exists) { commit(tenants.map((x) => (x.id === t.id ? t : x))); notify({ color: 'green', title: 'Tenant updated', message: `${t.name} saved.` }) }
+    else { commit([...tenants, t]); notify({ color: 'green', title: 'Tenant created', message: `${t.name} is ready.` }) }
+    setModal(null)
+  }
+  const onDelete = (t) => {
+    const drop = new Set([t.id]); let grew = true
+    while (grew) { grew = false; for (const x of tenants) if (x.parent_id && drop.has(x.parent_id) && !drop.has(x.id)) { drop.add(x.id); grew = true } }
+    commit(tenants.filter((x) => !drop.has(x.id)))
+    notify({ color: 'green', title: 'Tenant deleted', message: `${t.name} was removed.` })
+    setModal(null)
+  }
+
+  return html`
+    <${M.Stack} gap="lg" data-screen-label="Platform · Tenants">
+      <${M.Group} justify="space-between" align="flex-end" wrap="wrap" gap="sm">
+        <${M.Stack} gap=${4}>
+          <${M.Title} order=${1} size="h2">Tenants<//>
+          <${M.Text} c="dimmed">Every tenant on the platform, grouped by parent.<//>
+        <//>
+        <${M.Button} leftSection=${html`<${Ic.IconPlus} size=${16} />`} onClick=${() => setModal({ mode: 'new' })}>New tenant<//>
+      <//>
+
+      <${M.Card} withBorder radius="md" p=${0} style=${{ backgroundColor: 'transparent', overflow: 'hidden' }}>
+        <${M.Table} highlightOnHover verticalSpacing="sm" horizontalSpacing="lg" striped="odd">
+          <${M.Table.Thead}>
+            <${M.Table.Tr}>
+              <${M.Table.Th}>Name<//><${M.Table.Th}>Type<//><${M.Table.Th}>Domain<//><${M.Table.Th}>Slug<//>
+            <//>
+          <//>
+          <${M.Table.Tbody}>
+            ${visible.map(({ tenant, depth, childCount }) => {
+              const expanded = expandedIds.has(tenant.id)
+              return html`
+                <${M.Table.Tr} key=${tenant.id} style=${{ cursor: 'pointer' }} onClick=${() => setModal({ mode: 'edit', tenant })}>
+                  <${M.Table.Td}>
+                    <div style=${{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: depth * 22 }}>
+                      <span style=${{ width: 22, display: 'inline-flex', justifyContent: 'center' }}>
+                        ${childCount > 0 && html`
+                          <${M.ActionIcon} variant="subtle" color="gray" size="sm" aria-label=${expanded ? 'Collapse' : 'Expand'}
+                            onClick=${(e) => { e.stopPropagation(); toggle(tenant.id) }}>
+                            <${Ic.IconChevronRight} size=${15} style=${{ transition: 'transform 150ms', transform: expanded ? 'rotate(90deg)' : 'none' }} />
+                          <//>`}
+                      </span>
+                      <${M.Text} fw=${500} style=${{ fontSize: 'var(--mantine-font-size-sm)' }}>${tenant.name}<//>
+                      ${childCount > 0 && html`<${M.Text} c="dimmed" style=${{ fontSize: 'var(--mantine-font-size-xs)' }}>(${childCount})<//>`}
+                    </div>
+                  <//>
+                  <${M.Table.Td}><${TypeBadge} type=${tenant.type} /><//>
+                  <${M.Table.Td}>${tenant.domain ? html`<${M.Text} style=${{ fontSize: 'var(--mantine-font-size-sm)' }}>${tenant.domain}<//>` : html`<${M.Text} span c="dimmed">—<//>`}<//>
+                  <${M.Table.Td}>${tenant.slug ? html`<${M.Text} style=${{ fontSize: 'var(--mantine-font-size-sm)', fontFamily: 'var(--mantine-font-family-monospace)' }}>${tenant.slug}<//>` : html`<${M.Text} span c="dimmed">—<//>`}<//>
+                <//>`
+            })}
+          <//>
+        <//>
+      <//>
+
+      ${modal && html`<${TenantModal} mode=${modal.mode} tenant=${modal.tenant} tenants=${tenants} onClose=${() => setModal(null)} onSave=${onSave} onDelete=${onDelete} />`}
+    <//>`
+}
+
+/* ════════════════ Combined shell (in-file router) ════════════════ */
+const INLINE = { '/platform/admin': Tenants, '/platform/members': MembersPage, '/admin': InboundChats, '/admin/prompt-studio/blocks': Blocks, '/admin/settings': Settings }
+
+function Sidebar({ active, onPick, open }) {
+  return html`
+    <nav className=${'sb' + (open ? ' open' : '')}>
+      <div className="sb-head">
+        <div className="sb-brand">Second Brain Labs</div>
+        <div className="sb-kicker">Admin</div>
+      </div>
+      <div className="sb-scroll">
+        ${SCREENS.map((sec) => html`
+          <${React.Fragment} key=${sec.section}>
+            <div className="sb-sec">${sec.section}</div>
+            ${sec.items.map((it) => {
+              const isInline = !!INLINE[it.href]
+              const cls = 'sb-item' + (it.href === active ? ' active' : '') + ((it.ready || isInline) ? '' : ' disabled')
+              return html`<button key=${it.href} type="button" className=${cls}
+                aria-current=${it.href === active ? 'page' : undefined}
+                title=${(it.ready || isInline) ? undefined : 'Not built yet'}
+                onClick=${() => { if (isInline) onPick(it.href); else if (it.ready) window.location.href = encodeURI(it.file) }}>
+                ${it.label}${!it.ready && html`<span className="sb-soon">soon</span>`}
+              </button>`
+            })}
+          <//>`)}
+      </div>
+      <div className="sb-foot">
+        <div className="sb-ava">${USER.initials}</div>
+        <div style=${{ minWidth: 0 }}>
+          <div className="sb-uname">${USER.name}</div>
+          <div className="sb-umail">${USER.email}</div>
+        </div>
+      </div>
+    </nav>`
+}
+
+function App() {
+  const [active, setActive] = useState('/platform/members')
+  const [navOpen, setNavOpen] = useState(false)
+  const pick = (href) => { setActive(href); setNavOpen(false) }
+  const Screen = INLINE[active] || MembersPage
+  const bleed = active === '/admin/prompt-studio/blocks'
+  return html`
+    <${M.MantineProvider} theme=${theme} defaultColorScheme="light">
+      <${Notifications} position="top-right" zIndex=${2000} />
+      <div className="shell">
+        <button className="sb-burger" onClick=${() => setNavOpen((v) => !v)} aria-label=${navOpen ? 'Close menu' : 'Open menu'} aria-expanded=${navOpen}>
+          <${navOpen ? Ic.IconX : Ic.IconMenu2} size=${20} />
+        <//>
+        <div className=${'sb-backdrop' + (navOpen ? ' show' : '')} onClick=${() => setNavOpen(false)} />
+        <${Sidebar} active=${active} onPick=${pick} open=${navOpen} />
+        <div className="main">
+          <div className=${bleed ? 'main-bleed' : 'main-inner'}>
+            <${Screen} notify=${notify} />
+          </div>
+        </div>
+      </div>
+    <//>`
+}
+
+document.getElementById('boot').style.display = 'none'
+createRoot(document.getElementById('root')).render(html`<${App} />`)
+</script>
+</body>
+</html>
