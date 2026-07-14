@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { ChatSessionProvider, useChatSessionContext } from './ChatSessionProvider'
 import { __clearSingletonRegistry } from './store-registry'
+import { bufferThread, readThread, findMostRecentThread, __resetPersistenceForTests, DRAFT_ID } from '../persistence'
 
 // ── fetch mock ──────────────────────────────────────────────────────────────
 // Reproduces the three calls useChatTurn makes per turn: POST /api/sessions
@@ -77,10 +78,12 @@ function Consumer({ id }: { id: string }) {
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   sageShouldFail = false
   fetchMock.mockClear()
   __clearSingletonRegistry()
+  await __resetPersistenceForTests('heirloom')
+  await __resetPersistenceForTests('sage')
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -302,6 +305,69 @@ describe('reset (additive API)', () => {
     await waitFor(() => expect(screen.getByTestId('a-text').textContent).toBe(''))
     // b is a separate isolated instance — untouched by a's reset.
     expect(screen.getByTestId('b-text').textContent).toContain('user:recovered')
+  })
+})
+
+describe('IndexedDB persistence (opt-in via persistNamespace)', () => {
+  it('persists nothing when persistNamespace is omitted', async () => {
+    render(
+      <ChatSessionProvider>
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(await findMostRecentThread('heirloom')).toBeNull()
+    expect(await findMostRecentThread('sage')).toBeNull()
+  })
+
+  it('buffers at turn boundaries, re-keys draft to the session id, and rehydrates a fresh mount', async () => {
+    const { unmount } = render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'),
+    )
+
+    await waitFor(async () => {
+      expect(await readThread('sage', DRAFT_ID)).toBeNull()
+      const thread = await readThread('sage', 'sess-1')
+      expect(thread?.messages.map((m) => m.content)).toEqual(['hi', 'Hello there'])
+    })
+
+    unmount()
+
+    render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="b" />
+      </ChatSessionProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there'),
+    )
+    expect(screen.getByTestId('b-sid').textContent).toBe('sess-1')
+  })
+
+  it('flushes the live transcript on pagehide even without a turn boundary', async () => {
+    render(
+      <ChatSessionProvider persistNamespace="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-hydrate')) // hydrate never touches isStreaming
+    expect(await findMostRecentThread('sage')).toBeNull() // not buffered by hydrate itself
+
+    window.dispatchEvent(new Event('pagehide'))
+
+    await waitFor(async () => {
+      const thread = await findMostRecentThread('sage')
+      expect(thread?.sessionId).toBe('recovered-1')
+    })
   })
 })
 

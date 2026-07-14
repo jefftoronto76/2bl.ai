@@ -25,8 +25,8 @@ export interface ChatSessionProviderProps extends ChatSessionConfig {
   children: ReactNode
 }
 
-export function ChatSessionProvider({ instanceKey, children }: ChatSessionProviderProps) {
-  const session = useChatSession({ instanceKey })
+export function ChatSessionProvider({ instanceKey, persistNamespace, children }: ChatSessionProviderProps) {
+  const session = useChatSession({ instanceKey, persistNamespace })
   return <ChatSessionContext.Provider value={session}>{children}</ChatSessionContext.Provider>
 }
 

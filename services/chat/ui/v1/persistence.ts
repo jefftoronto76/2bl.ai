@@ -20,6 +20,7 @@
 // core/useChatSession.ts). This module only offers the storage primitives.
 
 import { openDB, type IDBPDatabase } from 'idb';
+import type { UIMessage } from './types';
 
 export type PersistenceNamespace = 'heirloom' | 'sage';
 
@@ -94,6 +95,24 @@ function getDB(namespace: PersistenceNamespace): Promise<IDBPDatabase> | null {
     dbPromises.set(namespace, promise);
   }
   return promise;
+}
+
+/**
+ * Narrow a canonical UIMessage down to the JSON-serializable PersistedMessage
+ * shape this buffer stores — dropping UI-only fields (status/stopped/versions)
+ * and converting the epoch-ms timestamp to ISO 8601.
+ */
+export function toPersistedMessage(message: UIMessage): PersistedMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: new Date(message.timestamp).toISOString(),
+  };
+}
+
+export function toPersistedMessages(messages: UIMessage[]): PersistedMessage[] {
+  return messages.map(toPersistedMessage);
 }
 
 function deriveTitle(messages: PersistedMessage[]): string | undefined {
