@@ -33,7 +33,7 @@ function renderThread(messages: UIMessage[], isStreaming: boolean) {
     <ChatThread
       messages={messages}
       isStreaming={isStreaming}
-      isError={false}
+      errorType={null}
       retry={() => {}}
       renderUserMessage={(m) => <div key={m.id}>{m.content}</div>}
       renderAssistantMessage={(m, _parsed, markdown) => (
@@ -107,7 +107,7 @@ function Harness({
       <ChatThread
         messages={messages}
         isStreaming={false}
-        isError={false}
+        errorType={null}
         retry={noop}
         renderUserMessage={renderNull}
         renderAssistantMessage={(msg) => <p key={msg.id}>{msg.content}</p>}
@@ -173,7 +173,7 @@ describe('ChatThread scroll anchoring', () => {
         <ChatThread
           messages={messages}
           isStreaming={false}
-          isError={false}
+          errorType={null}
           retry={noop}
           renderUserMessage={renderNull}
           renderAssistantMessage={(msg) => <p key={msg.id}>{msg.content}</p>}

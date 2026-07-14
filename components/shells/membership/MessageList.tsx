@@ -11,13 +11,15 @@ import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
-import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
+import { ERROR_COPY } from '@/components/chat/errorCopy';
+import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
-  isError: boolean;
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -238,14 +240,21 @@ function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
   );
 }
 
-function ErrorBubble() {
+function ErrorBubble({ retry, errorType }: { retry: () => void; errorType: ChatErrorType }) {
   return (
     <div className="flex gap-3 justify-start">
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
         <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
-      <div className="max-w-[75%] rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
-        Something went wrong reaching your story guide. Please try again in a moment.
+      <div className="max-w-[75%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
+        <span>{ERROR_COPY[errorType]}</span>
+        <button
+          type="button"
+          onClick={retry}
+          className="rounded-lg border border-border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wide text-text-muted transition-colors hover:border-border/80 hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          Retry
+        </button>
       </div>
     </div>
   );
@@ -409,15 +418,15 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
   };
 }
 
-function renderError(): ReactNode {
-  return <ErrorBubble />;
+function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
+  return <ErrorBubble retry={retry} errorType={errorType} />;
 }
 
 function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, isError }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
   const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
     useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
@@ -476,11 +485,8 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
         <ChatThread
           messages={messages}
           isStreaming={isLoading}
-          isError={isError}
-          // Membership has no retry capability wired to its UI today (no
-          // button reads this) — renderError below never invokes it. Passed
-          // as a no-op only to satisfy ChatThread's shared contract.
-          retry={() => {}}
+          errorType={errorType}
+          retry={retry}
           renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -500,7 +506,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           showStreamingIndicator={isLoading}
           markdownComponents={membershipMarkdownComponents}
           scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, isError]}
+          scrollDeps={[messages, isLoading, errorType]}
         />
       </div>
     </div>

@@ -17,7 +17,26 @@
 import { useCallback, useRef, useState } from 'react'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 import type { ChatMessage, ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
-import type { UseChatTurnOptions, UseChatTurnReturn } from './types'
+import type { ChatErrorType, UseChatTurnOptions, UseChatTurnReturn } from './types'
+
+// Thrown from streamTurn's three failure checkpoints so the call sites below
+// can classify without re-deriving the reason from a bare Error. AbortError
+// (the user hit Stop) is never wrapped — it propagates as-is so the existing
+// isAbortError() branches in send/sendHidden/retry/regenerate keep handling
+// it as a client-initiated cancellation, not a failure.
+class ChatTurnError extends Error {
+  constructor(public readonly errorType: ChatErrorType) {
+    super(errorType)
+  }
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
+function classifyError(err: unknown): ChatErrorType {
+  return err instanceof ChatTurnError ? err.errorType : 'unknown'
+}
 
 async function streamTurn(
   messages: ChatMessage[],
@@ -28,33 +47,54 @@ async function streamTurn(
   mediaItems?: MediaAttachmentInput[] | null,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/api/sage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      mode: mode ?? null,
-      session_id: sessionId ?? null,
-      invite_token: inviteToken ?? null,
-      media_items: mediaItems?.length ? mediaItems : null,
-    }),
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`)
+  let response: Response
+  try {
+    response = await fetch('/api/sage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        mode: mode ?? null,
+        session_id: sessionId ?? null,
+        invite_token: inviteToken ?? null,
+        media_items: mediaItems?.length ? mediaItems : null,
+      }),
+      signal,
+    })
+  } catch (err) {
+    if (isAbortError(err)) throw err
+    // fetch() itself threw — no response was ever obtained (offline, DNS
+    // failure, connection refused, etc.).
+    throw new ChatTurnError('network')
   }
 
-  await readDataStream(response, onChunk)
-}
+  if (!response.ok) {
+    if (response.status === 429) throw new ChatTurnError('rate_limited')
+    if (response.status === 401) throw new ChatTurnError('auth_error')
+    throw new ChatTurnError('unknown')
+  }
 
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError'
+  // A response can be `ok` (200, already streaming) and still fail mid-turn:
+  // the AI SDK surfaces an upstream/provider error as an in-stream `3:"..."`
+  // part rather than a different HTTP status, since headers are already
+  // committed by the time the failure happens.
+  let streamErrorMessage: string | null = null
+  try {
+    await readDataStream(response, onChunk, message => {
+      streamErrorMessage = message
+    })
+  } catch (err) {
+    if (isAbortError(err)) throw err
+    throw new ChatTurnError('stream_interrupted')
+  }
+  if (streamErrorMessage !== null) {
+    throw new ChatTurnError('stream_interrupted')
+  }
 }
 
 export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnReturn {
   const [isStreaming, setIsStreaming] = useState(false)
-  const [isError, setIsError] = useState(false)
+  const [errorType, setErrorType] = useState<ChatErrorType | null>(null)
 
   // Mirror of isStreaming for the send/retry guard — a ref so a rapid second
   // call sees the in-flight state without waiting for a re-render.
@@ -88,7 +128,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   // flow through accessors.getMessages() so the persisted jsonb shape is
   // unchanged.
   const persist = useCallback(
-    (sessionId: string, ttftMs: number | null) => {
+    (sessionId: string, ttftMs: number | null, errorType?: ChatErrorType) => {
       const finalMessages = accessors.getMessages()
       fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
@@ -97,6 +137,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
           messages: finalMessages,
           visitorName: null,
           ...(ttftMs !== null ? { ttft_ms: ttftMs } : {}),
+          ...(errorType ? { last_error_type: errorType } : {}),
         }),
       })
         .then(r =>
@@ -140,7 +181,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const sendStartedAt = performance.now()
       let firstChunkAt: number | null = null
 
-      setIsError(false)
+      setErrorType(null)
       const userMsg: ChatMessage = { role: 'user', content: text }
       const msgsToSend = [...accessors.getMessages(), userMsg]
       accessors.addMessage(userMsg)
@@ -199,10 +240,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
           if (activeSessionId) persist(activeSessionId, null)
           return
         }
+        const classified = classifyError(err)
         accessors.updateLastMessage('')
-        if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
-        setIsError(true)
+        if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed', error_type: classified })
+        setErrorType(classified)
         setStreaming(false)
+        if (activeSessionId) persist(activeSessionId, null, classified)
         return
       }
       if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
@@ -222,7 +265,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     async (content: string) => {
       if (!content.trim() || streamingRef.current) return
 
-      setIsError(false)
+      setErrorType(null)
       const hiddenMsg: ChatMessage = { role: 'user', content: content.trim() }
       const msgsToSend = [...accessors.getMessages(), hiddenMsg]
       // Deliberately NOT calling accessors.addMessage(hiddenMsg) — hidden from UI.
@@ -263,9 +306,15 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
           if (activeSessionId) persist(activeSessionId, null)
           return
         }
+        const classified = classifyError(err)
         accessors.updateLastMessage('')
-        setIsError(true)
+        // sendHidden's user message is never added to the store, so there is
+        // no user-message id to tag — the assistant placeholder is the only
+        // message this turn produced, and it still holds the empty content.
+        if (assistantMsgId) accessors.patchMessageById(assistantMsgId, { error_type: classified })
+        setErrorType(classified)
         setStreaming(false)
+        if (activeSessionId) persist(activeSessionId, null, classified)
         return
       }
       setStreaming(false)
@@ -277,7 +326,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
   const retry = useCallback(async () => {
     if (streamingRef.current) return
-    setIsError(false)
+    setErrorType(null)
     // Real retries can fail again (unlike the design prototype's simulated
     // always-succeeds retry) — re-run the full 'sending' -> 'sent' | 'failed'
     // transition on the same user message rather than assuming success.
@@ -310,10 +359,13 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         if (sessionId) persist(sessionId, null)
         return
       }
+      const classified = classifyError(err)
       accessors.updateLastMessage('')
-      if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
-      setIsError(true)
+      if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed', error_type: classified })
+      setErrorType(classified)
       setStreaming(false)
+      const sessionId = retrySessionIdRef.current
+      if (sessionId) persist(sessionId, null, classified)
       return
     }
     if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
@@ -334,7 +386,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const targetIdx = allMessages.findIndex(m => m.id === messageId)
       if (targetIdx === -1 || allMessages[targetIdx].role !== 'assistant') return
 
-      setIsError(false)
+      setErrorType(null)
       const targetMsg = allMessages[targetIdx]
       // Context is everything up to (not including) the message being
       // regenerated — a later message never re-derives the context that
@@ -380,9 +432,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         }
         // Regenerate failed outright — restore the prior version; the
         // earlier variant is untouched, so nothing is lost.
-        accessors.patchMessageById(messageId, { content: priorContent })
-        setIsError(true)
+        const classified = classifyError(err)
+        accessors.patchMessageById(messageId, { content: priorContent, error_type: classified })
+        setErrorType(classified)
         setStreaming(false)
+        if (activeSessionId) persist(activeSessionId, null, classified)
         return
       }
 
@@ -406,5 +460,5 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors, persist],
   )
 
-  return { send, sendHidden, retry, stop, regenerate, setActiveVersion, isStreaming, isError }
+  return { send, sendHidden, retry, stop, regenerate, setActiveVersion, isStreaming, errorType }
 }

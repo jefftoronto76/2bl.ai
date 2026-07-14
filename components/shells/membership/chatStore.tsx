@@ -14,6 +14,7 @@ import { useAuthUser } from '@/services/auth/client';
 import { createClient } from '@/services/auth/supabase';
 import type { MediaItem } from '@/services/media/types';
 import type { MediaAttachmentInput } from '@/services/chat/server/types';
+import type { ChatErrorType } from '@/services/chat/ui/v1/types';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
 export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
@@ -66,7 +67,8 @@ interface ChatContextType {
   state: ChatState;
   dispatch: React.Dispatch<ChatAction>;
   sendMessage: (content: string) => Promise<void>;
-  isError: boolean;
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null;
   /** Re-runs the last turn (assistant-reply error retry, and per-message
    *  delivery-status retry on a failed user message — see useChatTurn). */
   retry: () => Promise<void>;
@@ -258,7 +260,7 @@ export function ChatProvider({
     messages,
     sessionId,
     isStreaming,
-    isError,
+    errorType,
     send,
     sendHidden,
     retry,
@@ -874,7 +876,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, isError, retry, stop, regenerate, setActiveVersion, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
     >
       {children}
     </ChatContext.Provider>

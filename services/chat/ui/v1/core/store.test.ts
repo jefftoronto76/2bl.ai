@@ -16,7 +16,7 @@ describe('initialChatSessionState', () => {
       messages: [],
       sessionId: null,
       isStreaming: false,
-      isError: false,
+      errorType: null,
       mode: null,
     })
   })
@@ -67,7 +67,7 @@ describe('createChatSessionStore', () => {
     store.setState({ isStreaming: true })
     expect(listener).toHaveBeenCalledTimes(1)
 
-    store.setState({ isError: true })
+    store.setState({ errorType: 'unknown' })
     expect(listener).toHaveBeenCalledTimes(2)
 
     unsubscribe()
@@ -112,13 +112,13 @@ describe('hydrate', () => {
     expect(store.getState().messages).toHaveLength(1)
   })
 
-  it('does not touch mode / isStreaming / isError', () => {
+  it('does not touch mode / isStreaming / errorType', () => {
     const store = createChatSessionStore()
-    store.setState({ mode: 'question', isStreaming: true, isError: true })
+    store.setState({ mode: 'question', isStreaming: true, errorType: 'unknown' })
     store.hydrate({ messages: [msg('user', 'hi')], sessionId: 's' })
     expect(store.getState().mode).toBe('question')
     expect(store.getState().isStreaming).toBe(true)
-    expect(store.getState().isError).toBe(true)
+    expect(store.getState().errorType).toBe('unknown')
   })
 
   it('notifies subscribers', () => {
@@ -131,19 +131,19 @@ describe('hydrate', () => {
 })
 
 describe('reset', () => {
-  it('clears messages, sessionId, isStreaming, and isError', () => {
+  it('clears messages, sessionId, isStreaming, and errorType', () => {
     const store = createChatSessionStore()
     store.setState({
       messages: [msg('user', 'hi'), msg('assistant', 'yo')],
       sessionId: 'sess-3',
       isStreaming: true,
-      isError: true,
+      errorType: 'unknown',
     })
     store.reset()
     expect(store.getState().messages).toEqual([])
     expect(store.getState().sessionId).toBeNull()
     expect(store.getState().isStreaming).toBe(false)
-    expect(store.getState().isError).toBe(false)
+    expect(store.getState().errorType).toBeNull()
   })
 
   it('leaves mode untouched (request context, not conversation content)', () => {

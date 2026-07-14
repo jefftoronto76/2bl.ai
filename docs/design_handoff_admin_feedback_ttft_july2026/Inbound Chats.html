@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inbound Chats — Mantine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/core@7.17.8/styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/notifications@7.17.8/styles.css" />
+<style>@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 0.9s linear infinite; }</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+    "@mantine/hooks": "https://esm.sh/@mantine/hooks@7.17.8?external=react",
+    "@mantine/core": "https://esm.sh/@mantine/core@7.17.8?external=react,react-dom,@mantine/hooks",
+    "@mantine/notifications": "https://esm.sh/@mantine/notifications@7.17.8?external=react,react-dom,@mantine/core,@mantine/hooks",
+    "@tabler/icons-react": "https://esm.sh/@tabler/icons-react@3.41.1?external=react",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+</head>
+<body>
+<div id="boot">loading…</div>
+<div id="root"></div>
+<script type="module">
+import { React, html, M, Ic, D, useState, useMemo, TintBadge, StatTile, Donut, mountScreen } from './harness.js'
+window.addEventListener('error', (e) => { const b = document.getElementById('boot'); if (b) { b.style.display = 'block'; b.textContent += '\n[error] ' + (e.message || '') } })
+
+const IN_COST = 3, OUT_COST = 15 // $/1M tokens
+const fmtDateTime = (iso) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+const fmtTokens = (i, o) => ((i || 0) + (o || 0)).toLocaleString('en-US')
+const fmtCost = (i, o) => '$' + (((i || 0) * IN_COST + (o || 0) * OUT_COST) / 1e6).toFixed(4)
+const Mono = ({ children, dim }) => html`<${M.Text} span c=${dim ? 'dimmed' : undefined} style=${{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: dim ? 12 : 'var(--mantine-font-size-sm)' }}>${children}<//>`
+const SBadge = ({ status }) => html`<${TintBadge} tint=${D.SESSION_STATUS_BADGE[status]}>${D.SESSION_STATUS_BADGE[status].label}<//>`
+
+// Small inline thumbs-up/down count pair — used in the table and the drawer rollup.
+// Renders nothing for a session with no feedback at all.
+function FeedbackCounts({ sessionId, size = 13 }) {
+  const { up, down } = D.feedbackCounts(sessionId)
+  if (!up && !down) return html`<${M.Text} c="dimmed" size="sm">—<//>`
+  return html`
+    <${M.Group} gap=${10} wrap="nowrap">
+      ${up > 0 && html`<${M.Group} gap=${4} wrap="nowrap"><${Ic.IconThumbUp} size=${size} color="#2d6a4f" /><${Mono}>${up}<//><//>`}
+      ${down > 0 && html`<${M.Group} gap=${4} wrap="nowrap"><${Ic.IconThumbDown} size=${size} color="#d9480f" /><${Mono}>${down}<//><//>`}
+    <//>`
+}
+
+// A single row under a user bubble reflecting delivery state. View-only here —
+// this is a historical record, not a live composer, so no retry action.
+function DeliveryRow({ status }) {
+  if (!status || status === 'sent') return null
+  if (status === 'sending') {
+    return html`<${M.Group} gap=${6} wrap="nowrap" mt=${4}><${Ic.IconLoader2} size=${12} className="spin" /><${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>Sending…<//><//>`
+  }
+  return html`<${M.Group} gap=${6} wrap="nowrap" mt=${4}><${Ic.IconAlertTriangle} size=${12} color="#d9480f" /><${M.Text} size="xs" style=${{ fontFamily: 'var(--mantine-font-family-monospace)', color: '#d9480f' }}>Not delivered<//><//>`
+}
+
+// Reason chips + note for a rated assistant message, surfaced on demand.
+function FeedbackDetail({ fb }) {
+  return html`
+    <${M.Stack} gap=${6} mt=${6} p=${10} style=${{ borderRadius: 'var(--mantine-radius-sm)', background: fb.rating === 'up' ? 'rgba(45,106,79,0.07)' : 'rgba(217,72,15,0.07)' }}>
+      <${M.Group} gap=${6} wrap="wrap">
+        ${fb.tags.map((t) => html`<${M.Badge} key=${t} size="xs" radius="sm" variant="light" color=${fb.rating === 'up' ? 'green' : 'orange'} style=${{ textTransform: 'none' }}>${t}<//>`)}
+      <//>
+      ${fb.detail && html`<${M.Text} size="sm" fs="italic" c="dimmed">"${fb.detail}"<//>`}
+    <//>`
+}
+
+// One message in the transcript: bubble + delivery row (user) or actions/version/
+// feedback row (assistant).
+function MessageRow({ msg, sessionId, index }) {
+  const [open, setOpen] = useState(false)
+  const isUser = msg.role === 'user'
+  const fb = !isUser ? D.feedbackFor(sessionId, index) : null
+  const hasVersions = !isUser && msg.versions && msg.versions.length > 1
+  return html`
+    <${M.Stack} gap=${0}>
+      <${M.Paper} p=${10} radius="md" withBorder=${isUser}
+        style=${{ background: isUser ? 'var(--mantine-color-white)' : 'var(--mantine-color-gray-0)', maxWidth: '92%', alignSelf: isUser ? 'flex-start' : 'flex-end' }}>
+        <${M.Text} size="sm" style=${{ whiteSpace: 'pre-wrap' }}>${msg.content}<//>
+      <//>
+      ${isUser && html`<${DeliveryRow} status=${msg.status} />`}
+      ${!isUser && (msg.stopped || hasVersions || fb || msg.ttft_ms != null) && html`
+        <${M.Group} gap=${8} mt=${4} wrap="nowrap" justify="flex-end">
+          ${msg.ttft_ms != null && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>↩ ${msg.ttft_ms}ms<//>`}
+          ${msg.stopped && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>Stopped<//>`}
+          ${hasVersions && html`<${M.Text} size="xs" c="dimmed" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>v${msg.versionIdx + 1}/${msg.versions.length} shown<//>`}
+          ${fb && html`
+            <${M.ActionIcon} size="sm" variant="subtle" color=${fb.rating === 'up' ? 'green' : 'orange'} onClick=${() => setOpen((o) => !o)} aria-label="Toggle feedback detail">
+              <${fb.rating === 'up' ? Ic.IconThumbUpFilled : Ic.IconThumbDownFilled} size=${14} />
+            <//>`}
+        <//>`}
+      ${!isUser && fb && open && html`<${FeedbackDetail} fb=${fb} />`}
+    <//>`
+}
+
+function Transcript({ session }) {
+  const msgs = D.SESSION_MESSAGES[session.id] || []
+  const { up, down } = D.feedbackCounts(session.id)
+  return html`
+    <${M.Stack} gap="sm">
+      <${M.Group} justify="space-between" align="center">
+        <${M.Text} tt="uppercase" fw=${600} size="xs" c="dimmed" style=${{ letterSpacing: '0.08em' }}>Transcript<//>
+        ${(up > 0 || down > 0) && html`<${FeedbackCounts} sessionId=${session.id} />`}
+      <//>
+      ${msgs.length === 0
+        ? html`<${M.Text} size="sm" c="dimmed">No messages recorded for this session.<//>`
+        : html`<${M.Stack} gap="sm">${msgs.map((m, i) => html`<${MessageRow} key=${i} msg=${m} sessionId=${session.id} index=${i} />`)}<//>`}
+    <//>`
+}
+
+function SessionDrawer({ session, onClose }) {
+  if (!session) return null
+  const name = session.visitor_name ?? 'Anonymous'
+  return html`
+    <${M.Drawer} opened=${true} onClose=${onClose} position="right" size=${460} padding=${0} withCloseButton=${false}>
+      <${M.Stack} gap=${0} style=${{ height: '100vh' }}>
+        <${M.Group} gap="sm" wrap="nowrap" justify="space-between" p="md" style=${{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+          <${M.Stack} gap=${0} style=${{ minWidth: 0 }}>
+            <${M.Text} fw=${600} fs=${session.visitor_name ? 'normal' : 'italic'}>${name}<//>
+            ${session.email && html`<${M.Text} c="dimmed" size="sm" truncate>${session.email}<//>`}
+          <//>
+          <${M.ActionIcon} variant="subtle" color="gray" onClick=${onClose} aria-label="Close"><${Ic.IconX} size=${18} /><//>
+        <//>
+        <${M.Box} p="md" style=${{ flex: 1, overflowY: 'auto' }}>
+          <${M.Stack} gap="lg">
+            <${M.Stack} gap="sm">
+              <${M.Text} tt="uppercase" fw=${600} size="xs" c="dimmed" style=${{ letterSpacing: '0.08em' }}>Session<//>
+              <${M.SimpleGrid} cols=${2} spacing="xs" verticalSpacing=${8}>
+                <${M.Text} c="dimmed" size="sm">Status<//><div><${SBadge} status=${session.status} /></div>
+                <${M.Text} c="dimmed" size="sm">Messages<//><${Mono}>${session.msgs}<//>
+                <${M.Text} c="dimmed" size="sm">Tokens<//><${Mono}>${fmtTokens(session.input_tokens, session.output_tokens)}<//>
+                <${M.Text} c="dimmed" size="sm">Cost<//><${Mono}>${fmtCost(session.input_tokens, session.output_tokens)}<//>
+                <${M.Text} c="dimmed" size="sm">Response time<//><${Mono}>${D.avgTtft(session.id) != null ? D.avgTtft(session.id) + 'ms avg' : '—'}<//>
+                <${M.Text} c="dimmed" size="sm">Last active<//><${Mono}>${fmtDateTime(session.updated_at)}<//>
+              <//>
+            <//>
+            <${Transcript} session=${session} />
+          <//>
+        <//>
+      <//>
+    <//>`
+}
+
+const SESSION_COLOR = { in_progress: '#2d6a4f', active: '#e67700', abandoned: '#868e96' }
+
+// Tiny inline trend line for the TTFT dashboard tile.
+function Sparkline({ points, width = 64, height = 24, flagAt }) {
+  if (!points || points.length < 2) return null
+  const max = Math.max(...points, flagAt || 0)
+  const min = Math.min(...points, 0)
+  const range = max - min || 1
+  const stepX = width / (points.length - 1)
+  const coords = points.map((p, i) => `${i * stepX},${height - ((p - min) / range) * height}`).join(' ')
+  const overFlag = flagAt != null && points[points.length - 1] > flagAt
+  return html`
+    <svg width=${width} height=${height} viewBox=${`0 0 ${width} ${height}`} style=${{ flex: '0 0 auto' }}>
+      <polyline points=${coords} fill="none" stroke=${overFlag ? '#d9480f' : 'var(--mantine-color-brand-6)'} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>`
+}
+
+function Dashboard({ rows }) {
+  const stats = useMemo(() => {
+    let tin = 0, tout = 0, msgs = 0
+    const dist = { in_progress: 0, active: 0, abandoned: 0 }
+    for (const s of rows) { tin += s.input_tokens || 0; tout += s.output_tokens || 0; msgs += s.msgs || 0; dist[s.status]++ }
+    // Funnel: engagement depth stands in for pipeline stage (msgs >= 6 saw a CTA, >= 12 booked).
+    const presentedCTA = rows.filter((s) => s.msgs >= 6).length
+    const converted = rows.filter((s) => s.msgs >= 12).length
+    const negFeedback = rows.reduce((n, s) => n + D.feedbackCounts(s.id).down, 0)
+    return { tin, tout, msgs, dist, presentedCTA, converted, negFeedback }
+  }, [rows])
+  const ttftTrend = useMemo(() => D.ttftTrend(), [rows])
+  const ttftAvg = useMemo(() => D.overallAvgTtft(), [rows])
+  const ttftFlagged = ttftAvg != null && ttftAvg > D.TTFT_FLAG_MS
+  const totalTokens = stats.tin + stats.tout
+  const cost = '$' + ((stats.tin * IN_COST + stats.tout * OUT_COST) / 1e6).toFixed(2)
+  const fmtK = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)
+  const started = rows.length
+  const funnel = [
+    { key: 'started', label: 'Chats started', value: started, color: '#1c7ed6' },
+    { key: 'cta', label: 'Presented CTA', value: stats.presentedCTA, color: '#e67700' },
+    { key: 'converted', label: 'Converted', value: stats.converted, color: '#2d6a4f' },
+    { key: 'abandoned', label: 'Abandoned', value: stats.dist.abandoned, color: '#868e96' },
+  ]
+
+  return html`
+    <${M.SimpleGrid} cols=${{ base: 1, sm: 2 }} spacing="md">
+      <${M.SimpleGrid} cols=${2} spacing="md">
+        <${StatTile} label="Sessions" value=${started} sub=${`${stats.msgs} messages`} />
+        <${StatTile} label="Tokens" value=${fmtK(totalTokens)} sub="input + output" />
+        <${StatTile} label="Est. cost" value=${cost} sub="sonnet-4-6 rates" />
+        <${StatTile} label="Converted" value=${`${started > 0 ? Math.round((stats.converted / started) * 100) : 0}%`} sub=${`${stats.converted} of ${started}`} accent="#2d6a4f" />
+        <${StatTile} label="Negative feedback" value=${stats.negFeedback} sub="thumbs down, all sessions" accent=${stats.negFeedback > 0 ? '#d9480f' : undefined} />
+        <${M.Paper} withBorder radius="md" p="md" style=${{ background: 'transparent', overflow: 'hidden' }}>
+          <${M.Stack} gap=${4}>
+            <${M.Group} justify="space-between" align="center" wrap="nowrap">
+              <${M.Text} c="dimmed" size="xs" tt="uppercase" fw=${600} style=${{ letterSpacing: '0.06em' }}>Response time<//>
+              ${ttftFlagged && html`<${M.Badge} size="xs" color="red" variant="light">Over 1s<//>`}
+            <//>
+            <${M.Text} style=${{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 26, fontWeight: 500, lineHeight: 1.1, color: ttftFlagged ? '#d9480f' : 'var(--mantine-color-text)' }}>${ttftAvg != null ? ttftAvg + 'ms' : '—'}<//>
+            ${ttftTrend.length > 1 && html`<${Sparkline} points=${ttftTrend.map((t) => t.avg)} flagAt=${D.TTFT_FLAG_MS} />`}
+            <${M.Text} c="dimmed" size="xs">avg TTFT · last 7 days<//>
+          <//>
+        <//>
+      <//>
+      <${M.Card} withBorder radius="md" p="lg" style=${{ background: 'transparent' }}>
+        <${M.Stack} gap="sm">
+          <${M.Text} fw=${600} size="sm">Conversion pipeline<//>
+          <${M.Stack} gap=${12}>
+            ${funnel.map((s) => {
+              const pct = started > 0 ? Math.round((s.value / started) * 100) : 0
+              return html`<${M.Stack} key=${s.key} gap=${4}>
+                <${M.Group} justify="space-between" align="baseline">
+                  <${M.Group} gap=${8} align="center" wrap="nowrap">
+                    <span style=${{ width: 9, height: 9, borderRadius: 3, background: s.color, flex: '0 0 auto' }} />
+                    <${M.Text} size="sm">${s.label}<//>
+                  <//>
+                  <${M.Text} size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>${s.value} <${M.Text} span c="dimmed" size="xs">· ${pct}%<//><//>
+                <//>
+                <div style=${{ height: 8, borderRadius: 4, background: 'var(--mantine-color-gray-2)', overflow: 'hidden' }}>
+                  <div style=${{ width: `${pct}%`, height: '100%', background: s.color, transition: 'width 200ms ease' }} />
+                </div>
+              <//>`
+            })}
+          <//>
+        <//>
+      <//>
+    <//>`
+}
+
+const INBOUND_STATUS_ORDER = [
+  { key: 'all', label: 'All' }, { key: 'in_progress', label: 'In progress' },
+  { key: 'active', label: 'Active' }, { key: 'abandoned', label: 'Abandoned' },
+]
+
+function InboundChats() {
+  const [sel, setSel] = useState(null)
+  const rows = D.INBOUND_CHATS
+  const [dashHidden, setDashHidden] = useState(false)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [feedbackOnly, setFeedbackOnly] = useState(false)
+  const [ttftOnly, setTtftOnly] = useState(false)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const counts = useMemo(() => {
+    const c = { all: rows.length, in_progress: 0, active: 0, abandoned: 0 }
+    for (const s of rows) c[s.status]++
+    return c
+  }, [rows])
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter((s) => {
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false
+      if (feedbackOnly && D.feedbackCounts(s.id).down === 0) return false
+      if (ttftOnly && !(D.avgTtft(s.id) != null && D.avgTtft(s.id) > D.TTFT_FLAG_MS)) return false
+      const day = s.updated_at.slice(0, 10)
+      if (dateFrom && day < dateFrom) return false
+      if (dateTo && day > dateTo) return false
+      if (!q) return true
+      return ((s.visitor_name || '') + ' ' + (s.email || '')).toLowerCase().includes(q)
+    })
+  }, [rows, query, statusFilter, feedbackOnly, ttftOnly, dateFrom, dateTo])
+
+  const started = rows.length
+  const converted = rows.filter((s) => s.msgs >= 12).length
+  const negFeedback = rows.reduce((n, s) => n + D.feedbackCounts(s.id).down, 0)
+  const ttftAvg = D.overallAvgTtft()
+
+  return html`
+    <${M.Stack} gap="lg" data-screen-label="Admin · Inbound Chats">
+      <${M.Stack} gap=${4}>
+        <${M.Title} order=${1} size="h2">Inbound Chats<//>
+        <${M.Text} c="dimmed">Sage conversation history.<//>
+      <//>
+
+      ${!dashHidden && html`
+        <${M.Group} justify="flex-end"><${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsUp} size=${14} />`} onClick=${() => setDashHidden(true)}>Hide dashboard<//><//>`}
+
+      ${dashHidden
+        ? html`<${M.Paper} withBorder radius="md" p="sm" style=${{ background: 'var(--mantine-color-gray-0)' }}>
+            <${M.Group} justify="space-between" wrap="wrap" gap="sm">
+              <${M.Group} gap="lg" wrap="wrap">
+                <${M.Text} fw=${600} size="sm">Dashboard summary<//>
+                <${M.Text} size="sm" c="dimmed"><b>${started}</b> sessions<//>
+                <${M.Text} size="sm" c="dimmed"><b>${converted}</b> converted<//>
+                <${M.Text} size="sm" c="dimmed"><b>${negFeedback}</b> negative feedback<//>
+                <${M.Text} size="sm" c="dimmed">avg TTFT <b>${ttftAvg != null ? ttftAvg + 'ms' : '—'}</b><//>
+              <//>
+              <${M.Button} variant="subtle" color="gray" size="xs" leftSection=${html`<${Ic.IconChevronsDown} size=${14} />`} onClick=${() => setDashHidden(false)}>Show dashboard<//>
+            <//>
+          <//>`
+        : html`<${Dashboard} rows=${rows} />`}
+
+      <${M.Box} style=${{ position: 'sticky', top: 0, zIndex: 15, background: '#FAF6EE', paddingBlock: 10, borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <${M.Stack} gap=${8}>
+          <${M.Group} gap="sm" wrap="wrap" align="center">
+            <${M.TextInput} value=${query} onChange=${(e) => setQuery(e.currentTarget.value)} placeholder="Search visitor or email"
+              leftSection=${html`<${Ic.IconSearch} size=${15} />`} style=${{ flex: '1 1 240px', minWidth: 200 }}
+              rightSection=${query ? html`<${M.ActionIcon} variant="subtle" color="gray" size="sm" onClick=${() => setQuery('')}><${Ic.IconX} size=${13} /><//>` : null} />
+            <${M.SegmentedControl} value=${statusFilter} onChange=${setStatusFilter}
+              data=${INBOUND_STATUS_ORDER.map((s) => ({ value: s.key, label: html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>${s.label}<span style=${{ fontSize: 11, color: 'var(--mantine-color-dimmed)' }}>${counts[s.key]}</span></span>` }))} />
+          <//>
+          <${M.Group} gap="sm" wrap="wrap" align="center">
+            <${M.Chip} checked=${feedbackOnly} onChange=${setFeedbackOnly} size="sm" variant="light" color="orange">Negative feedback<//>
+            <${M.Chip} checked=${ttftOnly} onChange=${setTtftOnly} size="sm" variant="light" color="red">TTFT over 1s<//>
+            <${M.TextInput} type="date" value=${dateFrom} onChange=${(e) => setDateFrom(e.currentTarget.value)} size="sm" style=${{ width: 150 }} placeholder="From" />
+            <${M.Text} c="dimmed" size="sm">–<//>
+            <${M.TextInput} type="date" value=${dateTo} onChange=${(e) => setDateTo(e.currentTarget.value)} size="sm" style=${{ width: 150 }} placeholder="To" />
+            ${(dateFrom || dateTo || feedbackOnly || ttftOnly) && html`<${M.Button} variant="subtle" color="gray" size="xs" onClick=${() => { setDateFrom(''); setDateTo(''); setFeedbackOnly(false); setTtftOnly(false) }}>Clear filters<//>`}
+            <div style=${{ flex: 1 }} />
+            <${M.Text} c="dimmed" size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)' }}>${visible.length} / ${rows.length}<//>
+          <//>
+        <//>
+      <//>
+
+      ${visible.length === 0
+        ? html`<${M.Card} withBorder radius="md" p="xl" style=${{ background: 'transparent' }}>
+            <${M.Stack} gap=${4} align="center">
+              <${M.Text} fw=${500}>No sessions found<//>
+              <${M.Text} c="dimmed" size="sm">Try adjusting your search or filters.<//>
+            <//>
+          <//>`
+        : html`
+      <${M.Card} withBorder radius="md" p=${0} style=${{ background: 'transparent', overflow: 'hidden' }}>
+        <${M.Table} highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
+          <${M.Table.Thead}>
+            <${M.Table.Tr}>
+              <${M.Table.Th}>Visitor<//><${M.Table.Th}>Messages<//><${M.Table.Th}>Tokens<//><${M.Table.Th}>Cost<//><${M.Table.Th}>Avg TTFT<//><${M.Table.Th}>Feedback<//><${M.Table.Th}>Status<//><${M.Table.Th}>Last Active<//>
+            <//>
+          <//>
+          <${M.Table.Tbody}>
+            ${visible.map((s) => html`
+              <${M.Table.Tr} key=${s.id} style=${{ cursor: 'pointer' }} onClick=${() => setSel(s)}>
+                <${M.Table.Td}>
+                  <${M.Stack} gap=${0}>
+                    <${M.Text} fw=${500} size="sm" fs=${s.visitor_name ? 'normal' : 'italic'}>${s.visitor_name ?? 'Anonymous'}<//>
+                    ${s.email && html`<${M.Text} c="dimmed" size="xs">${s.email}<//>`}
+                  <//>
+                <//>
+                <${M.Table.Td}><${Mono}>${s.msgs}<//><//>
+                <${M.Table.Td}><${Mono}>${fmtTokens(s.input_tokens, s.output_tokens)}<//><//>
+                <${M.Table.Td}><${Mono}>${fmtCost(s.input_tokens, s.output_tokens)}<//><//>
+                <${M.Table.Td}>${D.avgTtft(s.id) != null ? html`<${M.Text} size="sm" style=${{ fontFamily: 'var(--mantine-font-family-monospace)', color: D.avgTtft(s.id) > D.TTFT_FLAG_MS ? '#d9480f' : undefined }}>${D.avgTtft(s.id)}ms<//>` : html`<${M.Text} c="dimmed" size="sm">—<//>`}<//>
+                <${M.Table.Td}><${FeedbackCounts} sessionId=${s.id} /><//>
+                <${M.Table.Td}><${SBadge} status=${s.status} /><//>
+                <${M.Table.Td}><${Mono} dim=${true}>${fmtDateTime(s.updated_at)}<//><//>
+              <//>`)}
+          <//>
+        <//>
+      <//>`}
+      <${SessionDrawer} session=${sel} onClose=${() => setSel(null)} />
+    <//>`
+}
+
+mountScreen('/admin', InboundChats)
+</script>
+</body>
+</html>
