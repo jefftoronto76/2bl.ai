@@ -21,10 +21,13 @@ function BufferedMarkdown({
 }: {
   content: string
   active: boolean
-  components: Components
+  components?: Components
 }) {
   const buffered = useBufferedMarkdown(content, active)
   if (!buffered) return null
+  // components is optional — omitting it falls through to react-markdown's
+  // own default HTML element rendering (plain, unstyled bold/lists/links),
+  // so a caller gets basic markdown for free without owning a styling map.
   return <ReactMarkdown components={components}>{buffered}</ReactMarkdown>
 }
 
@@ -40,8 +43,8 @@ export interface ChatThreadProps {
   renderStreamingIndicator: () => ReactNode
   /** Caller-computed — each surface's "show the dots" trigger differs (e.g. gated on the last message being empty vs. a plain isLoading flag), so ChatThread does not derive this itself. */
   showStreamingIndicator: boolean
-  /** react-markdown components map for the assistant prose — each surface owns its own styling (widget's markdownComponents.tsx vs. membership's warm-prose set). */
-  markdownComponents: Components
+  /** react-markdown components map for the assistant prose — each surface owns its own styling (widget's markdownComponents.tsx vs. membership's warm-prose set). Optional: omit for react-markdown's default (unstyled) HTML rendering. */
+  markdownComponents?: Components
 
   scrollBehavior: 'instant' | 'smooth'
   /**
