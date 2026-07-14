@@ -56,6 +56,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   const retryMsgsRef = useRef<ChatMessage[]>([])
   const retrySessionIdRef = useRef<string | null>(null)
   const retryMediaItemsRef = useRef<MediaAttachmentInput[] | null>(null)
+  // The id of the user message that triggered the in-flight/last turn, so its
+  // delivery `status` can be updated by id — retry() re-runs the same
+  // transition on the same message rather than adding a new one.
+  const retryUserMsgIdRef = useRef<string | null>(null)
 
   // Drive both the local mirror and the consumer's store (so other readers of
   // streaming state — e.g. the Nav status pip — stay in sync).
@@ -112,6 +116,13 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const userMsg: ChatMessage = { role: 'user', content: text }
       const msgsToSend = [...accessors.getMessages(), userMsg]
       accessors.addMessage(userMsg)
+      // Read the id the store just assigned to the message we added (addMessage
+      // takes the lean ChatMessage in, the canonical UIMessage — with id — is
+      // constructed internally), so delivery status can target it by id.
+      const withUserMsg = accessors.getMessages()
+      const userMsgId = withUserMsg[withUserMsg.length - 1]?.id ?? null
+      retryUserMsgIdRef.current = userMsgId
+      if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sending' })
       setStreaming(true)
       accessors.addMessage({ role: 'assistant', content: '' })
 
@@ -145,10 +156,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         )
       } catch {
         accessors.updateLastMessage('')
+        if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
         setIsError(true)
         setStreaming(false)
         return
       }
+      if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
       setStreaming(false)
 
       const ttftMs = firstChunkAt !== null ? Math.round(firstChunkAt - sendStartedAt) : null
@@ -208,6 +221,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
   const retry = useCallback(async () => {
     if (streamingRef.current) return
     setIsError(false)
+    // Real retries can fail again (unlike the design prototype's simulated
+    // always-succeeds retry) — re-run the full 'sending' -> 'sent' | 'failed'
+    // transition on the same user message rather than assuming success.
+    const userMsgId = retryUserMsgIdRef.current
+    if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sending' })
     setStreaming(true)
     accessors.updateLastMessage('')
 
@@ -222,10 +240,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       )
     } catch {
       accessors.updateLastMessage('')
+      if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'failed' })
       setIsError(true)
       setStreaming(false)
       return
     }
+    if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
     setStreaming(false)
 
     const sessionId = retrySessionIdRef.current

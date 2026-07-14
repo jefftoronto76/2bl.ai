@@ -117,6 +117,13 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
         }
         store.setState({ messages })
       },
+      patchMessageById: (id, patch) => {
+        const messages = store.getState().messages.slice()
+        const idx = messages.findIndex((m) => m.id === id)
+        if (idx === -1) return
+        messages[idx] = { ...messages[idx], ...patch }
+        store.setState({ messages })
+      },
       setStreaming: (val) => store.setState({ isStreaming: val }),
       setSessionId: (id) => store.setState({ sessionId: id }),
       getSessionId: () => store.getState().sessionId,
