@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 import { useBufferedMarkdown } from '@/services/chat/ui/v1/useBufferedMarkdown'
@@ -111,6 +111,41 @@ export function ChatThread({
   // NEAR_BOTTOM_PX, and back to true once they scroll back within it.
   const isNearBottomRef = useRef(true)
 
+  // Screen-reader announcement text, throttled independently of the visible
+  // streaming render so the aria-live container doesn't fire once per chunk.
+  // Commits immediately when the turn completes, otherwise at most once per
+  // second while still streaming.
+  const [announcedText, setAnnouncedText] = useState('')
+  const latestProseRef = useRef('')
+  const announceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1]
+    latestProseRef.current =
+      lastMessage?.role === 'assistant' ? registry.parse(lastMessage.content).prose : ''
+
+    if (!isStreaming) {
+      if (announceTimeoutRef.current) {
+        clearTimeout(announceTimeoutRef.current)
+        announceTimeoutRef.current = null
+      }
+      setAnnouncedText(latestProseRef.current)
+      return
+    }
+
+    if (announceTimeoutRef.current) return
+    announceTimeoutRef.current = setTimeout(() => {
+      announceTimeoutRef.current = null
+      setAnnouncedText(latestProseRef.current)
+    }, 1000)
+  }, [messages, isStreaming])
+
+  useEffect(() => {
+    return () => {
+      if (announceTimeoutRef.current) clearTimeout(announceTimeoutRef.current)
+    }
+  }, [])
+
   useEffect(() => {
     const container = findScrollContainer(scrollAnchorRef.current)
     if (!container) return
@@ -158,8 +193,16 @@ export function ChatThread({
         const markdown = (
           <BufferedMarkdown content={parsed.prose} active={active} components={markdownComponents} />
         )
-        return renderAssistantMessage(msg, parsed, markdown)
+        const rendered = renderAssistantMessage(msg, parsed, markdown)
+        return active ? (
+          <div aria-live="off" key={msg.id}>
+            {rendered}
+          </div>
+        ) : (
+          rendered
+        )
       })}
+      <span className="sr-only">{announcedText}</span>
       {isError && !isStreaming && renderError(retry)}
       {showStreamingIndicator && renderStreamingIndicator()}
       <div ref={scrollAnchorRef} className={scrollAnchorClassName} />
