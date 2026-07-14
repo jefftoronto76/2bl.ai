@@ -20,13 +20,25 @@
 // buffer keep their current shapes until Phase 1 adopts these helpers.
 
 import type { ChatMessage, ChatRole } from '@/services/chat/server/types'
-import type { UIMessage } from './types'
+import type { ChatErrorType, UIMessage } from './types'
 
 /** Roles a UIMessage may carry — the source of truth is server ChatRole. */
 const VALID_ROLES: readonly ChatRole[] = ['user', 'assistant']
 
+const VALID_ERROR_TYPES: readonly ChatErrorType[] = [
+  'network',
+  'rate_limited',
+  'stream_interrupted',
+  'auth_error',
+  'unknown',
+]
+
 function isValidRole(value: unknown): value is ChatRole {
   return typeof value === 'string' && (VALID_ROLES as readonly string[]).includes(value)
+}
+
+function isValidErrorType(value: unknown): value is ChatErrorType {
+  return typeof value === 'string' && (VALID_ERROR_TYPES as readonly string[]).includes(value)
 }
 
 /** True for a string that is purely digits (a bare epoch-ms value as text). */
@@ -99,6 +111,7 @@ export function reviveUIMessage(raw: unknown): UIMessage {
     role: isValidRole(obj.role) ? obj.role : 'assistant',
     content: typeof obj.content === 'string' ? obj.content : '',
     timestamp: normalizeTimestamp(obj.timestamp),
+    error_type: isValidErrorType(obj.error_type) ? obj.error_type : null,
   }
 }
 

@@ -19,6 +19,7 @@ export type {
   UseChatTurnReturn,
   UIMessage,
   AuthPromptData,
+  ChatErrorType,
 } from './types'
 
 export { createMarkerRegistry, createDefaultRegistry, BOOKING_MARKER, NAME_MARKER, EMAIL_MARKER, PHONE_MARKER, ACCOUNT_CREATE_MARKER } from './registry'

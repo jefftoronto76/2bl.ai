@@ -83,7 +83,7 @@ describe('createUIMessage', () => {
 describe('reviveUIMessage', () => {
   it('revives a legacy jefflougheed shape (numeric timestamp)', () => {
     const m = reviveUIMessage({ id: 'a', role: 'user', content: 'hey', timestamp: 1_716_854_400_000 })
-    expect(m).toEqual({ id: 'a', role: 'user', content: 'hey', timestamp: 1_716_854_400_000 })
+    expect(m).toEqual({ id: 'a', role: 'user', content: 'hey', timestamp: 1_716_854_400_000, error_type: null })
   })
 
   it('revives a legacy Heirloom shape (ISO-string timestamp)', () => {
@@ -118,6 +118,16 @@ describe('reviveUIMessage', () => {
     const m = reviveUIMessage(null)
     expect(m.role).toBe('assistant')
     expect(m.content).toBe('')
+  })
+
+  it('revives a valid persisted error_type', () => {
+    const m = reviveUIMessage({ id: 'e', role: 'user', content: 'x', error_type: 'rate_limited' })
+    expect(m.error_type).toBe('rate_limited')
+  })
+
+  it('discards an invalid/missing error_type as null', () => {
+    expect(reviveUIMessage({ id: 'f', role: 'user', content: 'x', error_type: 'bogus' }).error_type).toBeNull()
+    expect(reviveUIMessage({ id: 'g', role: 'user', content: 'x' }).error_type).toBeNull()
   })
 })
 

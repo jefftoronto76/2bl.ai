@@ -57,7 +57,7 @@ function Consumer({ id }: { id: string }) {
   return (
     <div data-testid={id}>
       <span data-testid={`${id}-text`}>{s.messages.map((m) => `${m.role}:${m.content}`).join('|')}</span>
-      <span data-testid={`${id}-error`}>{String(s.isError)}</span>
+      <span data-testid={`${id}-error`}>{String(s.errorType)}</span>
       <span data-testid={`${id}-sid`}>{String(s.sessionId)}</span>
       <button data-testid={`${id}-send`} onClick={() => void s.send('hi')}>send</button>
       <button data-testid={`${id}-retry`} onClick={() => void s.retry()}>retry</button>
@@ -146,9 +146,9 @@ describe('shared retry state (single engine)', () => {
 
     fireEvent.click(screen.getByTestId('a-send'))
 
-    // Both surfaces see the shared error state.
-    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('true'))
-    expect(screen.getByTestId('b-error').textContent).toBe('true')
+    // Both surfaces see the shared error state (500 → 'unknown').
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('unknown'))
+    expect(screen.getByTestId('b-error').textContent).toBe('unknown')
 
     // Retry from the OTHER surface succeeds and clears the error on both.
     sageShouldFail = false
@@ -157,8 +157,8 @@ describe('shared retry state (single engine)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('b-text').textContent).toContain('assistant:Hello there'),
     )
-    expect(screen.getByTestId('a-error').textContent).toBe('false')
-    expect(screen.getByTestId('b-error').textContent).toBe('false')
+    expect(screen.getByTestId('a-error').textContent).toBe('null')
+    expect(screen.getByTestId('b-error').textContent).toBe('null')
     expect(sageCallCount()).toBe(2) // initial failure + retry
   })
 })
@@ -267,7 +267,7 @@ describe('reset (additive API)', () => {
     expect(screen.getByTestId('a-sid').textContent).toBe('null')
   })
 
-  it('clears the shared error state (reset clears isError)', async () => {
+  it('clears the shared error state (reset clears errorType)', async () => {
     sageShouldFail = true
     render(
       <ChatSessionProvider instanceKey="sage">
@@ -276,10 +276,10 @@ describe('reset (additive API)', () => {
     )
 
     fireEvent.click(screen.getByTestId('a-send'))
-    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('true'))
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('unknown'))
 
     fireEvent.click(screen.getByTestId('a-reset'))
-    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('false'))
+    await waitFor(() => expect(screen.getByTestId('a-error').textContent).toBe('null'))
   })
 
   it('isolated: reset clears only that instance', async () => {

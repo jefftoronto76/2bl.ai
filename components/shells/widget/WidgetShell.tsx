@@ -11,9 +11,10 @@ import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { MessageActions } from '@/components/chat/MessageActions'
+import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
-import type { MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
+import type { ChatErrorType, MarkerParseResult, ParsedMarker, UIMessage } from '@/services/chat/ui/v1/types'
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
@@ -116,11 +117,11 @@ function makeRenderUserMessage(retry: () => void) {
   }
 }
 
-function renderError(retry: () => void): ReactNode {
+function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
   return (
     <div className="flex justify-start">
       <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
-        Something went wrong. Please try again.
+        {ERROR_COPY[errorType]}
         <button
           onClick={() => retry()}
           className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
@@ -153,7 +154,7 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, sessionId, isStreaming, isError, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, errorType, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
 
@@ -371,7 +372,7 @@ export function WidgetShellChat() {
                 <ChatThread
                   messages={messages}
                   isStreaming={isStreaming}
-                  isError={isError}
+                  errorType={errorType}
                   retry={retry}
                   renderUserMessage={renderUserMessage}
                   renderAssistantMessage={renderAssistantMessage}
@@ -446,7 +447,7 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, sessionId, isStreaming, isError, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
 
@@ -591,7 +592,7 @@ export function WidgetShellHero() {
           <ChatThread
             messages={messages}
             isStreaming={isStreaming}
-            isError={isError}
+            errorType={errorType}
             retry={retry}
             renderUserMessage={renderUserMessage}
             renderAssistantMessage={renderAssistantMessage}
