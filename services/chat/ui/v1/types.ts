@@ -206,6 +206,16 @@ export interface UseChatTurnReturn {
    * is removed instead. No-ops when nothing is in flight.
    */
   stop(): void
+  /**
+   * Re-generates the assistant message matching `messageId` using the same
+   * preceding context, streaming the fresh reply directly into that
+   * message's `content` (the single source of truth for what's displayed —
+   * see the `versions` doc on UIMessage). On completion the pre-regenerate
+   * content is appended to `versions` if not already there, and the new
+   * content becomes the latest version. No-ops if a turn is already in
+   * flight or `messageId` doesn't resolve to an assistant message.
+   */
+  regenerate(messageId: string): Promise<void>
   isStreaming: boolean
   isError: boolean
 }

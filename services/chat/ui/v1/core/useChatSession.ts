@@ -72,6 +72,8 @@ export interface ChatSession {
   retry(): Promise<void>
   /** Aborts the in-flight turn, keeping whatever content already streamed in. */
   stop(): void
+  /** Re-generates one assistant message — see useChatTurn.ts `regenerate`. */
+  regenerate(messageId: string): Promise<void>
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
@@ -171,6 +173,7 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     sendHidden: turn.sendHidden,
     retry: turn.retry,
     stop: turn.stop,
+    regenerate: turn.regenerate,
     setMode,
     hydrate,
     reset,

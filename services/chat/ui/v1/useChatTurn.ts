@@ -327,5 +327,73 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     abortControllerRef.current?.abort()
   }, [])
 
-  return { send, sendHidden, retry, stop, isStreaming, isError }
+  const regenerate = useCallback(
+    async (messageId: string) => {
+      if (streamingRef.current) return
+      const allMessages = accessors.getMessages()
+      const targetIdx = allMessages.findIndex(m => m.id === messageId)
+      if (targetIdx === -1 || allMessages[targetIdx].role !== 'assistant') return
+
+      setIsError(false)
+      const targetMsg = allMessages[targetIdx]
+      // Context is everything up to (not including) the message being
+      // regenerated — a later message never re-derives the context that
+      // followed it.
+      const contextMsgs = allMessages.slice(0, targetIdx)
+      // Seed `versions` with the pre-regenerate content on the first
+      // regenerate for this message; subsequent regenerates just keep adding.
+      const priorVersions = targetMsg.versions?.length ? targetMsg.versions : [targetMsg.content]
+      const priorContent = priorVersions[priorVersions.length - 1]
+
+      accessors.patchMessageById(messageId, { content: '', stopped: false })
+      setStreaming(true)
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const activeSessionId = accessors.getSessionId()
+      const currentMediaItems = accessors.getMediaItems?.() ?? null
+
+      try {
+        await streamTurn(
+          contextMsgs,
+          accessors.getMode?.() ?? null,
+          activeSessionId,
+          chunk => accessors.patchMessageById(messageId, { content: chunk }),
+          accessors.getInviteToken?.() ?? null,
+          currentMediaItems,
+          controller.signal,
+        )
+      } catch (err) {
+        if (isAbortError(err)) {
+          const current = accessors.getMessages().find(m => m.id === messageId)
+          if (current?.content === '') {
+            // Nothing streamed for this attempt — restore the prior version
+            // rather than leaving the message empty.
+            accessors.patchMessageById(messageId, { content: priorContent, stopped: false })
+          } else {
+            accessors.patchMessageById(messageId, { stopped: true })
+          }
+          setStreaming(false)
+          if (activeSessionId) persist(activeSessionId, null)
+          return
+        }
+        // Regenerate failed outright — restore the prior version; the
+        // earlier variant is untouched, so nothing is lost.
+        accessors.patchMessageById(messageId, { content: priorContent })
+        setIsError(true)
+        setStreaming(false)
+        return
+      }
+
+      const finalContent = accessors.getMessages().find(m => m.id === messageId)?.content ?? ''
+      const versions = [...priorVersions, finalContent]
+      accessors.patchMessageById(messageId, { versions, versionIdx: versions.length - 1 })
+      setStreaming(false)
+      if (activeSessionId) persist(activeSessionId, null)
+    },
+    [accessors, setStreaming, persist],
+  )
+
+  return { send, sendHidden, retry, stop, regenerate, isStreaming, isError }
 }
