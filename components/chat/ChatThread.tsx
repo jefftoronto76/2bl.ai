@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 import { useBufferedMarkdown } from '@/services/chat/ui/v1/useBufferedMarkdown'
-import type { MarkerParseResult, UIMessage } from '@/services/chat/ui/v1/types'
+import type { ChatErrorType, MarkerParseResult, UIMessage } from '@/services/chat/ui/v1/types'
 
 // One registry instance, shared across every ChatThread render — mirrors the
 // module-level singleton pattern already used in parseBookingCards.ts.
@@ -57,12 +57,13 @@ function isNearBottom(el: HTMLElement): boolean {
 export interface ChatThreadProps {
   messages: UIMessage[]
   isStreaming: boolean
-  isError: boolean
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null
   retry: () => void
 
   renderUserMessage: (msg: UIMessage) => ReactNode
   renderAssistantMessage: (msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) => ReactNode
-  renderError: (retry: () => void) => ReactNode
+  renderError: (retry: () => void, errorType: ChatErrorType) => ReactNode
   renderStreamingIndicator: () => ReactNode
   /** Caller-computed — each surface's "show the dots" trigger differs (e.g. gated on the last message being empty vs. a plain isLoading flag), so ChatThread does not derive this itself. */
   showStreamingIndicator: boolean
@@ -89,7 +90,7 @@ export interface ChatThreadProps {
 export function ChatThread({
   messages,
   isStreaming,
-  isError,
+  errorType,
   retry,
   renderUserMessage,
   renderAssistantMessage,
@@ -203,7 +204,7 @@ export function ChatThread({
         )
       })}
       <span className="sr-only">{announcedText}</span>
-      {isError && !isStreaming && renderError(retry)}
+      {errorType && !isStreaming && renderError(retry, errorType)}
       {showStreamingIndicator && renderStreamingIndicator()}
       <div ref={scrollAnchorRef} className={scrollAnchorClassName} />
     </>

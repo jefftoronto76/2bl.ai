@@ -18,14 +18,15 @@
 
 import { createStore } from 'zustand/vanilla'
 import type { ChatMode } from '@/services/chat/server/types'
-import type { UIMessage } from '../types'
+import type { ChatErrorType, UIMessage } from '../types'
 
 /** The shared conversation slice. UIMessage (Phase 0) is canonical throughout. */
 export interface ChatSessionState {
   messages: UIMessage[]
   sessionId: string | null
   isStreaming: boolean
-  isError: boolean
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null
   /** Request-affecting arrival context (e.g. question mode); null by default. */
   mode: ChatMode
 }
@@ -51,7 +52,7 @@ export interface ChatSessionStore {
   /** Replace messages + sessionId wholesale (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
   /**
-   * Clear the conversation slice — messages, sessionId, isStreaming, isError.
+   * Clear the conversation slice — messages, sessionId, isStreaming, errorType.
    * Leaves `mode` untouched (request context, not conversation content).
    */
   reset(): void
@@ -63,7 +64,7 @@ export function initialChatSessionState(): ChatSessionState {
     messages: [],
     sessionId: null,
     isStreaming: false,
-    isError: false,
+    errorType: null,
     mode: null,
   }
 }
@@ -84,6 +85,6 @@ export function createChatSessionStore(): ChatSessionStore {
     subscribe: store.subscribe,
     hydrate: ({ messages, sessionId }) => store.setState({ messages, sessionId }),
     reset: () =>
-      store.setState({ messages: [], sessionId: null, isStreaming: false, isError: false }),
+      store.setState({ messages: [], sessionId: null, isStreaming: false, errorType: null }),
   }
 }

@@ -5,11 +5,19 @@
  * This function parses those lines, accumulates the full response, and
  * calls `onChunk` with the accumulated text after each delta.
  *
+ * `onStreamError` is optional and additive: when supplied, it is invoked
+ * with the message from an in-stream `3:"..."` error part — the AI SDK's
+ * data-stream protocol signal for a failure that happened after the response
+ * had already started streaming as a 200 (e.g. an upstream provider error
+ * mid-generation). Callers that omit it (the admin composer transport) see
+ * no change in behavior — those lines are simply skipped, as before.
+ *
  * @returns The final accumulated text.
  */
 export async function readDataStream(
   response: Response,
-  onChunk: (accumulated: string) => void
+  onChunk: (accumulated: string) => void,
+  onStreamError?: (message: string) => void
 ): Promise<string> {
   const reader = response.body?.getReader()
   if (!reader) throw new Error('No response body')
@@ -19,14 +27,24 @@ export async function readDataStream(
   let buffer = ''
 
   const processLine = (line: string) => {
-    const match = line.match(/^0:"(.*)"$/)
-    if (match) {
+    const textMatch = line.match(/^0:"(.*)"$/)
+    if (textMatch) {
       try {
-        const delta = JSON.parse(`"${match[1]}"`)
+        const delta = JSON.parse(`"${textMatch[1]}"`)
         accumulated += delta
         onChunk(accumulated)
       } catch {
         // skip malformed lines
+      }
+      return
+    }
+    if (!onStreamError) return
+    const errorMatch = line.match(/^3:"(.*)"$/)
+    if (errorMatch) {
+      try {
+        onStreamError(JSON.parse(`"${errorMatch[1]}"`))
+      } catch {
+        onStreamError(errorMatch[1])
       }
     }
   }

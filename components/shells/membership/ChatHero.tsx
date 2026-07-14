@@ -55,7 +55,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, isError, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
 
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
@@ -217,7 +217,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           ) : (
             <>
               {state.hasStarted ? (
-                <MessageList messages={state.messages} isLoading={state.isLoading} isError={isError} />
+                <MessageList messages={state.messages} isLoading={state.isLoading} errorType={errorType} />
               ) : (
                 <EmptyState />
               )}

@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useChatTurn } from '../useChatTurn'
-import type { ChatEngineAccessors, UIMessage } from '../types'
+import type { ChatEngineAccessors, ChatErrorType, UIMessage } from '../types'
 import type { ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import { createUIMessage } from '../message'
 import { createChatSessionStore, type ChatSessionStore, type HydrateInput } from './store'
@@ -64,7 +64,8 @@ export interface ChatSession {
   messages: UIMessage[]
   sessionId: string | null
   isStreaming: boolean
-  isError: boolean
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null
   mode: ChatMode
   send(input: string): Promise<void>
   /** Send without rendering the user message — see useChatTurn.sendHidden. */
@@ -79,7 +80,7 @@ export interface ChatSession {
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
-  /** Clear the conversation (messages, sessionId, isStreaming, isError). */
+  /** Clear the conversation (messages, sessionId, isStreaming, errorType). */
   reset(): void
 }
 
@@ -146,17 +147,17 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
 
   const turn = useChatTurn({ accessors })
 
-  // Mirror the engine's isError into the shared store so it is observable
+  // Mirror the engine's errorType into the shared store so it is observable
   // through the store snapshot AND clearable by reset(). isStreaming already
-  // flows engine→store (via the setStreaming accessor); this makes isError
+  // flows engine→store (via the setStreaming accessor); this makes errorType
   // symmetric. The guard avoids redundant writes (and the re-render they cause).
-  // Without this bridge, reset() would clear store.isError while the surface
-  // kept reading the engine's stale isError.
+  // Without this bridge, reset() would clear store.errorType while the surface
+  // kept reading the engine's stale errorType.
   useEffect(() => {
-    if (store.getState().isError !== turn.isError) {
-      store.setState({ isError: turn.isError })
+    if (store.getState().errorType !== turn.errorType) {
+      store.setState({ errorType: turn.errorType })
     }
-  }, [turn.isError, store])
+  }, [turn.errorType, store])
 
   const setMode = useCallback((mode: ChatMode) => store.setState({ mode }), [store])
   const hydrate = useCallback((input: HydrateInput) => store.hydrate(input), [store])
@@ -169,7 +170,7 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     messages: state.messages,
     sessionId: state.sessionId,
     isStreaming: state.isStreaming,
-    isError: state.isError,
+    errorType: state.errorType,
     mode: state.mode,
     send: turn.send,
     sendHidden: turn.sendHidden,

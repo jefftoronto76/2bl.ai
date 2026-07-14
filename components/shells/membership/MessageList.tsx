@@ -11,13 +11,14 @@ import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
-import type { MarkerParseResult } from '@/services/chat/ui/v1/types';
+import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
-  isError: boolean;
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -238,7 +239,9 @@ function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
   );
 }
 
-function ErrorBubble() {
+function ErrorBubble({ retry, errorType }: { retry: () => void; errorType: ChatErrorType }) {
+  void retry;
+  void errorType;
   return (
     <div className="flex gap-3 justify-start">
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
@@ -409,15 +412,15 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
   };
 }
 
-function renderError(): ReactNode {
-  return <ErrorBubble />;
+function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
+  return <ErrorBubble retry={retry} errorType={errorType} />;
 }
 
 function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, isError }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
   const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
     useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
@@ -476,11 +479,8 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
         <ChatThread
           messages={messages}
           isStreaming={isLoading}
-          isError={isError}
-          // Membership has no retry capability wired to its UI today (no
-          // button reads this) — renderError below never invokes it. Passed
-          // as a no-op only to satisfy ChatThread's shared contract.
-          retry={() => {}}
+          errorType={errorType}
+          retry={retry}
           renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -500,7 +500,7 @@ export function MessageList({ messages, isLoading, isError }: MessageListProps) 
           showStreamingIndicator={isLoading}
           markdownComponents={membershipMarkdownComponents}
           scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, isError]}
+          scrollDeps={[messages, isLoading, errorType]}
         />
       </div>
     </div>

@@ -241,5 +241,6 @@ export interface UseChatTurnReturn {
    */
   setActiveVersion(messageId: string, versionIdx: number): void
   isStreaming: boolean
-  isError: boolean
+  /** Classified reason the most recent turn failed, or null when it succeeded. */
+  errorType: ChatErrorType | null
 }
