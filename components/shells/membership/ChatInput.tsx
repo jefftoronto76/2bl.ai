@@ -478,7 +478,14 @@ export function ChatInput() {
   }, [sourceMenuOpen, isMobile]);
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4">
+    // pb-[calc(env(safe-area-inset-bottom,0px)+12px)]: keeps the composer clear
+    // of the home-indicator safe area on notched iOS devices (needs
+    // viewport-fit=cover on the root layout to resolve to a non-zero value —
+    // see app/layout.tsx). Normal flow, not position:fixed — this section is
+    // already height-clamped to the visual viewport by ChatHero's
+    // useKeyboardViewport call, so the composer just needs to sit above the
+    // safe area within that flow rather than being independently pinned.
+    <div className="w-full max-w-2xl mx-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
       <div className="rounded-[22px] border border-border bg-surface p-1.5 transition-colors focus-within:border-accent/40">
         {/* hidden pickers */}
         <input
