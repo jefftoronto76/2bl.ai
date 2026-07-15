@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 import { useBufferedMarkdown } from '@/services/chat/ui/v1/useBufferedMarkdown'
+import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import type { ChatErrorType, MarkerParseResult, UIMessage } from '@/services/chat/ui/v1/types'
 
 // One registry instance, shared across every ChatThread render — mirrors the
@@ -85,6 +86,16 @@ export interface ChatThreadProps {
   scrollGuard?: () => boolean
   /** Hero.tsx's anchor carries `.messages-end` (scroll-margin-bottom, app/(jefflougheed)/globals.css). The others have no class. */
   scrollAnchorClassName?: string
+
+  /**
+   * Centralisation point for iOS keyboard handling: when provided, ChatThread
+   * calls useKeyboardViewport internally with this config, so a surface's
+   * active/lockBodyScroll wiring lives in one place instead of a per-surface
+   * useKeyboardViewport call. Omit to leave keyboard handling entirely to the
+   * caller (unchanged behavior) — e.g. a surface that still needs
+   * onViewportChange for something this prop doesn't expose.
+   */
+  keyboardConfig?: { active: boolean; lockBodyScroll: boolean }
 }
 
 export function ChatThread({
@@ -104,7 +115,14 @@ export function ChatThread({
   scrollBlock,
   scrollGuard,
   scrollAnchorClassName,
+  // Defaults to inert (active: false) so a caller that omits keyboardConfig
+  // gets no listeners and no scroll lock — a true no-op, unchanged behavior.
+  keyboardConfig = { active: false, lockBodyScroll: false },
 }: ChatThreadProps) {
+  // Unconditional call (Rules of Hooks) regardless of whether the caller
+  // passed a real config — see the keyboardConfig default above.
+  useKeyboardViewport(keyboardConfig)
+
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   // Whether the viewer is anchored to the bottom of the scroll container.
   // Starts true so first-mount / never-scrolled behavior is unchanged; flips
