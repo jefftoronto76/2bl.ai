@@ -14,14 +14,18 @@
 //   2. Optional document-body scroll-lock — freeze the page with
 //      `position: fixed` while the chat is open and restore the scroll position
 //      on close — so the page can't scroll under a full-viewport overlay.
-//   3. A single global `--vvh` CSS custom property (`visualViewport.height` in
-//      px), written to `document.documentElement` on every measurement. The
-//      write itself isn't gated by `trackViewport`/`onViewportChange` — any
-//      instance whose `sync()` runs (automatically, while `trackViewport` is
-//      true, or via a manually-invoked `sync()` primer) updates the shared
-//      value, so any surface's CSS can key off `var(--vvh)` for
-//      keyboard-affected sizing as long as at least one mounted instance is
-//      actively tracking.
+//   3. Two global CSS custom properties, written to `document.documentElement`
+//      on every measurement: `--vvh` (`visualViewport.height` in px) and
+//      `--vv-offset-top` (`visualViewport.offsetTop` in px — how far Safari
+//      has shifted the page under a surface with no body scroll-lock). Both
+//      writes are unconditional — not gated by `trackViewport`/
+//      `onViewportChange` — so any instance whose `sync()` runs (automatically,
+//      while `trackViewport` is true, or via a manually-invoked `sync()`
+//      primer) updates the shared values, and any surface's CSS can key off
+//      `var(--vvh)`/`var(--vv-offset-top)` for keyboard-affected sizing and
+//      positioning as long as at least one mounted instance is actively
+//      tracking — without waiting for that specific surface's own listener to
+//      have fired at least once.
 //
 // Why a hook (not per-surface inline code): the same `visualViewport` plumbing
 // (listener lifecycle, SSR guards, scroll-lock) was duplicated across surfaces.
@@ -31,10 +35,10 @@
 // SSR-safe: every `window` / `document` / `visualViewport` access is guarded,
 // so the hook is inert during server render and on browsers without the
 // VisualViewport API — measurements stay `null` and `keyboardOpen` stays
-// `false`. Beyond the global `--vvh` write above, the hook never touches DOM
-// layout itself: a consumer applies the returned measurements (or those handed
-// to `onViewportChange`) to whatever element it owns, via CSS vars or inline
-// styles.
+// `false`. Beyond the global `--vvh`/`--vv-offset-top` writes above, the hook
+// never touches DOM layout itself: a consumer applies the returned
+// measurements (or those handed to `onViewportChange`) to whatever element it
+// owns, via CSS vars or inline styles.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -152,10 +156,14 @@ export function useKeyboardViewport(
     const height = vv.height
     const offsetTop = vv.offsetTop
     const keyboardOpen = height < window.innerHeight - keyboardThreshold
-    // Global write, not gated on trackViewport/onViewportChange: whenever
+    // Global writes, not gated on trackViewport/onViewportChange: whenever
     // sync() runs for any instance, every surface's CSS can key off
-    // var(--vvh) rather than each surface needing its own listener.
+    // var(--vvh)/var(--vv-offset-top) rather than each surface needing its
+    // own listener. --vv-offset-top mirrors --kb-surface-y (still written by
+    // Hero's own onViewportChange) but is populated the moment ANY instance
+    // syncs, not just once Hero's own listener has fired at least once.
     document.documentElement.style.setProperty('--vvh', `${height}px`)
+    document.documentElement.style.setProperty('--vv-offset-top', `${offsetTop}px`)
     onChangeRef.current?.({ height, offsetTop, keyboardOpen })
     setState((prev) =>
       prev.height === height && prev.offsetTop === offsetTop && prev.keyboardOpen === keyboardOpen

@@ -92,10 +92,13 @@
 /* ── iOS keyboard handling (ChatHero) ────────────────────────────────────────
    Applied to ChatHero's outer <section> while the panel is open and the
    keyboard is judged open (see the useKeyboardViewport call in ChatHero.tsx).
-   height comes from the global --vvh CSS var, written by the same
-   useKeyboardViewport hook call that gates this class — the panel already
-   locks body scroll, so (unlike the jefflougheed Hero surface) there's no
-   offsetTop/translateY correction needed here, just the height clamp. */
+   height + translateY come from the global --vvh / --vv-offset-top CSS vars,
+   written unconditionally by the centralised useKeyboardViewport hook on
+   every measurement (see services/chat/ui/v1/core/useKeyboardViewport.ts) —
+   the panel locks body scroll, so --vv-offset-top should stay 0px here in
+   practice (unlike the jefflougheed Hero surface, which has no scroll-lock),
+   but the transform is applied for parity/robustness rather than assumed. */
 .hl-chat-surface--kb {
   height: var(--vvh, 100%);
+  transform: translateY(var(--vv-offset-top, 0px));
 }

@@ -592,23 +592,23 @@ html[data-brand="jefflougheed"] .avatar.sage {
   }
 
   /* Keyboard-open surface: lift the canvas + composer into one fixed box
-     synced to the visual viewport. height comes from the global --vvh CSS
-     var (written by the centralised useKeyboardViewport call inside
-     ChatThread — see services/chat/ui/v1/core/useKeyboardViewport.ts — and
-     shared across every chat surface); translateY comes from --kb-surface-y,
-     a Hero-specific JS-set var (visualViewport.offsetTop — Hero is the only
-     surface without a body scroll-lock, so it's the only one Safari can
-     shift the page under). No transition so both track the keyboard
-     animation reflow-free. The composer drops to normal flow at the bottom
-     of this flex column, sitting exactly on the keyboard top, with the
-     canvas scrolling directly above — so the two can't disconnect. */
+     synced to the visual viewport. height + translateY both come from the
+     global --vvh / --vv-offset-top CSS vars (written unconditionally by the
+     centralised useKeyboardViewport hook on every measurement — see
+     services/chat/ui/v1/core/useKeyboardViewport.ts — and shared across
+     every chat surface, so both are already populated by the time
+     keyboardOpen flips this class on, even before Hero's own listener has
+     fired). No transition so both track the keyboard animation reflow-free.
+     The composer drops to normal flow at the bottom of this flex column,
+     sitting exactly on the keyboard top, with the canvas scrolling directly
+     above — so the two can't disconnect. */
   .chat-surface--kb {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     height: var(--vvh, 100dvh);
-    transform: translateY(var(--kb-surface-y, 0px));
+    transform: translateY(var(--vv-offset-top, 0px));
     display: flex;
     flex-direction: column;
     z-index: 40;
