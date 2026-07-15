@@ -592,22 +592,23 @@ html[data-brand="jefflougheed"] .avatar.sage {
   }
 
   /* Keyboard-open surface: lift the canvas + composer into one fixed box
-     synced to the visual viewport. height + translateY both come from the
-     global --vvh / --vv-offset-top CSS vars (written unconditionally by the
-     centralised useKeyboardViewport hook on every measurement — see
-     services/chat/ui/v1/core/useKeyboardViewport.ts — and shared across
-     every chat surface, so both are already populated by the time
-     keyboardOpen flips this class on, even before Hero's own listener has
-     fired). No transition so both track the keyboard animation reflow-free.
-     The composer drops to normal flow at the bottom of this flex column,
-     sitting exactly on the keyboard top, with the canvas scrolling directly
-     above — so the two can't disconnect. */
+     synced to the visual viewport. height comes from --kb-surface-h, written
+     directly onto this element by Hero's own onViewportChange (WidgetShell.tsx)
+     — Hero-local rather than the global --vvh, so it's populated the instant
+     Hero's own listener fires regardless of any other surface's tracking
+     state. translateY comes from the global --vv-offset-top CSS var (written
+     unconditionally by the centralised useKeyboardViewport hook on every
+     measurement — see services/chat/ui/v1/core/useKeyboardViewport.ts — and
+     shared across every chat surface). No transition so both track the
+     keyboard animation reflow-free. The composer drops to normal flow at the
+     bottom of this flex column, sitting exactly on the keyboard top, with the
+     canvas scrolling directly above — so the two can't disconnect. */
   .chat-surface--kb {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: var(--vvh, 100dvh);
+    height: var(--kb-surface-h, 100dvh);
     transform: translateY(var(--vv-offset-top, 0px));
     display: flex;
     flex-direction: column;

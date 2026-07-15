@@ -486,16 +486,16 @@ export function WidgetShellHero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling. Height now runs through the global --vvh CSS var
-  // (written by ChatThread's centralised useKeyboardViewport call — see
-  // keyboardConfig on the ChatThread instance below — and consumed by
-  // .chat-surface--kb in app/(jefflougheed)/globals.css). offsetTop/translateY
-  // stays Hero-specific: this is the only surface without a body scroll-lock,
-  // so it's the only one Safari can shift the page under, and that isn't
-  // expressible through the global var — it's threaded through
-  // keyboardConfig.onViewportChange instead. keyboardOpen is local state,
-  // updated from the same callback, since ChatThread only mounts (and so only
-  // tracks) while conversationVisible is true.
+  // iOS keyboard handling. offsetTop/translateY runs through the global
+  // --vv-offset-top CSS var (written by ChatThread's centralised
+  // useKeyboardViewport call — see keyboardConfig below — and consumed by
+  // .chat-surface--kb in app/(jefflougheed)/globals.css). Height stays
+  // Hero-local: --kb-surface-h is written directly onto chatSurfaceRef from
+  // keyboardConfig.onViewportChange below, rather than the global --vvh, so
+  // it's populated the instant Hero's own listener fires regardless of any
+  // other surface's tracking state. keyboardOpen is local state, updated from
+  // the same callback, since ChatThread only mounts (and so only tracks)
+  // while conversationVisible is true.
   const [keyboardOpen, setKeyboardOpen] = useState(false)
 
   // ChatThread (and its keyboard tracking) unmounts whenever the conversation
@@ -613,14 +613,21 @@ export function WidgetShellHero() {
             keyboardConfig={{
               active: true,
               lockBodyScroll: false,
-              onViewportChange: ({ offsetTop, keyboardOpen: nowOpen }) => {
+              onViewportChange: ({ height, offsetTop, keyboardOpen: nowOpen }) => {
                 // Redundant with the hook's own unconditional --vv-offset-top
                 // write inside sync() (same value, same property, same
                 // element, moments earlier in the same measurement) — kept
                 // as an explicit belt-and-suspenders write per investigation.
                 document.documentElement.style.setProperty('--vv-offset-top', `${offsetTop}px`)
                 const surface = chatSurfaceRef.current
-                if (surface) surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
+                if (surface) {
+                  // --kb-surface-h is Hero-local (not the global --vvh): written
+                  // directly onto this element so .chat-surface--kb's height is
+                  // populated the instant Hero's own listener fires, independent
+                  // of any other surface's tracking state.
+                  surface.style.setProperty('--kb-surface-h', `${height}px`)
+                  surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
+                }
                 setKeyboardOpen(nowOpen)
               },
             }}
