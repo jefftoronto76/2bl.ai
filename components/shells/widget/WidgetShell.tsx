@@ -4,7 +4,6 @@ import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'reac
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
-import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
@@ -26,8 +25,10 @@ import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageF
 // original, non-adjacent positions in app/(jefflougheed)/page.tsx (Hero at
 // the top, Chat's in-flow #chat section + fixed overlay near the bottom):
 // merging them into one mounted component would move the #chat section's DOM
-// position, a visible layout change. Each keeps its own unmodified
-// useKeyboardViewport call — the two configurations are not centralized.
+// position, a visible layout change. Each passes its own keyboardConfig to
+// its own ChatThread instance (see the two ChatThread call sites below) —
+// the useKeyboardViewport call itself now lives inside ChatThread, so this
+// file no longer calls the hook directly for either surface.
 
 function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
   return markers
@@ -173,17 +174,12 @@ export function WidgetShellChat() {
       return p.get('debug') === 'true' && p.get('nolock') === '1'
     })()
 
-  // Scroll lock: freezing the body with position:fixed (not just
+  // iOS keyboard handling + scroll lock now live in ChatThread's centralised
+  // useKeyboardViewport call (see keyboardConfig on the ChatThread instance
+  // below) — freezing the body with position:fixed (not just
   // overflow:hidden) stops iOS Safari from scrolling the document under the
-  // overlay while the chat is open; the scroll position is restored on close.
-  // The overlay's own keyboard handling is pure CSS (100dvh + safe-area
-  // insets), so it consumes only the shared hook's scroll-lock —
-  // trackViewport:false means no visualViewport listeners are attached here.
-  useKeyboardViewport({
-    active: isExpanded,
-    lockBodyScroll: !noLock,
-    trackViewport: false,
-  })
+  // overlay while the chat is open, and height now consumes the global
+  // --vvh CSS var instead of a per-surface JS-mutated value.
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -327,7 +323,11 @@ export function WidgetShellChat() {
 
       {isExpanded && (
         <div className="fixed inset-0 z-[100] overflow-hidden bg-bg animate-[expandChat_0.3s_ease-out]">
-          <div className="flex h-dvh min-h-0 flex-col">
+          {/* h-[calc(var(--vvh,100dvh))]: --vvh is the global CSS var written by
+              ChatThread's centralised useKeyboardViewport call below (keyed off
+              keyboardConfig); 100dvh is the fallback before the first
+              measurement lands or on browsers without the VisualViewport API. */}
+          <div className="flex h-[calc(var(--vvh,100dvh))] min-h-0 flex-col">
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
@@ -383,6 +383,7 @@ export function WidgetShellChat() {
                   scrollBehavior="instant"
                   scrollDeps={[messages, isExpanded]}
                   scrollGuard={() => isExpanded}
+                  keyboardConfig={{ active: isExpanded, lockBodyScroll: !noLock }}
                 />
               </div>
             </div>
@@ -485,30 +486,33 @@ export function WidgetShellHero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling. Syncs the chat surface to the visual viewport: when
-  // the keyboard opens, visualViewport.height shrinks and offsetTop grows — we
-  // mirror both onto the surface CSS vars (height + a compositor translateY, no
-  // transition) so the surface exactly covers the visible area above the
-  // keyboard. keyboardOpen flips the surface from display:contents to a fixed
-  // flex box (CSS, mobile only). On desktop vv.height never drops, so
-  // keyboardOpen stays false and nothing changes. The visualViewport plumbing
-  // (listener lifecycle, SSR guards, threshold) lives in the shared hook; this
-  // surface deliberately runs it WITHOUT body scroll-lock (position:fixed on the
-  // body breaks iOS keyboard detection in this inline context).
-  const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
-    keyboardThreshold: 120,
-    onViewportChange: ({ height, offsetTop }) => {
-      const surface = chatSurfaceRef.current
-      if (surface) {
-        surface.style.setProperty('--kb-surface-h', `${height}px`)
-        surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
-      }
-    },
-  })
+  // iOS keyboard handling. Height now runs through the global --vvh CSS var
+  // (written by ChatThread's centralised useKeyboardViewport call — see
+  // keyboardConfig on the ChatThread instance below — and consumed by
+  // .chat-surface--kb in app/(jefflougheed)/globals.css). offsetTop/translateY
+  // stays Hero-specific: this is the only surface without a body scroll-lock,
+  // so it's the only one Safari can shift the page under, and that isn't
+  // expressible through the global var — it's threaded through
+  // keyboardConfig.onViewportChange instead. keyboardOpen is local state,
+  // updated from the same callback, since ChatThread only mounts (and so only
+  // tracks) while conversationVisible is true.
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
+
+  // ChatThread (and its keyboard tracking) unmounts whenever the conversation
+  // is hidden, so keyboardOpen would otherwise freeze at its last value —
+  // reset it here so a composer left open after collapsing isn't stranded
+  // inside a stale .chat-surface--kb sizing.
+  useEffect(() => {
+    if (!conversationVisible) setKeyboardOpen(false)
+  }, [conversationVisible])
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    syncViewport() // prime the surface before the first vv event lands
+    // No manual sync() primer here — ChatThread's centralised hook call
+    // already primes on mount, which covers the common case (conversation
+    // was hidden, focus remounts ChatThread). Re-focusing while the
+    // conversation was already visible now relies on the next real
+    // visualViewport resize/scroll event rather than a synchronous primer.
     // No body scroll-lock: on iOS, body { position: fixed } collapses
     // window.innerHeight to the visual-viewport height and injects a
     // visualViewport.offsetTop, which breaks keyboard detection and floats the
@@ -606,6 +610,15 @@ export function WidgetShellHero() {
             scrollBlock="end"
             scrollGuard={() => conversationVisible && messages.length > 0}
             scrollAnchorClassName="messages-end"
+            keyboardConfig={{
+              active: true,
+              lockBodyScroll: false,
+              onViewportChange: ({ offsetTop, keyboardOpen: nowOpen }) => {
+                const surface = chatSurfaceRef.current
+                if (surface) surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
+                setKeyboardOpen(nowOpen)
+              },
+            }}
           />
         </div>
       )}

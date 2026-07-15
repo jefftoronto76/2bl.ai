@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
@@ -141,15 +141,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // so we lock body scroll (the landing page behind must not scroll) and pin the
   // surface to the visual viewport. Under the scroll-lock iOS can't shift the
   // page, so visualViewport.offsetTop stays 0 and the keyboard simply shrinks
-  // the viewport from the bottom — shrinking the surface from h-full to vv.height
-  // lifts the composer to sit directly above the keyboard. Inert on desktop
-  // (vv.height never drops below the threshold) and while the panel is closed.
-  const { keyboardOpen, height } = useKeyboardViewport({
+  // the viewport from the bottom — shrinking the surface from h-full to the
+  // global --vvh var lifts the composer to sit directly above the keyboard.
+  // Inert on desktop (vv.height never drops below the threshold) and while
+  // the panel is closed.
+  //
+  // This call stays here rather than moving into ChatThread's keyboardConfig
+  // (unlike the widget-shell surfaces): ChatThread only mounts (via
+  // MessageList) once state.hasStarted is true, but this section — and the
+  // keyboard it needs to react to — is live from the moment the panel opens,
+  // before the first message is sent. There's nothing to centralise onto for
+  // Heirloom; the height consumption below just switches from an inline style
+  // to the shared --vvh CSS var (see .hl-chat-surface--kb,
+  // app/heirloom/globals.css).
+  const { keyboardOpen } = useKeyboardViewport({
     active: state.isChatOpen,
     lockBodyScroll: true,
   });
-  const surfaceStyle: CSSProperties | undefined =
-    keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
@@ -165,7 +173,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
   return (
-    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
+    <section
+      className={`h-full w-full flex bg-background overflow-hidden${keyboardOpen ? ' hl-chat-surface--kb' : ''}`}
+    >
       {/* Desktop: docked sidebar */}
       {!isMobile && (
         <SidebarV2

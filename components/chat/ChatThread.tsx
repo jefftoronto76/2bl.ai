@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 import { useBufferedMarkdown } from '@/services/chat/ui/v1/useBufferedMarkdown'
-import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
+import { useKeyboardViewport, type KeyboardViewportMeasurement } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import type { ChatErrorType, MarkerParseResult, UIMessage } from '@/services/chat/ui/v1/types'
 
 // One registry instance, shared across every ChatThread render — mirrors the
@@ -91,11 +91,18 @@ export interface ChatThreadProps {
    * Centralisation point for iOS keyboard handling: when provided, ChatThread
    * calls useKeyboardViewport internally with this config, so a surface's
    * active/lockBodyScroll wiring lives in one place instead of a per-surface
-   * useKeyboardViewport call. Omit to leave keyboard handling entirely to the
-   * caller (unchanged behavior) — e.g. a surface that still needs
-   * onViewportChange for something this prop doesn't expose.
+   * useKeyboardViewport call. `onViewportChange` is exposed for a surface
+   * with a genuine per-instance need (e.g. Hero's offsetTop-driven
+   * translateY, since it's the only surface without a body scroll-lock) —
+   * most surfaces should omit it and consume the global `--vvh` CSS var
+   * instead. Omit the whole prop to leave keyboard handling entirely to the
+   * caller (unchanged behavior).
    */
-  keyboardConfig?: { active: boolean; lockBodyScroll: boolean }
+  keyboardConfig?: {
+    active: boolean
+    lockBodyScroll: boolean
+    onViewportChange?: (measurement: KeyboardViewportMeasurement) => void
+  }
 }
 
 export function ChatThread({
