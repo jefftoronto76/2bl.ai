@@ -614,6 +614,11 @@ export function WidgetShellHero() {
               active: true,
               lockBodyScroll: false,
               onViewportChange: ({ offsetTop, keyboardOpen: nowOpen }) => {
+                // Redundant with the hook's own unconditional --vv-offset-top
+                // write inside sync() (same value, same property, same
+                // element, moments earlier in the same measurement) — kept
+                // as an explicit belt-and-suspenders write per investigation.
+                document.documentElement.style.setProperty('--vv-offset-top', `${offsetTop}px`)
                 const surface = chatSurfaceRef.current
                 if (surface) surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
                 setKeyboardOpen(nowOpen)
