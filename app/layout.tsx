@@ -5,6 +5,7 @@ import './globals.css'
 
 export const viewport: Viewport = {
   interactiveWidget: 'resizes-content',
+  viewportFit: 'cover',
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
