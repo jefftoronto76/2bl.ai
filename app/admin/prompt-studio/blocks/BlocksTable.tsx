@@ -17,7 +17,7 @@ import { notifications } from '@mantine/notifications'
 import { Text } from '@/components/admin/primitives/Text'
 import { BlocksOverview } from './BlocksOverview'
 import { SummarySection } from './SummarySection'
-import layout from './BlocksLayout.module.css'
+import toolbarStyles from '@/components/admin/lib/stickyToolbar.module.css'
 import { BulkActionsBar } from '@/components/admin/content/BulkActionsBar'
 import { BlockRow as DesktopBlockRow } from '@/components/admin/content/BlockRow'
 import { BlockCard } from '@/components/admin/content/BlockCard'
@@ -537,7 +537,7 @@ export function BlocksTable({
         </Box>
       ) : items.length > 0 ? (
         <>
-          <Box className={layout.stickyToolbar}>
+          <Box className={toolbarStyles.stickyToolbar}>
             <Group justify="space-between" align="center" wrap="wrap" gap="sm">
               {FILTER_LAYOUT === 'popover'
                 ? <FilterPopover f={filterState} typeCounts={typeCounts} statusCounts={statusCounts} />

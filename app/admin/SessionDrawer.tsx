@@ -14,35 +14,36 @@ import {
   Card,
   Text,
   TextInput,
+  Loader,
 } from '@mantine/core'
-import { IconClipboard, IconCheck, IconArrowsRightLeft, IconCopy } from '@tabler/icons-react'
+import {
+  IconClipboard,
+  IconCheck,
+  IconArrowsRightLeft,
+  IconCopy,
+  IconAlertTriangle,
+  IconThumbUpFilled,
+  IconThumbDownFilled,
+} from '@tabler/icons-react'
 import {
   parseBookingCards,
   type BookingCardData,
 } from '@/services/chat/ui/v1/parseBookingCards'
+import { reviveUIMessage } from '@/services/chat/ui/v1/message'
+import type { UIMessage } from '@/services/chat/ui/v1/types'
 import type { ChatSession } from '@/services/crm/inbound'
+import type { MessageFeedbackRow } from '@/services/crm/feedback'
+import { formatTokens, formatCost } from '@/services/crm/formatting'
+import { FeedbackCounts } from '@/components/admin/lib/primitives'
 import { TransferModal } from './TransferModal'
 
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-}
+// message_index must align with message_feedback.message_index, which counts
+// position in the raw chat_sessions.messages array (0-indexed, both roles).
+type DrawerMessage = UIMessage & { message_index: number }
 
-function isMessage(m: unknown): m is Message {
-  if (typeof m !== 'object' || m === null) return false
-  const msg = m as Record<string, unknown>
-  return (
-    typeof msg.id === 'string' &&
-    (msg.role === 'user' || msg.role === 'assistant') &&
-    typeof msg.content === 'string'
-  )
-}
-
-function parseMessages(raw: unknown[] | null): Message[] {
+function reviveSessionMessages(raw: unknown[] | null): DrawerMessage[] {
   if (!Array.isArray(raw)) return []
-  return raw.filter(isMessage)
+  return raw.map((entry, i) => ({ ...reviveUIMessage(entry), message_index: i }))
 }
 
 function formatDate(iso: string) {
@@ -55,7 +56,7 @@ function formatDate(iso: string) {
   })
 }
 
-function formatTranscript(messages: Message[]): string {
+function formatTranscript(messages: DrawerMessage[]): string {
   return messages
     .map((msg) => {
       const prose = parseBookingCards(msg.content).prose.trim()
@@ -73,13 +74,29 @@ const STATUS_COLORS: Record<string, string> = {
   abandoned: 'gray',
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({
+  msg,
+  feedback,
+  ttftMs,
+}: {
+  msg: DrawerMessage
+  feedback?: MessageFeedbackRow
+  ttftMs: number | null
+}) {
   const [hovered, setHovered] = useState(false)
   const [msgCopied, setMsgCopied] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   const parsed = msg.role === 'assistant' ? parseBookingCards(msg.content) : null
   const proseText = parsed ? parsed.prose : msg.content
   const cards: BookingCardData[] = parsed?.cards ?? []
+
+  // Non-null assertions below are guarded by hasRating, which is only true
+  // when `feedback` is defined and has a rating.
+  const hasRating = !!feedback && feedback.rating !== null
+  const hasTrailingRow =
+    msg.role === 'assistant' &&
+    (ttftMs != null || !!msg.stopped || !!(msg.versions && msg.versions.length > 0) || hasRating)
 
   function handleMsgCopy() {
     if (!proseText) return
@@ -196,6 +213,115 @@ function MessageBubble({ msg }: { msg: Message }) {
             ))}
           </Stack>
         )}
+
+        {/* Delivery status — user messages only, absent/'sent' renders nothing. */}
+        {msg.role === 'user' && msg.status && msg.status !== 'sent' && (
+          <Group gap={6} justify="flex-end" mt={4} wrap="nowrap">
+            {msg.status === 'sending' ? (
+              <>
+                <Loader size={12} />
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                >
+                  Sending…
+                </Text>
+              </>
+            ) : (
+              <>
+                <IconAlertTriangle size={12} style={{ color: 'var(--mantine-color-orange-7)' }} />
+                <Text
+                  size="xs"
+                  c="orange.7"
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+                >
+                  Not delivered
+                </Text>
+              </>
+            )}
+          </Group>
+        )}
+
+        {/* TTFT (last assistant message only) → Stopped → version indicator → thumb. */}
+        {hasTrailingRow && (
+          <Group gap={8} justify="flex-end" mt={4} wrap="nowrap">
+            {ttftMs != null && (
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
+                ↩ {ttftMs}ms
+              </Text>
+            )}
+            {msg.stopped && (
+              <Badge size="xs" variant="light" color="gray" tt="none">
+                Stopped
+              </Badge>
+            )}
+            {msg.versions && msg.versions.length > 0 && (
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
+                v{(msg.versionIdx ?? 0) + 1}/{msg.versions.length + 1} shown
+              </Text>
+            )}
+            {hasRating && (
+              <ActionIcon
+                size="xs"
+                variant="subtle"
+                color={feedback!.rating === 'up' ? 'green' : 'orange'}
+                onClick={() => setFeedbackOpen((v) => !v)}
+                aria-label={feedbackOpen ? 'Hide feedback detail' : 'Show feedback detail'}
+                aria-expanded={feedbackOpen}
+              >
+                {feedback!.rating === 'up' ? (
+                  <IconThumbUpFilled size={12} />
+                ) : (
+                  <IconThumbDownFilled size={12} />
+                )}
+              </ActionIcon>
+            )}
+          </Group>
+        )}
+
+        {feedbackOpen && hasRating && (
+          <div
+            style={{
+              marginTop: 6,
+              padding: '8px 10px',
+              borderRadius: 8,
+              background:
+                feedback!.rating === 'up'
+                  ? 'var(--mantine-color-green-0)'
+                  : 'var(--mantine-color-orange-0)',
+            }}
+          >
+            {feedback!.tags.length > 0 && (
+              <Group gap={6} wrap="wrap" mb={feedback!.detail ? 6 : 0}>
+                {feedback!.tags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    size="xs"
+                    variant="light"
+                    color={feedback!.rating === 'up' ? 'green' : 'orange'}
+                    tt="none"
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+            {feedback!.detail && (
+              <Text size="xs" fs="italic" c="dimmed">
+                &ldquo;{feedback!.detail}&rdquo;
+              </Text>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -211,8 +337,19 @@ export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
   const [copied, setCopied] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
 
-  const messages = parseMessages(session?.messages ?? null)
+  const messages = reviveSessionMessages(session?.messages ?? null)
   const transcriptText = formatTranscript(messages)
+  const feedbackByIndex = new Map<number, MessageFeedbackRow>(
+    (session?.feedback ?? []).map((f) => [f.message_index, f]),
+  )
+  // TTFT is a single session-level value (see services/crm/inbound.ts) — it
+  // only ever corresponds to the most recent assistant turn, so the badge
+  // renders on that message alone rather than fabricating per-turn numbers.
+  const lastAssistantIndex = messages.reduce(
+    (acc, m) => (m.role === 'assistant' ? m.message_index : acc),
+    -1,
+  )
+  const hasFeedback = (session?.feedback_counts?.up ?? 0) + (session?.feedback_counts?.down ?? 0) > 0
 
   function handleCopy() {
     if (!transcriptText) return
@@ -309,6 +446,27 @@ export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
                 c="dimmed"
                 style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
               >
+                {formatTokens(session.input_tokens, session.output_tokens)} tokens
+              </Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
+                {formatCost(session.input_tokens, session.output_tokens)}
+              </Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
+                {session.ttft_ms != null ? `${session.ttft_ms}ms response` : '— response'}
+              </Text>
+              <Text
+                size="xs"
+                c="dimmed"
+                style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}
+              >
                 Started {formatDate(session.created_at)}
               </Text>
               {session.updated_at && session.updated_at !== session.created_at && (
@@ -336,8 +494,31 @@ export function SessionDrawer({ session, onClose }: SessionDrawerProps) {
             </Text>
           ) : (
             <Stack gap="md">
+              <Group justify="space-between" align="center">
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  fw={600}
+                  tt="uppercase"
+                  style={{ letterSpacing: '0.08em', fontFamily: 'var(--mantine-font-family-monospace)' }}
+                >
+                  Transcript
+                </Text>
+                {hasFeedback && session && (
+                  <FeedbackCounts up={session.feedback_counts.up} down={session.feedback_counts.down} />
+                )}
+              </Group>
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} msg={msg} />
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  feedback={feedbackByIndex.get(msg.message_index)}
+                  ttftMs={
+                    msg.role === 'assistant' && msg.message_index === lastAssistantIndex
+                      ? session?.ttft_ms ?? null
+                      : null
+                  }
+                />
               ))}
             </Stack>
           )}

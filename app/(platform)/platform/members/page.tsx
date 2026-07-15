@@ -4,9 +4,10 @@
 // app/admin/members/page.tsx but renders inside PlatformShell instead of AdminShell.
 // Reuses the shared MembersList client component and its associated types.
 
+import type { CSSProperties } from 'react';
 import { getCurrentUser } from '@/services/auth';
 import { redirect } from 'next/navigation';
-import { Stack, Title } from '@mantine/core';
+import { Box, Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { Text } from '@/components/admin/primitives/Text';
 import { MembersList } from '@/app/admin/members/MembersList';
@@ -15,6 +16,21 @@ import type { Membership, TenantOption, UserRow } from '@/app/admin/members/type
 import { toInviteLink } from '@/app/admin/members/inviteLink';
 
 export const dynamic = 'force-dynamic';
+
+// Header/scroll-body split (mirrors app/admin/prompt-studio/blocks/page.tsx
+// and app/admin/page.tsx): MembersList's sticky toolbar needs its own scroll
+// ancestor with no top padding (pt={0}) for `top: 0` to pin flush with no gap.
+const HEADER_FRAME_STYLE: CSSProperties = {
+  flexShrink: 0,
+  borderBottom: '1px solid var(--mantine-color-gray-2)',
+  background: '#fff',
+};
+
+const SCROLL_AREA_STYLE: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflow: 'auto',
+};
 
 export default async function PlatformMembersPage() {
   // Defense in depth — the (platform) layout already gates platform_admin, but
@@ -105,22 +121,26 @@ export default async function PlatformMembersPage() {
   const allUsers = [...users, ...invitedRows];
 
   return (
-    <Stack gap="lg">
-      <Stack gap={2}>
-        <Title order={1} fz="lg" fw={600}>
-          Members
-        </Title>
-        <Text variant="muted">Everyone with access across all tenants.</Text>
-      </Stack>
+    <Stack h="100%" gap={0}>
+      <Box px={{ base: 16, sm: 24 }} py={{ base: 12, sm: 16 }} style={HEADER_FRAME_STYLE}>
+        <Stack gap={2}>
+          <Title order={1} fz="lg" fw={600}>
+            Members
+          </Title>
+          <Text variant="muted">Everyone with access across all tenants.</Text>
+        </Stack>
+      </Box>
 
-      {error ? (
-        <Text variant="muted">Unable to load members.</Text>
-      ) : (
-        <>
-          <MembersDashboard users={allUsers} />
-          <MembersList users={allUsers} tenants={tenants} inviteApiBase="/api/platform/members" />
-        </>
-      )}
+      <Box style={SCROLL_AREA_STYLE} px={{ base: 'md', sm: 'lg' }} pb={{ base: 'md', sm: 'lg' }} pt={0}>
+        {error ? (
+          <Text variant="muted">Unable to load members.</Text>
+        ) : (
+          <Stack gap="lg">
+            <MembersDashboard users={allUsers} />
+            <MembersList users={allUsers} tenants={tenants} inviteApiBase="/api/platform/members" />
+          </Stack>
+        )}
+      </Box>
     </Stack>
   );
 }
