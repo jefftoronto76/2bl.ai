@@ -41,6 +41,7 @@ import { TenantPills } from './TenantPills';
 import { MemberDrawer } from './MemberDrawer';
 import { InviteMemberModal } from './InviteMemberModal';
 import { inviteUrlFor } from './inviteLink';
+import toolbarStyles from '@/components/admin/lib/stickyToolbar.module.css';
 
 interface MembersListProps {
   users: UserRow[];
@@ -393,33 +394,35 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
   return (
     <Stack gap="md">
       {/* Toolbar */}
-      <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-        <Group gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 0 }}>
-          <TextInput
-            placeholder="Search name, email, or tenant"
-            leftSection={<IconSearch size={16} />}
-            value={query}
-            onChange={(e) => setQuery(e.currentTarget.value)}
-            w={{ base: '100%', sm: 280 }}
-          />
-          <SegmentedControl
-            value={filter}
-            onChange={(v) => setFilter(v as StatusFilter)}
-            data={STATUS_FILTERS.map((s) => ({
-              value: s.value,
-              label: (
-                <Group gap={6} wrap="nowrap">
-                  <span>{s.label}</span>
-                  <Text span size="xs" c="dimmed">
-                    {counts[s.value]}
-                  </Text>
-                </Group>
-              ),
-            }))}
-          />
+      <Box className={toolbarStyles.stickyToolbar}>
+        <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+          <Group gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 0 }}>
+            <TextInput
+              placeholder="Search name, email, or tenant"
+              leftSection={<IconSearch size={16} />}
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              w={{ base: '100%', sm: 280 }}
+            />
+            <SegmentedControl
+              value={filter}
+              onChange={(v) => setFilter(v as StatusFilter)}
+              data={STATUS_FILTERS.map((s) => ({
+                value: s.value,
+                label: (
+                  <Group gap={6} wrap="nowrap">
+                    <span>{s.label}</span>
+                    <Text span size="xs" c="dimmed">
+                      {counts[s.value]}
+                    </Text>
+                  </Group>
+                ),
+              }))}
+            />
+          </Group>
+          <InviteMemberModal tenants={tenants} currentTenantId={currentTenantId} inviteEndpoint={`${inviteApiBase}/invite`} />
         </Group>
-        <InviteMemberModal tenants={tenants} currentTenantId={currentTenantId} inviteEndpoint={`${inviteApiBase}/invite`} />
-      </Group>
+      </Box>
 
       {/* Bulk action bar */}
       {selectedVisible.length > 0 && (
