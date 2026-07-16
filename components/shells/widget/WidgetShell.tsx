@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
+import { useRef, useEffect, KeyboardEvent, useState, type ReactNode, type CSSProperties } from 'react'
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -179,11 +179,14 @@ export function WidgetShellChat() {
   // The overlay's own keyboard handling is pure CSS (100dvh + safe-area
   // insets), so it consumes only the shared hook's scroll-lock —
   // trackViewport:false means no visualViewport listeners are attached here.
-  useKeyboardViewport({
+  const { keyboardOpen, height } = useKeyboardViewport({
     active: isExpanded,
     lockBodyScroll: !noLock,
-    trackViewport: false,
+    trackViewport: true,
   })
+
+  const overlayStyle: CSSProperties | undefined =
+    keyboardOpen && height != null ? { height: `${height}px` } : undefined
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -327,7 +330,10 @@ export function WidgetShellChat() {
 
       {isExpanded && (
         <div className="fixed inset-0 z-[100] overflow-hidden bg-bg animate-[expandChat_0.3s_ease-out]">
-          <div className="flex h-dvh min-h-0 flex-col">
+          <div
+            style={overlayStyle}
+            className={keyboardOpen && height != null ? "flex min-h-0 flex-col" : "flex h-dvh min-h-0 flex-col"}
+          >
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
