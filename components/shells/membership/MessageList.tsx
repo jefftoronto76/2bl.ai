@@ -474,7 +474,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
 
   return (
     <div
-      className="flex-1 overflow-y-auto px-4 py-6"
+      className="flex-1 overflow-y-auto overscroll-contain px-4 py-6"
       role="log"
       aria-live="polite"
       aria-label="Conversation"
