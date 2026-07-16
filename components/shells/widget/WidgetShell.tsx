@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState, type ReactNode, type CSSProperties } from 'react'
+import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -176,18 +176,14 @@ export function WidgetShellChat() {
   // Scroll lock: freezing the body with position:fixed (not just
   // overflow:hidden) stops iOS Safari from scrolling the document under the
   // overlay while the chat is open; the scroll position is restored on close.
-  // The overlay's keyboard handling combines CSS and JS: h-dvh (+ safe-area
-  // insets) is the default, and trackViewport:true attaches visualViewport
-  // resize/scroll listeners so overlayStyle can override the height with the
-  // measured visual-viewport value while the keyboard is open (see below).
-  const { keyboardOpen, height } = useKeyboardViewport({
+  // The overlay's own keyboard handling is pure CSS (100dvh + safe-area
+  // insets), so it consumes only the shared hook's scroll-lock —
+  // trackViewport:false means no visualViewport listeners are attached here.
+  useKeyboardViewport({
     active: isExpanded,
     lockBodyScroll: !noLock,
-    trackViewport: true,
+    trackViewport: false,
   })
-
-  const overlayStyle: CSSProperties | undefined =
-    keyboardOpen && height != null ? { height: `${height}px` } : undefined
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -331,10 +327,7 @@ export function WidgetShellChat() {
 
       {isExpanded && (
         <div className="fixed inset-0 z-[100] overflow-hidden bg-bg animate-[expandChat_0.3s_ease-out]">
-          <div
-            style={overlayStyle}
-            className={keyboardOpen && height != null ? "flex min-h-0 flex-col" : "flex h-dvh min-h-0 flex-col"}
-          >
+          <div className="flex h-dvh min-h-0 flex-col">
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span

@@ -204,7 +204,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         </>
       )}
 
-      <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
+      <div className="flex flex-col flex-1 min-w-0 h-full">
         <ChatHeader
           isFullScreen={isFullScreen}
           onToggleFullScreen={onToggleFullScreen}
