@@ -176,9 +176,10 @@ export function WidgetShellChat() {
   // Scroll lock: freezing the body with position:fixed (not just
   // overflow:hidden) stops iOS Safari from scrolling the document under the
   // overlay while the chat is open; the scroll position is restored on close.
-  // The overlay's own keyboard handling is pure CSS (100dvh + safe-area
-  // insets), so it consumes only the shared hook's scroll-lock —
-  // trackViewport:false means no visualViewport listeners are attached here.
+  // The overlay's keyboard handling combines CSS and JS: h-dvh (+ safe-area
+  // insets) is the default, and trackViewport:true attaches visualViewport
+  // resize/scroll listeners so overlayStyle can override the height with the
+  // measured visual-viewport value while the keyboard is open (see below).
   const { keyboardOpen, height } = useKeyboardViewport({
     active: isExpanded,
     lockBodyScroll: !noLock,
