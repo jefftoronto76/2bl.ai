@@ -20,6 +20,16 @@ interface MessageListProps {
   isLoading: boolean;
   /** Classified reason the most recent turn failed, or null when it succeeded. */
   errorType: ChatErrorType | null;
+  /** Rendered in place of the message thread when there are no messages yet. */
+  emptyState?: ReactNode;
+  /**
+   * Composer content, rendered as a sticky last child inside this
+   * component's own scroll container (the composer-inside-scroll-container
+   * pattern — see docs/chat-shells.md). Deliberately kept outside the
+   * role="log" region below it so the composer's own content changes (e.g.
+   * typing) never fire a live-region announcement.
+   */
+  composer?: ReactNode;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -426,7 +436,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, emptyState, composer }: MessageListProps) {
   const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
     useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
@@ -472,43 +482,65 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     );
   }, [claimCurrentSession]);
 
+  const hasMessages = messages.length > 0;
+
   return (
-    <div
-      className="flex-1 overflow-y-auto overscroll-contain px-4 py-6"
-      role="log"
-      aria-live="polite"
-      aria-label="Conversation"
-      aria-atomic="false"
-      aria-busy={isLoading}
-    >
-      <div className="max-w-2xl mx-auto flex flex-col gap-6">
-        <ChatThread
-          messages={messages}
-          isStreaming={isLoading}
-          errorType={errorType}
-          retry={retry}
-          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
-          renderAssistantMessage={makeRenderAssistantMessage({
-            isAdmin,
-            inviteToken,
-            visitorName,
-            visitorEmail,
-            visitorPhone,
-            handleAuthSuccess,
-            messages,
-            isStreaming: isLoading,
-            regenerate,
-            setActiveVersion,
-            feedback,
-          })}
-          renderError={renderError}
-          renderStreamingIndicator={renderStreamingIndicator}
-          showStreamingIndicator={isLoading}
-          markdownComponents={membershipMarkdownComponents}
-          scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, errorType]}
-        />
-      </div>
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col">
+      {hasMessages ? (
+        <div
+          className="max-w-2xl mx-auto flex flex-col gap-6 px-4 py-6 w-full"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+          aria-atomic="false"
+          aria-busy={isLoading}
+        >
+          <ChatThread
+            messages={messages}
+            isStreaming={isLoading}
+            errorType={errorType}
+            retry={retry}
+            renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
+            renderAssistantMessage={makeRenderAssistantMessage({
+              isAdmin,
+              inviteToken,
+              visitorName,
+              visitorEmail,
+              visitorPhone,
+              handleAuthSuccess,
+              messages,
+              isStreaming: isLoading,
+              regenerate,
+              setActiveVersion,
+              feedback,
+            })}
+            renderError={renderError}
+            renderStreamingIndicator={renderStreamingIndicator}
+            showStreamingIndicator={isLoading}
+            markdownComponents={membershipMarkdownComponents}
+            scrollBehavior="smooth"
+            scrollDeps={[messages, isLoading, errorType]}
+          />
+        </div>
+      ) : (
+        emptyState !== undefined && (
+          <div
+            className="flex-1 flex flex-col items-center justify-center px-4 select-none"
+            role="log"
+            aria-live="polite"
+            aria-label="Conversation"
+            aria-atomic="false"
+            aria-busy={isLoading}
+          >
+            {emptyState}
+          </div>
+        )
+      )}
+      {composer && (
+        <div className="sticky bottom-0 bg-background pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {composer}
+        </div>
+      )}
     </div>
   );
 }
