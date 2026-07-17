@@ -81,7 +81,7 @@ export function FeedbackPopover({ sentiment, onClose, onSubmit }: FeedbackPopove
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 hover:text-text-primary"
+        className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 hover:text-text-primary before:absolute before:content-[''] before:-inset-3"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -100,8 +100,8 @@ export function FeedbackPopover({ sentiment, onClose, onSubmit }: FeedbackPopove
               onClick={() => toggle(r)}
               className={
                 active
-                  ? 'rounded-full border border-accent bg-accent/10 px-2.5 py-1.5 text-[12.5px] font-medium text-accent'
-                  : 'rounded-full border border-border px-2.5 py-1.5 text-[12.5px] font-medium text-text-muted hover:border-text-primary/30'
+                  ? 'relative rounded-full border border-accent bg-accent/10 px-2.5 py-1.5 text-[12.5px] font-medium text-accent before:absolute before:content-[\'\'] before:-inset-[3px]'
+                  : 'relative rounded-full border border-border px-2.5 py-1.5 text-[12.5px] font-medium text-text-muted hover:border-text-primary/30 before:absolute before:content-[\'\'] before:-inset-[3px]'
               }
             >
               {r}
@@ -115,21 +115,21 @@ export function FeedbackPopover({ sentiment, onClose, onSubmit }: FeedbackPopove
         onChange={(e) => setNote(e.target.value)}
         placeholder="Add detail (optional)"
         rows={2}
-        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg p-2 text-[13px] text-text-primary outline-none"
+        className="mt-2 w-full resize-none rounded-lg border border-border bg-bg p-2 text-base text-text-primary outline-none"
       />
 
       <div className="mt-2 flex justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-text-muted"
+          className="relative rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-text-muted before:absolute before:content-[''] before:-inset-y-2 before:-inset-x-1"
         >
           Skip
         </button>
         <button
           type="button"
           onClick={() => onSubmit(reasons, note)}
-          className="rounded-md bg-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-background hover:bg-accent-hover"
+          className="relative rounded-md bg-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-background hover:bg-accent-hover before:absolute before:content-[''] before:-inset-y-2 before:-inset-x-1"
         >
           Send feedback
         </button>
