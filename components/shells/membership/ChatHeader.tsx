@@ -123,17 +123,13 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           </IconButton>
         )}
 
-        <div
-          ref={dropdownRef}
-          className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
-          onBlur={handleBlur}
-        >
+        <div ref={dropdownRef} className="relative" onBlur={handleBlur}>
           <button
             type="button"
             aria-label="Account"
             aria-expanded={dropdownOpen}
             onClick={handleAccountClick}
-            className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent text-text-muted hover:bg-text-primary/10 hover:text-text-primary"
+            className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent text-text-muted hover:bg-text-primary/10 hover:text-text-primary before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             {isSignedIn && user?.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
