@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
@@ -25,26 +25,24 @@ const WRITING_PROMPTS: WritingPrompt[] = [
   { id: 'wp-4', text: 'Who taught you something you still carry?' },
 ];
 
+// Layout-less content — MessageList's own wrapper owns the flex-1/centering/
+// padding around whatever `emptyState` it's handed.
 function EmptyState() {
   const { invitedName, hasInviteToken } = useChatStore();
   const personalized = hasInviteToken && invitedName;
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4 select-none">
-      {personalized ? (
-        <>
-          <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-3 text-center">
-            Welcome, {invitedName}.
-          </h1>
-          <p className="text-text-muted text-base md:text-lg text-center">
-            What&apos;s a story worth keeping?
-          </p>
-        </>
-      ) : (
-        <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-8 text-center">
-          What&apos;s a story worth keeping?
-        </h1>
-      )}
-    </div>
+  return personalized ? (
+    <>
+      <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-3 text-center">
+        Welcome, {invitedName}.
+      </h1>
+      <p className="text-text-muted text-base md:text-lg text-center">
+        What&apos;s a story worth keeping?
+      </p>
+    </>
+  ) : (
+    <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-8 text-center">
+      What&apos;s a story worth keeping?
+    </h1>
   );
 }
 
@@ -137,19 +135,19 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     void sendMessage(prompt.text);
   };
 
-  // iOS keyboard handling. While the chat panel is open it's a modal overlay,
-  // so we lock body scroll (the landing page behind must not scroll) and pin the
-  // surface to the visual viewport. Under the scroll-lock iOS can't shift the
-  // page, so visualViewport.offsetTop stays 0 and the keyboard simply shrinks
-  // the viewport from the bottom — shrinking the surface from h-full to vv.height
-  // lifts the composer to sit directly above the keyboard. Inert on desktop
-  // (vv.height never drops below the threshold) and while the panel is closed.
-  const { keyboardOpen, height } = useKeyboardViewport({
+  // iOS keyboard handling is pure CSS (h-dvh on ChatDrawerV2, cascading down
+  // to this section's h-full) — app/layout.tsx sets interactiveWidget:
+  // 'resizes-content', which makes dvh shrink correctly on keyboard-open on
+  // both iOS Safari and Android Chrome, mirroring components/shells/widget/
+  // Chat.tsx's overlay. useKeyboardViewport is kept only for its body
+  // scroll-lock (the landing page behind the panel must not scroll while
+  // it's open) — trackViewport: false means no visualViewport listener runs
+  // and no height is computed here.
+  useKeyboardViewport({
     active: state.isChatOpen,
     lockBodyScroll: true,
+    trackViewport: false,
   });
-  const surfaceStyle: CSSProperties | undefined =
-    keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
@@ -165,7 +163,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
   return (
-    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
+    <section className="h-full w-full flex bg-background overflow-hidden">
       {/* Desktop: docked sidebar */}
       {!isMobile && (
         <SidebarV2
@@ -215,18 +213,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           {isGated ? (
             <GateView />
           ) : (
-            <>
-              {state.hasStarted ? (
-                <MessageList messages={state.messages} isLoading={state.isLoading} errorType={errorType} />
-              ) : (
-                <EmptyState />
-              )}
-
-              <div className="pb-4">
-                <ChatInput />
-                <SaveChatCTA />
-              </div>
-            </>
+            <MessageList
+              messages={state.messages}
+              isLoading={state.isLoading}
+              errorType={errorType}
+              emptyState={<EmptyState />}
+              composer={
+                <>
+                  <ChatInput />
+                  <SaveChatCTA />
+                </>
+              }
+            />
           )}
         </div>
       </div>
