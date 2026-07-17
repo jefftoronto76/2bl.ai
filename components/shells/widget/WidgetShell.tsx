@@ -124,7 +124,7 @@ function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
         {ERROR_COPY[errorType]}
         <button
           onClick={() => retry()}
-          className="mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]"
+          className="relative mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] before:absolute before:content-[''] before:-inset-[10px]"
         >
           Retry
         </button>

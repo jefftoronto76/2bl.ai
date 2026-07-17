@@ -489,10 +489,16 @@ html[data-brand="jefflougheed"] .avatar.sage {
 }
 .stage.engaged .chips{opacity:0;max-height:0;margin-top:0;pointer-events:none}
 .chip{
+  position:relative;
   background:rgb(var(--color-surface));border:1px solid var(--color-border);
   padding:8px 13px;border-radius:999px;
   font-family:var(--font-body);font-size:13px;color:var(--color-text-muted);
   cursor:pointer;transition:all .15s ease;
+}
+.chip::before{
+  content:'';
+  position:absolute;
+  inset:-4px;
 }
 .chip:hover{border-color:var(--color-border-hover);color:var(--color-text-primary)}
 .chip .arr{margin-left:6px;color:rgb(var(--color-accent))}
@@ -528,6 +534,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
 
 .hero-conversation {
   overflow-y: auto;
+  overscroll-behavior: contain;
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--ink-rgb) / 0.15) transparent;
