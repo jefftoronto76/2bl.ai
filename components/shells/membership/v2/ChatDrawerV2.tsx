@@ -69,7 +69,7 @@ export function ChatDrawerV2({
   return (
     <div
       className={[
-        'fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-background',
+        'fixed top-0 right-0 z-50 flex h-dvh flex-col overflow-hidden bg-background',
         'shadow-[-30px_0_80px_-30px_rgba(0,0,0,0.7)]',
         'transition-[transform,width] duration-500 ease-[cubic-bezier(.22,1,.36,1)]',
         isFullScreen ? 'w-screen' : defaultWidthClassName,
@@ -109,7 +109,7 @@ export function ChatDrawerV2({
       )}
 
       {/* Body — `relative`; the V2 modals AND the VoiceImmersive overlay scope here. */}
-      <div ref={setOverlayHost} className="relative flex flex-1 min-h-0">
+      <div ref={setOverlayHost} className="relative flex flex-1 min-h-0 overflow-hidden">
         <ChatOverlayProvider value={overlayHost}>{children}</ChatOverlayProvider>
       </div>
     </div>
