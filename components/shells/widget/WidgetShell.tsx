@@ -291,7 +291,7 @@ export function WidgetShellChat() {
               color: 'white',
               border: 'none',
               fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
+              fontSize: '16px',
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
               padding: '16px 32px',

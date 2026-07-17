@@ -350,7 +350,7 @@ export function SaveChatCTA() {
           aria-label="Save this chat to your book"
           className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
           style={{
-            fontSize: '14.5px',
+            fontSize: '16px',
             fontFamily: 'system-ui, sans-serif',
             padding: '11px 22px',
           }}

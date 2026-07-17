@@ -89,7 +89,7 @@ export function GateView() {
           setOAuthInProgress(true);
           openSignUp({ appearance: heirloomClerkAppearance });
         }}
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-base font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         Claim a free membership
       </button>
@@ -175,7 +175,7 @@ function WaitlistView() {
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-base font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-60"
         >
           {submitting ? 'Requesting…' : 'Request access'}
         </button>
