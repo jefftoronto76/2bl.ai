@@ -342,15 +342,15 @@ export function WidgetShellChat() {
               </button>
             </header>
 
-            <div
-              className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-[clamp(24px,5vw,48px)]"
-              role="log"
-              aria-live="polite"
-              aria-label="Conversation"
-              aria-atomic="false"
-              aria-busy={isStreaming}
-            >
-              <div className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+              <div
+                className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
+                role="log"
+                aria-live="polite"
+                aria-label="Conversation"
+                aria-atomic="false"
+                aria-busy={isStreaming}
+              >
                 {messages.length === 0 && (
                   <div className="sage-animate max-w-[680px] border-l-2 border-accent/35 pl-4 [animation:sage-slide-up_0.28s_ease-out_both]">
                     <p className="mb-3 font-display font-normal leading-[1.15] tracking-[-0.01em] text-[color:var(--color-text-primary)] text-[clamp(26px,4vw,36px)]">
@@ -378,41 +378,45 @@ export function WidgetShellChat() {
                   scrollGuard={() => isExpanded}
                 />
               </div>
-            </div>
 
-            <div className="flex-shrink-0 border-t border-black/[0.08] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
-              <div className="mx-auto flex max-w-[900px] items-center gap-3">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKey}
-                  placeholder=""
-                  rows={1}
-                  className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
-                />
-                {isStreaming ? (
-                  <button
-                    onClick={stop}
-                    aria-label="Stop generating"
-                    className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity before:absolute before:inset-[-2px] before:content-['']"
-                  >
-                    <Square size={16} fill="currentColor" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={submit}
-                    disabled={!input.trim()}
-                    aria-label="Send message"
-                    className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
-                  >
-                    →
-                  </button>
-                )}
+              {/* Sticky inside the scroll container, not a flex sibling after
+                  it — composer-inside-scroll-container pattern (Claude.ai/
+                  ChatGPT), mirrors the fix already applied to Heirloom's
+                  MessageList. */}
+              <div className="sticky bottom-0 border-t border-black/[0.08] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
+                <div className="mx-auto flex max-w-[900px] items-center gap-3">
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKey}
+                    placeholder=""
+                    rows={1}
+                    className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
+                  />
+                  {isStreaming ? (
+                    <button
+                      onClick={stop}
+                      aria-label="Stop generating"
+                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity before:absolute before:inset-[-2px] before:content-['']"
+                    >
+                      <Square size={16} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={submit}
+                      disabled={!input.trim()}
+                      aria-label="Send message"
+                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
+                    >
+                      →
+                    </button>
+                  )}
+                </div>
+                <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
+                  Sage knows Jeff&apos;s background and will give you a straight answer.
+                </p>
               </div>
-              <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
-                Sage knows Jeff&apos;s background and will give you a straight answer.
-              </p>
             </div>
           </div>
         </div>
