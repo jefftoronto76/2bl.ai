@@ -138,7 +138,7 @@ export function SaveChatCTA() {
   // ── Input class shared across the eggshell (bg-text-primary) modal card ───
 
   const inputCls =
-    'flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-body text-background placeholder-background/30 focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all disabled:opacity-50';
+    'flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-base font-body text-background placeholder-background/30 focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all disabled:opacity-50';
 
   // ── Modal form stages ──────────────────────────────────────────────────────
 
@@ -201,7 +201,7 @@ export function SaveChatCTA() {
               placeholder="------"
               aria-label="6-digit verification code"
               autoComplete="one-time-code"
-              className="flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-mono text-background placeholder-background/30 text-center tracking-[0.3em] focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all"
+              className="flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-base font-mono text-background placeholder-background/30 text-center tracking-[0.3em] focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all"
             />
             <button
               type="submit"

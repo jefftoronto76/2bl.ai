@@ -291,7 +291,7 @@ function SearchField({
           onBlur={() => setFocused(false)}
           placeholder="Search your story"
           aria-label="Search your story"
-          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-sm text-text-primary placeholder-text-muted"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-base text-text-primary placeholder-text-muted"
         />
       </div>
     </div>
@@ -461,7 +461,7 @@ export function SidebarV2({
                             if (e.key === 'Escape') { onRenameCommit?.(session.id, ''); }
                           }}
                           onBlur={(e) => onRenameCommit?.(session.id, e.currentTarget.value)}
-                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-sm bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-base bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
                         />
                       ) : (
                         <button

@@ -167,7 +167,7 @@ function WaitlistView() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="your@email.com"
           disabled={submitting}
-          className="w-full px-4 py-3 rounded-full bg-surface border border-border text-text-primary font-body text-sm placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="w-full px-4 py-3 rounded-full bg-surface border border-border text-text-primary font-body text-base placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         />
         {error && (
           <p className="font-body text-red-400 text-xs text-center">{error}</p>
