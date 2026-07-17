@@ -368,7 +368,7 @@ export function SidebarV2({
         <IconButton
           label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
           onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
+          className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronRight size={16} />
         </IconButton>

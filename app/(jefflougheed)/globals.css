@@ -360,6 +360,15 @@ html[data-brand="jefflougheed"] .avatar.sage {
   opacity:0;pointer-events:none;transform:scale(.85);
   transition:opacity .35s ease, transform .35s ease, color .15s, border-color .15s, background .15s;
 }
+/* Invisible hit-area expansion to a 48x48 minimum touch target — visual
+   size (36x36) is unchanged. pointer-events is inherited, so this tracks
+   the button's own none/auto state (see .stage.engaged .hero .close-x)
+   without a separate rule. */
+.hero .close-x::before{
+  content:'';
+  position:absolute;
+  inset:-6px;
+}
 .hero .close-x:hover{color:var(--color-text-primary);border-color:var(--color-border-hover);background:rgb(var(--color-surface))}
 .stage.engaged .hero .close-x{opacity:1;pointer-events:auto;transform:scale(1)}
 .hero .eyebrow{
@@ -435,11 +444,20 @@ html[data-brand="jefflougheed"] .avatar.sage {
 }
 .composer textarea::placeholder{color:var(--color-text-dim)}
 .composer .send{
+  position:relative;
   width:38px;height:38px;border-radius:50%;border:none;
   background:rgb(var(--color-accent));color:rgb(var(--color-surface));
   display:flex;align-items:center;justify-content:center;flex:none;
   cursor:pointer;
   transition:background .15s ease,transform .15s ease,opacity .15s ease;
+}
+/* Invisible hit-area expansion to a 48x48 minimum touch target — visual
+   size (38x38) is unchanged. Neighbor is the flex:1 textarea, not another
+   small button, so expanding into the .row gap is safe. */
+.composer .send::before{
+  content:'';
+  position:absolute;
+  inset:-5px;
 }
 .composer .send:hover:not(:disabled){background:rgb(var(--color-accent-hover))}
 .composer .send:disabled{opacity:.4;cursor:not-allowed}

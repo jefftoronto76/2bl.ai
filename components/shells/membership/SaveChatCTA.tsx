@@ -348,7 +348,7 @@ export function SaveChatCTA() {
           type="button"
           onClick={handleOpen}
           aria-label="Save this chat to your book"
-          className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
+          className="relative flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent before:absolute before:inset-[-7px] before:content-['']"
           style={{
             fontSize: '16px',
             fontFamily: 'system-ui, sans-serif',
@@ -382,7 +382,7 @@ export function SaveChatCTA() {
               type="button"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-background/40 hover:text-background transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40"
+              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-background/40 hover:text-background transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40 before:absolute before:inset-[-10px] before:content-['']"
             >
               <X size={16} />
             </button>

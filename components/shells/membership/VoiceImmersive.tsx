@@ -47,7 +47,7 @@ export function VoiceImmersive({
           onClick={onMinimize}
           aria-label="Collapse to composer"
           title="Collapse"
-          className="grid place-items-center w-9 h-9 rounded-lg text-text-muted hover:bg-text-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="relative grid place-items-center w-9 h-9 rounded-lg text-text-muted hover:bg-text-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:inset-[-6px] before:content-['']"
         >
           <Minimize2 size={19} />
         </button>
@@ -56,7 +56,7 @@ export function VoiceImmersive({
           onClick={onCancel}
           aria-label="Close"
           title="Close"
-          className="grid place-items-center w-9 h-9 rounded-lg text-text-muted hover:bg-text-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="relative grid place-items-center w-9 h-9 rounded-lg text-text-muted hover:bg-text-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:inset-[-6px] before:content-['']"
         >
           <X size={20} />
         </button>

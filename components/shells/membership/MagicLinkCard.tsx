@@ -84,7 +84,7 @@ function SendButton({
       type="submit"
       disabled={disabled}
       aria-label={label}
-      className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="relative flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:inset-[-6px] before:content-['']"
     >
       {loading ? <Spinner /> : <ArrowRight size={15} />}
     </button>
