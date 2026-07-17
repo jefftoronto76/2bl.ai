@@ -89,7 +89,7 @@ export function GateView() {
           setOAuthInProgress(true);
           openSignUp({ appearance: heirloomClerkAppearance });
         }}
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-base font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       >
         Claim a free membership
       </button>
@@ -167,7 +167,7 @@ function WaitlistView() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="your@email.com"
           disabled={submitting}
-          className="w-full px-4 py-3 rounded-full bg-surface border border-border text-text-primary font-body text-sm placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="w-full px-4 py-3 rounded-full bg-surface border border-border text-text-primary font-body text-base placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         />
         {error && (
           <p className="font-body text-red-400 text-xs text-center">{error}</p>
@@ -175,7 +175,7 @@ function WaitlistView() {
         <button
           type="submit"
           disabled={submitting}
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-sm font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-accent text-background font-body text-base font-medium tracking-wide transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 disabled:opacity-60"
         >
           {submitting ? 'Requesting…' : 'Request access'}
         </button>

@@ -291,7 +291,7 @@ export function WidgetShellChat() {
               color: 'white',
               border: 'none',
               fontFamily: 'var(--font-mono)',
-              fontSize: '11px',
+              fontSize: '16px',
               letterSpacing: '0.18em',
               textTransform: 'uppercase',
               padding: '16px 32px',
@@ -348,7 +348,7 @@ export function WidgetShellChat() {
               <button
                 onClick={collapse}
                 aria-label="Close chat"
-                className="flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)]"
+                className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
                   <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -409,7 +409,7 @@ export function WidgetShellChat() {
                   <button
                     onClick={stop}
                     aria-label="Stop generating"
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity"
+                    className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity before:absolute before:inset-[-2px] before:content-['']"
                   >
                     <Square size={16} fill="currentColor" />
                   </button>
@@ -418,7 +418,7 @@ export function WidgetShellChat() {
                     onClick={submit}
                     disabled={!input.trim()}
                     aria-label="Send message"
-                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                    className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
                   >
                     →
                   </button>

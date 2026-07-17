@@ -38,9 +38,17 @@ function ActionIconButton({
       onClick={onClick}
       disabled={disabled}
       className={[
-        'flex items-center justify-center w-6 h-6 rounded-md transition-colors',
+        'relative flex items-center justify-center w-6 h-6 rounded-md transition-colors',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'disabled:opacity-30 disabled:cursor-not-allowed',
+        // Invisible hit-area growth. gap-0.5 (2px) between icons only allows
+        // 1px each on the shared left/right sides without adjacent buttons'
+        // hit-zones overlapping — short of the 48px target (would need a
+        // visible gap increase to close that, not done here). Vertical is
+        // asymmetric on purpose: the prose bubble sits ~4px above (mt-1) and
+        // may contain markdown links, so top stays tight; the ~24px
+        // inter-message gap below is genuinely open, so bottom expands more.
+        "before:absolute before:content-[''] before:-inset-x-[1px] before:top-[-4px] before:bottom-[-12px]",
         active ? activeClassName ?? 'text-accent' : 'text-text-muted hover:text-text-primary',
       ].join(' ')}
     >

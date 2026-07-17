@@ -559,7 +559,9 @@ export function ChatInput() {
                   aria-disabled={!isMember}
                   onClick={isMember ? () => setSourceMenuOpen((o) => !o) : undefined}
                   className={cn(
-                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    // Isolated (a flex-1 spacer separates this from Mic/Send
+                    // to its right) — full 48x48 hit-area via before:.
+                    "relative grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:inset-[-7px]",
                     isMember
                       ? 'bg-accent hover:bg-accent-hover text-background'
                       : 'bg-text-primary/10 text-text-muted opacity-40 cursor-not-allowed',
@@ -600,7 +602,10 @@ export function ChatInput() {
                 title={isMember ? 'Record voice' : 'Voice is a member feature'}
                 onClick={handleMicClick}
                 className={cn(
-                  'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  // Adjacent to Send/Stop via gap-1 (4px) — half-gap (2px)
+                  // horizontally to avoid overlapping its hit-zone; vertical
+                  // is open so it expands fully.
+                  "relative grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[7px] before:-inset-x-[2px]",
                   isMember
                     ? 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
                     : 'text-text-muted opacity-40',
@@ -613,7 +618,7 @@ export function ChatInput() {
                   type="button"
                   aria-label="Stop generating"
                   onClick={stop}
-                  className="grid place-items-center w-[34px] h-[34px] rounded-[10px] bg-accent hover:bg-accent-hover text-background transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="relative grid place-items-center w-[34px] h-[34px] rounded-[10px] bg-accent hover:bg-accent-hover text-background transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[7px] before:-inset-x-[2px]"
                 >
                   <Square size={15} fill="currentColor" />
                 </button>
@@ -624,7 +629,10 @@ export function ChatInput() {
                   disabled={!canSend}
                   onClick={() => void handleSend()}
                   className={cn(
-                    'grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    // Adjacent to Mic via gap-1 (4px) — half-gap (2px) on the
+                    // shared left side; open on the right (row's outer edge)
+                    // and vertically, so those expand fully.
+                    "relative grid place-items-center w-[34px] h-[34px] rounded-[10px] transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[7px] before:-inset-x-[2px]",
                     canSend
                       ? 'bg-accent hover:bg-accent-hover text-background'
                       : 'bg-text-primary/10 text-text-muted cursor-not-allowed',

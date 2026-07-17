@@ -138,7 +138,7 @@ export function SaveChatCTA() {
   // ── Input class shared across the eggshell (bg-text-primary) modal card ───
 
   const inputCls =
-    'flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-body text-background placeholder-background/30 focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all disabled:opacity-50';
+    'flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-base font-body text-background placeholder-background/30 focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all disabled:opacity-50';
 
   // ── Modal form stages ──────────────────────────────────────────────────────
 
@@ -201,7 +201,7 @@ export function SaveChatCTA() {
               placeholder="------"
               aria-label="6-digit verification code"
               autoComplete="one-time-code"
-              className="flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-sm font-mono text-background placeholder-background/30 text-center tracking-[0.3em] focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all"
+              className="flex-1 bg-background/10 border border-background/20 rounded-lg px-3 py-2 text-base font-mono text-background placeholder-background/30 text-center tracking-[0.3em] focus:outline-none focus:border-background/40 focus:ring-1 focus:ring-background/20 transition-all"
             />
             <button
               type="submit"
@@ -348,9 +348,9 @@ export function SaveChatCTA() {
           type="button"
           onClick={handleOpen}
           aria-label="Save this chat to your book"
-          className="flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent"
+          className="relative flex items-center gap-2 rounded-lg font-medium bg-accent text-background hover:opacity-90 active:opacity-75 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-accent before:absolute before:inset-[-7px] before:content-['']"
           style={{
-            fontSize: '14.5px',
+            fontSize: '16px',
             fontFamily: 'system-ui, sans-serif',
             padding: '11px 22px',
           }}
@@ -382,7 +382,7 @@ export function SaveChatCTA() {
               type="button"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-background/40 hover:text-background transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40"
+              className="absolute top-4 right-4 grid place-items-center w-7 h-7 rounded-md text-background/40 hover:text-background transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-background/40 before:absolute before:inset-[-10px] before:content-['']"
             >
               <X size={16} />
             </button>

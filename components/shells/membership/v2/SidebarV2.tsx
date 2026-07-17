@@ -291,7 +291,7 @@ function SearchField({
           onBlur={() => setFocused(false)}
           placeholder="Search your story"
           aria-label="Search your story"
-          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-sm text-text-primary placeholder-text-muted"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-base text-text-primary placeholder-text-muted"
         />
       </div>
     </div>
@@ -352,10 +352,16 @@ export function SidebarV2({
     }
   };
 
+  // gap-0.5 (2px) stacks these buttons vertically — half-gap (1px) top/bottom
+  // is as far as an invisible hit-area can safely grow without adjacent rows'
+  // zones overlapping. Horizontal is deliberately untouched: in the
+  // collapsed state the <aside> is only w-12 (48px total) with
+  // overflow-x-hidden, so there's no room to expand into without either
+  // clipping or widening the collapsed column itself (a visible change).
   const navBtn =
-    'flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
+    'relative flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
     'hover:text-text-primary transition-all duration-200 focus:outline-none ' +
-    'focus-visible:ring-2 focus-visible:ring-accent';
+    "focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[1px]";
 
   return (
     <aside
@@ -368,7 +374,7 @@ export function SidebarV2({
         <IconButton
           label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
           onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          className={`transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
+          className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronRight size={16} />
         </IconButton>
@@ -461,7 +467,7 @@ export function SidebarV2({
                             if (e.key === 'Escape') { onRenameCommit?.(session.id, ''); }
                           }}
                           onBlur={(e) => onRenameCommit?.(session.id, e.currentTarget.value)}
-                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-sm bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-base bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
                         />
                       ) : (
                         <button

@@ -85,7 +85,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           type="button"
           aria-label="Open navigation"
           onClick={onMenuOpen}
-          className="md:hidden grid place-items-center w-10 h-10 rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent mr-1 flex-shrink-0"
+          className="relative md:hidden grid place-items-center w-10 h-10 rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent mr-1 flex-shrink-0 before:absolute before:content-[''] before:inset-[-4px]"
         >
           <Menu size={18} />
         </button>
@@ -99,9 +99,17 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
       </button>
 
       <div className="flex items-center gap-1">
+        {/* Icon cluster: gap-1 (4px) between all of Share/Fullscreen/Account/
+            Close — half-gap (2px) horizontally on every button (uniform,
+            not first/last-optimized, to stay correct regardless of which
+            optional buttons render); vertical is open so it expands fully. */}
         {/* Share Heirloom — deliberately inert in this pass (decision: item
             visible, action stubbed; no share backend/modal mounted yet). */}
-        <IconButton label="Share Heirloom" aria-disabled="true">
+        <IconButton
+          label="Share Heirloom"
+          aria-disabled="true"
+          className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+        >
           <Share2 size={16} />
         </IconButton>
 
@@ -109,6 +117,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           <IconButton
             label={isFullScreen ? 'Exit full screen' : 'Expand to full screen'}
             onClick={onToggleFullScreen}
+            className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </IconButton>
@@ -120,7 +129,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             aria-label="Account"
             aria-expanded={dropdownOpen}
             onClick={handleAccountClick}
-            className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent text-text-muted hover:bg-text-primary/10 hover:text-text-primary"
+            className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent text-text-muted hover:bg-text-primary/10 hover:text-text-primary before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             {isSignedIn && user?.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -216,7 +225,11 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           )}
         </div>
 
-        <IconButton label="Close" onClick={() => dispatch({ type: 'CLOSE_CHAT' })}>
+        <IconButton
+          label="Close"
+          onClick={() => dispatch({ type: 'CLOSE_CHAT' })}
+          className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+        >
           <X size={18} />
         </IconButton>
       </div>

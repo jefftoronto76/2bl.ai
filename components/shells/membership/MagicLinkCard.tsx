@@ -84,7 +84,7 @@ function SendButton({
       type="submit"
       disabled={disabled}
       aria-label={label}
-      className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="relative flex-shrink-0 w-9 h-9 rounded-lg bg-accent hover:bg-accent-hover text-background flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent before:absolute before:inset-[-6px] before:content-['']"
     >
       {loading ? <Spinner /> : <ArrowRight size={15} />}
     </button>
@@ -313,7 +313,7 @@ export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone,
               placeholder="------"
               aria-label="6-digit verification code"
               autoComplete="one-time-code"
-              className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-mono text-text-primary placeholder-text-muted text-center tracking-[0.3em] focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+              className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-base font-mono text-text-primary placeholder-text-muted text-center tracking-[0.3em] focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
             />
             <SendButton
               disabled={otpValue.length !== 6 || stage === 'verifying'}
@@ -350,7 +350,7 @@ export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone,
           aria-label="Your name"
           autoComplete="given-name"
           disabled={isSending}
-          className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50 mb-3"
+          className="w-full bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-base font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50 mb-3"
         />
 
         {/* Email / Phone tab toggle */}
@@ -390,7 +390,7 @@ export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone,
             autoComplete={tab === 'email' ? 'email' : 'tel'}
             aria-label={tab === 'email' ? 'Email address' : 'Phone number'}
             disabled={isSending}
-            className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-sm font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
+            className="flex-1 bg-background/60 border border-accent/20 rounded-lg px-3 py-2 text-base font-body text-text-primary placeholder-text-muted focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all disabled:opacity-50"
           />
           <SendButton
             disabled={!nameValue.trim() || !inputValue.trim() || isSending}
