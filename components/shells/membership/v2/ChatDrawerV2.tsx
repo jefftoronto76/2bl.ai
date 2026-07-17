@@ -98,10 +98,15 @@ export function ChatDrawerV2({
             <IconButton
               label={isFullScreen ? 'Exit full screen' : 'Expand to full screen'}
               onClick={onToggleFullScreen}
+              className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
             >
               {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </IconButton>
-            <IconButton label="Close" onClick={onClose}>
+            <IconButton
+              label="Close"
+              onClick={onClose}
+              className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+            >
               <X size={18} />
             </IconButton>
           </div>

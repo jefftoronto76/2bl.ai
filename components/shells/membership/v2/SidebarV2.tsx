@@ -352,10 +352,16 @@ export function SidebarV2({
     }
   };
 
+  // gap-0.5 (2px) stacks these buttons vertically — half-gap (1px) top/bottom
+  // is as far as an invisible hit-area can safely grow without adjacent rows'
+  // zones overlapping. Horizontal is deliberately untouched: in the
+  // collapsed state the <aside> is only w-12 (48px total) with
+  // overflow-x-hidden, so there's no room to expand into without either
+  // clipping or widening the collapsed column itself (a visible change).
   const navBtn =
-    'flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
+    'relative flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
     'hover:text-text-primary transition-all duration-200 focus:outline-none ' +
-    'focus-visible:ring-2 focus-visible:ring-accent';
+    "focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[1px]";
 
   return (
     <aside
