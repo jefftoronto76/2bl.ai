@@ -53,7 +53,10 @@ html[data-brand="jefflougheed"] {
 
 html[data-brand="jefflougheed"] #outcomes,
 html[data-brand="jefflougheed"] #how-it-works,
-html[data-brand="jefflougheed"] #testimonials {
+html[data-brand="jefflougheed"] #testimonials,
+html[data-brand="jefflougheed"] #hero,
+html[data-brand="jefflougheed"] #chat,
+html[data-brand="jefflougheed"] #sage-chat-overlay {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
@@ -68,8 +71,13 @@ html[data-brand="jefflougheed"] #testimonials {
 }
 
 /* The how-it-works section sits on a light surface, so its accent buttons
-   need the deep-green :root accent rather than the inkwell mint. */
-html[data-brand="jefflougheed"] #how-it-works {
+   need the deep-green :root accent rather than the inkwell mint. The Sage
+   chat widget (#hero, #chat, and the fullscreen #sage-chat-overlay) joins
+   the same light palette for the same reason — see WidgetShell.tsx. */
+html[data-brand="jefflougheed"] #how-it-works,
+html[data-brand="jefflougheed"] #hero,
+html[data-brand="jefflougheed"] #chat,
+html[data-brand="jefflougheed"] #sage-chat-overlay {
   --color-accent: 45 106 79;
   --color-accent-hover: 30 77 57;
 }
@@ -427,7 +435,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .chat-surface{display:contents}
 .composer-wrap{margin-top:32px;position:sticky;bottom:76px}
 .composer{
-  background:rgb(245 244 240);border:1px solid rgb(24 32 41 / 0.12);border-radius:18px;
+  background:rgb(var(--color-surface));border:1px solid var(--color-border);border-radius:18px;
   padding:14px 14px 10px;
   box-shadow:0 8px 32px rgba(0,0,0,.05);
   transition:border-color .15s ease, box-shadow .15s ease;
@@ -439,10 +447,10 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .composer .row{display:flex;align-items:flex-end;gap:10px}
 .composer textarea{
   flex:1;border:none;outline:none;resize:none;background:transparent;
-  font-family:var(--font-body);font-size:16px;line-height:1.5;color:rgb(24 32 41);
+  font-family:var(--font-body);font-size:16px;line-height:1.5;color:var(--color-text-primary);
   min-height:28px;max-height:140px;padding:6px 6px;
 }
-.composer textarea::placeholder{color:rgb(24 32 41 / 0.42)}
+.composer textarea::placeholder{color:var(--color-text-muted)}
 .composer .send{
   position:relative;
   width:38px;height:38px;border-radius:50%;border:none;
@@ -463,18 +471,18 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .composer .send:disabled{opacity:.4;cursor:not-allowed}
 .composer .meta{
   display:flex;justify-content:space-between;align-items:center;
-  margin-top:8px;padding-top:8px;border-top:1px solid rgb(24 32 41 / 0.12);
-  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:rgb(24 32 41);
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--color-border);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--color-text-muted);
 }
 .composer .meta .left{display:flex;align-items:center;gap:8px}
 .new-convo-link{
   display:inline-flex;align-items:center;gap:5px;
   background:none;border:none;cursor:pointer;
   font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;
-  color:rgb(24 32 41 / 0.6);
+  color:var(--color-text-muted);
   transition:color .15s ease;
 }
-.new-convo-link:hover{color:rgb(24 32 41)}
+.new-convo-link:hover{color:var(--color-text-primary)}
 
 .new-convo-pill{
   display:inline-flex;align-items:center;gap:6px;
