@@ -6,12 +6,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Mirrors tsconfig "paths": ["@/*" -> ["./*", "./src/*"]]. More
-      // specific alias first — @/lib/* routes to src/lib/ where shared
-      // utilities (blockTypes, blockOrder, supabase-admin, etc.) live.
-      // The general @/* fallback handles everything else (components,
-      // app, test).
-      '@/lib': resolve(__dirname, 'src/lib'),
+      // Mirrors tsconfig "paths": ["@/*" -> ["./*", "./src/*"]]. `src/lib`
+      // no longer exists (blockTypes, blockOrder, supabase-admin, etc. moved
+      // to services/prompt and services/auth) — root lib/ (promptSet.ts) is
+      // covered by the general @/* fallback below, same as tsconfig's
+      // root-first resolution.
       '@/test': resolve(__dirname, 'test'),
       '@': resolve(__dirname, '.'),
     },

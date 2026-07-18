@@ -44,12 +44,41 @@ export async function PUT(req: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  if (typeof body.promptSetId !== 'string' || body.promptSetId.length === 0) {
+  const promptSetId = body.promptSetId ?? null
+  if (promptSetId !== null && (typeof promptSetId !== 'string' || promptSetId.length === 0)) {
     return Response.json({ error: 'Missing or invalid promptSetId' }, { status: 400 })
   }
-  const promptSetId = body.promptSetId
 
   const supabase = getAdminClient()
+
+  // Revert to fallback: promptSetId === null clears whichever row is currently the
+  // composer prompt, without requiring a replacement to be picked first.
+  if (promptSetId === null) {
+    const { error: clearErr } = await supabase
+      .from('prompt_sets')
+      .update({ is_composer_prompt: false })
+      .eq('is_composer_prompt', true)
+
+    if (clearErr) {
+      console.error('[platform/master-prompt] revert to fallback failed:', clearErr.message)
+      return Response.json({ error: clearErr.message }, { status: 500 })
+    }
+
+    console.log('[platform/master-prompt] PUT revert to fallback')
+    void logEvent({
+      action: AuditAction.PROMPT_SET_MASTER_SET,
+      tenant_id: await getTenantFromRequest(req),
+      actor_id: null,
+      actor_type: 'user',
+      clerk_user_id: gate.user.providerUserId,
+      target_type: 'prompt_set',
+      target_id: null,
+      correlation_id: req.headers.get('x-correlation-id'),
+      metadata: { is_composer_prompt: false },
+    })
+
+    return Response.json({ promptSetId: null })
+  }
 
   // The target must exist before we flip the master pointer.
   const { data: target, error: targetErr } = await supabase

@@ -8,7 +8,7 @@
 // owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Accordion, Button, Card, Group, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Accordion, Button, Card, Group, Modal, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { CurrentSystemPromptPill, MasterPromptPicker } from './MasterPromptPicker'
 import { TenantPrompts } from './TenantPrompts'
@@ -22,6 +22,8 @@ export default function PlatformSettingsPage() {
   const [pending, setPending] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [reverting, setReverting] = useState(false)
+  const [confirmRevert, setConfirmRevert] = useState(false)
 
   // Re-fetch just the picker options. Called on mount and whenever TenantPrompts
   // mutates a set (create/edit/delete) so the Master Prompt picker never goes stale.
@@ -105,6 +107,40 @@ export default function PlatformSettingsPage() {
     setPending(master.promptSetId)
   }
 
+  async function revertToFallback() {
+    setReverting(true)
+    try {
+      const res = await fetch('/api/platform/settings/master-prompt', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptSetId: null }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        notifications.show({
+          color: 'red',
+          title: 'Revert failed',
+          message: (data?.error as string) ?? 'Could not revert. Try again.',
+        })
+        return
+      }
+      const saved: MasterPromptSetting = await res.json()
+      setMaster(saved)
+      setPending(saved.promptSetId)
+      notifications.show({
+        color: 'green',
+        title: 'Reverted to system fallback',
+        message: 'Production is now using the default prompt built into the app.',
+      })
+      setConfirmRevert(false)
+    } catch (err) {
+      console.error('[PlatformSettings] revert failed:', err)
+      notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })
+    } finally {
+      setReverting(false)
+    }
+  }
+
   return (
     <Stack gap="lg">
       <Stack gap={4}>
@@ -138,7 +174,19 @@ export default function PlatformSettingsPage() {
                 </Stack>
               ) : (
                 <>
-                  <CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} />
+                  <Group gap="sm" align="center" wrap="wrap">
+                    <CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} />
+                    <Button
+                      variant="light"
+                      color="red"
+                      size="sm"
+                      disabled={!current}
+                      loading={reverting}
+                      onClick={() => setConfirmRevert(true)}
+                    >
+                      Revert to fallback
+                    </Button>
+                  </Group>
 
                   <MasterPromptPicker
                     options={options}
@@ -179,6 +227,30 @@ export default function PlatformSettingsPage() {
           <TenantPrompts onSetsChanged={loadOptions} />
         </Stack>
       </Card>
+
+      <Modal
+        opened={confirmRevert}
+        onClose={() => setConfirmRevert(false)}
+        title="Revert to system fallback?"
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            This turns off the current Composer Prompt (<strong>{current?.label}</strong>). Production immediately
+            falls back to the default prompt built into the app. You can restore a composed prompt any time by
+            selecting one below and saving.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="subtle" color="gray" onClick={() => setConfirmRevert(false)}>
+              Cancel
+            </Button>
+            <Button color="red" loading={reverting} onClick={revertToFallback}>
+              Revert to fallback
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   )
 }

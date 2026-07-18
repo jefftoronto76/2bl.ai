@@ -14,9 +14,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput } from '@mantine/core'
+import { Button, Card, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput, UnstyledButton } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconPlus, IconSearch } from '@tabler/icons-react'
+import { IconChevronRight, IconPlus, IconSearch } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
 import { PromptSetMetaStrip, PromptSetViewCard } from '@/components/admin/settings/PromptSetCard'
@@ -66,6 +66,11 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
   const [deleting, setDeleting] = useState(false)
   const [showNewCard, setShowNewCard] = useState(false)
   const [viewTarget, setViewTarget] = useState<PlatformPromptSet | null>(null)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  function toggle(tenantId: string) {
+    setExpanded((e) => ({ ...e, [tenantId]: !e[tenantId] }))
+  }
 
   const fetchSets = useCallback(async () => {
     try {
@@ -168,6 +173,8 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
         return next
       })
       notifications.show({ color: 'green', title: existing ? 'Prompt set saved' : 'Prompt set added', message: `${saved.label} · ${saved.tenant_name}` })
+      setExpanded((e) => ({ ...e, [saved.tenant_id]: true }))
+      setTimeout(() => document.querySelector(`[data-tenant-group="${saved.tenant_id}"]`)?.scrollIntoView({ block: 'nearest' }), 60)
       onSetsChanged?.() // keep the Master Prompt picker in sync (create + edit)
     } catch (err) {
       notifications.show({ color: 'red', title: 'Save failed', message: err instanceof Error ? err.message : 'Failed to save.' })
@@ -209,14 +216,18 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
     )
   }, [sets, query])
 
+  // Grouped by tenant_id, not tenant_name — two tenants sharing a display
+  // name must not merge into one collapsible row.
   const groups = useMemo(() => {
     const byTenant = new Map<string, PlatformPromptSet[]>()
     for (const s of filtered) {
-      const list = byTenant.get(s.tenant_name) ?? []
+      const list = byTenant.get(s.tenant_id) ?? []
       list.push(s)
-      byTenant.set(s.tenant_name, list)
+      byTenant.set(s.tenant_id, list)
     }
-    return [...byTenant.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return [...byTenant.entries()].sort((a, b) =>
+      (a[1][0]?.tenant_name ?? '').localeCompare(b[1][0]?.tenant_name ?? ''),
+    )
   }, [filtered])
 
   return (
@@ -260,44 +271,81 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
           {query ? 'No prompt sets match your search.' : 'No prompt sets in the database yet.'}
         </Text>
       ) : (
-        groups.map(([name, list]) => (
-          <Stack key={name} gap="xs">
-            <Group justify="space-between" align="baseline">
-              <Text variant="label" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-                {name}
-              </Text>
-              <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}>
-                {list.length} {list.length === 1 ? 'set' : 'sets'}
-              </Text>
-            </Group>
-            <Stack gap="sm">
-              {list.map((set) =>
-                editingId === set.id ? (
-                  <EditCard
-                    key={set.id}
-                    draft={drafts[set.id] ?? draftFromSet(set)}
-                    meta={set}
-                    tenants={tenants}
-                    onChange={(patch) => updateDraft(set.id, patch)}
-                    onSave={() => handleSave(set.id, set)}
-                    onCancel={() => cancelEdit(set.id)}
-                    saving={savingId === set.id}
+        groups.map(([tenantId, list]) => {
+          const name = list[0]?.tenant_name ?? tenantId
+          // Search force-expands every matching tenant; otherwise fall back
+          // to whatever the user last toggled (closed by default).
+          const open = query.trim() ? true : !!expanded[tenantId]
+          return (
+            <Stack key={tenantId} gap={0} data-tenant-group={tenantId}>
+              <UnstyledButton
+                onClick={() => toggle(tenantId)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--mantine-radius-sm)',
+                  background: 'var(--mantine-color-gray-0)',
+                }}
+                aria-expanded={open}
+              >
+                <Group gap="xs" align="center">
+                  <IconChevronRight
+                    size={14}
+                    style={{
+                      color: 'var(--mantine-color-gray-6)',
+                      transition: 'transform 150ms',
+                      transform: open ? 'rotate(90deg)' : 'none',
+                    }}
                   />
-                ) : (
-                  <PromptSetViewCard
-                    key={set.id}
-                    set={set}
-                    typeName={null /* platform list resolves type name server-side if needed */}
-                    onOpenInComposer={() => openInComposer(set)}
-                    onView={() => setViewTarget(set)}
-                    onEdit={() => startEdit(set)}
-                    onDelete={() => setDeleteTarget(set)}
-                  />
-                ),
+                  {/* Raw span, not the Text primitive — it always renders a <p>,
+                      which is invalid content inside a <button>. */}
+                  <span style={{ fontSize: 'var(--mantine-font-size-sm)', fontWeight: 500, lineHeight: 1.2 }}>
+                    {name}
+                  </span>
+                </Group>
+                <span style={{ fontSize: 'var(--mantine-font-size-xs)', color: 'var(--mantine-color-dimmed)' }}>
+                  {list.length} {list.length === 1 ? 'set' : 'sets'}
+                </span>
+              </UnstyledButton>
+              {open && (
+                <Stack
+                  gap="sm"
+                  pt="sm"
+                  pb="xs"
+                  style={{ marginLeft: 10, paddingLeft: 14, borderLeft: '1px solid var(--mantine-color-gray-3)' }}
+                >
+                  {list.map((set) =>
+                    editingId === set.id ? (
+                      <EditCard
+                        key={set.id}
+                        draft={drafts[set.id] ?? draftFromSet(set)}
+                        meta={set}
+                        tenants={tenants}
+                        onChange={(patch) => updateDraft(set.id, patch)}
+                        onSave={() => handleSave(set.id, set)}
+                        onCancel={() => cancelEdit(set.id)}
+                        saving={savingId === set.id}
+                      />
+                    ) : (
+                      <PromptSetViewCard
+                        key={set.id}
+                        set={set}
+                        typeName={null /* platform list resolves type name server-side if needed */}
+                        onOpenInComposer={() => openInComposer(set)}
+                        onView={() => setViewTarget(set)}
+                        onEdit={() => startEdit(set)}
+                        onDelete={() => setDeleteTarget(set)}
+                      />
+                    ),
+                  )}
+                </Stack>
               )}
             </Stack>
-          </Stack>
-        ))
+          )
+        })
       )}
 
       {viewTarget && (
