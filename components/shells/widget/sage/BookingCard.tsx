@@ -89,14 +89,14 @@ export function BookingCard({ label, description, ctaLabel, url, openAs, embedCo
   }
 
   const buttonClass =
-    'mt-3 inline-block rounded-md bg-accent px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-[color:var(--color-surface)] no-underline hover:opacity-90'
+    'mt-3 inline-block rounded-md bg-[#2d6a4f] px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-white no-underline hover:opacity-90'
 
   return (
     <div className="w-full">
-      <div className="w-full rounded-lg border border-[color:var(--color-border)] bg-surface p-4 shadow-sm">
-        <p className="m-0 font-body text-base font-semibold text-[color:var(--color-text-primary)]">{label}</p>
+      <div className="w-full rounded-lg border border-black/10 bg-white p-4 shadow-sm">
+        <p className="m-0 font-body text-base font-semibold text-[#1a1917]">{label}</p>
         {description && (
-          <p className="mt-1 mb-0 font-body text-sm text-[color:var(--color-text-muted)]">{description}</p>
+          <p className="mt-1 mb-0 font-body text-sm text-[#1a1917]/60">{description}</p>
         )}
         {effectiveOpenAs === 'popup' ? (
           <button
@@ -114,7 +114,7 @@ export function BookingCard({ label, description, ctaLabel, url, openAs, embedCo
         ) : null}
       </div>
       {effectiveOpenAs === 'new_tab' && (
-        <p className="mt-2 m-0 font-body text-xs text-[color:var(--color-text-muted)]">
+        <p className="mt-2 m-0 font-body text-xs text-[#1a1917]/55">
           Heads up — clicking the button will open in a new tab to complete your booking.
         </p>
       )}
