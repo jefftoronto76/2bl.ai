@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput, UnstyledButton } from '@mantine/core'
+import { Button, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput, UnstyledButton } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconChevronRight, IconPlus, IconSearch } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
@@ -230,6 +230,17 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
     )
   }, [filtered])
 
+  // Add New and Edit share one Modal (same pattern as the Delete confirm
+  // below) — activeKey/activeSet resolve which draft + save target it's
+  // currently showing, whichever of the two triggered it.
+  const activeKey = showNewCard ? NEW_CARD_ID : editingId
+  const activeSet = editingId ? sets.find((s) => s.id === editingId) : undefined
+
+  function closeActiveModal() {
+    if (showNewCard) cancelNew()
+    else if (editingId) cancelEdit(editingId)
+  }
+
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center" wrap="wrap">
@@ -249,24 +260,12 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
         size="sm"
       />
 
-      {showNewCard && (
-        <EditCard
-          draft={drafts[NEW_CARD_ID] ?? emptyDraft()}
-          tenants={tenants}
-          onChange={(patch) => updateDraft(NEW_CARD_ID, patch)}
-          onSave={() => handleSave(NEW_CARD_ID)}
-          onCancel={cancelNew}
-          saving={savingId === NEW_CARD_ID}
-          isNew
-        />
-      )}
-
       {loading ? (
         <Stack gap="sm">
           <Skeleton height={130} radius="md" />
           <Skeleton height={130} radius="md" />
         </Stack>
-      ) : groups.length === 0 && !showNewCard ? (
+      ) : groups.length === 0 ? (
         <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
           {query ? 'No prompt sets match your search.' : 'No prompt sets in the database yet.'}
         </Text>
@@ -317,30 +316,17 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
                   pb="xs"
                   style={{ marginLeft: 10, paddingLeft: 14, borderLeft: '1px solid var(--mantine-color-gray-3)' }}
                 >
-                  {list.map((set) =>
-                    editingId === set.id ? (
-                      <EditCard
-                        key={set.id}
-                        draft={drafts[set.id] ?? draftFromSet(set)}
-                        meta={set}
-                        tenants={tenants}
-                        onChange={(patch) => updateDraft(set.id, patch)}
-                        onSave={() => handleSave(set.id, set)}
-                        onCancel={() => cancelEdit(set.id)}
-                        saving={savingId === set.id}
-                      />
-                    ) : (
-                      <PromptSetViewCard
-                        key={set.id}
-                        set={set}
-                        typeName={null /* platform list resolves type name server-side if needed */}
-                        onOpenInComposer={() => openInComposer(set)}
-                        onView={() => setViewTarget(set)}
-                        onEdit={() => startEdit(set)}
-                        onDelete={() => setDeleteTarget(set)}
-                      />
-                    ),
-                  )}
+                  {list.map((set) => (
+                    <PromptSetViewCard
+                      key={set.id}
+                      set={set}
+                      typeName={null /* platform list resolves type name server-side if needed */}
+                      onOpenInComposer={() => openInComposer(set)}
+                      onView={() => setViewTarget(set)}
+                      onEdit={() => startEdit(set)}
+                      onDelete={() => setDeleteTarget(set)}
+                    />
+                  ))}
                 </Stack>
               )}
             </Stack>
@@ -372,12 +358,32 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
           </Group>
         </Stack>
       </Modal>
+
+      <Modal
+        opened={showNewCard || editingId !== null}
+        onClose={closeActiveModal}
+        title={showNewCard ? 'New prompt set' : 'Edit prompt set'}
+        centered
+        size="md"
+      >
+        <EditCardFields
+          draft={drafts[activeKey ?? ''] ?? emptyDraft()}
+          meta={activeSet}
+          tenants={tenants}
+          onChange={(patch) => updateDraft(activeKey ?? '', patch)}
+          onSave={() => handleSave(activeKey ?? '', activeSet)}
+          onCancel={closeActiveModal}
+          saving={savingId === activeKey}
+          isNew={showNewCard}
+        />
+      </Modal>
     </Stack>
   )
 }
 
-// ── Edit / new card (platform: includes a Tenant picker on new) ──────────────────
-function EditCard({
+// ── Add New / Edit form fields, rendered inside the shared Modal above
+//    (platform: includes a Tenant picker on new) ──────────────────────────
+function EditCardFields({
   draft,
   meta,
   tenants,
@@ -424,86 +430,80 @@ function EditCard({
   const saveDisabled = saving || !draft.tenant_id || !draft.label.trim() || (isLive && !(draft.prompt_type_id ?? '').trim())
 
   return (
-    <Card withBorder radius="md" p="md" style={{ backgroundColor: 'transparent' }}>
-      <Stack gap="sm">
-        <Text variant="label" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
-          {isNew ? 'New prompt set' : 'Edit prompt set'}
-        </Text>
-
-        {isNew ? (
-          <Select
-            label="Tenant"
-            description="Which tenant owns this prompt set."
-            placeholder="Select a tenant"
-            data={tenants.map((t) => ({ value: t.id, label: t.name }))}
-            value={draft.tenant_id}
-            onChange={(v) => onChange({ tenant_id: v, prompt_type_id: null })}
-            searchable
-            required
-            size="sm"
-            disabled={saving}
-          />
-        ) : (
-          <TextInput label="Tenant" value={meta?.tenant_name ?? ''} readOnly size="sm" description="A set's owning tenant can't be changed." />
-        )}
-
-        <TextInput
-          label="Label"
-          value={draft.label}
-          onChange={(e) => onChange({ label: e.currentTarget.value })}
-          placeholder="e.g. Sage Base"
-          size="sm"
+    <Stack gap="sm">
+      {isNew ? (
+        <Select
+          label="Tenant"
+          description="Which tenant owns this prompt set."
+          placeholder="Select a tenant"
+          data={tenants.map((t) => ({ value: t.id, label: t.name }))}
+          value={draft.tenant_id}
+          onChange={(v) => onChange({ tenant_id: v, prompt_type_id: null })}
+          searchable
           required
+          size="sm"
           disabled={saving}
         />
-        <Textarea
-          label="Description"
-          value={draft.description}
-          onChange={(e) => onChange({ description: e.currentTarget.value })}
-          placeholder="What this set is for…"
-          size="sm"
-          autosize
-          minRows={2}
-          maxRows={6}
-          disabled={saving}
-        />
-        <Select
-          label="Status"
-          description="Set by the admin. Multiple sets can be live."
-          data={[
-            { value: 'live', label: 'Live' },
-            { value: 'draft', label: 'Draft' },
-          ]}
-          value={draft.status}
-          onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
-          size="sm"
-          allowDeselect={false}
-          disabled={saving}
-        />
-        <Select
-          label="Type"
-          description={isLive ? 'Which prompt type this live set is wired to.' : 'Optional for a draft — set where it’s used when it goes live.'}
-          placeholder={draft.tenant_id ? 'Select a prompt type' : 'Pick a tenant first'}
-          data={typeData}
-          value={draft.prompt_type_id}
-          clearable={!isLive}
-          onChange={(value) => onChange({ prompt_type_id: value })}
-          size="sm"
-          required={isLive}
-          disabled={saving || !draft.tenant_id}
-        />
+      ) : (
+        <TextInput label="Tenant" value={meta?.tenant_name ?? ''} readOnly size="sm" description="A set's owning tenant can't be changed." />
+      )}
 
-        <PromptSetMetaStrip set={meta} isNew={isNew} tenantName={meta?.tenant_name} />
+      <TextInput
+        label="Label"
+        value={draft.label}
+        onChange={(e) => onChange({ label: e.currentTarget.value })}
+        placeholder="e.g. Sage Base"
+        size="sm"
+        required
+        disabled={saving}
+      />
+      <Textarea
+        label="Description"
+        value={draft.description}
+        onChange={(e) => onChange({ description: e.currentTarget.value })}
+        placeholder="What this set is for…"
+        size="sm"
+        autosize
+        minRows={2}
+        maxRows={6}
+        disabled={saving}
+      />
+      <Select
+        label="Status"
+        description="Set by the admin. Multiple sets can be live."
+        data={[
+          { value: 'live', label: 'Live' },
+          { value: 'draft', label: 'Draft' },
+        ]}
+        value={draft.status}
+        onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
+        size="sm"
+        allowDeselect={false}
+        disabled={saving}
+      />
+      <Select
+        label="Type"
+        description={isLive ? 'Which prompt type this live set is wired to.' : 'Optional for a draft — set where it’s used when it goes live.'}
+        placeholder={draft.tenant_id ? 'Select a prompt type' : 'Pick a tenant first'}
+        data={typeData}
+        value={draft.prompt_type_id}
+        clearable={!isLive}
+        onChange={(value) => onChange({ prompt_type_id: value })}
+        size="sm"
+        required={isLive}
+        disabled={saving || !draft.tenant_id}
+      />
 
-        <Group gap="xs" justify="flex-end" wrap="wrap">
-          <Button variant="subtle" color="gray" size="sm" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button variant="filled" color="green" size="sm" onClick={onSave} loading={saving} disabled={saveDisabled}>
-            {isNew ? 'Create set' : 'Save'}
-          </Button>
-        </Group>
-      </Stack>
-    </Card>
+      <PromptSetMetaStrip set={meta} isNew={isNew} tenantName={meta?.tenant_name} />
+
+      <Group gap="xs" justify="flex-end" wrap="wrap">
+        <Button variant="subtle" color="gray" size="sm" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button variant="filled" color="green" size="sm" onClick={onSave} loading={saving} disabled={saveDisabled}>
+          {isNew ? 'Create set' : 'Save'}
+        </Button>
+      </Group>
+    </Stack>
   )
 }

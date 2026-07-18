@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, userEvent, waitFor } from '@/test/render'
+import { render, screen, userEvent, waitFor, within } from '@/test/render'
 import { TenantPrompts } from './TenantPrompts'
 import type { PlatformPromptSet } from '@/lib/promptSet'
 
@@ -115,6 +115,51 @@ describe('TenantPrompts — nested per-tenant tree', () => {
     expect(screen.queryByText('Sage Base')).not.toBeInTheDocument()
     // Jeff Lougheed doesn't match the query at all, so it's filtered out of the list entirely.
     expect(screen.queryByText('Jeff Lougheed')).not.toBeInTheDocument()
+  })
+
+  it('Add New opens a Modal dialog, not an inline card', async () => {
+    const user = userEvent.setup()
+    mockFetch()
+    render(<TenantPrompts />)
+
+    await screen.findByText('Jeff Lougheed')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /add new/i }))
+
+    expect(await screen.findByRole('dialog', { name: 'New prompt set' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Select a tenant')).toBeInTheDocument()
+  })
+
+  it('Edit opens the same Modal, prefilled, and leaves the card in place behind it', async () => {
+    const user = userEvent.setup()
+    mockFetch()
+    render(<TenantPrompts />)
+
+    await user.click(await screen.findByRole('button', { name: /jeff lougheed/i }))
+    await user.click(await screen.findByRole('button', { name: /^edit sage base$/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit prompt set' })
+    expect(within(dialog).getByDisplayValue('Sage Base')).toBeInTheDocument()
+    // The card itself is untouched by editingId — no inline form swaps in for it.
+    expect(screen.getByRole('button', { name: /^edit sage base$/i })).toBeInTheDocument()
+  })
+
+  it('canceling the modal closes it without changing the list', async () => {
+    const user = userEvent.setup()
+    mockFetch()
+    render(<TenantPrompts />)
+
+    await screen.findByText('Jeff Lougheed')
+    await user.click(screen.getByRole('button', { name: /add new/i }))
+    await screen.findByRole('dialog', { name: 'New prompt set' })
+
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(screen.getAllByText('1 set')).toHaveLength(2)
   })
 
   it('saving a set expands and scrolls its tenant into view', async () => {
