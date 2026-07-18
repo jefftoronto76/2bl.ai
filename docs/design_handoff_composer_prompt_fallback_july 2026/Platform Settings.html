@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Platform Settings — Mantine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/core@7.17.8/styles.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mantine/notifications@7.17.8/styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?external=react",
+    "@mantine/hooks": "https://esm.sh/@mantine/hooks@7.17.8?external=react",
+    "@mantine/core": "https://esm.sh/@mantine/core@7.17.8?external=react,react-dom,@mantine/hooks",
+    "@mantine/notifications": "https://esm.sh/@mantine/notifications@7.17.8?external=react,react-dom,@mantine/core,@mantine/hooks",
+    "@tabler/icons-react": "https://esm.sh/@tabler/icons-react@3.41.1?external=react",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+</head>
+<body>
+<div id="boot">loading…</div>
+<div id="root"></div>
+<script type="module">
+import {
+  React, html, M, Ic, D, useState, useMemo, useRef, useEffect,
+  StatusBadge, fmtStamp, mountScreen, accentMix,
+} from './harness.js'
+import { PromptSetList } from './promptset.js'
+
+window.addEventListener('error', (e) => { const b = document.getElementById('boot'); if (b) { b.style.display = 'block'; b.textContent += '\n[error] ' + (e.message || '') } })
+
+const tenantName = (tid) => (D.TENANTS.find((t) => t.id === tid) || {}).name || tid
+const OPTIONS = D.PROMPT_SETS.map((s) => ({ id: s.id, label: s.label, tenantName: tenantName(s.tenant_id), status: s.status, version: s.version }))
+const MASTER_ID = (D.PROMPT_SETS.find((s) => s.is_master) || {}).id
+const SET_META = { byName: 'Jeff Lougheed', at: '2026-06-14T09:40:00' }
+
+/* ── System-prompt picker (custom trigger + searchable dropdown) ── */
+function SystemPromptPicker({ options, selectedId, masterId, onSelect, disabled }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery('') } }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+  const selected = options.find((o) => o.id === selectedId) || null
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((o) => o.label.toLowerCase().includes(q) || o.tenantName.toLowerCase().includes(q))
+  }, [options, query])
+
+  const trig = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', height: 40,
+    padding: '0 9px 0 14px', border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-sm)',
+    background: disabled ? 'var(--mantine-color-gray-0)' : '#fff', color: 'var(--mantine-color-text)', fontSize: 14, fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }
+
+  return html`
+    <div ref=${ref} style=${{ position: 'relative', minWidth: 340, maxWidth: 460 }}>
+      <button type="button" disabled=${disabled} aria-haspopup="listbox" aria-expanded=${open} onClick=${() => setOpen((o) => !o)} style=${trig}>
+        ${selected
+          ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style=${{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>${selected.label}</span>
+              <span style=${{ color: 'var(--mantine-color-gray-4)' }}>·</span>
+              <span style=${{ color: 'var(--mantine-color-dimmed)', fontWeight: 500, whiteSpace: 'nowrap' }}>${selected.tenantName}</span>
+              <${StatusBadge} status=${selected.status} />
+            </span>`
+          : html`<span style=${{ color: 'var(--mantine-color-gray-5)', fontWeight: 500 }}>Select a prompt set…</span>`}
+        <${Ic.IconChevronRight} size=${15} style=${{ color: 'var(--mantine-color-gray-6)', flex: '0 0 auto', transition: 'transform 150ms', transform: open ? 'rotate(90deg)' : 'none' }} />
+      </button>
+      ${open && html`
+        <div role="listbox" style=${{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 30, background: '#fff',
+          border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-sm)', boxShadow: 'var(--mantine-shadow-md)', padding: 4 }}>
+          <div style=${{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 8px', color: 'var(--mantine-color-gray-5)' }}>
+            <${Ic.IconSearch} size=${15} />
+            <input autoFocus value=${query} placeholder="Search prompt set or tenant…" onChange=${(e) => setQuery(e.target.value)}
+              onKeyDown=${(e) => { if (e.key === 'Escape') setQuery('') }}
+              style=${{ flex: '1 1 auto', minWidth: 0, height: 32, padding: '0 10px', border: '1px solid var(--mantine-color-gray-3)',
+                borderRadius: 'var(--mantine-radius-sm)', fontFamily: 'inherit', fontSize: 13, color: 'var(--mantine-color-text)', outline: 'none' }} />
+          </div>
+          <div style=${{ maxHeight: 300, overflowY: 'auto' }}>
+            ${filtered.length === 0
+              ? html`<div style=${{ padding: '14px 10px', fontSize: 13, color: 'var(--mantine-color-dimmed)', textAlign: 'center' }}>No matching prompt sets</div>`
+              : filtered.map((o) => {
+                  const sel = o.id === selectedId, sys = o.id === masterId
+                  return html`
+                    <button key=${o.id} type="button" role="option" onClick=${() => { onSelect(o.id); setOpen(false); setQuery('') }}
+                      onMouseEnter=${(e) => { if (!sel) e.currentTarget.style.background = 'var(--mantine-color-gray-1)' }}
+                      onMouseLeave=${(e) => { e.currentTarget.style.background = sel ? accentMix(8) : 'transparent' }}
+                      style=${{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 'none',
+                        background: sel ? accentMix(8) : 'transparent', borderRadius: 'var(--mantine-radius-sm)',
+                        padding: '9px 10px', fontSize: 13.5, color: 'var(--mantine-color-text)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style=${{ fontWeight: 500, whiteSpace: 'nowrap' }}>${o.label}</span>
+                      <span style=${{ color: 'var(--mantine-color-gray-4)' }}>·</span>
+                      <span style=${{ color: 'var(--mantine-color-dimmed)', whiteSpace: 'nowrap' }}>${o.tenantName}</span>
+                      <span style=${{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 11, color: 'var(--mantine-color-gray-5)' }}>v${o.version}</span>
+                      <span style=${{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <${StatusBadge} status=${o.status} />
+                        ${sys && html`<${M.Badge} size="sm" radius="sm" variant="filled" color="green">Composer Prompt<//>`}
+                        <span style=${{ display: 'inline-flex', width: 14, color: 'var(--mantine-color-brand-6)' }}>${sel ? html`<${Ic.IconCheck} size=${14} />` : null}</span>
+                      </span>
+                    </button>`
+                })}
+          </div>
+        </div>`}
+    </div>`
+}
+
+function SystemPromptPanel({ notify }) {
+  const [activeId, setActiveId] = useState(MASTER_ID)   // the live platform pointer; null = system fallback
+  const [pending, setPending] = useState(MASTER_ID)
+  const [confirmRevert, setConfirmRevert] = useState(false)
+  const current = OPTIONS.find((o) => o.id === activeId) || null
+  const usingFallback = !current || current.status !== 'live'
+  const dirty = pending !== activeId
+  const save = () => { const s = OPTIONS.find((o) => o.id === pending); setActiveId(pending); notify && notify({ color: 'green', title: 'Composer Prompt updated', message: s ? `${s.label} — ${s.tenantName}` : 'Saved.' }) }
+  const revert = () => {
+    setActiveId(null); setPending(null); setConfirmRevert(false)
+    notify && notify({ color: 'green', title: 'Reverted to system fallback', message: 'Production is now using the default prompt built into the app.' })
+  }
+  return html`
+    <${M.Stack} gap="md" pt=${4}>
+      <${M.Group} justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+        ${usingFallback
+          ? html`
+            <div style=${{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 12px', padding: '12px 14px', flex: '1 1 auto',
+              background: 'var(--mantine-color-gray-0)', border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-md)' }}>
+              <span style=${{ width: 8, height: 8, borderRadius: 999, background: 'var(--mantine-color-gray-5)', flex: '0 0 auto' }} />
+              <span style=${{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <${M.Text} size="sm" c="dimmed">Current Composer Prompt<//>
+                <${M.Text} size="sm" c="dimmed">·<//>
+                <${M.Text} size="sm" fw=${600}>Using system fallback<//>
+                <${M.Badge} size="sm" radius="sm" variant="light" color="gray">Fallback<//>
+              </span>
+              <${M.Text} style=${{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--mantine-color-dimmed)' }}>No composed prompt set is live — the default prompt in the codebase is being used.<//>
+            </div>`
+          : html`
+            <div style=${{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 12px', padding: '12px 14px', flex: '1 1 auto',
+              background: accentMix(7), border: `1px solid ${accentMix(22)}`, borderRadius: 'var(--mantine-radius-md)' }}>
+              <span style=${{ width: 8, height: 8, borderRadius: 999, background: 'var(--mantine-color-brand-6)', boxShadow: `0 0 0 3px ${accentMix(18, 'transparent')}`, flex: '0 0 auto' }} />
+              <span style=${{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <${M.Text} size="sm" c="dimmed">Current Composer Prompt<//>
+                <${M.Text} size="sm" c="dimmed">·<//>
+                <${M.Text} size="sm" fw=${600}>${current.label}<//>
+                <${M.Text} size="sm" c="dimmed">${current.tenantName}<//>
+                <${StatusBadge} status=${current.status} />
+              </span>
+              <${M.Text} style=${{ marginLeft: 'auto', fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 11, color: 'var(--mantine-color-gray-5)', whiteSpace: 'nowrap' }}>Set by ${SET_META.byName} · ${fmtStamp(SET_META.at)}<//>
+            </div>`}
+        <${M.Button} variant="light" color="red" size="sm" disabled=${usingFallback} onClick=${() => setConfirmRevert(true)}>Revert to fallback<//>
+      <//>
+      <${SystemPromptPicker} options=${OPTIONS} selectedId=${pending} masterId=${activeId} onSelect=${setPending} />
+      <${M.Group} gap="sm" align="center">
+        <${M.Button} color="green" disabled=${!dirty} onClick=${save}>Save<//>
+        ${dirty && html`<${M.Button} variant="subtle" color="gray" onClick=${() => setPending(activeId)}>Cancel<//>`}
+        ${dirty && html`<${M.Text} size="sm" c="dimmed">Unsaved change<//>`}
+      <//>
+      <${M.Modal} opened=${confirmRevert} onClose=${() => setConfirmRevert(false)} title=${html`<${M.Text} fw=${600}>Revert to system fallback?<//>`} centered size="sm">
+        <${M.Stack} gap="md">
+          <${M.Text} size="sm">This turns off the current Composer Prompt (<b>${current?.label}</b>). Production immediately falls back to the default prompt built into the app. You can restore a composed prompt any time by selecting one below and saving.<//>
+          <${M.Group} justify="flex-end" gap="sm">
+            <${M.Button} variant="subtle" color="gray" onClick=${() => setConfirmRevert(false)}>Cancel<//>
+            <${M.Button} color="red" onClick=${revert}>Revert to fallback<//>
+          <//>
+        <//>
+      <//>
+    <//>`
+}
+
+const SectionHeading = ({ title, subtitle }) => html`
+  <${M.Stack} gap=${2}>
+    <${M.Text} fw=${600} fz="md">${title}<//>
+    ${subtitle && html`<${M.Text} c="dimmed" size="sm">${subtitle}<//>`}
+  <//>`
+
+function PlatformSettings({ notify }) {
+  return html`
+    <${M.Stack} gap="lg">
+      <${M.Stack} gap=${4}>
+        <${M.Title} order=${1} size="h2">Settings<//>
+        <${M.Text} c="dimmed">Platform-wide configuration.<//>
+      <//>
+      <${M.Accordion} multiple defaultValue=${['system-prompt', 'tenant-prompts']} variant="separated" radius="md" chevronPosition="right">
+        <${M.Accordion.Item} value="system-prompt">
+          <${M.Accordion.Control}><${SectionHeading} title="Composer Prompt" subtitle="The compiled prompt that powers the Composer AI when building blocks. Only one can be active at a time." /><//>
+          <${M.Accordion.Panel}><${SystemPromptPanel} notify=${notify} /><//>
+        <//>
+        <${M.Accordion.Item} value="tenant-prompts">
+          <${M.Accordion.Control}><${SectionHeading} title="Tenant Prompts" /><//>
+          <${M.Accordion.Panel}><${PromptSetList} scope="platform" notify=${notify} /><//>
+        <//>
+      <//>
+    <//>`
+}
+
+mountScreen('/platform/settings', PlatformSettings)
+</script>
+</body>
+</html>

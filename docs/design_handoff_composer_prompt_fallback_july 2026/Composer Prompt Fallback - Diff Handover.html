@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Composer Prompt Fallback — Diff Handover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600;6..72,700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+doc-page:not(:defined){visibility:hidden}
+:root{--cream:#FAF6EE;--ink:#23201B;--muted:#6B6459;--terra:#C8542E;--line:#E4DCCD;--code-bg:#F3EEE3;--add:#2d6a4f;--del:#b0341f}
+doc-page{color:var(--ink);font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.62;background:#fff}
+h1,h2,h3{font-family:'Newsreader',Georgia,serif;font-weight:600;color:var(--ink);line-height:1.2}
+h1{font-size:34px;margin:0 0 4px;letter-spacing:-0.01em}
+h2{font-size:21px;margin:34px 0 10px;padding-top:16px;border-top:1px solid var(--line)}
+h3{font-size:15px;font-family:'DM Mono',monospace;font-weight:500;letter-spacing:0.02em;margin:22px 0 6px;color:var(--ink)}
+.kicker{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--terra);margin:0 0 14px}
+.lede{font-size:16.5px;color:var(--muted);margin:0 0 6px}
+p{margin:0 0 12px}
+a{color:var(--terra)}
+a:hover{color:#a5401f}
+strong{font-weight:700}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin:0 0 5px}
+code{font-family:'DM Mono',monospace;font-size:12.5px;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+table{width:100%;border-collapse:collapse;margin:4px 0 6px;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:'DM Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);font-weight:500;border-bottom:1.5px solid var(--ink)}
+td code{background:none;padding:0}
+.meta{display:grid;grid-template-columns:max-content 1fr;gap:4px 20px;font-size:13.5px;margin:0 0 8px}
+.meta dt{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted)}
+.meta dd{margin:0}
+.callout{background:var(--code-bg);border-left:3px solid var(--terra);border-radius:0 6px 6px 0;padding:12px 16px;margin:14px 0;font-size:14px}
+.callout p:last-child{margin:0}
+.check{list-style:none;padding-left:0}
+.check li{padding-left:26px;position:relative}
+.check li::before{content:'☐';position:absolute;left:0;font-size:15px;color:var(--terra)}
+.foot{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between}
+.diff{font-family:'DM Mono',monospace;font-size:11.5px;line-height:1.55;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:6px 0 4px;background:#fff}
+.diff .fname{background:#2b2823;color:#EFE7D8;padding:7px 12px;font-size:11px;letter-spacing:0.03em}
+.diff pre{margin:0;padding:10px 0;overflow-x:hidden;background:#FBF8F1}
+.diff .ln{display:block;padding:0 12px;white-space:pre-wrap;word-break:break-word}
+.diff .hunk{color:var(--muted);background:#F0EADD}
+.diff .add{background:rgba(45,106,79,0.10);color:#1f5138}
+.diff .del{background:rgba(176,52,31,0.09);color:#8f2a19}
+.diff .ctx{color:#6B6459}
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#2b2823">
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+<rect x="330" y="180" width="540" height="440" rx="14" fill="#FBF8F1" />
+<rect x="370" y="250" width="330" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+<rect x="370" y="300" width="420" height="18" rx="4" fill="#8f2a19" opacity="0.8" />
+<rect x="370" y="360" width="260" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+<rect x="370" y="410" width="380" height="18" rx="4" fill="#1f5138" opacity="0.85" />
+<rect x="370" y="470" width="300" height="18" rx="4" fill="#8f2a19" opacity="0.8" />
+</svg>
+</template>
+<doc-page size="letter" margin="0.85in">
+
+<div slot="footer" class="foot">
+<span>Second Brain Labs · Admin</span>
+<span>Platform Settings — Composer Prompt fallback · diff</span>
+</div>
+
+<p class="kicker">Diff Handover · July 2026</p>
+<h1>Composer Prompt fallback + nested Tenant Prompts</h1>
+<p class="lede">Make the fallback state visible, add an explicit revert action, and turn the flat Tenant Prompts list into a collapsible per-tenant tree.</p>
+
+<dl class="meta">
+<dt>Files</dt><dd><strong>3</strong> — <code>MasterPromptPicker.tsx</code>, <code>page.tsx</code>, <code>TenantPrompts.tsx</code> (all under <code>app/(platform)/platform/settings/</code>)</dd>
+<dt>Shape</dt><dd>~90 lines added, ~15 modified, 0 removed</dd>
+<dt>Surfaces</dt><dd>Platform → Settings only</dd>
+<dt>Risk</dt><dd>Low-medium — new PUT payload shape (<code>promptSetId: null</code>) must be accepted by <code>/api/platform/settings/master-prompt</code>; no other endpoint or data model touched</dd>
+</dl>
+
+<h2>What changed, in one breath</h2>
+<p>The Composer Prompt pill now tells you whether production is running a composed prompt set or the code-level default: green pill with set details, or a gray <strong>Fallback</strong> pill reading "Using system fallback." A new <strong>Revert to fallback</strong> button (disabled while already on fallback) opens a confirm modal and, on confirm, PUTs <code>{ promptSetId: null }</code> — pulling a bad prompt set out of production without requiring a replacement pick first. Separately, Tenant Prompts is now a collapsible tree: one row per tenant (chevron + set count), closed by default, sets indented underneath when expanded; search auto-expands matching tenants. "Add New" stays top-level with its existing Tenant picker.</p>
+
+<h2>The diff</h2>
+<p>Context lines are dimmed; <span style="color:#1f5138">+ additions</span> and <span style="color:#8f2a19">− edits</span> are highlighted.</p>
+
+<h3>1 · <code>MasterPromptPicker.tsx</code> — fallback pill</h3>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/MasterPromptPicker.tsx · CurrentSystemPromptPill</div>
+<pre><span class="ln ctx"> export function CurrentSystemPromptPill({ set, setByName, setAt }: CurrentSystemPromptPillProps) {</span>
+<span class="ln del">-  if (!set) {</span>
+<span class="ln del">-    return (</span>
+<span class="ln del">-      &lt;Text size="sm" c="dimmed"&gt;</span>
+<span class="ln del">-        No Composer Prompt set yet</span>
+<span class="ln del">-      &lt;/Text&gt;</span>
+<span class="ln del">-    )</span>
+<span class="ln del">-  }</span>
+<span class="ln add">+  if (!set) {</span>
+<span class="ln add">+    return (</span>
+<span class="ln add">+      &lt;Paper withBorder radius="xl" px="sm" py={6} w="fit-content"&gt;</span>
+<span class="ln add">+        &lt;Group gap="xs" wrap="nowrap" align="center"&gt;</span>
+<span class="ln add">+          &lt;Box aria-hidden w={8} h={8} style={{ borderRadius: '50%', backgroundColor: 'var(--mantine-color-gray-5)' }} /&gt;</span>
+<span class="ln add">+          &lt;Text size="sm" c="dimmed"&gt;Current Composer Prompt&lt;/Text&gt;</span>
+<span class="ln add">+          &lt;Text size="sm" c="dimmed"&gt;·&lt;/Text&gt;</span>
+<span class="ln add">+          &lt;Text size="sm" fw={600}&gt;Using system fallback&lt;/Text&gt;</span>
+<span class="ln add">+          &lt;Badge size="sm" radius="sm" variant="light" color="gray"&gt;Fallback&lt;/Badge&gt;</span>
+<span class="ln add">+        &lt;/Group&gt;</span>
+<span class="ln add">+      &lt;/Paper&gt;</span>
+<span class="ln add">+    )</span>
+<span class="ln add">+  }</span>
+<span class="ln ctx">   const isLive = set.status.toLowerCase() === 'live'</span></pre>
+</div>
+
+<h3>2 · <code>page.tsx</code> — revert handler + button + confirm modal</h3>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/page.tsx</div>
+<pre><span class="ln ctx"> const [saving, setSaving] = useState(false)</span>
+<span class="ln add">+ const [reverting, setReverting] = useState(false)</span>
+<span class="ln add">+ const [confirmRevert, setConfirmRevert] = useState(false)</span>
+<span class="ln ctx"> </span>
+<span class="ln ctx"> async function save() { … }</span>
+<span class="ln ctx"> </span>
+<span class="ln add">+ async function revertToFallback() {</span>
+<span class="ln add">+   setReverting(true)</span>
+<span class="ln add">+   try {</span>
+<span class="ln add">+     const res = await fetch('/api/platform/settings/master-prompt', {</span>
+<span class="ln add">+       method: 'PUT',</span>
+<span class="ln add">+       headers: { 'Content-Type': 'application/json' },</span>
+<span class="ln add">+       body: JSON.stringify({ promptSetId: null }),</span>
+<span class="ln add">+     })</span>
+<span class="ln add">+     if (!res.ok) {</span>
+<span class="ln add">+       const data = await res.json().catch(() =&gt; null)</span>
+<span class="ln add">+       notifications.show({ color: 'red', title: 'Revert failed', message: (data?.error as string) ?? 'Could not revert. Try again.' })</span>
+<span class="ln add">+       return</span>
+<span class="ln add">+     }</span>
+<span class="ln add">+     const saved: MasterPromptSetting = await res.json()</span>
+<span class="ln add">+     setMaster(saved)</span>
+<span class="ln add">+     setPending(saved.promptSetId)</span>
+<span class="ln add">+     notifications.show({ color: 'green', title: 'Reverted to system fallback', message: 'Production is now using the default prompt built into the app.' })</span>
+<span class="ln add">+     setConfirmRevert(false)</span>
+<span class="ln add">+   } catch (err) {</span>
+<span class="ln add">+     console.error('[PlatformSettings] revert failed:', err)</span>
+<span class="ln add">+     notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })</span>
+<span class="ln add">+   } finally {</span>
+<span class="ln add">+     setReverting(false)</span>
+<span class="ln add">+   }</span>
+<span class="ln add">+ }</span></pre>
+</div>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/page.tsx · render, next to the pill</div>
+<pre><span class="ln ctx">                 &lt;CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} /&gt;</span>
+<span class="ln add">+                &lt;Button variant="light" color="red" size="sm" disabled={!current} loading={reverting}</span>
+<span class="ln add">+                  onClick={() =&gt; setConfirmRevert(true)}&gt;</span>
+<span class="ln add">+                  Revert to fallback</span>
+<span class="ln add">+                &lt;/Button&gt;</span>
+<span class="ln ctx"> </span>
+<span class="ln ctx">                 &lt;MasterPromptPicker …/&gt;</span></pre>
+</div>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/page.tsx · end of component, before closing Stack</div>
+<pre><span class="ln add">+ &lt;Modal opened={confirmRevert} onClose={() =&gt; setConfirmRevert(false)} title="Revert to system fallback?" centered size="sm"&gt;</span>
+<span class="ln add">+   &lt;Stack gap="md"&gt;</span>
+<span class="ln add">+     &lt;Text size="sm"&gt;</span>
+<span class="ln add">+       This turns off the current Composer Prompt (&lt;strong&gt;{current?.label}&lt;/strong&gt;). Production immediately</span>
+<span class="ln add">+       falls back to the default prompt built into the app. You can restore a composed prompt any time by</span>
+<span class="ln add">+       selecting one below and saving.</span>
+<span class="ln add">+     &lt;/Text&gt;</span>
+<span class="ln add">+     &lt;Group justify="flex-end" gap="sm"&gt;</span>
+<span class="ln add">+       &lt;Button variant="subtle" color="gray" onClick={() =&gt; setConfirmRevert(false)}&gt;Cancel&lt;/Button&gt;</span>
+<span class="ln add">+       &lt;Button color="red" loading={reverting} onClick={revertToFallback}&gt;Revert to fallback&lt;/Button&gt;</span>
+<span class="ln add">+     &lt;/Group&gt;</span>
+<span class="ln add">+   &lt;/Stack&gt;</span>
+<span class="ln add">+ &lt;/Modal&gt;</span></pre>
+</div>
+
+<h3>3 · <code>TenantPrompts.tsx</code> — collapsible per-tenant tree</h3>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/TenantPrompts.tsx · state</div>
+<pre><span class="ln ctx"> const [viewTarget, setViewTarget] = useState&lt;PlatformPromptSet | null&gt;(null)</span>
+<span class="ln add">+ const [expanded, setExpanded] = useState&lt;Record&lt;string, boolean&gt;&gt;({})</span>
+<span class="ln add">+ const toggle = (tenantId: string) =&gt; setExpanded((e) =&gt; ({ ...e, [tenantId]: !e[tenantId] }))</span></pre>
+</div>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/TenantPrompts.tsx · render, replaces the flat groups.map</div>
+<pre><span class="ln del">-        groups.map(([name, list]) =&gt; (</span>
+<span class="ln del">-          &lt;Stack key={name} gap="xs"&gt;</span>
+<span class="ln del">-            &lt;Group justify="space-between" align="baseline"&gt;</span>
+<span class="ln del">-              &lt;Text variant="label" style={{ fontSize: 'var(--mantine-font-size-sm)' }}&gt;{name}&lt;/Text&gt;</span>
+<span class="ln del">-              &lt;Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)' }}&gt;</span>
+<span class="ln del">-                {list.length} {list.length === 1 ? 'set' : 'sets'}</span>
+<span class="ln del">-              &lt;/Text&gt;</span>
+<span class="ln del">-            &lt;/Group&gt;</span>
+<span class="ln del">-            &lt;Stack gap="sm"&gt;{list.map((set) =&gt; …)}&lt;/Stack&gt;</span>
+<span class="ln del">-          &lt;/Stack&gt;</span>
+<span class="ln del">-        ))</span>
+<span class="ln add">+        groups.map(([name, list]) =&gt; {</span>
+<span class="ln add">+          const tenantId = list[0]?.tenant_id ?? name</span>
+<span class="ln add">+          const open = query.trim() ? true : !!expanded[tenantId]</span>
+<span class="ln add">+          return (</span>
+<span class="ln add">+            &lt;Stack key={name} gap={0} data-tenant-group={tenantId}&gt;</span>
+<span class="ln add">+              &lt;UnstyledButton onClick={() =&gt; toggle(tenantId)}</span>
+<span class="ln add">+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',</span>
+<span class="ln add">+                  padding: '10px 12px', borderRadius: 'var(--mantine-radius-sm)', background: 'var(--mantine-color-gray-0)' }}&gt;</span>
+<span class="ln add">+                &lt;Group gap="xs" align="center"&gt;</span>
+<span class="ln add">+                  &lt;IconChevronRight size={14} style={{ color: 'var(--mantine-color-gray-6)', transition: 'transform 150ms',</span>
+<span class="ln add">+                    transform: open ? 'rotate(90deg)' : 'none' }} /&gt;</span>
+<span class="ln add">+                  &lt;Text fw={500} style={{ fontSize: 'var(--mantine-font-size-sm)' }}&gt;{name}&lt;/Text&gt;</span>
+<span class="ln add">+                &lt;/Group&gt;</span>
+<span class="ln add">+                &lt;Text c="dimmed" style={{ fontSize: 'var(--mantine-font-size-xs)' }}&gt;</span>
+<span class="ln add">+                  {list.length} {list.length === 1 ? 'set' : 'sets'}</span>
+<span class="ln add">+                &lt;/Text&gt;</span>
+<span class="ln add">+              &lt;/UnstyledButton&gt;</span>
+<span class="ln add">+              {open &amp;&amp; (</span>
+<span class="ln add">+                &lt;Stack gap="sm" pt="sm" pb="xs"</span>
+<span class="ln add">+                  style={{ marginLeft: 10, paddingLeft: 14, borderLeft: '1px solid var(--mantine-color-gray-3)' }}&gt;</span>
+<span class="ln add">+                  {list.map((set) =&gt; …existing PromptSetViewCard / EditCard branch, unchanged…)}</span>
+<span class="ln add">+                &lt;/Stack&gt;</span>
+<span class="ln add">+              )}</span>
+<span class="ln add">+            &lt;/Stack&gt;</span>
+<span class="ln add">+          )</span>
+<span class="ln add">+        })</span></pre>
+</div>
+<div class="diff">
+<div class="fname">app/(platform)/platform/settings/TenantPrompts.tsx · handleSave, expand + scroll the target tenant</div>
+<pre><span class="ln ctx">       notifications.show({ color: 'green', title: existing ? 'Prompt set saved' : 'Prompt set added', message: `${saved.label} · ${saved.tenant_name}` })</span>
+<span class="ln add">+      setExpanded((e) =&gt; ({ ...e, [saved.tenant_id]: true }))</span>
+<span class="ln add">+      setTimeout(() =&gt; document.querySelector(`[data-tenant-group="${saved.tenant_id}"]`)?.scrollIntoView({ block: 'nearest' }), 60)</span>
+<span class="ln ctx">       onSetsChanged?.() // keep the Master Prompt picker in sync (create + edit)</span></pre>
+</div>
+
+<h2>Behaviour</h2>
+<table>
+<thead><tr><th>State</th><th>Pill</th><th>Revert button</th></tr></thead>
+<tbody>
+<tr><td>Composed prompt live</td><td>Green dot · set name · tenant · status badge</td><td>Enabled</td></tr>
+<tr><td>No pointer set / reverted</td><td>Gray dot · "Using system fallback" · <code>Fallback</code> badge</td><td>Disabled</td></tr>
+</tbody>
+</table>
+<p>Tenant Prompts: every tenant row starts collapsed. Typing in the search box force-expands any tenant with a match (and collapses back to closed-by-default once the query clears). Creating a set expands and scrolls to its tenant automatically.</p>
+
+<div class="callout">
+<p><strong>API note:</strong> confirm <code>PUT /api/platform/settings/master-prompt</code> accepts <code>promptSetId: null</code> as a valid "clear the pointer" payload — the route currently only needs to persist whatever it's given, but this is the first caller sending <code>null</code> intentionally rather than omitting the field.</p>
+</div>
+
+<h2>Verify</h2>
+<ul class="check">
+<li>With no master pointer set, the pill reads "Using system fallback" with a gray <code>Fallback</code> badge; Revert button is disabled.</li>
+<li>Pick a set in the picker, Save → pill turns green with the set's details; Revert button enables.</li>
+<li>Click Revert → confirm modal names the current set → confirm → pill returns to the fallback state, picker's pending selection clears.</li>
+<li>Tenant Prompts: all tenants closed on load; click a row → expands with an indented, left-bordered list; search a set name → its tenant auto-expands, others collapse.</li>
+<li>Add New (top-level) still requires picking a Tenant first; after saving, that tenant's row expands and scrolls into view.</li>
+</ul>
+
+<h2>Rollback</h2>
+<p>Contained to the three files above. To remove: revert the <code>CurrentSystemPromptPill</code> null-branch, delete <code>revertToFallback</code>/the button/the modal in <code>page.tsx</code>, and revert <code>TenantPrompts.tsx</code>'s render branch back to the flat <code>groups.map</code>. No data model or other screen depends on this.</p>
+
+</doc-page>
+<script src="doc-page.js"></script>
+</body>
+</html>
