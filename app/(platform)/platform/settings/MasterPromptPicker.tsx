@@ -88,9 +88,23 @@ interface CurrentSystemPromptPillProps {
 export function CurrentSystemPromptPill({ set, setByName, setAt }: CurrentSystemPromptPillProps) {
   if (!set) {
     return (
-      <Text size="sm" c="dimmed">
-        No Composer Prompt set yet
-      </Text>
+      <Paper withBorder radius="xl" px="sm" py={6} w="fit-content">
+        <Group gap="xs" wrap="nowrap" align="center">
+          <Box aria-hidden w={8} h={8} style={{ borderRadius: '50%', backgroundColor: 'var(--mantine-color-gray-5)' }} />
+          <Text size="sm" c="dimmed">
+            Current Composer Prompt
+          </Text>
+          <Text size="sm" c="dimmed">
+            ·
+          </Text>
+          <Text size="sm" fw={600}>
+            Using system fallback
+          </Text>
+          <Badge size="sm" radius="sm" variant="light" color="gray">
+            Fallback
+          </Badge>
+        </Group>
+      </Paper>
     )
   }
 
