@@ -500,28 +500,30 @@ html[data-brand="jefflougheed"] .avatar.sage {
   70%{box-shadow:0 0 0 8px rgb(var(--color-accent) / 0)}
   100%{box-shadow:0 0 0 0 rgb(var(--color-accent) / 0)}
 }
-.scroll-hint-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stage:not(.engaged) .scroll-hint-wrap {
-  flex: 1;
-}
-
-.stage.engaged .scroll-hint-wrap {
-  height: 52px;
-}
-
-.scroll-hint {
+.section-rail {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(0);
+  z-index: 40;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: rgb(var(--color-bg) / 0.85);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: .18em;
+  font-size: 10.5px;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  color: var(--color-text-dim);
-  text-align: center;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  transition: opacity .25s, transform .25s;
 }
+.section-rail.is-hidden { opacity: 0; transform: translateX(-50%) translateY(16px); pointer-events: none; }
+.section-rail-link { color: var(--color-text-dim); text-decoration: none; transition: color .15s; white-space: nowrap; }
+.section-rail-link:hover { color: var(--color-text-primary); }
+.section-rail-link.is-active { color: rgb(var(--color-accent)); }
+.section-rail-sep { color: var(--color-text-dim); opacity: .4; }
+@media (max-width: 768px) { .section-rail { display: none; } }
 
 .msg.user .bubble {
   overflow-wrap: break-word;
@@ -581,9 +583,6 @@ html[data-brand="jefflougheed"] .avatar.sage {
   }
   .stage {
     padding-bottom: calc(120px + env(safe-area-inset-bottom));
-  }
-  .scroll-hint-wrap {
-    display: none;
   }
   .hero .close-x {
     position: fixed;
