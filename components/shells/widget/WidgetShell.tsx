@@ -8,6 +8,7 @@ import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewp
 import { useReveal } from '@/services/shared/useReveal'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
+import { clearSession, clearDraft } from '@/services/chat/ui/v1/persistence'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { MessageActions } from '@/components/chat/MessageActions'
@@ -154,7 +155,7 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, sessionId, isStreaming, errorType, mode, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, errorType, mode, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
 
@@ -162,6 +163,12 @@ export function WidgetShellChat() {
   const sageParameters = useSageParameters()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const startNewConversation = () => {
+    if (!window.confirm('Start a new conversation? This clears the current chat.')) return
+    void (sessionId ? clearSession('sage', sessionId) : clearDraft('sage'))
+    reset()
+  }
 
   // Scroll lock: freezing the body with position:fixed (not just
   // overflow:hidden) stops iOS Safari from scrolling the document under the
@@ -331,15 +338,28 @@ export function WidgetShellChat() {
                   Sage
                 </h1>
               </div>
-              <button
-                onClick={collapse}
-                aria-label="Close chat"
-                className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                  <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {messages.length > 0 && (
+                  <button
+                    onClick={startNewConversation}
+                    className="new-convo-pill"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                      <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                    </svg>
+                    New chat
+                  </button>
+                )}
+                <button
+                  onClick={collapse}
+                  aria-label="Close chat"
+                  className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                    <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
             </header>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
@@ -444,9 +464,15 @@ export function WidgetShellHero() {
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
   const { setComposerRef } = useWidgetShell()
-  const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode } =
+  const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
+
+  const startNewConversation = () => {
+    if (!window.confirm('Start a new conversation? This clears the current chat.')) return
+    void (sessionId ? clearSession('sage', sessionId) : clearDraft('sage'))
+    reset()
+  }
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
@@ -634,6 +660,14 @@ export function WidgetShellHero() {
               </span>
               <span>{isStreaming ? 'Thinking…' : isEngaged ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
             </span>
+            {isEngaged && (
+              <button type="button" className="new-convo-link" onClick={startNewConversation}>
+                <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                </svg>
+                New conversation
+              </button>
+            )}
             <span className="send-hint">↵ to send</span>
           </div>
         </div>

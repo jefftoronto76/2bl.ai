@@ -467,6 +467,24 @@ html[data-brand="jefflougheed"] .avatar.sage {
   font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--color-text-dim);
 }
 .composer .meta .left{display:flex;align-items:center;gap:8px}
+.new-convo-link{
+  display:inline-flex;align-items:center;gap:5px;
+  background:none;border:none;cursor:pointer;
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;
+  color:rgb(24 32 41 / 0.6);
+  transition:color .15s ease;
+}
+.new-convo-link:hover{color:rgb(24 32 41)}
+
+.new-convo-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--color-text-muted);
+  border:1px solid var(--color-border);border-radius:999px;
+  padding:7px 13px;background:transparent;cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
+}
+.new-convo-pill:hover{color:var(--color-text-primary);border-color:var(--color-border-hover)}
 .ai-badge{
   display:inline-flex;align-items:center;gap:6px;
   padding:3px 8px;background:rgb(var(--color-accent) / .08);border-radius:999px;
@@ -586,6 +604,9 @@ html[data-brand="jefflougheed"] .avatar.sage {
     background: rgb(var(--color-bg));
   }
   .send-hint {
+    display: none;
+  }
+  .new-convo-link {
     display: none;
   }
   .reply-time {
