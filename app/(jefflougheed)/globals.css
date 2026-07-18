@@ -427,7 +427,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .chat-surface{display:contents}
 .composer-wrap{margin-top:32px;position:relative}
 .composer{
-  background:rgb(var(--color-surface));border:1px solid var(--color-border);border-radius:18px;
+  background:rgb(245 244 240);border:1px solid rgb(24 32 41 / 0.12);border-radius:18px;
   padding:14px 14px 10px;
   box-shadow:0 8px 32px rgba(0,0,0,.05);
   transition:border-color .15s ease, box-shadow .15s ease;
@@ -439,10 +439,10 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .composer .row{display:flex;align-items:flex-end;gap:10px}
 .composer textarea{
   flex:1;border:none;outline:none;resize:none;background:transparent;
-  font-family:var(--font-body);font-size:16px;line-height:1.5;color:var(--color-text-primary);
+  font-family:var(--font-body);font-size:16px;line-height:1.5;color:rgb(24 32 41);
   min-height:28px;max-height:140px;padding:6px 6px;
 }
-.composer textarea::placeholder{color:var(--color-text-dim)}
+.composer textarea::placeholder{color:rgb(24 32 41 / 0.42)}
 .composer .send{
   position:relative;
   width:38px;height:38px;border-radius:50%;border:none;
