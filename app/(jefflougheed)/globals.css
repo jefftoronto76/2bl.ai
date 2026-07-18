@@ -463,8 +463,8 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .composer .send:disabled{opacity:.4;cursor:not-allowed}
 .composer .meta{
   display:flex;justify-content:space-between;align-items:center;
-  margin-top:8px;padding-top:8px;border-top:1px solid var(--color-border);
-  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--color-text-dim);
+  margin-top:8px;padding-top:8px;border-top:1px solid rgb(24 32 41 / 0.12);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:rgb(24 32 41);
 }
 .composer .meta .left{display:flex;align-items:center;gap:8px}
 .new-convo-link{
