@@ -2,7 +2,7 @@
 import { useEffect, useState, Fragment } from 'react'
 
 const SECTION_LINKS = [
-  { label: 'Background', href: '#problem' },
+  { label: 'POV', href: '#problem' },
   { label: 'Outcomes', href: '#outcomes' },
   { label: 'Principles', href: '#why' },
   { label: 'Getting Started', href: '#how-it-works' },
@@ -12,18 +12,6 @@ const SECTION_LINKS = [
 
 export function SectionRail() {
   const [active, setActive] = useState<string>(SECTION_LINKS[0].href)
-  const [pastHero, setPastHero] = useState(false)
-
-  useEffect(() => {
-    const onScroll = () => {
-      const hero = document.getElementById('hero')
-      const heroBottom = hero ? hero.getBoundingClientRect().bottom : 0
-      setPastHero(heroBottom < window.innerHeight * 0.6)
-    }
-    onScroll()
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   useEffect(() => {
     const els = SECTION_LINKS.map((s) => document.querySelector(s.href)).filter(Boolean) as Element[]
@@ -40,7 +28,7 @@ export function SectionRail() {
   }, [])
 
   return (
-    <div className={'section-rail' + (pastHero ? '' : ' is-hidden')}>
+    <div className="section-rail">
       {SECTION_LINKS.map((s, i) => (
         <Fragment key={s.href}>
           {i > 0 && <span className="section-rail-sep" aria-hidden="true">·</span>}
