@@ -482,27 +482,6 @@ html[data-brand="jefflougheed"] .avatar.sage {
   70%{box-shadow:0 0 0 8px rgb(var(--color-accent) / 0)}
   100%{box-shadow:0 0 0 0 rgb(var(--color-accent) / 0)}
 }
-.chips{
-  display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;
-  transition:opacity .35s ease, max-height .45s ease, margin-top .35s ease;
-  overflow:hidden;
-}
-.stage.engaged .chips{opacity:0;max-height:0;margin-top:0;pointer-events:none}
-.chip{
-  position:relative;
-  background:rgb(var(--color-surface));border:1px solid var(--color-border);
-  padding:8px 13px;border-radius:999px;
-  font-family:var(--font-body);font-size:13px;color:var(--color-text-muted);
-  cursor:pointer;transition:all .15s ease;
-}
-.chip::before{
-  content:'';
-  position:absolute;
-  inset:-4px;
-}
-.chip:hover{border-color:var(--color-border-hover);color:var(--color-text-primary)}
-.chip .arr{margin-left:6px;color:rgb(var(--color-accent))}
-
 .scroll-hint-wrap {
   display: flex;
   align-items: center;
@@ -584,9 +563,6 @@ html[data-brand="jefflougheed"] .avatar.sage {
   }
   .stage {
     padding-bottom: calc(120px + env(safe-area-inset-bottom));
-  }
-  .chips {
-    display: none;
   }
   .scroll-hint-wrap {
     display: none;

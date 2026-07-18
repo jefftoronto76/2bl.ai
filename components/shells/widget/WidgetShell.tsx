@@ -450,8 +450,8 @@ export function WidgetShellHero() {
 
   const [input, setInput] = useState('')
   // Hero-local: when true the conversation canvas renders; toggled off by
-  // the close-x and back on by textarea focus or a chip click. Independent
-  // of isEngaged so the compact hero stays compact after dismissing.
+  // the close-x and back on by textarea focus. Independent of isEngaged so
+  // the compact hero stays compact after dismissing.
   const [conversationVisible, setConversationVisible] = useState(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
@@ -510,11 +510,6 @@ export function WidgetShellHero() {
     // window.innerHeight to the visual-viewport height and injects a
     // visualViewport.offsetTop, which breaks keyboard detection and floats the
     // composer. The .chat-surface--kb fixed overlay masks the page instead.
-  }
-
-  const handleChipClick = (text: string) => {
-    setConversationVisible(true)
-    send(text)
   }
 
   const submit = () => {
@@ -642,16 +637,6 @@ export function WidgetShellHero() {
             <span className="send-hint">↵ to send</span>
           </div>
         </div>
-
-        {!isEngaged && (
-          <div className="chips">
-            <button className="chip" onClick={() => handleChipClick("Pipeline that won't convert")} disabled={isStreaming}>Pipeline that won&apos;t convert<span className="arr">→</span></button>
-            <button className="chip" onClick={() => handleChipClick('Is this a fit for me?')} disabled={isStreaming}>Is this a fit for me?<span className="arr">→</span></button>
-            <button className="chip" onClick={() => handleChipClick("A deal I can't lose")} disabled={isStreaming}>A deal I can&apos;t lose<span className="arr">→</span></button>
-            <button className="chip" onClick={() => handleChipClick('What does "do better" mean?')} disabled={isStreaming}>What does &quot;do better&quot; mean?<span className="arr">→</span></button>
-            <button className="chip" onClick={() => handleChipClick('What are companies getting wrong about AI?')} disabled={isStreaming}>What are companies getting wrong about AI?<span className="arr">→</span></button>
-          </div>
-        )}
       </div>
       </div>
 
