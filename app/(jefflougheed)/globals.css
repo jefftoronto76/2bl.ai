@@ -425,7 +425,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
    default so it has no layout effect (resting + desktop unchanged); only the
    mobile keyboard-open modifier below promotes it to a fixed flex surface. */
 .chat-surface{display:contents}
-.composer-wrap{margin-top:32px;position:relative}
+.composer-wrap{margin-top:32px;position:sticky;bottom:76px}
 .composer{
   background:rgb(245 244 240);border:1px solid rgb(24 32 41 / 0.12);border-radius:18px;
   padding:14px 14px 10px;
@@ -518,7 +518,6 @@ html[data-brand="jefflougheed"] .avatar.sage {
   overflow-x: auto;
   transition: opacity .25s, transform .25s;
 }
-.section-rail.is-hidden { opacity: 0; transform: translateX(-50%) translateY(16px); pointer-events: none; }
 .section-rail-link { color: var(--color-text-dim); text-decoration: none; transition: color .15s; white-space: nowrap; }
 .section-rail-link:hover { color: var(--color-text-primary); }
 .section-rail-link.is-active { color: rgb(var(--color-accent)); }
