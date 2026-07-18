@@ -34,14 +34,14 @@ export function Problem() {
           display: 'flex', alignItems: 'center', gap: '16px',
           fontWeight: 600,
         }}>
-          The <span style={{
+          My <span style={{
             position: 'relative',
             display: 'inline-block',
             padding: '0 4px',
             backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cpath d='M2,14 C20,8 80,6 98,12 C99,16 95,20 80,21 C50,23 15,22 2,18 Z' fill='%232d6a4f' fill-opacity='0.2'/%3E%3C/svg%3E\")",
             backgroundSize: '100% 100%',
             backgroundRepeat: 'no-repeat',
-          }}>Work</span>
+          }}>POV</span>
           <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.2)', maxWidth: '120px', display: 'block' }} />
         </p>
         <h2 style={{
@@ -49,8 +49,8 @@ export function Problem() {
           fontWeight: 400, lineHeight: 1.08, letterSpacing: '-0.02em',
           color: '#ffffff', marginBottom: '24px', paddingTop: '24px',
         }}>
-          Most problems aren't<br />
-          <em style={{ fontStyle: 'italic' }}>what they look like.</em>
+          Stay focused on<br />
+          <em style={{ fontStyle: 'italic' }}>the outcomes that matter most.</em>
         </h2>
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400, marginBottom: '8px' }}>When teams chase problems, they look for someone to blame.</p>
         <p style={{ fontSize: 'clamp(16px, 1.8vw, 18px)', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontWeight: 400, marginBottom: '8px' }}>When teams chase outcomes, they engage, they adapt, and they learn.</p>

@@ -673,12 +673,6 @@ export function WidgetShellHero() {
         </div>
       </div>
       </div>
-
-      <div className="scroll-hint-wrap">
-        <div className="scroll-hint">
-          <span>Scroll for background, principles, work ↓</span>
-        </div>
-      </div>
     </section>
   )
 }

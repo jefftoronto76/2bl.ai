@@ -1,4 +1,5 @@
 import { Nav } from './components/Nav'
+import { SectionRail } from './components/SectionRail'
 import { WidgetShellHero, WidgetShellChat } from '@/components/shells/widget/WidgetShell'
 import { Problem } from './components/Problem'
 import { SectionOutcomes } from './components/SectionOutcomes'
@@ -23,6 +24,7 @@ export default function Page() {
     // — they use only the shell action expand(), never the session context.
     <ChatSessionProvider instanceKey="sage" persistNamespace="sage">
       <Nav />
+      <SectionRail />
       <main>
         <WidgetShellHero />
         <Problem />
