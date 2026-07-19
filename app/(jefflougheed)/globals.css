@@ -93,7 +93,7 @@ html[data-brand="jefflougheed"] body {
     rgb(var(--color-bg));
 }
 
-html[data-brand="jefflougheed"] #chat {
+html[data-brand="jefflougheed"] #footerchat {
   position: relative;
   background:
     radial-gradient(800px 360px at 0% 0%,

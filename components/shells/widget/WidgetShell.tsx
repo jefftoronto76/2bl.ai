@@ -231,7 +231,7 @@ export function WidgetShellChat() {
     <>
       {/* #chat anchor section — the green CTA opens the overlay via expand(). */}
       <section
-        id="chat"
+        id="footerchat"
         style={{
           padding: '64px 0',
           borderBottom: '1px solid rgba(26,25,23,0.08)',
@@ -563,7 +563,7 @@ export function WidgetShellHero() {
 
   return (
     <section
-      id="hero"
+      id="herochat"
       data-screen-label="Hero"
       className={isEngaged ? 'stage engaged' : 'stage'}
     >
