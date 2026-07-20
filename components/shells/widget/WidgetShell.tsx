@@ -121,11 +121,11 @@ function makeRenderUserMessage(retry: () => void) {
 function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
+      <div className="max-w-[70%] rounded-lg border border-[color:var(--color-border)] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
         {ERROR_COPY[errorType]}
         <button
           onClick={() => retry()}
-          className="relative mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] before:absolute before:content-[''] before:-inset-[10px]"
+          className="relative mt-3 block rounded-md border border-[color:var(--color-border-hover)] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] before:absolute before:content-[''] before:-inset-[10px]"
         >
           Retry
         </button>
@@ -137,7 +137,7 @@ function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
 function renderStreamingIndicator(): ReactNode {
   return (
     <div data-sage-streaming className="flex justify-start">
-      <div className="flex gap-1.5 rounded-lg border border-black/[0.08] bg-surface p-4">
+      <div className="flex gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-surface p-4">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
@@ -326,9 +326,9 @@ export function WidgetShellChat() {
       </section>
 
       {isExpanded && (
-        <div className="fixed inset-0 z-[100] overflow-hidden bg-bg animate-[expandChat_0.3s_ease-out]">
+        <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
           <div className="flex h-dvh min-h-0 flex-col">
-            <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
+            <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
                   aria-hidden
@@ -403,7 +403,7 @@ export function WidgetShellChat() {
                   it — composer-inside-scroll-container pattern (Claude.ai/
                   ChatGPT), mirrors the fix already applied to Heirloom's
                   MessageList. */}
-              <div className="sticky bottom-0 border-t border-black/[0.08] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
+              <div className="sticky bottom-0 border-t border-[color:var(--color-border)] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
                 <div className="mx-auto flex max-w-[900px] items-center gap-3">
                   <textarea
                     ref={textareaRef}
@@ -412,13 +412,13 @@ export function WidgetShellChat() {
                     onKeyDown={handleKey}
                     placeholder=""
                     rows={1}
-                    className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
+                    className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-[color:var(--color-border)] bg-[rgb(var(--color-bg))] px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
                   />
                   {isStreaming ? (
                     <button
                       onClick={stop}
                       aria-label="Stop generating"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity before:absolute before:inset-[-2px] before:content-['']"
+                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-[color:var(--color-surface)] transition-opacity before:absolute before:inset-[-2px] before:content-['']"
                     >
                       <Square size={16} fill="currentColor" />
                     </button>
@@ -427,7 +427,7 @@ export function WidgetShellChat() {
                       onClick={submit}
                       disabled={!input.trim()}
                       aria-label="Send message"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
+                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-[color:var(--color-surface)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
                     >
                       →
                     </button>
