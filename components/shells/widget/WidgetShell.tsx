@@ -463,7 +463,7 @@ export function WidgetShellHero() {
   // Conversation state comes from the shared session — Hero and the Chat
   // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
   // is shell state and lives in useWidgetShell.
-  const { setComposerRef } = useWidgetShell()
+  const { setComposerRef, setHeroEngaged } = useWidgetShell()
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
@@ -500,6 +500,10 @@ export function WidgetShellHero() {
   }, [setMode])
 
   const isEngaged = messages.length > 0 && conversationVisible
+
+  useEffect(() => {
+    setHeroEngaged(isEngaged)
+  }, [isEngaged, setHeroEngaged])
 
   // Hide the page's own scrollbar while the hero chat is engaged on mobile —
   // the chat already fills the screen at that point, so a lingering page

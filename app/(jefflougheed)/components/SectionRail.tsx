@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, Fragment } from 'react'
+import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 
 const SECTION_LINKS = [
   { label: 'POV', href: '#problem' },
@@ -11,6 +12,7 @@ const SECTION_LINKS = [
 ] as const
 
 export function SectionRail() {
+  const { isExpanded, heroEngaged } = useWidgetShell()
   const [active, setActive] = useState<string>(SECTION_LINKS[0].href)
 
   useEffect(() => {
@@ -26,6 +28,8 @@ export function SectionRail() {
     els.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
   }, [])
+
+  if (isExpanded || heroEngaged) return null
 
   return (
     <div className="section-rail">

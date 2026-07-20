@@ -23,8 +23,10 @@ interface WidgetShellStore {
   isExpanded: boolean
   mode: 'question' | null
   composerRef: RefObject<HTMLTextAreaElement | null> | null
+  heroEngaged: boolean
   setMode: (mode: 'question' | null) => void
   setComposerRef: (ref: RefObject<HTMLTextAreaElement | null> | null) => void
+  setHeroEngaged: (engaged: boolean) => void
   expand: (mode?: 'question') => void
   collapse: () => void
 }
@@ -33,8 +35,10 @@ export const useWidgetShell = create<WidgetShellStore>((set) => ({
   isExpanded: false,
   mode: null,
   composerRef: null,
+  heroEngaged: false,
   setMode: (mode) => set({ mode }),
   setComposerRef: (ref) => set({ composerRef: ref }),
+  setHeroEngaged: (engaged) => set({ heroEngaged: engaged }),
   // Opens the full-viewport overlay (Chat.tsx). Called from the in-page #chat
   // CTA (expand()) and SectionProcess (expand('question')). Hero's inline
   // composer does NOT use expand() — it owns its own UI and writes to the

@@ -593,6 +593,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
 
 .stage.engaged .hero-conversation {
   flex: 1;
+  border-radius: 0 0 18px 18px;
 }
 
 .stage.engaged .hero-conversation > :first-child {
@@ -629,6 +630,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
     flex-direction: column;
     grid-row: 2;
     min-height: 0;
+    gap: 16px;
   }
   .stage.engaged .hero-conversation {
     flex: 1;
