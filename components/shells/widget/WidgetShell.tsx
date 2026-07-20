@@ -484,7 +484,7 @@ export function WidgetShellHero() {
   // Hero-local: when true the conversation canvas renders; toggled off by
   // the close-x and back on by textarea focus. Independent of isEngaged so
   // the compact hero stays compact after dismissing.
-  const [conversationVisible, setConversationVisible] = useState(true)
+  const [conversationVisible, setConversationVisible] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
   const chatSurfaceRef = useRef<HTMLDivElement>(null)
@@ -564,6 +564,7 @@ export function WidgetShellHero() {
     const text = input.trim()
     if (!text || isStreaming) return
     setInput('')
+    setConversationVisible(true)
     send(text)
   }
 
