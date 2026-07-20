@@ -403,39 +403,45 @@ export function WidgetShellChat() {
                   it — composer-inside-scroll-container pattern (Claude.ai/
                   ChatGPT), mirrors the fix already applied to Heirloom's
                   MessageList. */}
-              <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto w-full max-w-[900px] px-4 pt-3 pb-3 sm:px-12">
-                <div className="mx-auto flex max-w-[900px] items-center gap-3">
-                  <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKey}
-                    placeholder=""
-                    rows={1}
-                    className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-[color:var(--color-border)] bg-[rgb(var(--color-bg))] px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
-                  />
-                  {isStreaming ? (
-                    <button
-                      onClick={stop}
-                      aria-label="Stop generating"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-[color:var(--color-surface)] transition-opacity before:absolute before:inset-[-2px] before:content-['']"
-                    >
-                      <Square size={16} fill="currentColor" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={submit}
-                      disabled={!input.trim()}
-                      aria-label="Send message"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-[color:var(--color-surface)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
-                    >
-                      →
-                    </button>
-                  )}
+              <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto mt-4 w-full max-w-[900px] px-4 sm:px-12">
+                <div className="composer">
+                  <div className="row">
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKey}
+                      placeholder=""
+                      rows={1}
+                    />
+                    {isStreaming ? (
+                      <button className="send" onClick={stop} aria-label="Stop generating">
+                        <Square size={15} fill="currentColor" />
+                      </button>
+                    ) : (
+                      <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 10L17 10M11 4L17 10L11 16"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="meta">
+                    <span className="left">
+                      <span className="ai-badge"><span className="dot" />SAGE·AI</span>
+                      <span>{isStreaming ? 'Thinking…' : messages.length > 0 ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
+                    </span>
+                    {messages.length > 0 && (
+                      <button type="button" className="new-convo-pill" onClick={startNewConversation}>
+                        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                          <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                        </svg>
+                        New chat
+                      </button>
+                    )}
+                    <span className="send-hint">↵ to send</span>
+                  </div>
                 </div>
-                <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
-                  Sage knows Jeff&apos;s background and will give you a straight answer.
-                </p>
               </div>
             </div>
           </div>
