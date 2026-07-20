@@ -74,12 +74,10 @@ html[data-brand="jefflougheed"] #how-it-works {
   --color-accent-hover: 30 77 57;
 }
 
-/* The Sage chat composer + message list — both the inline hero surface
-   (#herochat .chat-surface) and the fullscreen overlay (#sage-chat-overlay)
-   — sit on the same warm-white surface as #outcomes / #how-it-works /
-   #testimonials. Same light token set, including the deep-green accent. */
-html[data-brand="jefflougheed"] #herochat .chat-surface,
-html[data-brand="jefflougheed"] #sage-chat-overlay {
+/* The Sage chat composer + message list on the inline hero surface sit on
+   the same warm-white surface as #outcomes / #how-it-works / #testimonials.
+   Same light token set, including the deep-green accent. */
+html[data-brand="jefflougheed"] #herochat .chat-surface {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
@@ -90,6 +88,28 @@ html[data-brand="jefflougheed"] #sage-chat-overlay {
   --color-border-hover: rgb(24 32 41 / 0.28);
   --color-accent: 45 106 79;
   --color-accent-hover: 30 77 57;
+}
+
+/* In the fullscreen overlay, ONLY the message log gets the warm-white
+   treatment — the header and composer bar stay on the dark inkwell palette
+   (they're siblings of this element, not descendants, so they're
+   unaffected). Bottom padding reserves space for the sticky composer bar
+   (~110px tall) so the tail of the scrolling list stops above it instead
+   of sliding underneath. */
+html[data-brand="jefflougheed"] #sage-chat-overlay [role="log"] {
+  --color-bg: 245 244 240;
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+  background: rgb(var(--color-bg));
+  color: rgb(var(--ink-rgb));
+  padding-bottom: 140px;
 }
 
 html[data-brand="jefflougheed"] .bone-card {
