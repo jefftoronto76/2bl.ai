@@ -19,16 +19,11 @@ import type { ChatErrorType, MarkerParseResult, ParsedMarker, UIMessage } from '
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
-// WidgetShellHero (the marketing hero's inline composer) and WidgetShellChat
-// (the #chat anchor section + full-viewport overlay) are consolidated here
-// because they share the singleton session (instanceKey "sage"), the same
-// ChatThread wiring, and — for user/assistant/error/streaming rendering —
-// byte-identical JSX. They remain two separate exports, called from the two
-// original, non-adjacent positions in app/(jefflougheed)/page.tsx (Hero at
-// the top, Chat's in-flow #chat section + fixed overlay near the bottom):
-// merging them into one mounted component would move the #chat section's DOM
-// position, a visible layout change. Each keeps its own unmodified
-// useKeyboardViewport call — the two configurations are not centralized.
+/* This file is a READ-ONLY reference copy pulled verbatim from
+   jefftoronto76/2bl.ai @ 07-19-26_jefflougheed.cachat via GitHub, for
+   direct comparison against the local prototype (nav-hero-prod.jsx /
+   widget-chat-prod.jsx / styles-prod.css). It is not wired into the
+   prototype and does not run. Re-copy from the branch if it moves on. */
 
 function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
   return markers
@@ -54,10 +49,6 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
 
-    // Suppress actions on the message currently being streamed into — same
-    // "active" condition ChatThread computes internally, derived here from
-    // data already in scope rather than a ChatThread prop. Regenerate is
-    // scoped to the latest assistant message only (see MessageActions.tsx).
     const messageIndex = ctx.messages.findIndex((m) => m.id === msg.id)
     const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
     const isActive = ctx.isStreaming && isLast
@@ -98,8 +89,6 @@ function makeRenderUserMessage(retry: () => void) {
     const status = msg.status ?? 'sent'
     return (
       <div key={msg.id} className="flex flex-col items-end gap-1">
-        {/* Shake lives on this wrapper (not the <p>) so it doesn't collide
-            with the <p>'s own entrance-animation `animation` shorthand. */}
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -121,11 +110,11 @@ function makeRenderUserMessage(retry: () => void) {
 function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[70%] rounded-lg border border-black/[0.08] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
+      <div className="max-w-[70%] rounded-lg border border-[color:var(--color-border)] bg-surface p-4 font-body text-base leading-[1.7] text-[color:var(--color-text-primary)]">
         {ERROR_COPY[errorType]}
         <button
           onClick={() => retry()}
-          className="relative mt-3 block rounded-md border border-black/[0.15] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] before:absolute before:content-[''] before:-inset-[10px]"
+          className="relative mt-3 block rounded-md border border-[color:var(--color-border-hover)] bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)] before:absolute before:content-[''] before:-inset-[10px]"
         >
           Retry
         </button>
@@ -137,7 +126,7 @@ function renderError(retry: () => void, errorType: ChatErrorType): ReactNode {
 function renderStreamingIndicator(): ReactNode {
   return (
     <div data-sage-streaming className="flex justify-start">
-      <div className="flex gap-1.5 rounded-lg border border-black/[0.08] bg-surface p-4">
+      <div className="flex gap-1.5 rounded-lg border border-[color:var(--color-border)] bg-surface p-4">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
@@ -170,15 +159,6 @@ export function WidgetShellChat() {
     reset()
   }
 
-  // Scroll lock: freezing the body with position:fixed (not just
-  // overflow:hidden) stops iOS Safari from scrolling the document under the
-  // overlay while the chat is open; the scroll position is restored on close.
-  // Keyboard handling is pure CSS (h-dvh + safe-area insets, see the overlay
-  // className below) — app/layout.tsx's interactiveWidget: 'resizes-content'
-  // is what makes dvh shrink correctly on keyboard-open on both iOS Safari
-  // and Android Chrome, so no JS-computed height is needed here. Mirrors
-  // components/shells/membership/ChatHero.tsx's overlay fix (same pattern,
-  // applied there first).
   useKeyboardViewport({
     active: isExpanded,
     lockBodyScroll: true,
@@ -195,10 +175,6 @@ export function WidgetShellChat() {
     return () => window.removeEventListener('keydown', handleEscape as any)
   }, [isExpanded, collapse])
 
-  // Mode bridge: the shell opens the overlay via expand('question')
-  // (SectionProcess), which sets useWidgetShell.mode. Mirror that into the
-  // shared session when the overlay opens so the greeting and /api/sage reflect
-  // question mode. SectionProcess stays untouched.
   useEffect(() => {
     if (!isExpanded) return
     setMode(useWidgetShell.getState().mode)
@@ -229,9 +205,8 @@ export function WidgetShellChat() {
 
   return (
     <>
-      {/* #chat anchor section — the green CTA opens the overlay via expand(). */}
       <section
-        id="chat"
+        id="footerchat"
         style={{
           padding: '64px 0',
           borderBottom: '1px solid rgba(26,25,23,0.08)',
@@ -326,9 +301,9 @@ export function WidgetShellChat() {
       </section>
 
       {isExpanded && (
-        <div className="fixed inset-0 z-[100] overflow-hidden bg-bg animate-[expandChat_0.3s_ease-out]">
+        <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
           <div className="flex h-dvh min-h-0 flex-col">
-            <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-black/[0.06] bg-bg/90 px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
+            <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
                   aria-hidden
@@ -364,7 +339,7 @@ export function WidgetShellChat() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
               <div
-                className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
+                className="chat-log-light mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
                 role="log"
                 aria-live="polite"
                 aria-label="Conversation"
@@ -372,7 +347,7 @@ export function WidgetShellChat() {
                 aria-busy={isStreaming}
               >
                 {messages.length === 0 && (
-                  <div className="sage-animate max-w-[680px] border-l-2 border-accent/35 pl-4 [animation:sage-slide-up_0.28s_ease-out_both]">
+                  <div className="chat-greeting-centered sage-animate [animation:sage-slide-up_0.28s_ease-out_both]">
                     <p className="mb-3 font-display font-normal leading-[1.15] tracking-[-0.01em] text-[color:var(--color-text-primary)] text-[clamp(26px,4vw,36px)]">
                       {mode === 'question' ? (
                         <>Ask me anything about <em className="italic">Jeff&apos;s work</em>.</>
@@ -396,46 +371,50 @@ export function WidgetShellChat() {
                   scrollBehavior="instant"
                   scrollDeps={[messages, isExpanded]}
                   scrollGuard={() => isExpanded}
+                  scrollBlock="end"
+                  scrollAnchorClassName="messages-end"
                 />
               </div>
 
-              {/* Sticky inside the scroll container, not a flex sibling after
-                  it — composer-inside-scroll-container pattern (Claude.ai/
-                  ChatGPT), mirrors the fix already applied to Heirloom's
-                  MessageList. */}
-              <div className="sticky bottom-0 border-t border-black/[0.08] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
-                <div className="mx-auto flex max-w-[900px] items-center gap-3">
-                  <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKey}
-                    placeholder=""
-                    rows={1}
-                    className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-xl border border-black/[0.12] bg-bg px-[18px] py-3.5 font-body text-base leading-[1.5] text-[color:var(--color-text-primary)] outline-none"
-                  />
-                  {isStreaming ? (
-                    <button
-                      onClick={stop}
-                      aria-label="Stop generating"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-white transition-opacity before:absolute before:inset-[-2px] before:content-['']"
-                    >
-                      <Square size={16} fill="currentColor" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={submit}
-                      disabled={!input.trim()}
-                      aria-label="Send message"
-                      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-0 bg-accent text-xl text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40 before:absolute before:inset-[-2px] before:content-['']"
-                    >
-                      →
-                    </button>
-                  )}
+              <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto mt-4 w-full max-w-[900px] px-4 sm:px-12">
+                <div className="composer">
+                  <div className="row">
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKey}
+                      placeholder=""
+                      rows={1}
+                    />
+                    {isStreaming ? (
+                      <button className="send" onClick={stop} aria-label="Stop generating">
+                        <Square size={15} fill="currentColor" />
+                      </button>
+                    ) : (
+                      <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 10L17 10M11 4L17 10L11 16"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="meta">
+                    <span className="left">
+                      <span className="ai-badge"><span className="dot" />SAGE·AI</span>
+                      <span>{isStreaming ? 'Thinking…' : messages.length > 0 ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
+                    </span>
+                    {messages.length > 0 && (
+                      <button type="button" className="new-convo-pill" onClick={startNewConversation}>
+                        <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                          <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                        </svg>
+                        New chat
+                      </button>
+                    )}
+                    <span className="send-hint">↵ to send</span>
+                  </div>
                 </div>
-                <p className="mt-2 text-center font-body text-[11px] text-[color:var(--color-text-muted)]">
-                  Sage knows Jeff&apos;s background and will give you a straight answer.
-                </p>
               </div>
             </div>
           </div>
@@ -460,10 +439,7 @@ function detectModeFromLocation(): 'question' | null {
 }
 
 export function WidgetShellHero() {
-  // Conversation state comes from the shared session — Hero and the Chat
-  // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
-  // is shell state and lives in useWidgetShell.
-  const { setComposerRef } = useWidgetShell()
+  const { setComposerRef, setHeroEngaged } = useWidgetShell()
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
@@ -475,10 +451,7 @@ export function WidgetShellHero() {
   }
 
   const [input, setInput] = useState('')
-  // Hero-local: when true the conversation canvas renders; toggled off by
-  // the close-x and back on by textarea focus. Independent of isEngaged so
-  // the compact hero stays compact after dismissing.
-  const [conversationVisible, setConversationVisible] = useState(true)
+  const [conversationVisible, setConversationVisible] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
   const chatSurfaceRef = useRef<HTMLDivElement>(null)
@@ -502,22 +475,24 @@ export function WidgetShellHero() {
   const isEngaged = messages.length > 0 && conversationVisible
 
   useEffect(() => {
+    setHeroEngaged(isEngaged)
+  }, [isEngaged, setHeroEngaged])
+
+  useEffect(() => {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches
+    if (!isEngaged || !isMobile) return
+    const prev = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    return () => { document.documentElement.style.overflow = prev }
+  }, [isEngaged])
+
+  useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling. Syncs the chat surface to the visual viewport: when
-  // the keyboard opens, visualViewport.height shrinks and offsetTop grows — we
-  // mirror both onto the surface CSS vars (height + a compositor translateY, no
-  // transition) so the surface exactly covers the visible area above the
-  // keyboard. keyboardOpen flips the surface from display:contents to a fixed
-  // flex box (CSS, mobile only). On desktop vv.height never drops, so
-  // keyboardOpen stays false and nothing changes. The visualViewport plumbing
-  // (listener lifecycle, SSR guards, threshold) lives in the shared hook; this
-  // surface deliberately runs it WITHOUT body scroll-lock (position:fixed on the
-  // body breaks iOS keyboard detection in this inline context).
   const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
     keyboardThreshold: 120,
     onViewportChange: ({ height, offsetTop }) => {
@@ -531,17 +506,14 @@ export function WidgetShellHero() {
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    syncViewport() // prime the surface before the first vv event lands
-    // No body scroll-lock: on iOS, body { position: fixed } collapses
-    // window.innerHeight to the visual-viewport height and injects a
-    // visualViewport.offsetTop, which breaks keyboard detection and floats the
-    // composer. The .chat-surface--kb fixed overlay masks the page instead.
+    syncViewport()
   }
 
   const submit = () => {
     const text = input.trim()
     if (!text || isStreaming) return
     setInput('')
+    setConversationVisible(true)
     send(text)
   }
 
@@ -563,7 +535,7 @@ export function WidgetShellHero() {
 
   return (
     <section
-      id="hero"
+      id="herochat"
       data-screen-label="Hero"
       className={isEngaged ? 'stage engaged' : 'stage'}
     >
@@ -598,7 +570,7 @@ export function WidgetShellHero() {
         className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
         ref={chatSurfaceRef}
       >
-      {conversationVisible && (
+      {conversationVisible && messages.length > 0 && (
         <div
           className="hero-conversation flex flex-col gap-6"
           role="log"
