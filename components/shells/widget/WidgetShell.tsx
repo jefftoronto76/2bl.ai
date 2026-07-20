@@ -364,7 +364,7 @@ export function WidgetShellChat() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
               <div
-                className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
+                className="chat-log-light mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
                 role="log"
                 aria-live="polite"
                 aria-label="Conversation"
@@ -372,7 +372,7 @@ export function WidgetShellChat() {
                 aria-busy={isStreaming}
               >
                 {messages.length === 0 && (
-                  <div className="sage-animate max-w-[680px] border-l-2 border-accent/35 pl-4 [animation:sage-slide-up_0.28s_ease-out_both]">
+                  <div className="chat-greeting-centered sage-animate [animation:sage-slide-up_0.28s_ease-out_both]">
                     <p className="mb-3 font-display font-normal leading-[1.15] tracking-[-0.01em] text-[color:var(--color-text-primary)] text-[clamp(26px,4vw,36px)]">
                       {mode === 'question' ? (
                         <>Ask me anything about <em className="italic">Jeff&apos;s work</em>.</>
@@ -403,7 +403,7 @@ export function WidgetShellChat() {
                   it — composer-inside-scroll-container pattern (Claude.ai/
                   ChatGPT), mirrors the fix already applied to Heirloom's
                   MessageList. */}
-              <div className="sticky bottom-0 border-t border-[color:var(--color-border)] bg-surface px-4 pt-3 sm:px-12 pb-[max(12px,env(safe-area-inset-bottom))]">
+              <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto w-full max-w-[900px] px-4 pt-3 pb-3 sm:px-12">
                 <div className="mx-auto flex max-w-[900px] items-center gap-3">
                   <textarea
                     ref={textareaRef}
@@ -500,6 +500,18 @@ export function WidgetShellHero() {
   }, [setMode])
 
   const isEngaged = messages.length > 0 && conversationVisible
+
+  // Hide the page's own scrollbar while the hero chat is engaged on mobile —
+  // the chat already fills the screen at that point, so a lingering page
+  // scrollbar behind it is just visual noise. 768px matches every other
+  // mobile check in this file (.hero .close-x, .chat-surface--kb, etc.).
+  useEffect(() => {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches
+    if (!isEngaged || !isMobile) return
+    const prev = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    return () => { document.documentElement.style.overflow = prev }
+  }, [isEngaged])
 
   useEffect(() => {
     const ta = textareaRef.current

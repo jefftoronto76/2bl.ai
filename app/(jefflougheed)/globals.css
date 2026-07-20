@@ -74,12 +74,10 @@ html[data-brand="jefflougheed"] #how-it-works {
   --color-accent-hover: 30 77 57;
 }
 
-/* The Sage chat composer + message list — both the inline hero surface
-   (#herochat .chat-surface) and the fullscreen overlay (#sage-chat-overlay)
-   — sit on the same warm-white surface as #outcomes / #how-it-works /
-   #testimonials. Same light token set, including the deep-green accent. */
-html[data-brand="jefflougheed"] #herochat .chat-surface,
-html[data-brand="jefflougheed"] #sage-chat-overlay {
+/* The Sage chat composer + message list on the inline hero surface sit on
+   the same warm-white surface as #outcomes / #how-it-works / #testimonials.
+   Same light token set, including the deep-green accent. */
+html[data-brand="jefflougheed"] #herochat .chat-surface {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
@@ -90,6 +88,41 @@ html[data-brand="jefflougheed"] #sage-chat-overlay {
   --color-border-hover: rgb(24 32 41 / 0.28);
   --color-accent: 45 106 79;
   --color-accent-hover: 30 77 57;
+}
+
+/* Overlay: only the message-log and composer cards get the warm-white
+   treatment — the header and the space around/between them stay on the
+   dark inkwell palette, so the cards read as floating on a dark backdrop
+   instead of the whole overlay being one pale panel. */
+html[data-brand="jefflougheed"] #sage-chat-overlay .chat-log-light,
+html[data-brand="jefflougheed"] #sage-chat-overlay .chat-composer-light {
+  --color-bg: 245 244 240;
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+}
+.chat-log-light {
+  background: rgb(var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.05);
+}
+.chat-composer-light {
+  background: rgb(var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.05);
+}
+.chat-greeting-centered {
+  max-width: 560px;
+  margin: auto;
+  text-align: center;
 }
 
 html[data-brand="jefflougheed"] .bone-card {
@@ -370,7 +403,7 @@ html[data-brand="jefflougheed"] .avatar.sage {
   padding-top:64px;
 }
 .hero .close-x{
-  position:absolute;top:0;right:0;
+  position:absolute;bottom:0;right:0;
   width:36px;height:36px;border-radius:50%;
   background:transparent;border:1px solid var(--color-border);
   display:flex;align-items:center;justify-content:center;
@@ -564,6 +597,35 @@ html[data-brand="jefflougheed"] .avatar.sage {
 
 .stage.engaged .hero-conversation > :first-child {
   margin-top: auto;
+}
+
+/* Desktop-only: replace the sticky-header/sticky-composer layout with an
+   explicit 3-row grid (header / scrolling messages / composer) so long
+   conversations scroll in their own bounded region instead of the sticky
+   positioning fighting the flex layout. Scoped to min-width:769px — mobile
+   keeps its existing, separately-engineered fixed-positioning scheme
+   (.composer-wrap, .hero .close-x, .chat-surface--kb) completely untouched;
+   .stage.engaged .composer-wrap here would otherwise out-specificity the
+   mobile media query's .composer-wrap{position:fixed} override below. */
+@media (min-width: 769px) {
+  .stage.engaged {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .stage.engaged .hero {
+    position: relative;
+    top: auto;
+    grid-row: 1;
+  }
+  .stage.engaged .hero-conversation {
+    grid-row: 2;
+  }
+  .stage.engaged .composer-wrap {
+    position: static;
+    grid-row: 3;
+  }
 }
 
 .hero-conversation::-webkit-scrollbar { width: 4px; }
