@@ -599,18 +599,23 @@ html[data-brand="jefflougheed"] .avatar.sage {
   margin-top: auto;
 }
 
-/* Desktop-only: replace the sticky-header/sticky-composer layout with an
-   explicit 3-row grid (header / scrolling messages / composer) so long
-   conversations scroll in their own bounded region instead of the sticky
-   positioning fighting the flex layout. Scoped to min-width:769px — mobile
-   keeps its existing, separately-engineered fixed-positioning scheme
-   (.composer-wrap, .hero .close-x, .chat-surface--kb) completely untouched;
-   .stage.engaged .composer-wrap here would otherwise out-specificity the
-   mobile media query's .composer-wrap{position:fixed} override below. */
+/* Desktop-only: replace the sticky-header/sticky-composer layout with a
+   2-row grid (header / everything else) so long conversations scroll in
+   their own bounded region instead of the sticky positioning fighting the
+   flex layout. .chat-surface defaults to display:contents (see its base
+   rule above) so it normally has no layout effect — deliberately NOT
+   relied on here for grid placement, since explicit grid-row assignment
+   reaching through display:contents to grandchildren is a much less
+   reliably-supported pattern than basic content flattening. Instead
+   .chat-surface itself becomes a real flex column occupying row 2, with
+   .hero-conversation and .composer-wrap as its own ordinary flex children
+   — a plain, well-supported nested layout. Scoped to min-width:769px —
+   mobile keeps its existing, separately-engineered fixed-positioning
+   scheme (.composer-wrap, .hero .close-x, .chat-surface--kb) untouched. */
 @media (min-width: 769px) {
   .stage.engaged {
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
     height: 100dvh;
     overflow: hidden;
   }
@@ -619,12 +624,18 @@ html[data-brand="jefflougheed"] .avatar.sage {
     top: auto;
     grid-row: 1;
   }
-  .stage.engaged .hero-conversation {
+  .stage.engaged .chat-surface {
+    display: flex;
+    flex-direction: column;
     grid-row: 2;
+    min-height: 0;
+  }
+  .stage.engaged .hero-conversation {
+    flex: 1;
+    min-height: 0;
   }
   .stage.engaged .composer-wrap {
     position: static;
-    grid-row: 3;
   }
 }
 
