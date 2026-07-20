@@ -364,7 +364,7 @@ export function WidgetShellChat() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
               <div
-                className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)] pr-[clamp(32px,7vw,64px)]"
+                className="mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
                 role="log"
                 aria-live="polite"
                 aria-label="Conversation"
