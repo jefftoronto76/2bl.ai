@@ -19,16 +19,11 @@ import type { ChatErrorType, MarkerParseResult, ParsedMarker, UIMessage } from '
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
-// WidgetShellHero (the marketing hero's inline composer) and WidgetShellChat
-// (the #chat anchor section + full-viewport overlay) are consolidated here
-// because they share the singleton session (instanceKey "sage"), the same
-// ChatThread wiring, and — for user/assistant/error/streaming rendering —
-// byte-identical JSX. They remain two separate exports, called from the two
-// original, non-adjacent positions in app/(jefflougheed)/page.tsx (Hero at
-// the top, Chat's in-flow #chat section + fixed overlay near the bottom):
-// merging them into one mounted component would move the #chat section's DOM
-// position, a visible layout change. Each keeps its own unmodified
-// useKeyboardViewport call — the two configurations are not centralized.
+/* This file is a READ-ONLY reference copy pulled verbatim from
+   jefftoronto76/2bl.ai @ 07-19-26_jefflougheed.cachat via GitHub, for
+   direct comparison against the local prototype (nav-hero-prod.jsx /
+   widget-chat-prod.jsx / styles-prod.css). It is not wired into the
+   prototype and does not run. Re-copy from the branch if it moves on. */
 
 function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
   return markers
@@ -54,10 +49,6 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
 
-    // Suppress actions on the message currently being streamed into — same
-    // "active" condition ChatThread computes internally, derived here from
-    // data already in scope rather than a ChatThread prop. Regenerate is
-    // scoped to the latest assistant message only (see MessageActions.tsx).
     const messageIndex = ctx.messages.findIndex((m) => m.id === msg.id)
     const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
     const isActive = ctx.isStreaming && isLast
@@ -98,8 +89,6 @@ function makeRenderUserMessage(retry: () => void) {
     const status = msg.status ?? 'sent'
     return (
       <div key={msg.id} className="flex flex-col items-end gap-1">
-        {/* Shake lives on this wrapper (not the <p>) so it doesn't collide
-            with the <p>'s own entrance-animation `animation` shorthand. */}
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -170,15 +159,6 @@ export function WidgetShellChat() {
     reset()
   }
 
-  // Scroll lock: freezing the body with position:fixed (not just
-  // overflow:hidden) stops iOS Safari from scrolling the document under the
-  // overlay while the chat is open; the scroll position is restored on close.
-  // Keyboard handling is pure CSS (h-dvh + safe-area insets, see the overlay
-  // className below) — app/layout.tsx's interactiveWidget: 'resizes-content'
-  // is what makes dvh shrink correctly on keyboard-open on both iOS Safari
-  // and Android Chrome, so no JS-computed height is needed here. Mirrors
-  // components/shells/membership/ChatHero.tsx's overlay fix (same pattern,
-  // applied there first).
   useKeyboardViewport({
     active: isExpanded,
     lockBodyScroll: true,
@@ -195,10 +175,6 @@ export function WidgetShellChat() {
     return () => window.removeEventListener('keydown', handleEscape as any)
   }, [isExpanded, collapse])
 
-  // Mode bridge: the shell opens the overlay via expand('question')
-  // (SectionProcess), which sets useWidgetShell.mode. Mirror that into the
-  // shared session when the overlay opens so the greeting and /api/sage reflect
-  // question mode. SectionProcess stays untouched.
   useEffect(() => {
     if (!isExpanded) return
     setMode(useWidgetShell.getState().mode)
@@ -229,7 +205,6 @@ export function WidgetShellChat() {
 
   return (
     <>
-      {/* #chat anchor section — the green CTA opens the overlay via expand(). */}
       <section
         id="footerchat"
         style={{
@@ -396,13 +371,11 @@ export function WidgetShellChat() {
                   scrollBehavior="instant"
                   scrollDeps={[messages, isExpanded]}
                   scrollGuard={() => isExpanded}
+                  scrollBlock="end"
+                  scrollAnchorClassName="messages-end"
                 />
               </div>
 
-              {/* Sticky inside the scroll container, not a flex sibling after
-                  it — composer-inside-scroll-container pattern (Claude.ai/
-                  ChatGPT), mirrors the fix already applied to Heirloom's
-                  MessageList. */}
               <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto mt-4 w-full max-w-[900px] px-4 sm:px-12">
                 <div className="composer">
                   <div className="row">
@@ -466,9 +439,6 @@ function detectModeFromLocation(): 'question' | null {
 }
 
 export function WidgetShellHero() {
-  // Conversation state comes from the shared session — Hero and the Chat
-  // overlay drive ONE conversation via instanceKey "sage". Only setComposerRef
-  // is shell state and lives in useWidgetShell.
   const { setComposerRef, setHeroEngaged } = useWidgetShell()
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
@@ -481,9 +451,6 @@ export function WidgetShellHero() {
   }
 
   const [input, setInput] = useState('')
-  // Hero-local: when true the conversation canvas renders; toggled off by
-  // the close-x and back on by textarea focus. Independent of isEngaged so
-  // the compact hero stays compact after dismissing.
   const [conversationVisible, setConversationVisible] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
@@ -511,10 +478,6 @@ export function WidgetShellHero() {
     setHeroEngaged(isEngaged)
   }, [isEngaged, setHeroEngaged])
 
-  // Hide the page's own scrollbar while the hero chat is engaged on mobile —
-  // the chat already fills the screen at that point, so a lingering page
-  // scrollbar behind it is just visual noise. 768px matches every other
-  // mobile check in this file (.hero .close-x, .chat-surface--kb, etc.).
   useEffect(() => {
     const isMobile = window.matchMedia('(max-width: 768px)').matches
     if (!isEngaged || !isMobile) return
@@ -530,16 +493,6 @@ export function WidgetShellHero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  // iOS keyboard handling. Syncs the chat surface to the visual viewport: when
-  // the keyboard opens, visualViewport.height shrinks and offsetTop grows — we
-  // mirror both onto the surface CSS vars (height + a compositor translateY, no
-  // transition) so the surface exactly covers the visible area above the
-  // keyboard. keyboardOpen flips the surface from display:contents to a fixed
-  // flex box (CSS, mobile only). On desktop vv.height never drops, so
-  // keyboardOpen stays false and nothing changes. The visualViewport plumbing
-  // (listener lifecycle, SSR guards, threshold) lives in the shared hook; this
-  // surface deliberately runs it WITHOUT body scroll-lock (position:fixed on the
-  // body breaks iOS keyboard detection in this inline context).
   const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
     keyboardThreshold: 120,
     onViewportChange: ({ height, offsetTop }) => {
@@ -553,11 +506,7 @@ export function WidgetShellHero() {
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    syncViewport() // prime the surface before the first vv event lands
-    // No body scroll-lock: on iOS, body { position: fixed } collapses
-    // window.innerHeight to the visual-viewport height and injects a
-    // visualViewport.offsetTop, which breaks keyboard detection and floats the
-    // composer. The .chat-surface--kb fixed overlay masks the page instead.
+    syncViewport()
   }
 
   const submit = () => {
