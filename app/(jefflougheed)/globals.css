@@ -594,6 +594,10 @@ html[data-brand="jefflougheed"] .avatar.sage {
 .stage.engaged .hero-conversation {
   flex: 1;
   border-radius: 0 0 18px 18px;
+  border: 1px solid rgb(var(--ink-rgb) / 0.12);
+  border-top: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,.05);
+  padding: 20px 20px 22px;
 }
 
 .stage.engaged .hero-conversation > :first-child {
