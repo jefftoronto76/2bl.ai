@@ -598,7 +598,7 @@ export function WidgetShellHero() {
         className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
         ref={chatSurfaceRef}
       >
-      {conversationVisible && (
+      {conversationVisible && messages.length > 0 && (
         <div
           className="hero-conversation flex flex-col gap-6"
           role="log"
