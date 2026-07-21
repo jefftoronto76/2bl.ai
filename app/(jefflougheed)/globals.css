@@ -447,7 +447,8 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .msg-action-ink { color: rgb(24 32 41) !important; }
 
 html[data-brand="jefflougheed"] .hero-conversation,
-html[data-brand="jefflougheed"] .chat-overlay-log {
+html[data-brand="jefflougheed"] .chat-overlay-log,
+html[data-brand="jefflougheed"] .chat-overlay-composer {
   --color-text-primary: rgb(24 32 41);
   --color-text-muted: rgb(24 32 41 / 0.70);
   --color-text-dim: rgb(24 32 41 / 0.46);
@@ -514,3 +515,7 @@ html[data-brand="jefflougheed"] .chat-overlay-log {
 .chat-overlay-greeting em { font-style: italic; }
 .chat-overlay-composer { position: sticky; bottom: 0; background: rgb(var(--color-bg)); padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
 @media (min-width: 640px) { .chat-overlay-composer { padding-left: 32px; padding-right: 32px; } }
+.chat-overlay-composer .composer {
+  max-width: 900px;
+  margin: 0 auto;
+}
