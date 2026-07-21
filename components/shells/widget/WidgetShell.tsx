@@ -540,16 +540,24 @@ export function WidgetShellHero() {
       className={isEngaged ? 'stage engaged' : 'stage'}
     >
       <div className="hero">
-        <button
-          type="button"
-          className="close-x"
-          aria-label="Collapse hero conversation"
-          onClick={() => setConversationVisible(false)}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
+        {isEngaged && (
+          <button
+            type="button"
+            onClick={() => setConversationVisible(false)}
+            aria-label="Collapse conversation"
+            style={{
+              position: 'absolute', bottom: 0, right: 0,
+              width: 36, height: 36, borderRadius: '50%',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
 
         <p className="eyebrow">Coach · Operator · Builder</p>
 
