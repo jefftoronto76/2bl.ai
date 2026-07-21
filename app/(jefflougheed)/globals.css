@@ -77,6 +77,18 @@ html[data-brand="jefflougheed"] #herochat .chat-surface {
   --color-accent-hover: 30 77 57;
 }
 
+html[data-brand="jefflougheed"] .chat-overlay-composer {
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+}
+
 html[data-brand="jefflougheed"] #sage-chat-overlay .chat-log-light,
 html[data-brand="jefflougheed"] #sage-chat-overlay .chat-composer-light {
   --color-bg: 245 244 240;
@@ -278,9 +290,9 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .stage.engaged .hero .sage-line{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 
 .chat-surface{display:contents}
-.composer-wrap{margin-top:8px !important;position:sticky;bottom:100px}
+.composer-wrap{margin-top:8px !important;position:sticky;bottom:100px;width:100%}
 .composer{
-  background:rgb(var(--color-bg));border:1px solid rgb(var(--ink-rgb) / 0.12);border-radius:18px;
+  background:rgb(245 244 240);border:1px solid rgb(var(--ink-rgb) / 0.12);border-radius:18px;
   padding:14px 14px 10px; box-shadow:0 8px 32px rgba(0,0,0,.18) !important;
   transition:border-color .15s ease, box-shadow .15s ease;
 }
@@ -394,7 +406,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 
 @media (max-width: 768px) {
   .composer-wrap {
-    position: fixed; bottom: 0; left: 0; right: 0; background: rgb(var(--color-bg)); z-index: 30;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
     padding-top: 8px; padding-left: 16px; padding-right: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
   .stage { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
@@ -447,7 +459,8 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .msg-action-ink { color: rgb(24 32 41) !important; }
 
 html[data-brand="jefflougheed"] .hero-conversation,
-html[data-brand="jefflougheed"] .chat-overlay-log {
+html[data-brand="jefflougheed"] .chat-overlay-log,
+html[data-brand="jefflougheed"] .chat-overlay-composer {
   --color-text-primary: rgb(24 32 41);
   --color-text-muted: rgb(24 32 41 / 0.70);
   --color-text-dim: rgb(24 32 41 / 0.46);
@@ -490,7 +503,7 @@ html[data-brand="jefflougheed"] .chat-overlay-log {
 }
 @media (min-width: 640px) { .chat-overlay-header { padding: 0 32px; } }
 .chat-overlay-title { display: flex; align-items: center; gap: 10px; }
-.chat-overlay-title h1 { font-family: var(--font-display); font-size: 22px; font-weight: 400; color: var(--color-text-primary); line-height: 1; }
+.chat-overlay-title h1 { font-family: var(--font-display); font-size: 17px; font-weight: 400; letter-spacing: 0.02em; color: var(--color-text-primary); line-height: 1; }
 .chat-overlay-dot { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--color-accent) / 0.35); transition: background 0.2s; }
 .chat-overlay-dot.live { background: rgb(var(--color-accent)); }
 .chat-overlay-actions { display: flex; align-items: center; gap: 8px; }
@@ -514,3 +527,7 @@ html[data-brand="jefflougheed"] .chat-overlay-log {
 .chat-overlay-greeting em { font-style: italic; }
 .chat-overlay-composer { position: sticky; bottom: 0; background: rgb(var(--color-bg)); padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
 @media (min-width: 640px) { .chat-overlay-composer { padding-left: 32px; padding-right: 32px; } }
+.chat-overlay-composer .composer {
+  max-width: 900px;
+  margin: 0 auto;
+}

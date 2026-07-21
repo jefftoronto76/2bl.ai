@@ -309,22 +309,11 @@ export function WidgetShellChat() {
                   aria-hidden
                   className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
                 />
-                <h1 className="font-display text-[22px] font-normal leading-none tracking-[-0.01em] text-[color:var(--color-text-primary)]">
-                  Sage
+                <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
+                  Performance-Driven, Heart-Led
                 </h1>
               </div>
               <div className="flex items-center gap-2">
-                {messages.length > 0 && (
-                  <button
-                    onClick={startNewConversation}
-                    className="new-convo-pill"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                      <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
-                    </svg>
-                    New chat
-                  </button>
-                )}
                 <button
                   onClick={collapse}
                   aria-label="Close chat"
@@ -339,7 +328,7 @@ export function WidgetShellChat() {
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
               <div
-                className="chat-log-light mx-auto flex w-full max-w-[900px] flex-1 flex-col gap-6 p-[clamp(24px,5vw,48px)]"
+                className="chat-overlay-log"
                 role="log"
                 aria-live="polite"
                 aria-label="Conversation"
@@ -376,7 +365,7 @@ export function WidgetShellChat() {
                 />
               </div>
 
-              <div className="chat-composer-light sticky bottom-[calc(16px+env(safe-area-inset-bottom))] mx-auto mt-4 w-full max-w-[900px] px-4 sm:px-12">
+              <div className="chat-overlay-composer">
                 <div className="composer">
                   <div className="row">
                     <textarea
@@ -405,11 +394,11 @@ export function WidgetShellChat() {
                       <span>{isStreaming ? 'Thinking…' : messages.length > 0 ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
                     </span>
                     {messages.length > 0 && (
-                      <button type="button" className="new-convo-pill" onClick={startNewConversation}>
+                      <button type="button" className="new-convo-link" onClick={startNewConversation}>
                         <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                           <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
                         </svg>
-                        New chat
+                        New conversation
                       </button>
                     )}
                     <span className="send-hint">↵ to send</span>
@@ -540,16 +529,24 @@ export function WidgetShellHero() {
       className={isEngaged ? 'stage engaged' : 'stage'}
     >
       <div className="hero">
-        <button
-          type="button"
-          className="close-x"
-          aria-label="Collapse hero conversation"
-          onClick={() => setConversationVisible(false)}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
+        {isEngaged && (
+          <button
+            type="button"
+            onClick={() => setConversationVisible(false)}
+            aria-label="Collapse conversation"
+            style={{
+              position: 'absolute', top: 8, right: 8,
+              width: 36, height: 36, borderRadius: '50%',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
 
         <p className="eyebrow">Coach · Operator · Builder</p>
 
@@ -601,7 +598,7 @@ export function WidgetShellHero() {
       )}
 
       <div className="composer-wrap" ref={composerWrapperRef}>
-        <div className="composer">
+        <div className="composer composer--sage-glow">
           <div className="row">
             <textarea
               ref={textareaRef}
