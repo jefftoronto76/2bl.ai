@@ -384,10 +384,6 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 }
 
 @media (max-width: 768px) {
-  .composer-wrap {
-    position: fixed; bottom: 0; left: 0; right: 0; background: rgb(var(--color-bg)); z-index: 30;
-    padding-top: 8px; padding-left: 16px; padding-right: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom));
-  }
   .stage { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
   .hero .close-x {
     position: fixed; top: auto; right: 16px; bottom: calc(120px + env(safe-area-inset-bottom) + 12px);
@@ -399,11 +395,56 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .new-convo-link { display: none; }
   .reply-time { display: none; }
 
-  .chat-surface--kb {
-    position: fixed; top: 0; left: 0; right: 0; height: var(--kb-surface-h, 100dvh);
-    transform: translateY(var(--kb-surface-y, 0px)); display: flex; flex-direction: column; z-index: 40;
-    background: rgb(var(--color-bg));
+  /* ChatHeroShellMobile — .chat-surface (already the useKeyboardViewport ref
+     target) becomes a self-contained fixed panel: bottom-anchored showing
+     only the composer while idle, expanding to fill the viewport below the
+     fixed 60px Nav (z-index kept below Nav's 50) once engaged. Nav is never
+     covered, and the page underneath needs no scroll-lock JS since the panel
+     plus Nav occupy 100% of the viewport once engaged. */
+  .chat-surface {
+    display: flex; flex-direction: column;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+    overflow: hidden; background: rgb(var(--color-bg));
   }
-  .chat-surface--kb .hero-conversation { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 0; }
-  .chat-surface--kb .composer-wrap { position: static; }
+  .chat-surface.engaged { top: 60px; }
+
+  .hero-shell-header {
+    display: none; flex: none; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; background: rgb(var(--color-bg));
+    box-shadow: 0 8px 16px -12px rgb(var(--ink-rgb) / 0.18), 0 1px 0 0 var(--color-border);
+  }
+  .chat-surface.engaged .hero-shell-header { display: flex; }
+  .hero-shell-header h2 {
+    margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 20px; line-height: 1.2;
+    color: var(--color-text-primary);
+  }
+  .hero-shell-header h2 em { font-style: normal; color: rgb(var(--color-accent)); font-weight: 400; }
+  .hero-shell-header .close-x {
+    position: relative; flex: none; width: 36px; height: 36px; border-radius: 50%;
+    background: transparent; border: 1px solid var(--color-border);
+    display: flex; align-items: center; justify-content: center; color: var(--color-text-muted);
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .hero-shell-header .close-x:hover { color: var(--color-text-primary); border-color: var(--color-border-hover); background: rgb(var(--color-surface)); }
+
+  /* Single scroll region owning both messages and composer (composer is a
+     sticky last child, not a fixed sibling) — .hero-conversation's own
+     overflow-y is cancelled below so there is only one scroller, not two
+     nested ones. */
+  .hero-chat-scroll {
+    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column;
+  }
+  .hero-chat-scroll > .composer-wrap { margin-top: auto; }
+
+  .hero-conversation { overflow-y: visible; overscroll-behavior: auto; }
+
+  .composer-wrap {
+    position: sticky; bottom: 0;
+    background: rgb(var(--color-bg));
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .chat-surface--kb { top: 0; height: var(--kb-surface-h, 100dvh); transform: translateY(var(--kb-surface-y, 0px)); }
+  .chat-surface--kb .hero-conversation { padding: 12px 16px 0; }
 }

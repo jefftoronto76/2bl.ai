@@ -479,14 +479,6 @@ export function WidgetShellHero() {
   }, [isEngaged, setHeroEngaged])
 
   useEffect(() => {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches
-    if (!isEngaged || !isMobile) return
-    const prev = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    return () => { document.documentElement.style.overflow = prev }
-  }, [isEngaged])
-
-  useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
@@ -567,83 +559,103 @@ export function WidgetShellHero() {
       </div>
 
       <div
-        className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
+        className={[
+          'chat-surface',
+          isEngaged ? 'engaged' : '',
+          keyboardOpen ? 'chat-surface--kb' : '',
+        ].filter(Boolean).join(' ')}
         ref={chatSurfaceRef}
       >
-      {conversationVisible && messages.length > 0 && (
-        <div
-          className="hero-conversation flex flex-col gap-6"
-          role="log"
-          aria-live="polite"
-          aria-label="Conversation"
-          aria-atomic="false"
-          aria-busy={isStreaming}
-        >
-          <ChatThread
-            messages={messages}
-            isStreaming={isStreaming}
-            errorType={errorType}
-            retry={retry}
-            renderUserMessage={renderUserMessage}
-            renderAssistantMessage={renderAssistantMessage}
-            renderError={renderError}
-            renderStreamingIndicator={renderStreamingIndicator}
-            showStreamingIndicator={isStreaming && messages[messages.length - 1]?.content === ''}
-            markdownComponents={markdownComponents}
-            scrollBehavior="instant"
-            scrollDeps={[messages.length, conversationVisible]}
-            useRaf
-            scrollBlock="end"
-            scrollGuard={() => conversationVisible && messages.length > 0}
-            scrollAnchorClassName="messages-end"
-          />
+        <div className="hero-shell-header">
+          <h2>Hi, I&apos;m <em>Jeff</em>.</h2>
+          <button
+            type="button"
+            className="close-x"
+            aria-label="Collapse hero conversation"
+            onClick={() => setConversationVisible(false)}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
-      )}
 
-      <div className="composer-wrap" ref={composerWrapperRef}>
-        <div className="composer">
-          <div className="row">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={onKey}
-              onFocus={handleComposerFocus}
-              placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
-              rows={1}
-            />
-            {isStreaming ? (
-              <button className="send" onClick={stop} aria-label="Stop generating">
-                <Square size={15} fill="currentColor" />
-              </button>
-            ) : (
-              <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 10L17 10M11 4L17 10L11 16"/>
-                </svg>
-              </button>
-            )}
-          </div>
-          <div className="meta">
-            <span className="left">
-              <span className="ai-badge">
-                <span className="dot"></span>
-                SAGE·AI
-              </span>
-              <span>{isStreaming ? 'Thinking…' : isEngaged ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
-            </span>
-            {isEngaged && (
-              <button type="button" className="new-convo-link" onClick={startNewConversation}>
-                <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                  <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
-                </svg>
-                New conversation
-              </button>
-            )}
-            <span className="send-hint">↵ to send</span>
+        <div className="hero-chat-scroll">
+          {conversationVisible && messages.length > 0 && (
+            <div
+              className="hero-conversation flex flex-col gap-6"
+              role="log"
+              aria-live="polite"
+              aria-label="Conversation"
+              aria-atomic="false"
+              aria-busy={isStreaming}
+            >
+              <ChatThread
+                messages={messages}
+                isStreaming={isStreaming}
+                errorType={errorType}
+                retry={retry}
+                renderUserMessage={renderUserMessage}
+                renderAssistantMessage={renderAssistantMessage}
+                renderError={renderError}
+                renderStreamingIndicator={renderStreamingIndicator}
+                showStreamingIndicator={isStreaming && messages[messages.length - 1]?.content === ''}
+                markdownComponents={markdownComponents}
+                scrollBehavior="instant"
+                scrollDeps={[messages.length, conversationVisible]}
+                useRaf
+                scrollBlock="end"
+                scrollGuard={() => conversationVisible && messages.length > 0}
+                scrollAnchorClassName="messages-end"
+              />
+            </div>
+          )}
+
+          <div className="composer-wrap" ref={composerWrapperRef}>
+            <div className="composer">
+              <div className="row">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={onKey}
+                  onFocus={handleComposerFocus}
+                  placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
+                  rows={1}
+                />
+                {isStreaming ? (
+                  <button className="send" onClick={stop} aria-label="Stop generating">
+                    <Square size={15} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button className="send" onClick={submit} disabled={!input.trim()} aria-label="Send">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 10L17 10M11 4L17 10L11 16"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="meta">
+                <span className="left">
+                  <span className="ai-badge">
+                    <span className="dot"></span>
+                    SAGE·AI
+                  </span>
+                  <span>{isStreaming ? 'Thinking…' : isEngaged ? 'Live conversation' : <>Trained on Jeff&apos;s playbooks<span className="reply-time"> · Replies in ~5s</span></>}</span>
+                </span>
+                {isEngaged && (
+                  <button type="button" className="new-convo-link" onClick={startNewConversation}>
+                    <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                      <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                    </svg>
+                    New conversation
+                  </button>
+                )}
+                <span className="send-hint">↵ to send</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </section>
   )
