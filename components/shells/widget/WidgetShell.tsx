@@ -546,7 +546,7 @@ export function WidgetShellHero() {
             onClick={() => setConversationVisible(false)}
             aria-label="Collapse conversation"
             style={{
-              position: 'absolute', bottom: 0, right: 0,
+              position: 'absolute', top: 8, right: 8,
               width: 36, height: 36, borderRadius: '50%',
               border: '1px solid var(--color-border)',
               color: 'var(--color-text-muted)',
