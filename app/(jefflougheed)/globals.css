@@ -280,7 +280,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .chat-surface{display:contents}
 .composer-wrap{margin-top:8px !important;position:sticky;bottom:100px;width:100%}
 .composer{
-  background:rgb(var(--color-bg));border:1px solid rgb(var(--ink-rgb) / 0.12);border-radius:18px;
+  background:rgb(245 244 240);border:1px solid rgb(var(--ink-rgb) / 0.12);border-radius:18px;
   padding:14px 14px 10px; box-shadow:0 8px 32px rgba(0,0,0,.18) !important;
   transition:border-color .15s ease, box-shadow .15s ease;
 }
