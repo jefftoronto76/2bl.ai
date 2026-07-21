@@ -309,22 +309,11 @@ export function WidgetShellChat() {
                   aria-hidden
                   className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
                 />
-                <h1 className="font-display text-[22px] font-normal leading-none tracking-[-0.01em] text-[color:var(--color-text-primary)]">
-                  Sage
+                <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
+                  Performance-Driven, Heart-Led
                 </h1>
               </div>
               <div className="flex items-center gap-2">
-                {messages.length > 0 && (
-                  <button
-                    onClick={startNewConversation}
-                    className="new-convo-pill"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                      <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
-                    </svg>
-                    New chat
-                  </button>
-                )}
                 <button
                   onClick={collapse}
                   aria-label="Close chat"

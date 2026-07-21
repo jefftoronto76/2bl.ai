@@ -490,7 +490,7 @@ html[data-brand="jefflougheed"] .chat-overlay-log {
 }
 @media (min-width: 640px) { .chat-overlay-header { padding: 0 32px; } }
 .chat-overlay-title { display: flex; align-items: center; gap: 10px; }
-.chat-overlay-title h1 { font-family: var(--font-display); font-size: 22px; font-weight: 400; color: var(--color-text-primary); line-height: 1; }
+.chat-overlay-title h1 { font-family: var(--font-display); font-size: 17px; font-weight: 400; letter-spacing: 0.02em; color: var(--color-text-primary); line-height: 1; }
 .chat-overlay-dot { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--color-accent) / 0.35); transition: background 0.2s; }
 .chat-overlay-dot.live { background: rgb(var(--color-accent)); }
 .chat-overlay-actions { display: flex; align-items: center; gap: 8px; }
