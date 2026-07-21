@@ -64,9 +64,20 @@ html[data-brand="jefflougheed"] #how-it-works {
   --color-accent-hover: 30 77 57;
 }
 
-html[data-brand="jefflougheed"] #herochat .chat-surface,
-html[data-brand="jefflougheed"] .chat-overlay-composer {
+html[data-brand="jefflougheed"] #herochat .chat-surface {
   --color-bg: 245 244 240;
+  --color-surface: 255 255 255;
+  --ink-rgb: 24 32 41;
+  --color-text-primary: rgb(24 32 41);
+  --color-text-muted:   rgb(24 32 41 / 0.70);
+  --color-text-dim:     rgb(24 32 41 / 0.46);
+  --color-border:       rgb(24 32 41 / 0.10);
+  --color-border-hover: rgb(24 32 41 / 0.28);
+  --color-accent: 45 106 79;
+  --color-accent-hover: 30 77 57;
+}
+
+html[data-brand="jefflougheed"] .chat-overlay-composer {
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
   --color-text-primary: rgb(24 32 41);
