@@ -29,7 +29,7 @@ export function SectionRail() {
     return () => observer.disconnect()
   }, [])
 
-  if (isExpanded || heroEngaged) return null
+  if (isExpanded) return null
 
   return (
     <div className="section-rail">
