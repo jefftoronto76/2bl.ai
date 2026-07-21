@@ -66,6 +66,7 @@ html[data-brand="jefflougheed"] #how-it-works {
 
 html[data-brand="jefflougheed"] #herochat .chat-surface,
 html[data-brand="jefflougheed"] .chat-overlay-composer {
+  --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
   --color-text-primary: rgb(24 32 41);
