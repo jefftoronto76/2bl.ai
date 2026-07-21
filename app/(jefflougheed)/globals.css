@@ -235,7 +235,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .sage-animate, .sage-visitor-msg, [data-sage-streaming] > * { animation: none !important; transition: none !important; }
 }
 
-.stage{ height:100dvh;display:flex;flex-direction:column; padding:52px clamp(20px,5vw,48px) 0; max-width:1100px; margin:0 auto; width:100%; position:relative; }
+.stage{ min-height:100dvh;height:auto;display:flex;flex-direction:column; padding:92px clamp(20px,5vw,48px) 120px; max-width:1100px; margin:0 auto; width:100%; position:relative; }
 .hero{ position:relative; transition:padding .55s cubic-bezier(.2,.7,.2,1), opacity .35s ease, background-color .35s ease, box-shadow .35s ease; padding-top:64px; }
 .hero .close-x{
   position:absolute;bottom:0;right:0; width:36px;height:36px;border-radius:50%;
