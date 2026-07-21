@@ -598,7 +598,7 @@ export function WidgetShellHero() {
       )}
 
       <div className="composer-wrap" ref={composerWrapperRef}>
-        <div className="composer">
+        <div className="composer composer--sage-glow">
           <div className="row">
             <textarea
               ref={textareaRef}
