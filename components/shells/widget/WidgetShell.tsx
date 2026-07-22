@@ -443,7 +443,6 @@ export function WidgetShellHero() {
   const [conversationVisible, setConversationVisible] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
-  const chatSurfaceRef = useRef<HTMLDivElement>(null)
 
   const sageParameters = useSageParameters()
 
@@ -468,34 +467,16 @@ export function WidgetShellHero() {
   }, [isEngaged, setHeroEngaged])
 
   useEffect(() => {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches
-    if (!isEngaged || !isMobile) return
-    const prev = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    return () => { document.documentElement.style.overflow = prev }
-  }, [isEngaged])
-
-  useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
-    keyboardThreshold: 120,
-    onViewportChange: ({ height, offsetTop }) => {
-      const surface = chatSurfaceRef.current
-      if (surface) {
-        surface.style.setProperty('--kb-surface-h', `${height}px`)
-        surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
-      }
-    },
-  })
+  useKeyboardViewport({ active: isEngaged, trackViewport: false })
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    syncViewport()
   }
 
   const submit = () => {
@@ -563,10 +544,31 @@ export function WidgetShellHero() {
         </p>
       </div>
 
-      <div
-        className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
-        ref={chatSurfaceRef}
-      >
+      <div className="chat-surface">
+      {isEngaged && (
+        <header className="md:hidden flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
+            />
+            <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
+              Performance-Driven, Heart-Led
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConversationVisible(false)}
+              aria-label="Close chat"
+              className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+      )}
       {conversationVisible && messages.length > 0 && (
         <div
           className="hero-conversation flex flex-col gap-6"
