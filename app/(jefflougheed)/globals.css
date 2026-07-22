@@ -424,10 +424,11 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     flex-direction: column;
     z-index: 50;
     overflow: hidden;
-    background: rgb(245 244 240);
+    padding: 0 8px;
   }
   .stage.engaged .chat-surface {
     inset: 0;
+    background: rgb(245 244 240);
   }
   .stage.engaged .chat-surface .hero-conversation {
     flex: 1;
