@@ -424,6 +424,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     flex-direction: column;
     z-index: 50;
     overflow: hidden;
+    background: rgb(245 244 240);
   }
   .stage.engaged .chat-surface {
     inset: 0;
@@ -437,6 +438,13 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .stage.engaged .chat-surface .composer-wrap {
     position: sticky;
     bottom: 0;
+  }
+  .stage.engaged .chat-surface .hero-conversation {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 16px 16px 0;
   }
 }
 
