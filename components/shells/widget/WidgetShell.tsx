@@ -467,13 +467,6 @@ export function WidgetShellHero() {
   }, [isEngaged, setHeroEngaged])
 
   useEffect(() => {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches
-    if (!isEngaged || !isMobile) return
-    document.documentElement.style.overflow = 'hidden'
-    return () => { document.documentElement.style.overflow = '' }
-  }, [isEngaged])
-
-  useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
