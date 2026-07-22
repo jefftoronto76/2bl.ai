@@ -619,6 +619,19 @@ export function WidgetShellHero() {
           </div>
         </div>
       </div>
+
+      {isEngaged && (
+        <button
+          type="button"
+          onClick={() => setConversationVisible(false)}
+          aria-label="Close conversation"
+          className="close-chat-mobile"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+      )}
       </div>
     </section>
   )

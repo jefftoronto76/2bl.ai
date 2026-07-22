@@ -440,6 +440,28 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   }
 }
 
+.close-chat-mobile {
+  display: none;
+}
+@media (max-width: 768px) {
+  .close-chat-mobile {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgb(var(--ink-rgb));
+    color: rgb(var(--color-bg));
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 51;
+    cursor: pointer;
+  }
+}
+
 /* ───────────────────────────────────────────────────────────────────────────
    Ported from docs/jefflougheed_July Updates (mobile chat)/chat-design-port.css
    New selectors only — rules that already existed above were merged in place.
