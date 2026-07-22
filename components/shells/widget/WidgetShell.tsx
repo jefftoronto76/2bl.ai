@@ -443,7 +443,6 @@ export function WidgetShellHero() {
   const [conversationVisible, setConversationVisible] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
-  const chatSurfaceRef = useRef<HTMLDivElement>(null)
 
   const sageParameters = useSageParameters()
 
@@ -468,34 +467,16 @@ export function WidgetShellHero() {
   }, [isEngaged, setHeroEngaged])
 
   useEffect(() => {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches
-    if (!isEngaged || !isMobile) return
-    const prev = document.documentElement.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    return () => { document.documentElement.style.overflow = prev }
-  }, [isEngaged])
-
-  useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  const { keyboardOpen, sync: syncViewport } = useKeyboardViewport({
-    keyboardThreshold: 120,
-    onViewportChange: ({ height, offsetTop }) => {
-      const surface = chatSurfaceRef.current
-      if (surface) {
-        surface.style.setProperty('--kb-surface-h', `${height}px`)
-        surface.style.setProperty('--kb-surface-y', `${offsetTop}px`)
-      }
-    },
-  })
+  useKeyboardViewport({ active: isEngaged, trackViewport: false })
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
-    syncViewport()
   }
 
   const submit = () => {
@@ -563,10 +544,7 @@ export function WidgetShellHero() {
         </p>
       </div>
 
-      <div
-        className={keyboardOpen ? 'chat-surface chat-surface--kb' : 'chat-surface'}
-        ref={chatSurfaceRef}
-      >
+      <div className="chat-surface">
       {conversationVisible && messages.length > 0 && (
         <div
           className="hero-conversation flex flex-col gap-6"
