@@ -411,17 +411,6 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 }
 
 @media (max-width: 768px) {
-  .composer-wrap {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
-    padding-top: 8px; padding-left: 16px; padding-right: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom));
-  }
-  .stage { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
-  .hero .close-x {
-    position: fixed; top: auto; right: 16px; bottom: calc(120px + env(safe-area-inset-bottom) + 12px);
-    background: var(--color-text-primary); border: none; color: rgb(var(--color-bg)); z-index: 31;
-  }
-  .hero .close-x:hover { background: var(--color-text-primary); border: none; color: rgb(var(--color-bg)); }
-  .stage.engaged .hero { background: rgb(var(--color-bg)); }
   .send-hint { display: none; }
   .new-convo-link { display: none; }
   .reply-time { display: none; }
