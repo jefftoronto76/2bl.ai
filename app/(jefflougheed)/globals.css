@@ -289,7 +289,6 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .stage.engaged .hero .lede{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 .stage.engaged .hero .sage-line{font-size:0;max-height:0;opacity:0;margin-bottom:0;}
 
-.chat-surface{display:contents}
 .composer-wrap{margin-top:8px !important;position:sticky;bottom:100px;width:100%}
 .composer{
   background:rgb(245 244 240);border:1px solid rgb(var(--ink-rgb) / 0.12);border-radius:18px;
@@ -385,6 +384,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 .stage.engaged .hero-conversation > :first-child { margin-top: auto; }
 
 @media (min-width: 769px) {
+  .chat-surface{display:contents}
   .stage.engaged {
     display: grid;
     grid-template-rows: auto 1fr auto;
