@@ -545,6 +545,30 @@ export function WidgetShellHero() {
       </div>
 
       <div className="chat-surface">
+      {isEngaged && (
+        <header className="md:hidden flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
+            />
+            <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
+              Performance-Driven, Heart-Led
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setConversationVisible(false)}
+              aria-label="Close chat"
+              className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </header>
+      )}
       {conversationVisible && messages.length > 0 && (
         <div
           className="hero-conversation flex flex-col gap-6"
@@ -619,19 +643,6 @@ export function WidgetShellHero() {
           </div>
         </div>
       </div>
-
-      {isEngaged && (
-        <button
-          type="button"
-          onClick={() => setConversationVisible(false)}
-          aria-label="Close conversation"
-          className="close-chat-mobile"
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
-      )}
       </div>
     </section>
   )
