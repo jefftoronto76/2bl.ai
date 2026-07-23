@@ -470,7 +470,7 @@ export function WidgetShellHero() {
 
   useKeyboardViewport({
     active: isEngaged || composerFocused,
-    lockBodyScroll: true,
+    lockBodyScroll: isEngaged,
     trackViewport: false,
   })
 
