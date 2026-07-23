@@ -317,7 +317,7 @@ export function WidgetShellChat() {
         <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
           <div ref={overlayInnerRef} className="flex min-h-0 flex-col" style={{ height: 'var(--vvh, 100dvh)' }}>
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
-              <div className="flex items-center gap-2.5">
+              <div className="hidden items-center gap-2.5 md:flex">
                 <span
                   aria-hidden
                   className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
@@ -326,6 +326,17 @@ export function WidgetShellChat() {
                   Performance-Driven, Heart-Led
                 </h1>
               </div>
+              {messages.length > 0 && (
+                <button
+                  onClick={startNewConversation}
+                  aria-label="New conversation"
+                  className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-[''] md:hidden"
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                    <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                  </svg>
+                </button>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={collapse}
@@ -386,7 +397,7 @@ export function WidgetShellChat() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKey}
-                      placeholder=""
+                      placeholder={messages.length > 0 ? "Keep going…" : "What's the situation you're trying to figure out?"}
                       rows={1}
                     />
                     {isStreaming ? (
@@ -693,27 +704,25 @@ export function WidgetShellHero() {
 
       <div className="chat-surface">
       {isEngaged && (
-        <header className="md:hidden flex h-10 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
-          <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
-            />
-            <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
-              Performance-Driven, Heart-Led
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setConversationVisible(false)}
-              aria-label="Close chat"
-              className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
+        <header className="md:hidden flex h-10 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] px-4 sm:px-8">
+          <button
+            onClick={startNewConversation}
+            aria-label="New conversation"
+            className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => setConversationVisible(false)}
+            aria-label="Close chat"
+            className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </header>
       )}
       {conversationVisible && messages.length > 0 && (
