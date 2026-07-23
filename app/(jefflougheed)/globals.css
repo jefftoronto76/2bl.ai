@@ -431,7 +431,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     background: rgb(245 244 240);
     display: grid;
     grid-template-rows: 40px minmax(0, 1fr) auto;
-    height: 100dvh;
+    height: 100svh;
     overflow: hidden;
   }
   .stage.engaged .chat-surface header {
