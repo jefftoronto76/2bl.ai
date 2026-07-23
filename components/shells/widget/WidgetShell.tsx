@@ -6,6 +6,7 @@ import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport'
 import { useReveal } from '@/services/shared/useReveal'
+import { useIsMobile } from '@/services/shared/useIsMobile'
 import { useSageParameters } from '@/services/chat/ui/v1/useSageParameters'
 import { useMessageFeedback } from '@/services/chat/ui/v1/useMessageFeedback'
 import { clearSession, clearDraft } from '@/services/chat/ui/v1/persistence'
@@ -410,6 +411,12 @@ export function WidgetShellChat() {
 
 // ── WidgetShellHero — the chat-first hero's inline composer ──
 
+// Mobile first-send sequencing: how long the full-screen "engaging" mount is
+// given to visually settle (keyboard closing, grid layout taking over) before
+// the message is actually appended and streaming begins. Provisional value —
+// tune against the Vercel preview, not locally.
+const ENGAGE_SETTLE_DELAY_MS = 300
+
 function detectModeFromLocation(): 'question' | null {
   if (typeof window === 'undefined') return null
   const hash = window.location.hash
@@ -426,20 +433,40 @@ export function WidgetShellHero() {
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
-
-  const startNewConversation = () => {
-    if (!window.confirm('Start a new conversation? This clears the current chat.')) return
-    void (sessionId ? clearSession('sage', sessionId) : clearDraft('sage'))
-    reset()
-  }
+  const isMobile = useIsMobile()
 
   const [input, setInput] = useState('')
   const [conversationVisible, setConversationVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  // Decouples the full-screen mount from message arrival on mobile: set true
+  // the instant the first send is committed, before send() has actually
+  // appended the message, so the engaged layout can mount and settle first.
+  // Never resets on its own — see startNewConversation, the only path that
+  // clears it (verified: the only reset() call site for this session besides
+  // WidgetShellChat's own, and retry() never clears messages either).
+  const [engaging, setEngaging] = useState(false)
+  const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
 
   const sageParameters = useSageParameters()
+
+  const startNewConversation = () => {
+    if (!window.confirm('Start a new conversation? This clears the current chat.')) return
+    void (sessionId ? clearSession('sage', sessionId) : clearDraft('sage'))
+    if (settleTimeoutRef.current) {
+      clearTimeout(settleTimeoutRef.current)
+      settleTimeoutRef.current = null
+    }
+    setEngaging(false)
+    reset()
+  }
+
+  useEffect(() => {
+    return () => {
+      if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     setComposerRef(textareaRef)
@@ -455,97 +482,14 @@ export function WidgetShellHero() {
     }
   }, [setMode])
 
-  const isEngaged = messages.length > 0 && conversationVisible
+  // `engaging` (set at the moment a mobile first-send is committed, before
+  // send() has appended the message) mounts the full-screen layout ahead of
+  // the message itself — see submit() below.
+  const isEngaged = (engaging || messages.length > 0) && conversationVisible
 
   useEffect(() => {
     setHeroEngaged(isEngaged)
   }, [isEngaged, setHeroEngaged])
-
-  // DIAGNOSTIC (temporary): compares full Hero Chat state/layout across
-  // composer focus/blur cycles and viewport events. Remove alongside the
-  // other diagnostic commits once the Safari keyboard/scroll investigation
-  // is done.
-  const snapshot = (label: string) => {
-    const surface = document.querySelector('#herochat .chat-surface') as HTMLElement | null
-    const header = document.querySelector('#herochat .chat-surface header') as HTMLElement | null
-    const msgList = document.querySelector('#herochat .hero-conversation') as HTMLElement | null
-    const composer = document.querySelector('#herochat .chat-surface textarea') as HTMLTextAreaElement | null
-    const stage = document.querySelector('#herochat.stage') as HTMLElement | null
-
-    console.log(`[HeroChat] ${label}`, {
-      timestamp: performance.now(),
-
-      isEngaged,
-      composerFocused,
-      conversationVisible,
-
-      activeElement:
-        document.activeElement === composer
-          ? 'HERO_TEXTAREA'
-          : document.activeElement?.tagName,
-
-      scrollY: window.scrollY,
-      scrollX: window.scrollX,
-
-      bodyPosition: document.body.style.position,
-      bodyTop: document.body.style.top,
-      bodyOverflow: getComputedStyle(document.body).overflow,
-
-      stageClass: stage?.className,
-
-      stageRect: stage?.getBoundingClientRect(),
-      surfaceRect: surface?.getBoundingClientRect(),
-      msgListRect: msgList?.getBoundingClientRect(),
-      composerRect: composer?.getBoundingClientRect(),
-      headerRect: header?.getBoundingClientRect(),
-
-      msgListScrollTop: msgList?.scrollTop,
-      msgListScrollHeight: msgList?.scrollHeight,
-      msgListClientHeight: msgList?.clientHeight,
-      msgListOverflow: msgList ? getComputedStyle(msgList).overflowY : null,
-
-      innerHeight: window.innerHeight,
-      documentClientHeight: document.documentElement.clientHeight,
-
-      vpHeight: window.visualViewport?.height,
-      vpWidth: window.visualViewport?.width,
-      vpOffsetTop: window.visualViewport?.offsetTop,
-      vpPageTop: window.visualViewport?.pageTop,
-    })
-  }
-
-  // DIAGNOSTIC: latest-snapshot ref so the mount-scoped native listeners below
-  // (subscribed once, never re-subscribed) always read the current
-  // isEngaged/composerFocused/conversationVisible instead of the values that
-  // were in scope when the listeners were first attached.
-  const snapshotRef = useRef(snapshot)
-  snapshotRef.current = snapshot
-
-  // DIAGNOSTIC: log on every isEngaged/composerFocused/conversationVisible change.
-  useEffect(() => {
-    snapshot('STATE_CHANGE')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEngaged, composerFocused, conversationVisible])
-
-  // DIAGNOSTIC: log on window/visualViewport scroll and resize while mounted.
-  useEffect(() => {
-    const onWindowScroll = () => snapshotRef.current('WINDOW_SCROLL')
-    const onWindowResize = () => snapshotRef.current('WINDOW_RESIZE')
-    const onVpResize = () => snapshotRef.current('VP_RESIZE')
-    const onVpScroll = () => snapshotRef.current('VP_SCROLL')
-
-    window.addEventListener('scroll', onWindowScroll)
-    window.addEventListener('resize', onWindowResize)
-    window.visualViewport?.addEventListener('resize', onVpResize)
-    window.visualViewport?.addEventListener('scroll', onVpScroll)
-
-    return () => {
-      window.removeEventListener('scroll', onWindowScroll)
-      window.removeEventListener('resize', onWindowResize)
-      window.visualViewport?.removeEventListener('resize', onVpResize)
-      window.visualViewport?.removeEventListener('scroll', onVpScroll)
-    }
-  }, [])
 
   useEffect(() => {
     const ta = textareaRef.current
@@ -561,45 +505,37 @@ export function WidgetShellHero() {
   })
 
   const handleComposerFocus = () => {
-    snapshot('FOCUS_SYNC')
     setConversationVisible(true)
     setComposerFocused(true)
-
-    requestAnimationFrame(() => {
-      snapshot('FOCUS_RAF')
-    })
-
-    setTimeout(() => {
-      snapshot('FOCUS_100MS')
-    }, 100)
-
-    setTimeout(() => {
-      snapshot('FOCUS_500MS')
-    }, 500)
   }
 
   const handleComposerBlur = () => {
-    snapshot('BLUR_SYNC')
     setComposerFocused(false)
-
-    requestAnimationFrame(() => {
-      snapshot('BLUR_RAF')
-    })
-
-    setTimeout(() => {
-      snapshot('BLUR_100MS')
-    }, 100)
-
-    setTimeout(() => {
-      snapshot('BLUR_500MS')
-    }, 500)
   }
 
   const submit = () => {
     const text = input.trim()
-    if (!text || isStreaming) return
+    // `engaging` guards the mobile first-send settle window: isStreaming
+    // alone isn't enough there, since send() (which sets isStreaming) hasn't
+    // run yet during the delay — a fast double-tap would otherwise queue a
+    // second send() for whenever the timeout fires.
+    if (!text || isStreaming || engaging) return
     setInput('')
     setConversationVisible(true)
+
+    if (isMobile) textareaRef.current?.blur()
+
+    if (isMobile && messages.length === 0) {
+      // First mobile send: mount the full-screen layout and let it settle
+      // before the message appears and streaming starts.
+      setEngaging(true)
+      settleTimeoutRef.current = setTimeout(() => {
+        settleTimeoutRef.current = null
+        send(text)
+      }, ENGAGE_SETTLE_DELAY_MS)
+      return
+    }
+
     send(text)
   }
 
@@ -709,9 +645,7 @@ export function WidgetShellHero() {
             scrollDeps={[messages.length, conversationVisible]}
             useRaf
             scrollBlock="end"
-            // DIAGNOSTIC (temporary): Hero auto-scroll disabled for keyboard/scroll
-            // testing. Original guard: () => conversationVisible && messages.length > 0
-            scrollGuard={() => false}
+            scrollGuard={() => conversationVisible && messages.length > 0}
             scrollAnchorClassName="messages-end"
           />
         </div>
