@@ -582,6 +582,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
     grid-template-rows: auto minmax(0, 1fr) auto;
     height: var(--vvh, 100dvh);
     overflow: hidden;
+    background: rgb(245 244 240);
   }
 
   #sage-chat-overlay > div > header {
