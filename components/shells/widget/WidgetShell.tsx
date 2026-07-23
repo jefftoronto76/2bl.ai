@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
+import { useRef, useEffect, KeyboardEvent, PointerEvent, useState, type ReactNode } from 'react'
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -422,7 +422,7 @@ function detectModeFromLocation(): 'question' | null {
 }
 
 export function WidgetShellHero() {
-  const { setComposerRef, setHeroEngaged } = useWidgetShell()
+  const { setComposerRef, setHeroEngaged, expand } = useWidgetShell()
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
@@ -559,6 +559,18 @@ export function WidgetShellHero() {
     lockBodyScroll: isEngaged,
     trackViewport: false,
   })
+
+  // On mobile, a tap on the composer should open the full-screen overlay
+  // instead of focusing inline — preventDefault on pointerdown blocks the
+  // browser's default focus action before the keyboard opens, so the overlay
+  // mounts stable and un-focused (it shows the empty-state greeting via the
+  // shared session; the visitor taps its composer themselves to type).
+  const handleComposerPointerDown = (e: PointerEvent<HTMLTextAreaElement>) => {
+    if (typeof window === 'undefined') return
+    if (!window.matchMedia('(max-width: 767px)').matches) return
+    e.preventDefault()
+    expand()
+  }
 
   const handleComposerFocus = () => {
     snapshot('FOCUS_SYNC')
@@ -725,6 +737,7 @@ export function WidgetShellHero() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKey}
+              onPointerDown={handleComposerPointerDown}
               onFocus={handleComposerFocus}
               onBlur={handleComposerBlur}
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
