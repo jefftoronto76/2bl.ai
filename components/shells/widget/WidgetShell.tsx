@@ -461,6 +461,92 @@ export function WidgetShellHero() {
     setHeroEngaged(isEngaged)
   }, [isEngaged, setHeroEngaged])
 
+  // DIAGNOSTIC (temporary): compares full Hero Chat state/layout across
+  // composer focus/blur cycles and viewport events. Remove alongside the
+  // other diagnostic commits once the Safari keyboard/scroll investigation
+  // is done.
+  const snapshot = (label: string) => {
+    const surface = document.querySelector('#herochat .chat-surface') as HTMLElement | null
+    const header = document.querySelector('#herochat .chat-surface header') as HTMLElement | null
+    const msgList = document.querySelector('#herochat .hero-conversation') as HTMLElement | null
+    const composer = document.querySelector('#herochat .chat-surface textarea') as HTMLTextAreaElement | null
+    const stage = document.querySelector('#herochat.stage') as HTMLElement | null
+
+    console.log(`[HeroChat] ${label}`, {
+      timestamp: performance.now(),
+
+      isEngaged,
+      composerFocused,
+      conversationVisible,
+
+      activeElement:
+        document.activeElement === composer
+          ? 'HERO_TEXTAREA'
+          : document.activeElement?.tagName,
+
+      scrollY: window.scrollY,
+      scrollX: window.scrollX,
+
+      bodyPosition: document.body.style.position,
+      bodyTop: document.body.style.top,
+      bodyOverflow: getComputedStyle(document.body).overflow,
+
+      stageClass: stage?.className,
+
+      stageRect: stage?.getBoundingClientRect(),
+      surfaceRect: surface?.getBoundingClientRect(),
+      msgListRect: msgList?.getBoundingClientRect(),
+      composerRect: composer?.getBoundingClientRect(),
+      headerRect: header?.getBoundingClientRect(),
+
+      msgListScrollTop: msgList?.scrollTop,
+      msgListScrollHeight: msgList?.scrollHeight,
+      msgListClientHeight: msgList?.clientHeight,
+      msgListOverflow: msgList ? getComputedStyle(msgList).overflowY : null,
+
+      innerHeight: window.innerHeight,
+      documentClientHeight: document.documentElement.clientHeight,
+
+      vpHeight: window.visualViewport?.height,
+      vpWidth: window.visualViewport?.width,
+      vpOffsetTop: window.visualViewport?.offsetTop,
+      vpPageTop: window.visualViewport?.pageTop,
+    })
+  }
+
+  // DIAGNOSTIC: latest-snapshot ref so the mount-scoped native listeners below
+  // (subscribed once, never re-subscribed) always read the current
+  // isEngaged/composerFocused/conversationVisible instead of the values that
+  // were in scope when the listeners were first attached.
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+
+  // DIAGNOSTIC: log on every isEngaged/composerFocused/conversationVisible change.
+  useEffect(() => {
+    snapshot('STATE_CHANGE')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEngaged, composerFocused, conversationVisible])
+
+  // DIAGNOSTIC: log on window/visualViewport scroll and resize while mounted.
+  useEffect(() => {
+    const onWindowScroll = () => snapshotRef.current('WINDOW_SCROLL')
+    const onWindowResize = () => snapshotRef.current('WINDOW_RESIZE')
+    const onVpResize = () => snapshotRef.current('VP_RESIZE')
+    const onVpScroll = () => snapshotRef.current('VP_SCROLL')
+
+    window.addEventListener('scroll', onWindowScroll)
+    window.addEventListener('resize', onWindowResize)
+    window.visualViewport?.addEventListener('resize', onVpResize)
+    window.visualViewport?.addEventListener('scroll', onVpScroll)
+
+    return () => {
+      window.removeEventListener('scroll', onWindowScroll)
+      window.removeEventListener('resize', onWindowResize)
+      window.visualViewport?.removeEventListener('resize', onVpResize)
+      window.visualViewport?.removeEventListener('scroll', onVpScroll)
+    }
+  }, [])
+
   useEffect(() => {
     const ta = textareaRef.current
     if (!ta) return
@@ -475,12 +561,38 @@ export function WidgetShellHero() {
   })
 
   const handleComposerFocus = () => {
+    snapshot('FOCUS_SYNC')
     setConversationVisible(true)
     setComposerFocused(true)
+
+    requestAnimationFrame(() => {
+      snapshot('FOCUS_RAF')
+    })
+
+    setTimeout(() => {
+      snapshot('FOCUS_100MS')
+    }, 100)
+
+    setTimeout(() => {
+      snapshot('FOCUS_500MS')
+    }, 500)
   }
 
   const handleComposerBlur = () => {
+    snapshot('BLUR_SYNC')
     setComposerFocused(false)
+
+    requestAnimationFrame(() => {
+      snapshot('BLUR_RAF')
+    })
+
+    setTimeout(() => {
+      snapshot('BLUR_100MS')
+    }, 100)
+
+    setTimeout(() => {
+      snapshot('BLUR_500MS')
+    }, 500)
   }
 
   const submit = () => {
