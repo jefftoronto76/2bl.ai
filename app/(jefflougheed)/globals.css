@@ -429,23 +429,31 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .stage.engaged .chat-surface {
     inset: 0;
     background: rgb(245 244 240);
+    display: grid;
+    grid-template-rows: 40px minmax(0, 1fr) auto;
+    height: 100dvh;
+    overflow: hidden;
   }
-  .stage.engaged .chat-surface .hero-conversation {
-    flex: 1;
+  .stage.engaged .chat-surface header {
+    grid-row: 1;
+    height: 40px;
+    min-height: 40px;
+  }
+  .stage.engaged .hero-conversation {
+    grid-row: 2;
     min-height: 0;
     overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  .stage.engaged .chat-surface .composer-wrap {
-    position: sticky;
-    bottom: 0;
-  }
-  .stage.engaged .chat-surface .hero-conversation {
+    margin-top: 0;
     background: transparent;
     border: none;
     border-radius: 0;
     box-shadow: none;
     padding: 16px 16px 0;
+  }
+  .stage.engaged .composer-wrap {
+    grid-row: 3;
+    position: static;
+    margin-top: 0 !important;
   }
 }
 
