@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
-import { flushSync } from 'react-dom'
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -719,17 +718,7 @@ export function WidgetShellHero() {
         </div>
       )}
 
-      <div
-        className="composer-wrap"
-        ref={composerWrapperRef}
-        onPointerDown={() => {
-          if (!composerActive && !isEngaged) {
-            flushSync(() => {
-              setComposerActive(true)
-            })
-          }
-        }}
-      >
+      <div className="composer-wrap" ref={composerWrapperRef} onPointerDown={() => setComposerActive(true)}>
         <div className="composer composer--sage-glow">
           <div className="row">
             <textarea
