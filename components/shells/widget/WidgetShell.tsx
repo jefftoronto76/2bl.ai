@@ -19,12 +19,6 @@ import type { ChatErrorType, MarkerParseResult, ParsedMarker, UIMessage } from '
 import type { BookingCardData, SageParameterPublic } from '@/services/chat/ui/v1/parseBookingCards'
 import type { UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback'
 
-/* This file is a READ-ONLY reference copy pulled verbatim from
-   jefftoronto76/2bl.ai @ 07-19-26_jefflougheed.cachat via GitHub, for
-   direct comparison against the local prototype (nav-hero-prod.jsx /
-   widget-chat-prod.jsx / styles-prod.css). It is not wired into the
-   prototype and does not run. Re-copy from the branch if it moves on. */
-
 function extractBookingCards(markers: ParsedMarker[]): BookingCardData[] {
   return markers
     .filter((m) => m.type === 'BOOKING')
@@ -441,6 +435,7 @@ export function WidgetShellHero() {
 
   const [input, setInput] = useState('')
   const [conversationVisible, setConversationVisible] = useState(false)
+  const [composerFocused, setComposerFocused] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
 
@@ -473,10 +468,19 @@ export function WidgetShellHero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
-  useKeyboardViewport({ active: isEngaged, trackViewport: false })
+  useKeyboardViewport({
+    active: isEngaged || composerFocused,
+    lockBodyScroll: isEngaged,
+    trackViewport: false,
+  })
 
   const handleComposerFocus = () => {
     setConversationVisible(true)
+    setComposerFocused(true)
+  }
+
+  const handleComposerBlur = () => {
+    setComposerFocused(false)
   }
 
   const submit = () => {
@@ -546,7 +550,7 @@ export function WidgetShellHero() {
 
       <div className="chat-surface">
       {isEngaged && (
-        <header className="md:hidden flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
+        <header className="md:hidden flex h-10 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
           <div className="flex items-center gap-2.5">
             <span
               aria-hidden
@@ -593,7 +597,9 @@ export function WidgetShellHero() {
             scrollDeps={[messages.length, conversationVisible]}
             useRaf
             scrollBlock="end"
-            scrollGuard={() => conversationVisible && messages.length > 0}
+            // DIAGNOSTIC (temporary): Hero auto-scroll disabled for keyboard/scroll
+            // testing. Original guard: () => conversationVisible && messages.length > 0
+            scrollGuard={() => false}
             scrollAnchorClassName="messages-end"
           />
         </div>
@@ -608,6 +614,7 @@ export function WidgetShellHero() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKey}
               onFocus={handleComposerFocus}
+              onBlur={handleComposerBlur}
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />
