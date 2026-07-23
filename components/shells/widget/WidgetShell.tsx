@@ -615,6 +615,15 @@ export function WidgetShellHero() {
               onKeyDown={onKey}
               onFocus={handleComposerFocus}
               onBlur={handleComposerBlur}
+              onPointerDown={(e) => {
+                if (!isEngaged) {
+                  e.preventDefault()
+                  setConversationVisible(true)
+                  setTimeout(() => {
+                    textareaRef.current?.focus()
+                  }, 50)
+                }
+              }}
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />
