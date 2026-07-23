@@ -538,7 +538,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
 
 /* Full-screen chat overlay */
 .chat-overlay { position: fixed; inset: 0; z-index: 100; overflow: hidden; background: rgb(var(--color-bg)); animation: expandChat 0.3s ease-out; }
-.chat-overlay-inner { display: flex; height: 100dvh; min-height: 0; flex-direction: column; }
+.chat-overlay-inner { display: flex; height: var(--vvh, 100dvh); min-height: 0; flex-direction: column; }
 .chat-overlay-header {
   display: flex; height: 56px; flex: none; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--color-border); background: rgb(var(--color-bg) / 0.9);

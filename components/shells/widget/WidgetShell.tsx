@@ -174,6 +174,24 @@ export function WidgetShellChat() {
     setMode(useWidgetShell.getState().mode)
   }, [isExpanded, setMode])
 
+  useEffect(() => {
+    if (!window.visualViewport) return
+    const overlay = document.querySelector('#sage-chat-overlay') as HTMLElement | null
+
+    const update = () => {
+      if (overlay && window.visualViewport) {
+        overlay.style.setProperty('--vvh', `${window.visualViewport.height}px`)
+      }
+    }
+
+    window.visualViewport.addEventListener('resize', update)
+    update()
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', update)
+    }
+  }, [])
+
   const submit = () => {
     const text = input.trim()
     if (!text || isStreaming) return
