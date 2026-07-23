@@ -560,6 +560,18 @@ export function WidgetShellHero() {
     trackViewport: false,
   })
 
+  useEffect(() => {
+    if (!window.visualViewport) return
+    const surface = document.querySelector('#herochat .chat-surface') as HTMLElement | null
+    const update = () => {
+      if (surface) {
+        surface.style.setProperty('--vvh', `${window.visualViewport!.height}px`)
+      }
+    }
+    window.visualViewport.addEventListener('resize', update)
+    return () => window.visualViewport?.removeEventListener('resize', update)
+  }, [])
+
   const handleComposerFocus = () => {
     snapshot('FOCUS_SYNC')
     setConversationVisible(true)
@@ -576,6 +588,15 @@ export function WidgetShellHero() {
     setTimeout(() => {
       snapshot('FOCUS_500MS')
     }, 500)
+
+    setTimeout(() => {
+      if (window.visualViewport) {
+        const surface = document.querySelector('#herochat .chat-surface') as HTMLElement | null
+        if (surface) {
+          surface.style.setProperty('--vvh', `${window.visualViewport.height}px`)
+        }
+      }
+    }, 300)
   }
 
   const handleComposerBlur = () => {

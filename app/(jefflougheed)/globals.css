@@ -429,10 +429,12 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .stage.engaged .chat-surface,
   .stage:focus-within .chat-surface {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     display: grid;
     grid-template-rows: 40px minmax(0, 1fr) auto;
-    height: 100dvh;
+    height: var(--vvh, 100dvh);
     overflow: hidden;
     background: rgb(245 244 240);
   }
