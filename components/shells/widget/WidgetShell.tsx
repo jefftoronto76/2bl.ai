@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, KeyboardEvent, useState, type ReactNode } from 'react'
+import { useRef, useEffect, KeyboardEvent, PointerEvent, useState, type ReactNode } from 'react'
 import { Square } from 'lucide-react'
 import { useWidgetShell } from '@/services/chat/ui/v1/useWidgetShell'
 import { useChatSessionContext } from '@/services/chat/ui/v1/core/ChatSessionProvider'
@@ -146,6 +146,7 @@ export function WidgetShellChat() {
   const sageParameters = useSageParameters()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const overlayInnerRef = useRef<HTMLDivElement>(null)
 
   const startNewConversation = () => {
     if (!window.confirm('Start a new conversation? This clears the current chat.')) return
@@ -173,6 +174,24 @@ export function WidgetShellChat() {
     if (!isExpanded) return
     setMode(useWidgetShell.getState().mode)
   }, [isExpanded, setMode])
+
+  useEffect(() => {
+    if (!window.visualViewport) return
+    const overlay = overlayInnerRef.current
+
+    const update = () => {
+      if (overlay && window.visualViewport) {
+        overlay.style.setProperty('--vvh', `${window.visualViewport.height}px`)
+      }
+    }
+
+    window.visualViewport.addEventListener('resize', update)
+    update()
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', update)
+    }
+  }, [])
 
   const submit = () => {
     const text = input.trim()
@@ -296,7 +315,7 @@ export function WidgetShellChat() {
 
       {isExpanded && (
         <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
-          <div className="flex h-dvh min-h-0 flex-col">
+          <div ref={overlayInnerRef} className="flex min-h-0 flex-col" style={{ height: 'var(--vvh, 100dvh)' }}>
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
@@ -422,7 +441,7 @@ function detectModeFromLocation(): 'question' | null {
 }
 
 export function WidgetShellHero() {
-  const { setComposerRef, setHeroEngaged } = useWidgetShell()
+  const { setComposerRef, setHeroEngaged, expand } = useWidgetShell()
   const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
     useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
@@ -559,6 +578,18 @@ export function WidgetShellHero() {
     lockBodyScroll: isEngaged,
     trackViewport: false,
   })
+
+  // On mobile, a tap on the composer should open the full-screen overlay
+  // instead of focusing inline — preventDefault on pointerdown blocks the
+  // browser's default focus action before the keyboard opens, so the overlay
+  // mounts stable and un-focused (it shows the empty-state greeting via the
+  // shared session; the visitor taps its composer themselves to type).
+  const handleComposerPointerDown = (e: PointerEvent<HTMLTextAreaElement>) => {
+    if (typeof window === 'undefined') return
+    if (!window.matchMedia('(max-width: 767px)').matches) return
+    e.preventDefault()
+    expand()
+  }
 
   const handleComposerFocus = () => {
     snapshot('FOCUS_SYNC')
@@ -725,6 +756,7 @@ export function WidgetShellHero() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKey}
+              onPointerDown={handleComposerPointerDown}
               onFocus={handleComposerFocus}
               onBlur={handleComposerBlur}
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
