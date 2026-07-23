@@ -427,8 +427,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     padding: 0 8px;
   }
   .stage.engaged .chat-surface,
-  .stage:focus-within .chat-surface,
-  .stage.composer-active .chat-surface {
+  .stage:focus-within .chat-surface {
     position: fixed;
     inset: 0;
     display: grid;

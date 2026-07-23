@@ -436,7 +436,6 @@ export function WidgetShellHero() {
   const [input, setInput] = useState('')
   const [conversationVisible, setConversationVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
-  const [composerActive, setComposerActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
 
@@ -624,7 +623,7 @@ export function WidgetShellHero() {
     <section
       id="herochat"
       data-screen-label="Hero"
-      className={`stage${isEngaged ? ' engaged' : ''}${composerActive ? ' composer-active' : ''}`}
+      className={isEngaged ? 'stage engaged' : 'stage'}
     >
       <div className="hero">
         {isEngaged && (
@@ -718,7 +717,7 @@ export function WidgetShellHero() {
         </div>
       )}
 
-      <div className="composer-wrap" ref={composerWrapperRef} onPointerDown={() => setComposerActive(true)}>
+      <div className="composer-wrap" ref={composerWrapperRef}>
         <div className="composer composer--sage-glow">
           <div className="row">
             <textarea
