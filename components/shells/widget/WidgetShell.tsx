@@ -146,6 +146,7 @@ export function WidgetShellChat() {
   const sageParameters = useSageParameters()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const overlayInnerRef = useRef<HTMLDivElement>(null)
 
   const startNewConversation = () => {
     if (!window.confirm('Start a new conversation? This clears the current chat.')) return
@@ -176,7 +177,7 @@ export function WidgetShellChat() {
 
   useEffect(() => {
     if (!window.visualViewport) return
-    const overlay = document.querySelector('#sage-chat-overlay') as HTMLElement | null
+    const overlay = overlayInnerRef.current
 
     const update = () => {
       if (overlay && window.visualViewport) {
@@ -314,7 +315,7 @@ export function WidgetShellChat() {
 
       {isExpanded && (
         <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
-          <div className="flex h-dvh min-h-0 flex-col">
+          <div ref={overlayInnerRef} className="flex min-h-0 flex-col" style={{ height: 'var(--vvh, 100dvh)' }}>
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
               <div className="flex items-center gap-2.5">
                 <span
