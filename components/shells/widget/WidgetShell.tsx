@@ -478,7 +478,7 @@ export function WidgetShellChat() {
                       {mode === 'question' ? (
                         <>Ask me anything about <em className="italic">Jeff&apos;s work</em>.</>
                       ) : (
-                        <>Hi, I&apos;m Sage. <em className="italic">What brings you here?</em></>
+                        <>Hi, I&apos;m Sage.<br /><em className="italic">What brings you here?</em></>
                       )}
                     </p>
                   </div>
@@ -512,6 +512,8 @@ export function WidgetShellChat() {
                       onKeyDown={handleKey}
                       onFocus={handleComposerFocus}
                       onBlur={handleComposerBlur}
+                      autoComplete="off"
+                      autoCorrect="off"
                       placeholder={messages.length > 0 ? "Keep going…" : "What's the situation you're trying to figure out?"}
                       rows={1}
                     />
@@ -889,6 +891,8 @@ export function WidgetShellHero() {
               onPointerDown={handleComposerPointerDown}
               onFocus={handleComposerFocus}
               onBlur={handleComposerBlur}
+              autoComplete="off"
+              autoCorrect="off"
               placeholder={isEngaged ? "Keep going…" : "What's the situation you're trying to figure out?"}
               rows={1}
             />

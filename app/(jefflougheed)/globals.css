@@ -417,6 +417,10 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .new-convo-link { display: none; }
   .reply-time { display: none; }
 
+  .composer textarea {
+    white-space: pre-wrap;
+  }
+
   .chat-surface {
     position: fixed;
     bottom: 0;
@@ -432,14 +436,14 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     inset: 0;
     background: rgb(245 244 240);
     display: grid;
-    grid-template-rows: 40px minmax(0, 1fr) auto;
+    grid-template-rows: 52px minmax(0, 1fr) auto;
     height: 100dvh;
     overflow: hidden;
   }
   .stage.engaged .chat-surface header {
     grid-row: 1;
-    height: 40px;
-    min-height: 40px;
+    height: 52px;
+    min-height: 52px;
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -459,6 +463,9 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     grid-row: 3;
     position: static;
     margin-top: 0 !important;
+  }
+  .stage .chat-surface .composer-wrap {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
 
@@ -591,8 +598,8 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
   }
 
   #sage-chat-overlay > div > header {
-    height: 40px;
-    min-height: 40px;
+    height: 52px;
+    min-height: 52px;
     flex-shrink: 0;
     background: transparent;
     backdrop-filter: none;
@@ -626,6 +633,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
   .chat-overlay-composer {
     position: static;
     flex-shrink: 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   #sage-chat-overlay > div > header button,
