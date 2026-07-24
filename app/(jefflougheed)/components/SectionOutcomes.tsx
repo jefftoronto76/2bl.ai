@@ -61,7 +61,10 @@ const OUTCOMES: Record<Mode, ModeCard[]> = {
   ],
 }
 
-const PRACTICE_AREAS = ['Revenue', 'Operations', 'Product', 'Leadership']
+const PRACTICE_AREAS: Record<Mode, string[]> = {
+  operator: ['Revenue', 'Operations', 'Product', 'Leadership'],
+  coach: ['Perspective', 'Executive Presence', 'Empathy'],
+}
 
 /** Operator-mode coda — Jeff's own point of view (no quote marks). */
 const POV = {
@@ -86,33 +89,38 @@ function ModeToggle({
   setMode: (m: Mode) => void
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Special Projects or Coaching"
-      className="flex flex-wrap gap-2.5 mb-16"
-    >
-      {MODE_LABELS.map(([id, label]) => {
-        const on = mode === id
-        return (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={on}
-            type="button"
-            onClick={() => setMode(id)}
-            className={[
-              'inline-flex items-center gap-2 rounded-full border px-4 py-[9px]',
-              'font-body text-[13px] font-medium tracking-[0.01em] cursor-pointer',
-              'transition-colors duration-150',
-              on
-                ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-[rgb(var(--color-bg))]'
-                : 'bg-surface border-[color:var(--color-border)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)]',
-            ].join(' ')}
-          >
-            {label}
-          </button>
-        )
-      })}
+    <div className="flex items-center gap-3 mb-16 flex-wrap">
+      <span className="font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-dim)]">
+        Choose your path:
+      </span>
+      <div
+        role="tablist"
+        aria-label="Special Projects or Coaching"
+        className="flex flex-wrap gap-2.5"
+      >
+        {MODE_LABELS.map(([id, label]) => {
+          const on = mode === id
+          return (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={on}
+              type="button"
+              onClick={() => setMode(id)}
+              className={[
+                'inline-flex items-center gap-2 rounded-full border px-4 py-[9px]',
+                'font-body text-[13px] font-medium tracking-[0.01em] cursor-pointer',
+                'transition-colors duration-150',
+                on
+                  ? 'bg-[color:var(--color-text-primary)] border-[color:var(--color-text-primary)] text-[rgb(var(--color-bg))]'
+                  : 'bg-surface border-[color:var(--color-border)] text-[color:var(--color-text-muted)] hover:border-[color:var(--color-border-hover)] hover:text-[color:var(--color-text-primary)]',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -248,10 +256,10 @@ function MyPovFigure() {
   )
 }
 
-function PracticeAreas() {
+function PracticeAreas({ mode }: { mode: Mode }) {
   return (
     <div className="flex flex-wrap gap-2 lg:justify-end" aria-label="Practice areas">
-      {PRACTICE_AREAS.map((label) => (
+      {PRACTICE_AREAS[mode].map((label) => (
         <span
           key={label}
           className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-primary)] bg-surface border border-[color:var(--color-border)] rounded-full px-3 pt-2 pb-[7px]"
@@ -320,7 +328,7 @@ export function SectionOutcomes() {
           ) : (
             <MyPovFigure />
           )}
-          <PracticeAreas />
+          <PracticeAreas mode={mode} />
         </div>
       </div>
 
