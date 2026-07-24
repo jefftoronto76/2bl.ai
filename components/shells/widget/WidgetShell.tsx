@@ -478,7 +478,7 @@ export function WidgetShellChat() {
                       {mode === 'question' ? (
                         <>Ask me anything about <em className="italic">Jeff&apos;s work</em>.</>
                       ) : (
-                        <>Hi, I&apos;m Sage. <em className="italic">What brings you here?</em></>
+                        <>Hi, I&apos;m Sage.<br /><em className="italic">What brings you here?</em></>
                       )}
                     </p>
                   </div>
