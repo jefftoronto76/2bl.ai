@@ -460,6 +460,9 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     position: static;
     margin-top: 0 !important;
   }
+  .stage .chat-surface .composer-wrap {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
 }
 
 .close-chat-mobile {
@@ -626,6 +629,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
   .chat-overlay-composer {
     position: static;
     flex-shrink: 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   #sage-chat-overlay > div > header button,
