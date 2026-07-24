@@ -417,6 +417,10 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
   .new-convo-link { display: none; }
   .reply-time { display: none; }
 
+  .composer textarea {
+    white-space: pre-wrap;
+  }
+
   .chat-surface {
     position: fixed;
     bottom: 0;
