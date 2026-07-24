@@ -632,7 +632,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
   .stage .chat-surface header button {
     background: rgb(var(--color-bg));
     color: rgb(var(--ink-rgb));
-    border: 1px solid rgb(var(--ink-rgb) / 0.15);
+    border: none;
     border-radius: 50%;
   }
 }
