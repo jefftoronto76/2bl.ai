@@ -587,6 +587,10 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
   margin: 0 auto;
 }
 
+@media (min-width: 769px) {
+  .chat-overlay-composer { background: transparent; }
+}
+
 @media (max-width: 768px) {
   /* Outer container — the overlay's inner flex div (#sage-chat-overlay > div). */
   #sage-chat-overlay > div {

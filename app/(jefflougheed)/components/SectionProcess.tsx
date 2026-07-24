@@ -695,7 +695,12 @@ export function SectionProcess({
         <Subhead track={track} />
 
         {/* Chips */}
-        <TrackChips active={activeId} setActive={setActiveId} />
+        <div className="flex items-center gap-3 mb-9 flex-wrap">
+          <span className="font-mono text-[11px] tracking-[0.16em] uppercase text-[color:var(--color-text-dim)]">
+            Choose your focus:
+          </span>
+          <TrackChips active={activeId} setActive={setActiveId} />
+        </div>
 
         {/* "Sound like you?" reveal */}
         {/* TODO(sage): wire onSymptomClick to chat store to pre-populate the composer. */}
