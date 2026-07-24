@@ -596,6 +596,8 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    --ink-rgb: 24 32 41;
+    --color-bg: 245 244 240;
   }
 
   /* The wrapper between header and composer previously scrolled as a whole
