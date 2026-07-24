@@ -51,7 +51,7 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
     const { rating } = ctx.feedback.getFeedback(messageIndex)
 
     return (
-      <div key={msg.id} className="group">
+      <div key={msg.id} data-chat-message className="group">
         <SageReply
           prose={parsed.prose}
           markdown={markdown}
@@ -82,7 +82,7 @@ function makeRenderUserMessage(retry: () => void) {
   return function renderUserMessage(msg: UIMessage): ReactNode {
     const status = msg.status ?? 'sent'
     return (
-      <div key={msg.id} className="flex flex-col items-end gap-1">
+      <div key={msg.id} data-chat-message className="flex flex-col items-end gap-1">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -161,6 +161,9 @@ export function WidgetShellChat() {
     const header = document.querySelector('#sage-chat-overlay header') as HTMLElement | null
     const log = document.querySelector('#sage-chat-overlay .chat-overlay-log') as HTMLElement | null
     const composer = textareaRef.current
+    const msgEls = log?.querySelectorAll('[data-chat-message]')
+    const firstMsgEl = msgEls?.[0] as HTMLElement | undefined
+    const lastMsgEl = msgEls?.[msgEls.length - 1] as HTMLElement | undefined
 
     console.log(`[OverlayChat] ${label}`, {
       timestamp: performance.now(),
@@ -185,11 +188,15 @@ export function WidgetShellChat() {
       logRect: log?.getBoundingClientRect(),
       composerRect: composer?.getBoundingClientRect(),
       headerRect: header?.getBoundingClientRect(),
+      firstMessageRect: firstMsgEl?.getBoundingClientRect(),
+      lastMessageRect: lastMsgEl?.getBoundingClientRect(),
 
       logScrollTop: log?.scrollTop,
       logScrollHeight: log?.scrollHeight,
       logClientHeight: log?.clientHeight,
       logOverflow: log ? getComputedStyle(log).overflowY : null,
+      distanceFromBottom:
+        log ? log.scrollHeight - log.scrollTop - log.clientHeight : null,
 
       innerHeight: window.innerHeight,
       documentClientHeight: document.documentElement.clientHeight,
@@ -609,6 +616,9 @@ export function WidgetShellHero() {
     const msgList = document.querySelector('#herochat .hero-conversation') as HTMLElement | null
     const composer = document.querySelector('#herochat .chat-surface textarea') as HTMLTextAreaElement | null
     const stage = document.querySelector('#herochat.stage') as HTMLElement | null
+    const msgEls = msgList?.querySelectorAll('[data-chat-message]')
+    const firstMsgEl = msgEls?.[0] as HTMLElement | undefined
+    const lastMsgEl = msgEls?.[msgEls.length - 1] as HTMLElement | undefined
 
     console.log(`[HeroChat] ${label}`, {
       timestamp: performance.now(),
@@ -616,6 +626,7 @@ export function WidgetShellHero() {
       isEngaged,
       composerFocused,
       conversationVisible,
+      messageCount: messages.length,
 
       activeElement:
         document.activeElement === composer
@@ -636,6 +647,8 @@ export function WidgetShellHero() {
       msgListRect: msgList?.getBoundingClientRect(),
       composerRect: composer?.getBoundingClientRect(),
       headerRect: header?.getBoundingClientRect(),
+      firstMessageRect: firstMsgEl?.getBoundingClientRect(),
+      lastMessageRect: lastMsgEl?.getBoundingClientRect(),
 
       msgListScrollTop: msgList?.scrollTop,
       msgListScrollHeight: msgList?.scrollHeight,
