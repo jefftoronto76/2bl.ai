@@ -143,10 +143,116 @@ export function WidgetShellChat() {
   const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
+  const [composerFocused, setComposerFocused] = useState(false)
   const sageParameters = useSageParameters()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const overlayInnerRef = useRef<HTMLDivElement>(null)
+
+  // DIAGNOSTIC (temporary): mobile taps on the Hero composer now route here
+  // (expand()) instead of focusing Hero's inline composer, so Hero's own
+  // [HeroChat] focus/blur diagnostic never fires on mobile anymore — this is
+  // the surface mobile visitors actually land on. Mirrors the [HeroChat]
+  // snapshot shape. Remove alongside the other diagnostic commits once the
+  // Safari keyboard/scroll investigation is done.
+  const snapshot = (label: string) => {
+    const overlay = document.querySelector('#sage-chat-overlay') as HTMLElement | null
+    const inner = overlayInnerRef.current
+    const header = document.querySelector('#sage-chat-overlay header') as HTMLElement | null
+    const log = document.querySelector('#sage-chat-overlay .chat-overlay-log') as HTMLElement | null
+    const composer = textareaRef.current
+
+    console.log(`[OverlayChat] ${label}`, {
+      timestamp: performance.now(),
+
+      isExpanded,
+      composerFocused,
+
+      activeElement:
+        document.activeElement === composer
+          ? 'OVERLAY_TEXTAREA'
+          : document.activeElement?.tagName,
+
+      scrollY: window.scrollY,
+      scrollX: window.scrollX,
+
+      bodyPosition: document.body.style.position,
+      bodyTop: document.body.style.top,
+      bodyOverflow: getComputedStyle(document.body).overflow,
+
+      overlayRect: overlay?.getBoundingClientRect(),
+      innerRect: inner?.getBoundingClientRect(),
+      logRect: log?.getBoundingClientRect(),
+      composerRect: composer?.getBoundingClientRect(),
+      headerRect: header?.getBoundingClientRect(),
+
+      logScrollTop: log?.scrollTop,
+      logScrollHeight: log?.scrollHeight,
+      logClientHeight: log?.clientHeight,
+      logOverflow: log ? getComputedStyle(log).overflowY : null,
+
+      innerHeight: window.innerHeight,
+      documentClientHeight: document.documentElement.clientHeight,
+
+      vvhVar: inner ? getComputedStyle(inner).getPropertyValue('--vvh') : null,
+
+      vpHeight: window.visualViewport?.height,
+      vpWidth: window.visualViewport?.width,
+      vpOffsetTop: window.visualViewport?.offsetTop,
+      vpPageTop: window.visualViewport?.pageTop,
+    })
+  }
+
+  // DIAGNOSTIC: latest-snapshot ref so the mount-scoped native listeners below
+  // always read current isExpanded/composerFocused instead of stale closure
+  // values from when the listeners were first attached.
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+
+  // DIAGNOSTIC: log whenever the overlay opens/closes or the composer
+  // gains/loses focus.
+  useEffect(() => {
+    snapshot('STATE_CHANGE')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpanded, composerFocused])
+
+  // DIAGNOSTIC: log on window/visualViewport scroll and resize while the
+  // overlay is mounted.
+  useEffect(() => {
+    if (!isExpanded) return
+    const onWindowScroll = () => snapshotRef.current('WINDOW_SCROLL')
+    const onWindowResize = () => snapshotRef.current('WINDOW_RESIZE')
+    const onVpResize = () => snapshotRef.current('VP_RESIZE')
+    const onVpScroll = () => snapshotRef.current('VP_SCROLL')
+
+    window.addEventListener('scroll', onWindowScroll)
+    window.addEventListener('resize', onWindowResize)
+    window.visualViewport?.addEventListener('resize', onVpResize)
+    window.visualViewport?.addEventListener('scroll', onVpScroll)
+
+    return () => {
+      window.removeEventListener('scroll', onWindowScroll)
+      window.removeEventListener('resize', onWindowResize)
+      window.visualViewport?.removeEventListener('resize', onVpResize)
+      window.visualViewport?.removeEventListener('scroll', onVpScroll)
+    }
+  }, [isExpanded])
+
+  const handleComposerFocus = () => {
+    snapshot('FOCUS_SYNC')
+    setComposerFocused(true)
+    requestAnimationFrame(() => snapshot('FOCUS_RAF'))
+    setTimeout(() => snapshot('FOCUS_100MS'), 100)
+    setTimeout(() => snapshot('FOCUS_500MS'), 500)
+  }
+
+  const handleComposerBlur = () => {
+    snapshot('BLUR_SYNC')
+    setComposerFocused(false)
+    requestAnimationFrame(() => snapshot('BLUR_RAF'))
+    setTimeout(() => snapshot('BLUR_100MS'), 100)
+    setTimeout(() => snapshot('BLUR_500MS'), 500)
+  }
 
   const startNewConversation = () => {
     if (!window.confirm('Start a new conversation? This clears the current chat.')) return
@@ -317,7 +423,7 @@ export function WidgetShellChat() {
         <div id="sage-chat-overlay" className="fixed inset-0 z-[100] overflow-hidden bg-[rgb(var(--color-bg))] animate-[expandChat_0.3s_ease-out]">
           <div ref={overlayInnerRef} className="flex min-h-0 flex-col" style={{ height: 'var(--vvh, 100dvh)' }}>
             <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
-              <div className="flex items-center gap-2.5">
+              <div className="hidden items-center gap-2.5 md:flex">
                 <span
                   aria-hidden
                   className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
@@ -326,6 +432,17 @@ export function WidgetShellChat() {
                   Performance-Driven, Heart-Led
                 </h1>
               </div>
+              {messages.length > 0 && (
+                <button
+                  onClick={startNewConversation}
+                  aria-label="New conversation"
+                  className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-[''] md:hidden"
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                    <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+                  </svg>
+                </button>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={collapse}
@@ -386,7 +503,9 @@ export function WidgetShellChat() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKey}
-                      placeholder=""
+                      onFocus={handleComposerFocus}
+                      onBlur={handleComposerBlur}
+                      placeholder={messages.length > 0 ? "Keep going…" : "What's the situation you're trying to figure out?"}
                       rows={1}
                     />
                     {isStreaming ? (
@@ -693,27 +812,25 @@ export function WidgetShellHero() {
 
       <div className="chat-surface">
       {isEngaged && (
-        <header className="md:hidden flex h-10 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] bg-[rgb(var(--color-bg)/0.9)] px-4 backdrop-blur-md backdrop-saturate-150 sm:px-8 [-webkit-backdrop-filter:saturate(180%)_blur(12px)]">
-          <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${isStreaming ? 'bg-accent' : 'bg-accent/35'}`}
-            />
-            <h1 className="font-display text-[17px] font-normal leading-none tracking-[0.02em] text-[color:var(--color-text-primary)]">
-              Performance-Driven, Heart-Led
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setConversationVisible(false)}
-              aria-label="Close chat"
-              className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
+        <header className="md:hidden flex h-10 flex-shrink-0 items-center justify-between border-b border-[color:var(--color-border)] px-4 sm:px-8">
+          <button
+            onClick={startNewConversation}
+            aria-label="New conversation"
+            className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="M3 10a7 7 0 1 1 2 5M3 10V5m0 5h5"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => setConversationVisible(false)}
+            aria-label="Close chat"
+            className="relative flex h-11 w-11 items-center justify-center bg-transparent text-[color:var(--color-text-muted)] before:absolute before:inset-[-2px] before:content-['']"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </header>
       )}
       {conversationVisible && messages.length > 0 && (

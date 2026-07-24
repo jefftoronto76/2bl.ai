@@ -64,7 +64,8 @@ html[data-brand="jefflougheed"] #how-it-works {
   --color-accent-hover: 30 77 57;
 }
 
-html[data-brand="jefflougheed"] #herochat .chat-surface {
+html[data-brand="jefflougheed"] #herochat .chat-surface,
+html[data-brand="jefflougheed"] #sage-chat-overlay > div > header {
   --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
@@ -78,6 +79,7 @@ html[data-brand="jefflougheed"] #herochat .chat-surface {
 }
 
 html[data-brand="jefflougheed"] .chat-overlay-composer {
+  --color-bg: 245 244 240;
   --color-surface: 255 255 255;
   --ink-rgb: 24 32 41;
   --color-text-primary: rgb(24 32 41);
@@ -438,6 +440,9 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
     grid-row: 1;
     height: 40px;
     min-height: 40px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   .stage.engaged .hero-conversation {
     grid-row: 2;
@@ -582,11 +587,18 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
     grid-template-rows: auto minmax(0, 1fr) auto;
     height: var(--vvh, 100dvh);
     overflow: hidden;
+    background: rgb(245 244 240);
   }
 
   #sage-chat-overlay > div > header {
+    height: 40px;
     min-height: 40px;
     flex-shrink: 0;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    --ink-rgb: 24 32 41;
+    --color-bg: 245 244 240;
   }
 
   /* The wrapper between header and composer previously scrolled as a whole
@@ -603,10 +615,24 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    width: 100%;
+    margin: 0;
+    padding: 16px 16px 0;
   }
 
   .chat-overlay-composer {
     position: static;
     flex-shrink: 0;
+  }
+
+  #sage-chat-overlay > div > header button,
+  .stage .chat-surface header button {
+    background: rgb(var(--color-bg));
+    color: rgb(var(--ink-rgb));
+    border: none;
+    border-radius: 50%;
   }
 }
