@@ -1,4 +1,4 @@
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext, requirePlatformAdmin } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 interface PromptType {
@@ -7,6 +7,15 @@ interface PromptType {
   name: string
   description: string | null
   sort_order: number | null
+}
+
+function sortPromptTypes(types: PromptType[]): PromptType[] {
+  return [...types].sort((a, b) => {
+    const aOrder = a.sort_order ?? Number.POSITIVE_INFINITY
+    const bOrder = b.sort_order ?? Number.POSITIVE_INFINITY
+    if (aOrder !== bOrder) return aOrder - bOrder
+    return a.name.localeCompare(b.name)
+  })
 }
 
 /**
@@ -32,32 +41,49 @@ export async function GET() {
   }
 
   const supabase = getAdminClient()
-  // prompt_types are tenant-agnostic definitions; a tenant's set is resolved through
-  // the prompt_type_tenants assignment join (inner join + filter on the assignment's
-  // tenant_id). Ordering stays on the prompt_types columns.
-  const { data, error } = await supabase
-    .from('prompt_types')
-    .select('id, key, name, description, sort_order, prompt_type_tenants!inner(tenant_id)')
-    .eq('prompt_type_tenants.tenant_id', authCtx.tenant_id)
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('name', { ascending: true })
 
-  if (error) {
-    console.error('[prompt-types] fetch failed:', error.message)
-    return Response.json({ error: error.message }, { status: 500 })
+  // A tenant's dropdown shows two things, merged: (1) types explicitly assigned to
+  // this tenant via prompt_type_tenants, and (2) platform-shared types (is_platform
+  // = true), visible to every tenant regardless of assignment. Two plain queries +
+  // an in-process dedupe by id, rather than one query trying to OR a base-table
+  // column against an embedded-relation filter — PostgREST's embedded-resource `or`
+  // semantics don't reliably combine with a base-table condition like is_platform.
+  const [assignedResult, platformResult, platformUser] = await Promise.all([
+    supabase
+      .from('prompt_types')
+      .select('id, key, name, description, sort_order, prompt_type_tenants!inner(tenant_id)')
+      .eq('prompt_type_tenants.tenant_id', authCtx.tenant_id),
+    supabase
+      .from('prompt_types')
+      .select('id, key, name, description, sort_order')
+      .eq('is_platform', true),
+    requirePlatformAdmin(),
+  ])
+
+  if (assignedResult.error) {
+    console.error('[prompt-types] assigned fetch failed:', assignedResult.error.message)
+    return Response.json({ error: assignedResult.error.message }, { status: 500 })
+  }
+  if (platformResult.error) {
+    console.error('[prompt-types] platform fetch failed:', platformResult.error.message)
+    return Response.json({ error: platformResult.error.message }, { status: 500 })
   }
 
   // Strip the embedded assignment rows — callers only need the type definition.
-  const promptTypes: PromptType[] = (data ?? []).map((r) => ({
-    id: r.id,
-    key: r.key,
-    name: r.name,
-    description: r.description,
-    sort_order: r.sort_order,
-  }))
-  console.log('[prompt-types] GET', { tenant_id: authCtx.tenant_id, count: promptTypes.length })
+  // A type assigned to this tenant AND platform-shared appears once (deduped by id).
+  const byId = new Map<string, PromptType>()
+  for (const r of assignedResult.data ?? []) {
+    byId.set(r.id, { id: r.id, key: r.key, name: r.name, description: r.description, sort_order: r.sort_order })
+  }
+  for (const r of platformResult.data ?? []) {
+    byId.set(r.id, { id: r.id, key: r.key, name: r.name, description: r.description, sort_order: r.sort_order })
+  }
 
-  return Response.json(promptTypes)
+  const promptTypes = sortPromptTypes([...byId.values()])
+  const canMakePlatform = platformUser !== null
+  console.log('[prompt-types] GET', { tenant_id: authCtx.tenant_id, count: promptTypes.length, canMakePlatform })
+
+  return Response.json({ types: promptTypes, canMakePlatform })
 }
 
 export async function POST(req: Request) {
@@ -69,7 +95,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { name?: unknown }
+  let body: { name?: unknown; make_platform?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -86,6 +112,11 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Name must contain at least one alphanumeric character' }, { status: 400 })
   }
 
+  // make_platform is only ever honored for a platform admin — re-checked server-side
+  // via the session, never trusted from the client-sent flag alone.
+  const platformUser = await requirePlatformAdmin()
+  const wantsPlatform = body.make_platform === true && platformUser !== null
+
   const supabase = getAdminClient()
 
   // A prompt type is a shared definition (prompt_types) assigned to tenants via
@@ -93,7 +124,7 @@ export async function POST(req: Request) {
   // take the first existing row), then assign it to this tenant.
   const { data: existing, error: lookupErr } = await supabase
     .from('prompt_types')
-    .select('id, key, name, description, sort_order')
+    .select('id, key, name, description, sort_order, is_platform')
     .eq('key', key)
     .order('created_at', { ascending: true })
     .limit(1)
@@ -106,12 +137,27 @@ export async function POST(req: Request) {
 
   let promptType: PromptType
   if (existing) {
-    promptType = existing
+    promptType = { id: existing.id, key: existing.key, name: existing.name, description: existing.description, sort_order: existing.sort_order }
+    // Promote a found-by-key type to platform-wide when requested and authorized —
+    // "created/found" both go through the same is_platform gate.
+    if (wantsPlatform && !existing.is_platform) {
+      const { data: updated, error: updateErr } = await supabase
+        .from('prompt_types')
+        .update({ is_platform: true })
+        .eq('id', existing.id)
+        .select('id, key, name, description, sort_order')
+        .single()
+      if (updateErr) {
+        console.error('[prompt-types] is_platform promote failed:', updateErr.message)
+      } else {
+        promptType = updated
+      }
+    }
   } else {
     const now = new Date().toISOString()
     const { data: created, error: insertErr } = await supabase
       .from('prompt_types')
-      .insert({ key, name, created_at: now, updated_at: now })
+      .insert({ key, name, created_at: now, updated_at: now, is_platform: wantsPlatform })
       .select('id, key, name, description, sort_order')
       .single()
     if (insertErr) {
