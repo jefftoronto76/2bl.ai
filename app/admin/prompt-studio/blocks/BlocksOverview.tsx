@@ -33,6 +33,10 @@ export interface BlocksOverviewProps {
   blocks: BlockRow[]
   version?: number | null
   status?: string | null
+  /** compiled_prompts.updated_at for this slot (view-derived) — cut-off for the publish modal's "changed since" list. */
+  lastCompiledAt?: string | null
+  /** compiled_prompts.version for this slot (view-derived) — the real source for the next publish version, unlike `version` (prompt_sets.version, dead after row creation). */
+  compiledVersion?: number | null
   // Passed down so the action buttons live in the left card (design position).
   topics: Topic[]
   activeSetId: string | null
@@ -43,6 +47,8 @@ export function BlocksOverview({
   blocks,
   version = null,
   status = null,
+  lastCompiledAt = null,
+  compiledVersion = null,
   topics,
   activeSetId,
   activeSetLabel,
@@ -87,7 +93,18 @@ export function BlocksOverview({
 
           <Group gap="sm">
             <NewBlockButton topics={topics} activeSetId={activeSetId} activeSetLabel={activeSetLabel} />
-            <PublishButton activeSetId={activeSetId} activeSetLabel={activeSetLabel ?? 'Prompt'} />
+            <PublishButton
+              activeSetId={activeSetId}
+              activeSetLabel={activeSetLabel ?? 'Prompt'}
+              activeSetVersion={compiledVersion ?? 0}
+              lastCompiledAt={lastCompiledAt}
+              blocks={active.map((b) => ({
+                id: b.id,
+                title: b.title,
+                type: b.type as BlockType,
+                updated_at: b.updated_at,
+              }))}
+            />
           </Group>
         </Stack>
       </Card>

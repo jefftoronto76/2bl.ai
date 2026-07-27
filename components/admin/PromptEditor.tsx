@@ -1,15 +1,24 @@
 'use client'
 
+// PromptEditor — read-only view of the legacy /admin/prompt "System Prompt"
+// screen.
+//
+// July 2026: the Save action (and the POST /api/admin/prompt/save call it
+// triggered) was removed. This screen predates the Blocks/Compile & Publish
+// flow, duplicated what that flow now does properly, and had none of its
+// gates — no release note, no scoping by prompt_set_id (services/prompt/
+// save.ts's `.limit(1)` grabbed an arbitrary compiled_prompts row per
+// tenant). Publishing a prompt now happens exclusively through the Blocks
+// screen's Compile & Publish modal. This page is left mounted (still linked
+// from nav) purely so the current content + version history remain visible;
+// full removal or repurposing is a separate, later decision.
+
 import { useState } from 'react'
-import { Stack, Textarea, Group, Alert, ActionIcon, Tooltip, Button, Text as MantineText } from '@mantine/core'
+import { Stack, Textarea, Group, ActionIcon, Tooltip, Button, Text as MantineText } from '@mantine/core'
 import { useClipboard } from '@mantine/hooks'
 import { IconCopy, IconCheck } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { PromptFullnessMeter } from '@/components/admin/primitives/PromptFullnessMeter'
-
-type Issue = { description: string; offendingText: string | null }
-type CheckResult = { pass: boolean; issues: Issue[] }
-type Status = 'idle' | 'checking' | 'saving' | 'saved' | 'error'
 
 export type HistoryEntry = {
   id: string
@@ -34,90 +43,10 @@ export function PromptEditor({
   initialVersion: number
   initialHistory: HistoryEntry[]
 }) {
+  // Local state only backs "View" swapping the displayed content to a past
+  // version for reading — nothing here persists anywhere anymore.
   const [prompt, setPrompt] = useState(initialPrompt)
-  const [status, setStatus] = useState<Status>('idle')
-  const [checkResult, setCheckResult] = useState<CheckResult | null>(null)
-  const [savedVersion, setSavedVersion] = useState(initialVersion)
-  const [errorMsg, setErrorMsg] = useState('')
-  const [history, setHistory] = useState<HistoryEntry[]>(initialHistory)
   const clipboard = useClipboard({ timeout: 2000 })
-
-  const handleChange = (value: string) => {
-    setPrompt(value)
-    if (checkResult) setCheckResult(null)
-    if (status === 'saved' || status === 'error') setStatus('idle')
-  }
-
-  const removeOffendingText = (offendingText: string) => {
-    const cleaned = prompt
-      .split(offendingText)
-      .join('')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-    handleChange(cleaned)
-  }
-
-  const runCheck = async () => {
-    setStatus('checking')
-    setCheckResult(null)
-    setErrorMsg('')
-
-    try {
-      const res = await fetch('/api/admin/prompt/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-      })
-      const result: CheckResult = await res.json()
-      setCheckResult(result)
-
-      if (result.pass) {
-        await runSave(result)
-      } else {
-        setStatus('idle')
-      }
-    } catch {
-      setStatus('error')
-      setErrorMsg('Safety check failed. Please try again.')
-    }
-  }
-
-  const runSave = async (result: CheckResult | null) => {
-    setStatus('saving')
-    const prevPrompt = initialPrompt
-
-    try {
-      const res = await fetch('/api/admin/prompt/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, checkResult: result }),
-      })
-      const data = await res.json()
-
-      if (data.version) {
-        if (savedVersion > 0) {
-          const archivedEntry: HistoryEntry = {
-            id: `local-${savedVersion}`,
-            version: savedVersion,
-            content: prevPrompt,
-            saved_at: new Date().toISOString(),
-          }
-          setHistory((prev) => [archivedEntry, ...prev])
-        }
-        setSavedVersion(data.version)
-        setStatus('saved')
-        setCheckResult(null)
-      } else {
-        throw new Error(data.error || 'Save failed')
-      }
-    } catch (err) {
-      setStatus('error')
-      setErrorMsg(err instanceof Error ? err.message : 'Save failed. Please try again.')
-    }
-  }
-
-  const busy = status === 'checking' || status === 'saving'
-  const showFailResult = checkResult && !checkResult.pass && status === 'idle'
 
   return (
     <Stack gap="md">
@@ -131,7 +60,7 @@ export function PromptEditor({
             fontSize: 'var(--mantine-font-size-xs)',
           }}
         >
-          Version: {savedVersion > 0 ? `v${savedVersion}` : '—'}
+          Version: {initialVersion > 0 ? `v${initialVersion}` : '—'}
         </Text>
 
         <Tooltip label={clipboard.copied ? 'Copied!' : 'Copy prompt'} withArrow position="left">
@@ -149,8 +78,7 @@ export function PromptEditor({
 
       <Textarea
         value={prompt}
-        onChange={(e) => handleChange(e.target.value)}
-        disabled={busy}
+        readOnly
         autosize
         minRows={8}
         maxRows={40}
@@ -163,65 +91,7 @@ export function PromptEditor({
         }}
       />
 
-      {showFailResult && (
-        <Alert color="orange" variant="light" radius="sm">
-          <Stack gap="xs">
-            {checkResult.issues.map((issue, i) => {
-              const canRemove = !!issue.offendingText && prompt.includes(issue.offendingText)
-              return (
-                <Group key={i} justify="space-between" wrap="nowrap" align="flex-start">
-                  <MantineText size="sm">{issue.description}</MantineText>
-                  {canRemove && (
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      color="orange"
-                      onClick={() => removeOffendingText(issue.offendingText!)}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </Group>
-              )
-            })}
-          </Stack>
-        </Alert>
-      )}
-
-      {status === 'error' && (
-        <Alert color="red" variant="light" radius="sm">
-          <MantineText size="sm">{errorMsg}</MantineText>
-        </Alert>
-      )}
-
-      {status === 'saved' && (
-        <Alert color="teal" variant="light" radius="sm">
-          <MantineText size="sm">Saved. Version {savedVersion}.</MantineText>
-        </Alert>
-      )}
-
-      <Group gap="sm">
-        <Button
-          color="green"
-          loading={busy}
-          disabled={!prompt.trim()}
-          onClick={runCheck}
-        >
-          Check & Save
-        </Button>
-
-        {showFailResult && (
-          <Button
-            variant="outline"
-            color="orange"
-            onClick={() => runSave(checkResult)}
-          >
-            Save Anyway
-          </Button>
-        )}
-      </Group>
-
-      {history.length > 0 && (
+      {initialHistory.length > 0 && (
         <Stack gap="xs" mt="xl">
           <MantineText
             size="xs"
@@ -234,7 +104,7 @@ export function PromptEditor({
           >
             Version History
           </MantineText>
-          {history.map((entry) => (
+          {initialHistory.map((entry) => (
             <Group key={entry.id} justify="space-between" wrap="nowrap">
               <Group gap="xl" wrap="nowrap">
                 <MantineText
@@ -252,8 +122,9 @@ export function PromptEditor({
                   {formatDate(entry.saved_at)}
                 </MantineText>
               </Group>
-              <Button variant="subtle" size="xs" onClick={() => handleChange(entry.content)}>
-                Restore
+              {/* Swaps the read-only textarea's content for inspection — there is no write path left to restore into. */}
+              <Button variant="subtle" size="xs" onClick={() => setPrompt(entry.content)}>
+                View
               </Button>
             </Group>
           ))}

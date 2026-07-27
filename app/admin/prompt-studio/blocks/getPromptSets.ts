@@ -3,18 +3,24 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { PromptSet, PromptSetStatus } from './promptSets'
 
 /**
- * Fetch the tenant's prompt sets (the real prompt_sets table) for the Blocks
- * picker. The page scopes the blocks query by the active set's id
- * (blocks.prompt_set_id is a UUID FK → prompt_sets.id). Each set also carries
- * its prompt_type_id (informational; not used for the blocks filter). Returns []
- * when no rows exist (picker hides) or on any Supabase error (fails open).
+ * Fetch the tenant's prompt sets for the Blocks picker. The page scopes the
+ * blocks query by the active set's id (blocks.prompt_set_id is a UUID FK →
+ * prompt_sets.id). Each set also carries its prompt_type_id (informational;
+ * not used for the blocks filter). Returns [] when no rows exist (picker
+ * hides) or on any Supabase error (fails open).
+ *
+ * Reads from prompt_sets_with_compile_meta (not the raw prompt_sets table) so
+ * lastCompiledAt/compiledVersion — derived from compiled_prompts, never stored
+ * on prompt_sets — come along in the same query the tenant-Settings screen
+ * already uses (see app/api/admin/prompt-sets/route.ts). No new column, no
+ * N+1: same view, a wider select.
  */
 export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
   const supabase = getAdminClient()
 
   const { data, error } = await supabase
-    .from('prompt_sets')
-    .select('id, label, version, status, prompt_type_id')
+    .from('prompt_sets_with_compile_meta')
+    .select('id, label, version, status, prompt_type_id, last_compiled_at, compiled_version')
     .eq('tenant_id', tenantId)
     .order('status', { ascending: false }) // 'live' sorts before 'draft'
     .order('label', { ascending: true })
@@ -27,5 +33,7 @@ export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
     label: row.label as string,
     version: (row.version as number | null) ?? 0,
     status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
+    lastCompiledAt: (row.last_compiled_at as string | null) ?? null,
+    compiledVersion: (row.compiled_version as number | null) ?? null,
   }))
 }

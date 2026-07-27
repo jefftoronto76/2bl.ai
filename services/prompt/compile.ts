@@ -9,6 +9,7 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
+import type { ReleaseNote } from '@/services/prompt/release-note'
 
 // Fixed compile sequence. Within each type bucket: blocks with `order > 0`
 // come first ascending by order; blocks with `order` = 0 or null come last,
@@ -144,10 +145,17 @@ export async function buildCompiledContent(
  * compiled_prompts row. When provided, includes blocks matching that key plus
  * shared blocks (prompt_set_id IS NULL) and writes the key on the
  * compiled_prompts row.
+ *
+ * `note` (release-note July 2026) is required and is written onto the row
+ * this call creates/overwrites. Because the pre-overwrite row is archived to
+ * compiled_prompts_history below, the note attached to THIS call rides into
+ * history automatically the next time this slot is compiled — it is never
+ * lost, just deferred one publish.
  */
 export async function compilePrompt(
   tenantId: string,
-  promptSetId?: string | null,
+  promptSetId: string | null | undefined,
+  note: ReleaseNote,
 ): Promise<CompileResult> {
   const built = await buildCompiledContent(tenantId, promptSetId)
   if (!built.ok) return built
@@ -161,7 +169,7 @@ export async function compilePrompt(
 
   let existingQuery = supabase
     .from('compiled_prompts')
-    .select('id, version, content')
+    .select('id, version, content, release_summary, release_why, release_changed_block_ids')
     .eq('tenant_id', tenantId)
     .limit(1)
 
@@ -178,6 +186,9 @@ export async function compilePrompt(
   if (existing) {
     console.log('[prompt/compile] existing compiled_prompts version:', existing.version)
 
+    // Archive the OUTGOING version's content + note — not the new one being
+    // written below. The note submitted with THIS publish describes the new
+    // version and rides into history on the NEXT compile of this slot.
     const { error: historyError } = await supabase
       .from('compiled_prompts_history')
       .insert({
@@ -185,6 +196,9 @@ export async function compilePrompt(
         tenant_id: tenantId,
         content: existing.content,
         version: existing.version,
+        release_summary: existing.release_summary ?? null,
+        release_why: existing.release_why ?? null,
+        release_changed_block_ids: existing.release_changed_block_ids ?? [],
       })
 
     if (historyError) {
@@ -200,6 +214,9 @@ export async function compilePrompt(
         content,
         version: newVersion,
         updated_at: now,
+        release_summary: note.summary,
+        release_why: note.why || null,
+        release_changed_block_ids: note.changed_block_ids,
       })
       .eq('id', existing.id)
       .eq('tenant_id', tenantId)
@@ -220,6 +237,9 @@ export async function compilePrompt(
         version: newVersion,
         updated_at: now,
         prompt_set_id: promptSetId ?? null,
+        release_summary: note.summary,
+        release_why: note.why || null,
+        release_changed_block_ids: note.changed_block_ids,
       })
 
     if (insertError) {

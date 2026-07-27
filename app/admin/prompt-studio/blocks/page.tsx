@@ -70,6 +70,23 @@ export default async function BlocksPage({
   const sets = await getPromptSets(tenantId)
   const activeSet = resolveActiveSet(sets, requestedSet ?? null)
 
+  // No prompt_sets rows for this tenant at all → activeSet is null and the
+  // Blocks query below falls back to the default slot (prompt_set_id IS
+  // NULL). getPromptSets' view join can't help here (there's no prompt_sets
+  // row to join from), so read the default slot's compiled_prompts row
+  // directly — same compile/publish version source, just for the one slot
+  // with no set backing it.
+  let defaultSlotCompiled: { version: number; updated_at: string } | null = null
+  if (!activeSet) {
+    const { data } = await supabase
+      .from('compiled_prompts')
+      .select('version, updated_at')
+      .eq('tenant_id', tenantId)
+      .is('prompt_set_id', null)
+      .maybeSingle()
+    defaultSlotCompiled = data ?? null
+  }
+
   let blocksQuery = supabase
     .from('blocks')
     .select(
@@ -126,6 +143,8 @@ export default async function BlocksPage({
           overview={{
             version: activeSet?.version ?? null,
             status: activeSet?.status ?? null,
+            lastCompiledAt: activeSet?.lastCompiledAt ?? defaultSlotCompiled?.updated_at ?? null,
+            compiledVersion: activeSet?.compiledVersion ?? defaultSlotCompiled?.version ?? null,
           }}
         />
       </Box>
