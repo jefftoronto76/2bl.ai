@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from 'react'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 import type { ChatMessage, ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import type { ChatErrorType, UseChatTurnOptions, UseChatTurnReturn } from './types'
+import { toModelMessages } from './message'
 
 // Thrown from streamTurn's three failure checkpoints so the call sites below
 // can classify without re-deriving the reason from a bare Error. AbortError
@@ -183,7 +184,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
       setErrorType(null)
       const userMsg: ChatMessage = { role: 'user', content: text }
-      const msgsToSend = [...accessors.getMessages(), userMsg]
+      // toModelMessages folds a trailing stopped:true assistant message into
+      // this new user turn as continuation context instead of replaying it
+      // as a completed assistant turn (see message.ts). userMsg itself
+      // (added to the store below) stays the clean, unmodified text — only
+      // the array sent to the model is transformed.
+      const msgsToSend = toModelMessages([...accessors.getMessages(), userMsg])
       accessors.addMessage(userMsg)
       // Read the id the store just assigned to the message we added (addMessage
       // takes the lean ChatMessage in, the canonical UIMessage — with id — is
@@ -267,7 +273,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
       setErrorType(null)
       const hiddenMsg: ChatMessage = { role: 'user', content: content.trim() }
-      const msgsToSend = [...accessors.getMessages(), hiddenMsg]
+      // See send() above — folds a trailing stopped assistant turn into this
+      // hidden user turn as continuation context.
+      const msgsToSend = toModelMessages([...accessors.getMessages(), hiddenMsg])
       // Deliberately NOT calling accessors.addMessage(hiddenMsg) — hidden from UI.
       setStreaming(true)
       accessors.addMessage({ role: 'assistant', content: '' })
@@ -390,8 +398,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const targetMsg = allMessages[targetIdx]
       // Context is everything up to (not including) the message being
       // regenerated — a later message never re-derives the context that
-      // followed it.
-      const contextMsgs = allMessages.slice(0, targetIdx)
+      // followed it. toModelMessages folds any stopped assistant turn
+      // earlier in that context the same way send()/sendHidden() do.
+      const contextMsgs = toModelMessages(allMessages.slice(0, targetIdx))
       // Seed `versions` with the pre-regenerate content on the first
       // regenerate for this message; subsequent regenerates just keep adding.
       const priorVersions = targetMsg.versions?.length ? targetMsg.versions : [targetMsg.content]

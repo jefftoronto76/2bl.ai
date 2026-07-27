@@ -6,6 +6,7 @@ import {
   reviveUIMessages,
   toChatMessage,
   toChatMessages,
+  toModelMessages,
 } from './message'
 import type { UIMessage } from './types'
 
@@ -202,5 +203,82 @@ describe('toChatMessage / toChatMessages', () => {
   it('round-trips revive → toChatMessage for a legacy row', () => {
     const revived = reviveUIMessage({ id: 'z', role: 'user', content: 'q', timestamp: '2026-05-28T00:00:00.000Z' })
     expect(toChatMessage(revived)).toEqual({ role: 'user', content: 'q' })
+  })
+})
+
+describe('toModelMessages', () => {
+  it('passes an all-complete conversation through unchanged (matches toChatMessages)', () => {
+    const msgs: UIMessage[] = [
+      { id: '1', role: 'user', content: 'hi', timestamp: NOW },
+      { id: '2', role: 'assistant', content: 'hello there', timestamp: NOW },
+      { id: '3', role: 'user', content: 'how are you', timestamp: NOW },
+    ]
+    expect(toModelMessages(msgs)).toEqual(toChatMessages(msgs))
+  })
+
+  it('folds a trailing stopped assistant message into the following user turn', () => {
+    const msgs = [
+      { role: 'user' as const, content: 'tell me a story' },
+      { role: 'assistant' as const, content: 'Once upon a tim', stopped: true },
+      { role: 'user' as const, content: 'please continue' },
+    ]
+    const out = toModelMessages(msgs)
+    expect(out).toHaveLength(2)
+    expect(out[0]).toEqual({ role: 'user', content: 'tell me a story' })
+    expect(out[1].role).toBe('user')
+    expect(out[1].content).toContain('[SYSTEM:')
+    expect(out[1].content).toContain('Once upon a tim')
+    expect(out[1].content).toContain('please continue')
+    // No assistant turn was emitted for the stopped message — role
+    // alternation stays strict (user, user-with-fold), never
+    // user/assistant/user with a raw partial assistant turn in between.
+    expect(out.some(m => m.role === 'assistant')).toBe(false)
+  })
+
+  it('does not mutate the input array or its message objects', () => {
+    const stoppedMsg = { role: 'assistant' as const, content: 'partial', stopped: true }
+    const msgs = [{ role: 'user' as const, content: 'go' }, stoppedMsg, { role: 'user' as const, content: 'more' }]
+    const snapshot = JSON.parse(JSON.stringify(msgs))
+    toModelMessages(msgs)
+    expect(msgs).toEqual(snapshot)
+    expect(stoppedMsg.stopped).toBe(true)
+    expect(stoppedMsg.content).toBe('partial')
+  })
+
+  it('folds every stopped assistant message in history, not just the trailing one', () => {
+    const msgs = [
+      { role: 'user' as const, content: 'first' },
+      { role: 'assistant' as const, content: 'cut off once', stopped: true },
+      { role: 'user' as const, content: 'second' },
+      { role: 'assistant' as const, content: 'complete reply', stopped: false },
+      { role: 'user' as const, content: 'third' },
+      { role: 'assistant' as const, content: 'cut off again', stopped: true },
+      { role: 'user' as const, content: 'fourth' },
+    ]
+    const out = toModelMessages(msgs)
+    expect(out.filter(m => m.role === 'assistant')).toEqual([{ role: 'assistant', content: 'complete reply' }])
+    expect(out.filter(m => m.role === 'user')).toHaveLength(4)
+    expect(out[1].content).toContain('cut off once')
+    expect(out[1].content).toContain('second')
+  })
+
+  it('leaves a non-stopped assistant message untouched', () => {
+    const msgs = [
+      { role: 'user' as const, content: 'hi' },
+      { role: 'assistant' as const, content: 'hello', stopped: false },
+    ]
+    expect(toModelMessages(msgs)).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ])
+  })
+
+  it('drops a trailing stopped assistant message with no following turn rather than emitting it raw', () => {
+    const msgs = [
+      { role: 'user' as const, content: 'hi' },
+      { role: 'assistant' as const, content: 'cut off', stopped: true },
+    ]
+    const out = toModelMessages(msgs)
+    expect(out).toEqual([{ role: 'user', content: 'hi' }])
   })
 })

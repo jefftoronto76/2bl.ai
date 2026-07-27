@@ -154,3 +154,55 @@ export function toChatMessage(message: UIMessage): ChatMessage {
 export function toChatMessages(messages: UIMessage[]): ChatMessage[] {
   return messages.map(toChatMessage)
 }
+
+/** A message a stopped turn's partial text is folded into as continuation context. */
+function buildContinuationContext(partialReply: string, nextUserText: string): string {
+  return (
+    '[SYSTEM: Your previous reply was interrupted before it finished. Here is the ' +
+    'partial text you had already generated — continue naturally from where it left ' +
+    "off, taking the user's message below into account rather than starting over. " +
+    "Don't repeat or quote this note back — just continue the reply.]\n" +
+    `Partial reply: "${partialReply}"\n\n${nextUserText}`
+  )
+}
+
+/**
+ * Narrow messages to the wire `ChatMessage[]` sent to `/api/sage`, folding any
+ * `stopped: true` assistant turn into the user message that follows it as
+ * continuation context, instead of replaying it as a completed assistant
+ * turn.
+ *
+ * Protocol note (Sonnet 4.6+): an interrupted/partial assistant reply must
+ * never be resent to the model as if it were a finished turn — the model has
+ * no signal it was cut short and will "continue" as though it already said
+ * something complete. Folding the partial text into the *next user* turn
+ * (rather than leaving it as the assistant's own message) also preserves
+ * strict user/assistant role alternation, which the Anthropic Messages API
+ * requires — it is dropped from the array entirely rather than appended as a
+ * second consecutive user turn.
+ *
+ * Wire-only transform: the caller's own message list — what's rendered and
+ * what's persisted to `chat_sessions.messages` — is never read from mutated
+ * or written to here. The `[SYSTEM: ...]` tag this produces exists only in
+ * this function's return value (the `/api/sage` POST body); it is never
+ * passed to a store accessor, so it can never be displayed or persisted.
+ */
+export function toModelMessages(
+  messages: Array<{ role: ChatRole; content: string; stopped?: boolean }>,
+): ChatMessage[] {
+  const out: ChatMessage[] = []
+  let pendingPartial: string | null = null
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.stopped) {
+      pendingPartial = m.content
+      continue
+    }
+    if (m.role === 'user' && pendingPartial !== null) {
+      out.push({ role: 'user', content: buildContinuationContext(pendingPartial, m.content) })
+      pendingPartial = null
+      continue
+    }
+    out.push({ role: m.role, content: m.content })
+  }
+  return out
+}

@@ -885,7 +885,57 @@ can import the registry without pulling a client module.
 | `useChatTurn.ts` | `useChatTurn` | Store-agnostic turn engine (`'use client'`). Takes injected `ChatEngineAccessors` (`getMessages` / `addMessage` / `updateLastMessage` / `setStreaming` / `setSessionId` / `getSessionId` / `getMode?`) and owns one turn end-to-end: append user message → lazily create a session (`POST /api/sessions`) → stream from `/api/sage` (via the shared `readDataStream`) → persist the transcript (`PATCH /api/sessions/[id]`, `visitorName: null`). Returns `{ send, retry, isStreaming, errorType }` (plus `sendHidden`/`stop`/`regenerate`/`setActiveVersion`, added by a later PR). `errorType` classifies why the most recent turn failed (`ChatErrorType`: `network` / `rate_limited` / `stream_interrupted` / `auth_error` / `unknown`, `services/chat/ui/v1/types.ts`) — `null` when it succeeded. On error the hook tags the failed message (the user message for `send`/`retry`, the assistant placeholder for `sendHidden`/`regenerate`) with `UIMessage.error_type` and PATCHes `/api/sessions/[id]` with `last_error_type`, so both the per-message and per-session classification reach the DB (previously the PATCH never fired on a failed turn). Each surface's error banner renders the matching string from `components/chat/errorCopy.ts`. jefflougheed (via `ChatSessionProvider`/`useChatSession`, `instanceKey="sage"`) and Heirloom (`useReducer` via `ChatProvider`) both consume it by wrapping their store in `ChatEngineAccessors`. |
 | `bufferMarkdown.ts` | `bufferMarkdown` | Pure, no-React function that truncates a streaming assistant message at the earliest unresolved inline markdown token (unterminated bold/italic run, inline code span, code fence, or link/image bracket — including an in-progress `[BOOKING: …` marker, since an unclosed marker bracket is just an unclosed `[`). Plain prose with no markdown syntax always passes through unchanged; emphasis delimiters gate on CommonMark's flanking rule (opener must not be followed by whitespace) so a `* bullet` list marker is never misread as an opening `*`. Unit-tested in `bufferMarkdown.test.ts`. |
 | `useBufferedMarkdown.ts` | `useBufferedMarkdown` | Thin `'use client'` `useMemo` wrapper over `bufferMarkdown` — `(content, active) => string`. Returns `content` unchanged once `active` is false (the message is no longer the one being streamed into). Consumed by `ChatThread.tsx`'s internal `BufferedMarkdown` component, not called directly by either chat surface. |
-| `index.ts` | barrel | Re-exports the type contracts + the registry runtime (`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`, `PHONE_MARKER`, `ACCOUNT_CREATE_MARKER`). `useChatTurn` and `useBufferedMarkdown` are imported directly from their modules, not the barrel. |
+| `index.ts` | barrel | Re-exports the type contracts + the registry runtime (`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`, `PHONE_MARKER`, `ACCOUNT_CREATE_MARKER`). `useChatTurn` and `useBufferedMarkdown` are imported directly from their modules, not the surface. |
+
+#### Stop / interrupted-turn protocol (2026-07-28)
+
+When the visitor hits Stop mid-stream, whatever text had already streamed in
+is **kept** in that assistant message's own `content` and tagged
+`UIMessage.stopped = true` (`useChatTurn.ts`'s `finishAbortedTurn`) — this is
+unchanged and is what renders the "Stopped" badge in the transcript
+(`MessageActions.tsx`, `SessionDrawer.tsx`) and is what's persisted to
+`chat_sessions.messages`.
+
+**What changed:** how that partial text is resent to the model on the
+*next* turn. Claude 4.5 tolerated a truncated assistant turn being replayed
+verbatim as if it were a complete reply. **Sonnet 4.6+ (the model this
+codebase runs on) does not** — replaying a `stopped` assistant message as a
+normal history turn gives the model no signal its own prior reply was cut
+short, so it "continues" as though it had already finished speaking, which
+produces worse continuations than telling it explicitly. The fix is
+`toModelMessages()` (`services/chat/ui/v1/message.ts`): when building the
+wire-format `ChatMessage[]` sent to `/api/sage`, any `stopped: true` assistant
+turn is **excluded** from the array entirely and its verbatim content is
+folded into the *next user* turn as a `[SYSTEM: ...]`-tagged continuation
+note instead (reusing the codebase's existing hidden-system-content
+convention — see `dispatchSystemSignal` in `chatStore.tsx`). Excluding the
+stopped turn rather than appending a second consecutive user message also
+keeps strict user/assistant role alternation, which the Anthropic Messages
+API requires.
+
+This is a **wire-only transform** — `send()`/`sendHidden()`/`regenerate()`
+call `toModelMessages()` only when building the array passed to
+`streamTurn()`/`/api/sage`; the message actually added to the store
+(`accessors.addMessage`) and persisted (`persist()` reads
+`accessors.getMessages()`, never the model-facing array) is untouched. The
+`[SYSTEM: ...]` tag therefore never reaches `chat_sessions.messages` and
+never renders in any transcript view (widget shell, Heirloom `MessageList`,
+admin `SessionDrawer`) — the existing `[SYSTEM:]` admin-debug branch in
+`MessageList.tsx` only inspects stored messages, which this content never
+becomes. The one residual risk this doesn't eliminate: the model could in
+principle quote the note back verbatim in its reply; the note explicitly
+instructs it not to as a mitigation, but this is a prompt-following
+expectation, not a code-level guarantee.
+
+`reviveUIMessage()` (`message.ts`) was fixed in the same pass to carry
+`stopped`/`versions`/`versionIdx`/`status` through on read-back — it
+previously dropped all four, so the "Stopped" badge and this continuation
+logic (which keys off `stopped`) both silently broke after a page reload or
+in the admin transcript view even though the DB row had the data.
+
+On a genuine stream **error** (not Stop), the existing behavior is already
+correct and was not changed: the partial text is wiped to `''` before
+persisting, and `retry()` resends the pre-failure context — nothing more.
 
 **`components/chat/ChatThread.tsx`** — the shared message-list presentation component consumed by both the jefflougheed widget shell (`WidgetShell.tsx`) and the Heirloom membership shell (`MessageList.tsx`). Owns: the message loop + per-assistant-message marker parsing (`createDefaultRegistry().parse`), scroll-to-bottom behavior (see the per-surface props below), and — as of the shared markdown renderer — markdown rendering itself. Each caller supplies render "slots" (`renderUserMessage`, `renderAssistantMessage`, `renderError`, `renderStreamingIndicator`) plus a `markdownComponents` (react-markdown `Components`) map for its own styling; `ChatThread` calls `registry.parse(msg.content)` for every assistant message, buffers the resulting prose through `useBufferedMarkdown` (only for the last message while `isStreaming` — every earlier, settled message renders in full), renders it via an internal `BufferedMarkdown` sub-component (`<ReactMarkdown components={markdownComponents}>`), and passes the rendered node to `renderAssistantMessage(msg, parsed, markdown)` as a third argument. `BufferedMarkdown` is a real component (not a bare hook call inside `.map`) so `useBufferedMarkdown`'s `useMemo` call stays legal under the Rules of Hooks. The widget's `SageReply.tsx` renders the passed-through `markdown` node inside its existing wrapper div (no longer calls `ReactMarkdown` itself; `sage/markdownComponents.tsx` is unchanged). Membership's `MessageList.tsx` renders it via a new `AssistantMarkdownBubble` (same avatar/bubble chrome as `MessageBubble`, markdown owns its own block spacing) using the new `components/shells/membership/markdownComponents.tsx` — Heirloom's first markdown-rendering surface (warm-prose styling on the existing Heirloom Tailwind tokens: `text-primary`/`text-muted`/`accent`/`surface`/`border`; no table/strikethrough overrides — not needed, and inert without `remark-gfm`). Smoke-tested in `ChatThread.test.tsx`. `renderError: (retry, errorType) => ReactNode` receives the classified `ChatErrorType` (`errorType` prop, `null` when the last turn succeeded) alongside `retry`; both surfaces' implementations render the matching string from `components/chat/errorCopy.ts`'s `ERROR_COPY` map rather than one generic message.
 
