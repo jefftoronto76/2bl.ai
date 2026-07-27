@@ -5,6 +5,20 @@
 // persists the result to compiled_prompts (archiving the prior version to
 // compiled_prompts_history). Moved verbatim from the inline
 // app/api/admin/prompt/compile route body; the route is now a thin handler.
+//
+// Publish is the only activation event, and it is unconditional (July 2026):
+// every successful compile makes the target prompt_set — and its compiled row —
+// the live one for its (tenant_id, prompt_type_id) slot, whether the set was
+// previously live or draft. There is no "compile without activating." Before
+// writing, any OTHER row/set currently live for that same slot is cleared first
+// (mirrors the is_composer_prompt clear-then-set pattern in
+// app/api/platform/settings/master-prompt/route.ts) so the partial unique
+// indexes (compiled_prompts_single_live_typed_idx /
+// compiled_prompts_single_live_untyped_idx) never see two live rows for the
+// same slot at once. This enforces the constraint at the write path only —
+// getSystemPrompt (services/prompt/compiler.ts) is unchanged and still reads
+// the tenant's highest-version row with no type filtering; making it slot-aware
+// is a separate, still-open piece of work.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { isOrdered } from '@/services/prompt/block-order'
@@ -151,17 +165,47 @@ export async function buildCompiledContent(
  * compiled_prompts_history below, the note attached to THIS call rides into
  * history automatically the next time this slot is compiled — it is never
  * lost, just deferred one publish.
+ *
+ * Activation (July 2026): this call always makes the target prompt_set — and
+ * the compiled row it produces — the live one for its (tenant_id,
+ * prompt_type_id) slot. Any other row/set currently live for that slot is
+ * cleared first, unconditionally; there is no draft-vs-live branch here.
  */
 export async function compilePrompt(
   tenantId: string,
   promptSetId: string | null | undefined,
   note: ReleaseNote,
 ): Promise<CompileResult> {
+  const supabase = getAdminClient()
+
+  // 0. Resolve the prompt type this publish activates, straight from the
+  //    prompt_set row — never trust a client-supplied type. Absent promptSetId
+  //    (the legacy no-set default slot) has no prompt_set to read, so its type
+  //    is always null. Fails fast with 404 rather than silently compiling into
+  //    the wrong (untyped) slot.
+  let promptTypeId: string | null = null
+  if (promptSetId) {
+    const { data: targetSet, error: targetSetError } = await supabase
+      .from('prompt_sets')
+      .select('id, prompt_type_id')
+      .eq('id', promptSetId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (targetSetError) {
+      console.error('[prompt/compile] target prompt_set lookup failed:', targetSetError.message)
+      return { ok: false, status: 500, error: targetSetError.message }
+    }
+    if (!targetSet) {
+      return { ok: false, status: 404, error: 'Prompt set not found' }
+    }
+    promptTypeId = targetSet.prompt_type_id
+  }
+
   const built = await buildCompiledContent(tenantId, promptSetId)
   if (!built.ok) return built
 
   const { content, tokenCount } = built
-  const supabase = getAdminClient()
 
   // 4. Save to compiled_prompts — find existing row for this tenant+slot, archive
   //    to history, then update. promptSetId (or null) scopes the slot.
@@ -180,6 +224,46 @@ export async function compilePrompt(
   }
 
   const { data: existing } = await existingQuery.maybeSingle()
+
+  // 5. Clear-then-set, BOTH tables, same (tenant_id, prompt_type_id) slot —
+  //    mirrors the is_composer_prompt pattern (clear siblings first so the
+  //    partial unique index never sees two live rows, then write the target
+  //    live). Excludes the target's own current row/set from the clear query
+  //    (a no-op optimization, not a correctness requirement — the write below
+  //    sets it live explicitly regardless).
+  let clearSiblingCompiled = supabase
+    .from('compiled_prompts')
+    .update({ status: 'draft' })
+    .eq('tenant_id', tenantId)
+    .eq('status', 'live')
+  clearSiblingCompiled = promptTypeId
+    ? clearSiblingCompiled.eq('prompt_type_id', promptTypeId)
+    : clearSiblingCompiled.is('prompt_type_id', null)
+  if (existing) clearSiblingCompiled = clearSiblingCompiled.neq('id', existing.id)
+
+  const { error: clearCompiledError } = await clearSiblingCompiled
+  if (clearCompiledError) {
+    console.error('[prompt/compile] clear sibling live compiled_prompts failed:', clearCompiledError.message)
+    return { ok: false, status: 500, error: clearCompiledError.message }
+  }
+
+  if (promptSetId) {
+    let clearSiblingSets = supabase
+      .from('prompt_sets')
+      .update({ status: 'draft' })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'live')
+      .neq('id', promptSetId)
+    clearSiblingSets = promptTypeId
+      ? clearSiblingSets.eq('prompt_type_id', promptTypeId)
+      : clearSiblingSets.is('prompt_type_id', null)
+
+    const { error: clearSetsError } = await clearSiblingSets
+    if (clearSetsError) {
+      console.error('[prompt/compile] clear sibling live prompt_sets failed:', clearSetsError.message)
+      return { ok: false, status: 500, error: clearSetsError.message }
+    }
+  }
 
   let newVersion: number
 
@@ -214,6 +298,8 @@ export async function compilePrompt(
         content,
         version: newVersion,
         updated_at: now,
+        status: 'live',
+        prompt_type_id: promptTypeId,
         release_summary: note.summary,
         release_why: note.why || null,
         release_changed_block_ids: note.changed_block_ids,
@@ -223,6 +309,9 @@ export async function compilePrompt(
 
     if (updateError) {
       console.error('[prompt/compile] update failed:', updateError.message)
+      if (updateError.code === '23505') {
+        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
+      }
       return { ok: false, status: 500, error: updateError.message }
     }
     console.log('[prompt/compile] updated to version:', newVersion)
@@ -237,6 +326,8 @@ export async function compilePrompt(
         version: newVersion,
         updated_at: now,
         prompt_set_id: promptSetId ?? null,
+        status: 'live',
+        prompt_type_id: promptTypeId,
         release_summary: note.summary,
         release_why: note.why || null,
         release_changed_block_ids: note.changed_block_ids,
@@ -244,8 +335,29 @@ export async function compilePrompt(
 
     if (insertError) {
       console.error('[prompt/compile] insert failed:', insertError.message)
+      if (insertError.code === '23505') {
+        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
+      }
       return { ok: false, status: 500, error: insertError.message }
     }
+  }
+
+  // 6. Activate the target prompt_set itself, unconditionally — Publish is the
+  //    only activation event, so this always lands here regardless of the
+  //    set's prior status. Keeps Settings' displayed status truthful rather
+  //    than drifting from the compiled_prompts row it just published.
+  if (promptSetId) {
+    const { error: activateSetError } = await supabase
+      .from('prompt_sets')
+      .update({ status: 'live' })
+      .eq('id', promptSetId)
+      .eq('tenant_id', tenantId)
+
+    if (activateSetError) {
+      console.error('[prompt/compile] activate prompt_set failed:', activateSetError.message)
+      return { ok: false, status: 500, error: activateSetError.message }
+    }
+    console.log('[prompt/compile] activated prompt_set:', promptSetId)
   }
 
   console.log('[prompt/compile] save complete — version:', newVersion, 'tokens:', tokenCount)

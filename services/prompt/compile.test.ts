@@ -14,26 +14,42 @@ import type { ReleaseNote } from './release-note'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// A generic chainable + thenable query-builder stand-in. Every filter method
-// (.eq/.is/.in/.or/.limit/.order/.select) returns itself; it resolves to
-// `result` whether the caller awaits it directly (compile.ts's blocks query
-// and the update/insert chains do this) or calls a terminal .maybeSingle()/
-// .single() (the existing-row lookup does this).
-function chain(result: unknown) {
-  const obj: Record<string, unknown> = {
-    eq: () => obj,
-    is: () => obj,
-    in: () => obj,
-    or: () => obj,
-    limit: () => obj,
-    order: () => obj,
-    select: () => obj,
-    maybeSingle: async () => result,
-    single: async () => result,
-    then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-      Promise.resolve(result).then(resolve, reject),
+interface FilterCall {
+  fn: string
+  args: unknown[]
+}
+
+// A generic chainable + thenable query-builder stand-in that also records every
+// filter call (.eq/.is/.neq/...) it receives, so tests can assert on scoping —
+// this feature's correctness lives entirely in the WHERE clauses. Resolves to
+// `result` whether the caller awaits it directly (a .then() consumer) or calls
+// a terminal .maybeSingle()/.single().
+function makeQuery(result: unknown, onSettle?: (filters: FilterCall[]) => void) {
+  const filters: FilterCall[] = []
+  const obj: Record<string, unknown> = {}
+  for (const fn of ['eq', 'is', 'in', 'or', 'neq', 'limit', 'order', 'select']) {
+    obj[fn] = (...args: unknown[]) => {
+      filters.push({ fn, args })
+      return obj
+    }
+  }
+  obj.maybeSingle = async () => {
+    onSettle?.(filters)
+    return result
+  }
+  obj.single = async () => {
+    onSettle?.(filters)
+    return result
+  }
+  obj.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+    onSettle?.(filters)
+    return Promise.resolve(result).then(resolve, reject)
   }
   return obj
+}
+
+function hasFilter(filters: FilterCall[], fn: string, ...args: unknown[]) {
+  return filters.some(f => f.fn === fn && JSON.stringify(f.args) === JSON.stringify(args))
 }
 
 const ACTIVE_BLOCK = {
@@ -49,25 +65,39 @@ function makeClient({
   blocks = [ACTIVE_BLOCK],
   blocksError = null,
   existing = null as Record<string, unknown> | null,
+  targetSet = { id: 'set-1', prompt_type_id: null } as Record<string, unknown> | null,
+  targetSetError = null,
   historyInsertError = null,
   updateError = null,
   insertError = null,
+  clearCompiledError = null,
+  clearSetsError = null,
+  activateSetError = null,
 }: {
   blocks?: unknown[]
   blocksError?: unknown
   existing?: Record<string, unknown> | null
+  targetSet?: Record<string, unknown> | null
+  targetSetError?: unknown
   historyInsertError?: unknown
   updateError?: unknown
   insertError?: unknown
+  clearCompiledError?: unknown
+  clearSetsError?: unknown
+  activateSetError?: unknown
 } = {}) {
   const historyInserts: unknown[] = []
-  const updates: unknown[] = []
-  const inserts: unknown[] = []
+  const compiledClearUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
+  const compiledMainUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
+  const compiledInserts: unknown[] = []
+  const setsClearUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
+  const setsActivateUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
+  const promptSetsSelects: FilterCall[][] = []
 
   const client = {
     from(table: string) {
       if (table === 'blocks') {
-        return chain({ data: blocks, error: blocksError })
+        return makeQuery({ data: blocks, error: blocksError })
       }
       if (table === 'compiled_prompts_history') {
         return {
@@ -79,14 +109,32 @@ function makeClient({
       }
       if (table === 'compiled_prompts') {
         return {
-          select: () => chain({ data: existing, error: null }),
+          select: () => makeQuery({ data: existing, error: null }),
           update(payload: unknown) {
-            updates.push(payload)
-            return chain({ error: updateError })
+            const isClear = (payload as Record<string, unknown>)?.status === 'draft'
+            return makeQuery({ error: isClear ? clearCompiledError : updateError }, filters => {
+              if (isClear) compiledClearUpdates.push({ payload, filters })
+              else compiledMainUpdates.push({ payload, filters })
+            })
           },
           insert(payload: unknown) {
-            inserts.push(payload)
+            compiledInserts.push(payload)
             return Promise.resolve({ error: insertError })
+          },
+        }
+      }
+      if (table === 'prompt_sets') {
+        return {
+          select: () =>
+            makeQuery({ data: targetSet, error: targetSetError }, filters => {
+              promptSetsSelects.push(filters)
+            }),
+          update(payload: unknown) {
+            const isClear = (payload as Record<string, unknown>)?.status === 'draft'
+            return makeQuery({ error: isClear ? clearSetsError : activateSetError }, filters => {
+              if (isClear) setsClearUpdates.push({ payload, filters })
+              else setsActivateUpdates.push({ payload, filters })
+            })
           },
         }
       }
@@ -94,7 +142,16 @@ function makeClient({
     },
   }
 
-  return { client, historyInserts, updates, inserts }
+  return {
+    client,
+    historyInserts,
+    compiledClearUpdates,
+    compiledMainUpdates,
+    compiledInserts,
+    setsClearUpdates,
+    setsActivateUpdates,
+    promptSetsSelects,
+  }
 }
 
 const NOTE: ReleaseNote = { summary: 'Tighten escalation', why: 'Billing disputes', changed_block_ids: ['block-1'] }
@@ -105,7 +162,7 @@ describe('compilePrompt — release note persistence', () => {
   })
 
   it('first-ever compile (no existing row): writes the note directly, no history insert', async () => {
-    const { client, historyInserts, inserts } = makeClient({ existing: null })
+    const { client, historyInserts, compiledInserts } = makeClient({ existing: null })
     adminHolder.client = client
 
     const result = await compilePrompt('tenant-1', null, NOTE)
@@ -115,15 +172,15 @@ describe('compilePrompt — release note persistence', () => {
     expect(result.data.version).toBe(1)
 
     expect(historyInserts).toHaveLength(0)
-    expect(inserts).toHaveLength(1)
-    const payload = inserts[0] as Record<string, unknown>
+    expect(compiledInserts).toHaveLength(1)
+    const payload = compiledInserts[0] as Record<string, unknown>
     expect(payload.release_summary).toBe('Tighten escalation')
     expect(payload.release_why).toBe('Billing disputes')
     expect(payload.release_changed_block_ids).toEqual(['block-1'])
   })
 
   it('re-compile with an existing row: writes the NEW note onto the live row', async () => {
-    const { client, updates } = makeClient({
+    const { client, compiledMainUpdates } = makeClient({
       existing: {
         id: 'cp-1',
         version: 7,
@@ -141,8 +198,8 @@ describe('compilePrompt — release note persistence', () => {
     if (!result.ok) return
     expect(result.data.version).toBe(8)
 
-    expect(updates).toHaveLength(1)
-    const payload = updates[0] as Record<string, unknown>
+    expect(compiledMainUpdates).toHaveLength(1)
+    const payload = compiledMainUpdates[0].payload as Record<string, unknown>
     expect(payload.release_summary).toBe('Tighten escalation')
     expect(payload.release_why).toBe('Billing disputes')
     expect(payload.release_changed_block_ids).toEqual(['block-1'])
@@ -187,23 +244,171 @@ describe('compilePrompt — release note persistence', () => {
   })
 
   it('stores an empty why as null, not an empty string', async () => {
-    const { client, inserts } = makeClient({ existing: null })
+    const { client, compiledInserts } = makeClient({ existing: null })
     adminHolder.client = client
 
     await compilePrompt('tenant-1', null, { summary: 'Update guardrails', why: '', changed_block_ids: [] })
 
-    const payload = inserts[0] as Record<string, unknown>
+    const payload = compiledInserts[0] as Record<string, unknown>
     expect(payload.release_why).toBeNull()
   })
 
   it('still returns ok:false on a blocks-fetch error without touching compiled_prompts', async () => {
-    const { client, updates, inserts } = makeClient({ blocks: [], blocksError: { message: 'db down' } })
+    const { client, compiledMainUpdates, compiledInserts } = makeClient({ blocks: [], blocksError: { message: 'db down' } })
     adminHolder.client = client
 
     const result = await compilePrompt('tenant-1', null, NOTE)
 
     expect(result.ok).toBe(false)
-    expect(updates).toHaveLength(0)
-    expect(inserts).toHaveLength(0)
+    expect(compiledMainUpdates).toHaveLength(0)
+    expect(compiledInserts).toHaveLength(0)
+  })
+})
+
+describe('compilePrompt — single-live-per-(tenant_id, prompt_type_id) activation (July 2026)', () => {
+  beforeEach(() => {
+    adminHolder.client = null
+  })
+
+  it('publishing a typed set clears any other live compiled_prompts row for that (tenant, type) before writing', async () => {
+    const { client, compiledClearUpdates } = makeClient({
+      existing: { id: 'cp-1', version: 2, content: 'old', release_summary: null, release_why: null, release_changed_block_ids: [] },
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(result.ok).toBe(true)
+    expect(compiledClearUpdates).toHaveLength(1)
+    const { payload, filters } = compiledClearUpdates[0]
+    expect(payload).toEqual({ status: 'draft' })
+    expect(hasFilter(filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'prompt_type_id', 'type-base')).toBe(true)
+    expect(hasFilter(filters, 'neq', 'id', 'cp-1')).toBe(true)
+  })
+
+  it('publishing an untyped (default-slot) set clears via .is(prompt_type_id, null), not .eq', async () => {
+    const { client, compiledClearUpdates } = makeClient({
+      existing: { id: 'cp-1', version: 2, content: 'old', release_summary: null, release_why: null, release_changed_block_ids: [] },
+      targetSet: { id: 'set-1', prompt_type_id: null },
+    })
+    adminHolder.client = client
+
+    await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    const { filters } = compiledClearUpdates[0]
+    expect(hasFilter(filters, 'is', 'prompt_type_id', null)).toBe(true)
+    expect(filters.some(f => f.fn === 'eq' && f.args[0] === 'prompt_type_id')).toBe(false)
+  })
+
+  it('the main write always activates: status=live and prompt_type_id set on the compiled row', async () => {
+    const { client, compiledMainUpdates } = makeClient({
+      existing: { id: 'cp-1', version: 2, content: 'old', release_summary: null, release_why: null, release_changed_block_ids: [] },
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+    })
+    adminHolder.client = client
+
+    await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    const payload = compiledMainUpdates[0].payload as Record<string, unknown>
+    expect(payload.status).toBe('live')
+    expect(payload.prompt_type_id).toBe('type-base')
+  })
+
+  it('publish always activates the target prompt_set — unconditional, no prior-status check', async () => {
+    const { client, setsActivateUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(result.ok).toBe(true)
+    expect(setsActivateUpdates).toHaveLength(1)
+    expect(setsActivateUpdates[0].payload).toEqual({ status: 'live' })
+    expect(hasFilter(setsActivateUpdates[0].filters, 'eq', 'id', 'set-1')).toBe(true)
+    expect(hasFilter(setsActivateUpdates[0].filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
+  })
+
+  it('publishing set A clears a sibling live set B sharing the same (tenant, type) in prompt_sets', async () => {
+    const { client, setsClearUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-a', prompt_type_id: 'type-base' },
+    })
+    adminHolder.client = client
+
+    await compilePrompt('tenant-1', 'set-a', NOTE)
+
+    expect(setsClearUpdates).toHaveLength(1)
+    const { payload, filters } = setsClearUpdates[0]
+    expect(payload).toEqual({ status: 'draft' })
+    expect(hasFilter(filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'prompt_type_id', 'type-base')).toBe(true)
+    expect(hasFilter(filters, 'neq', 'id', 'set-a')).toBe(true)
+  })
+
+  it('legacy no-set compile (promptSetId null): never touches prompt_sets at all', async () => {
+    const { client, setsClearUpdates, setsActivateUpdates, promptSetsSelects } = makeClient({ existing: null })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', null, NOTE)
+
+    expect(result.ok).toBe(true)
+    expect(promptSetsSelects).toHaveLength(0)
+    expect(setsClearUpdates).toHaveLength(0)
+    expect(setsActivateUpdates).toHaveLength(0)
+  })
+
+  it('404s fast when the target prompt_set does not exist, without writing anything', async () => {
+    const { client, compiledClearUpdates, compiledMainUpdates, compiledInserts, historyInserts } = makeClient({
+      targetSet: null,
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'missing-set', NOTE)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(404)
+    expect(compiledClearUpdates).toHaveLength(0)
+    expect(compiledMainUpdates).toHaveLength(0)
+    expect(compiledInserts).toHaveLength(0)
+    expect(historyInserts).toHaveLength(0)
+  })
+
+  it('surfaces a unique-constraint race on the main UPDATE as a friendly 409, not a raw 500', async () => {
+    const { client } = makeClient({
+      existing: { id: 'cp-1', version: 2, content: 'old', release_summary: null, release_why: null, release_changed_block_ids: [] },
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+      updateError: { code: '23505', message: 'duplicate key value violates unique constraint "compiled_prompts_single_live_typed_idx"' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(409)
+    expect(result.error).toMatch(/just landed/i)
+  })
+
+  it('surfaces a unique-constraint race on the main INSERT as a friendly 409, not a raw 500', async () => {
+    const { client } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+      insertError: { code: '23505', message: 'duplicate key value violates unique constraint "compiled_prompts_single_live_typed_idx"' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(409)
+    expect(result.error).toMatch(/just landed/i)
   })
 })
