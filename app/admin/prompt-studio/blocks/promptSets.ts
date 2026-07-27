@@ -13,8 +13,28 @@ export interface PromptSet {
    */
   promptTypeId: string | null
   label: string
+  /**
+   * prompt_sets.version. Display-only (the "Live version" badge on the Blocks
+   * overview card) — NEVER incremented after row creation, so it silently
+   * drifts from the real publish history. Do NOT use this to compute the next
+   * publish version; use `compiledVersion` below instead.
+   */
   version: number
   status: PromptSetStatus
+  /**
+   * Derived from the prompt_sets_with_compile_meta VIEW (not a stored column) —
+   * compiled_prompts.updated_at for this set's compiled row, or null if this
+   * slot has never been compiled. Cut-off for the Compile & Publish modal's
+   * "changed since" list.
+   */
+  lastCompiledAt: string | null
+  /**
+   * Derived from the same view — compiled_prompts.version for this set's
+   * compiled row, or null if never compiled. This IS the source of truth for
+   * the next publish version (compiledVersion + 1) — see compile.ts, which
+   * increments compiled_prompts.version, never prompt_sets.version.
+   */
+  compiledVersion: number | null
 }
 
 /**

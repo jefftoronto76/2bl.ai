@@ -1,5 +1,46 @@
 # DB Changelog
 
+## 2026-07-27
+
+### Add release-note columns to `compiled_prompts` and `compiled_prompts_history`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+ALTER TABLE public.compiled_prompts
+  ADD COLUMN release_summary text,
+  ADD COLUMN release_why text,
+  ADD COLUMN release_changed_block_ids text[] DEFAULT '{}';
+
+ALTER TABLE public.compiled_prompts_history
+  ADD COLUMN release_summary text,
+  ADD COLUMN release_why text,
+  ADD COLUMN release_changed_block_ids text[] DEFAULT '{}';
+```
+
+**Purpose:** Backs the Compile & Publish modal's stage-3 release note (Blocks
+screen). `release_summary` is a required one-line imperative summary,
+`release_why` an optional longer note, `release_changed_block_ids` the ids of
+the blocks the note covers (derived client-side from blocks edited since the
+set's `last_compiled_at`, never typed by the author). Written by
+`compilePrompt()` (`services/prompt/compile.ts`) onto the row it
+creates/overwrites; mirrored onto `compiled_prompts_history` so archiving a
+version on the next compile preserves that version's note (the row being
+archived is read and copied across, including these three columns, before
+the live row is overwritten with the new note).
+
+**Notes:**
+- All three nullable on `compiled_prompts_history` and `release_summary`/
+  `release_why` nullable on `compiled_prompts` — pre-existing rows (compiled
+  before this column existed) read back as null and are handled gracefully
+  (archived as null, not as an error).
+- `release_summary` is required going forward at the application layer
+  (`services/prompt/release-note.ts`'s `parseNote`, mirrored client + server,
+  72-char cap) — not a NOT NULL constraint, so historic rows stay valid.
+
 ## 2026-07-14
 
 ### Add `chat_sessions.ttft_ms` — time-to-first-token measurement

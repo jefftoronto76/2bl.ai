@@ -88,7 +88,12 @@ export function BlocksTable({
   topics: Topic[]
   activeSetId: string | null
   activeSetLabel: string | null
-  overview?: { version?: number | null; status?: string | null }
+  overview?: {
+    version?: number | null
+    status?: string | null
+    lastCompiledAt?: string | null
+    compiledVersion?: number | null
+  }
 }) {
   const [items, setItems] = useState<BlockRow[]>(rows)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -499,6 +504,8 @@ export function BlocksTable({
           blocks={items}
           version={overview?.version}
           status={overview?.status}
+          lastCompiledAt={overview?.lastCompiledAt}
+          compiledVersion={overview?.compiledVersion}
           topics={topics}
           activeSetId={activeSetId}
           activeSetLabel={activeSetLabel}
