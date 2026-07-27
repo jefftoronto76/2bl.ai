@@ -129,6 +129,41 @@ describe('reviveUIMessage', () => {
     expect(reviveUIMessage({ id: 'f', role: 'user', content: 'x', error_type: 'bogus' }).error_type).toBeNull()
     expect(reviveUIMessage({ id: 'g', role: 'user', content: 'x' }).error_type).toBeNull()
   })
+
+  it('revives a valid stopped flag', () => {
+    expect(reviveUIMessage({ id: 'h', role: 'assistant', content: 'cut off', stopped: true }).stopped).toBe(true)
+    expect(reviveUIMessage({ id: 'i', role: 'assistant', content: 'ok', stopped: false }).stopped).toBe(false)
+  })
+
+  it('leaves stopped absent when missing or malformed', () => {
+    expect(reviveUIMessage({ id: 'j', role: 'assistant', content: 'x' }).stopped).toBeUndefined()
+    expect(reviveUIMessage({ id: 'k', role: 'assistant', content: 'x', stopped: 'yes' }).stopped).toBeUndefined()
+  })
+
+  it('revives a valid status and discards an invalid one', () => {
+    expect(reviveUIMessage({ id: 'l', role: 'user', content: 'x', status: 'failed' }).status).toBe('failed')
+    expect(reviveUIMessage({ id: 'm', role: 'user', content: 'x', status: 'bogus' }).status).toBeUndefined()
+    expect(reviveUIMessage({ id: 'n', role: 'user', content: 'x' }).status).toBeUndefined()
+  })
+
+  it('revives a well-formed versions array and discards a malformed one', () => {
+    expect(reviveUIMessage({ id: 'o', role: 'assistant', content: 'v2', versions: ['v0', 'v1'] }).versions).toEqual([
+      'v0',
+      'v1',
+    ])
+    expect(
+      reviveUIMessage({ id: 'p', role: 'assistant', content: 'x', versions: ['ok', 42] }).versions,
+    ).toBeUndefined()
+    expect(reviveUIMessage({ id: 'q', role: 'assistant', content: 'x', versions: 'nope' }).versions).toBeUndefined()
+  })
+
+  it('revives a numeric versionIdx and discards a non-numeric one', () => {
+    expect(reviveUIMessage({ id: 'r', role: 'assistant', content: 'x', versionIdx: 1 }).versionIdx).toBe(1)
+    expect(
+      reviveUIMessage({ id: 's', role: 'assistant', content: 'x', versionIdx: 'one' }).versionIdx,
+    ).toBeUndefined()
+    expect(reviveUIMessage({ id: 't', role: 'assistant', content: 'x', versionIdx: NaN }).versionIdx).toBeUndefined()
+  })
 })
 
 describe('reviveUIMessages', () => {
