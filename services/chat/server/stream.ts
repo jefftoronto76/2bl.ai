@@ -107,6 +107,15 @@ export interface RunChatStreamParams {
   system: string
   messages: ChatMessage[]
   onFinish?: (args: { text: string; usage: TokenUsage | null }) => Promise<void> | void
+  /**
+   * Cancels the underlying Anthropic call when it fires (e.g. the visitor
+   * hits Stop and the client's fetch to /api/sage disconnects). Threaded
+   * straight into streamText's own abortSignal, which the AI SDK forwards to
+   * the provider's doStream() call. When the signal fires mid-generation the
+   * stream errors out rather than reaching its normal finish step, so
+   * `onFinish` correctly does not run for text the visitor never saw finish.
+   */
+  abortSignal?: AbortSignal
 }
 
 /**
@@ -115,12 +124,13 @@ export interface RunChatStreamParams {
  * stream completes; its argument normalizes the SDK usage shape to TokenUsage.
  */
 export async function runChatStream(params: RunChatStreamParams): Promise<Response> {
-  const { config, system, messages, onFinish } = params
+  const { config, system, messages, onFinish, abortSignal } = params
   const result = await streamText({
     model: getModelInstance(config.provider, config.chatModel),
     system,
     messages,
     maxTokens: config.maxTokens,
+    abortSignal,
     onFinish: onFinish
       ? async ({ text, usage }) => {
           const normalized: TokenUsage | null = usage

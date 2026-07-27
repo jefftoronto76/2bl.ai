@@ -87,5 +87,10 @@ export async function POST(req: Request) {
       ? body.prompt_type
       : null,
     mediaItems,
+    // Fires when the client disconnects (visitor hits Stop, or the tab
+    // closes) — threaded through to streamChat so the actual Anthropic call
+    // is cancelled instead of running to completion after nobody is
+    // listening. See services/chat/server/stream.ts's abortSignal.
+    signal: req.signal,
   })
 }

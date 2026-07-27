@@ -103,14 +103,29 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       config,
       system: systemPrompt,
       messages: messagesForModel,
+      abortSignal: req.signal,
       onFinish: async ({ text, usage }) => {
         if (!tenantId) return
         await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText })
       },
     })
   } catch (error) {
+    // The client disconnected (Stop, or the tab closing) before the
+    // Anthropic call even started streaming back — req.signal fired and
+    // streamText threw before returning a Response. This is an expected,
+    // client-initiated cancellation, not an upstream failure: log it quietly
+    // and skip the "Upstream error" 502, which nothing is listening for
+    // anyway since the client already closed its own fetch.
+    if (isAbortError(error)) {
+      console.log('[chat] streamChat aborted by client disconnect')
+      return new Response(null, { status: 499 })
+    }
     console.error('[chat] streamChat error:', error)
     const message = error instanceof Error ? error.message : String(error)
     return new Response(`Upstream error: ${message}`, { status: 502 })
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
 }

@@ -937,6 +937,36 @@ On a genuine stream **error** (not Stop), the existing behavior is already
 correct and was not changed: the partial text is wiped to `''` before
 persisting, and `retry()` resends the pre-failure context — nothing more.
 
+**Server-side abort propagation.** Stop previously only cancelled the
+client's own `fetch` — the server had no `AbortSignal` at all, so the
+Anthropic call kept generating to completion after the visitor had stopped
+listening, billing for the full generation and still running `onFinish`
+(token accounting + `[NAME:]`/`[EMAIL:]`/`[PHONE:]` marker detection, calendar-
+offer detection) against text the visitor explicitly cut off and never
+confirmed. Fixed by threading the inbound `Request.signal`
+(`app/api/sage/route.ts`) through `streamChat()`'s `ChatStreamRequest.signal`
+(`services/chat/server/types.ts`) into `runChatStream()`'s `abortSignal`
+(`services/chat/server/stream.ts`), which passes straight into `streamText()`'s
+own `abortSignal` — the AI SDK forwards it to the provider's `doStream()` call,
+so it cancels the actual upstream HTTP request to Anthropic. Verified against
+the installed `ai@3.4.33` source: an aborted stream errors out rather than
+reaching its normal "finish" step, so `onFinish` correctly never fires for a
+stopped turn — no code change was needed in `handleSessionFinish` itself, this
+was a direct consequence of actually cancelling the call. `runChatStream`'s
+catch block distinguishes an `AbortError` (client-initiated, logged quietly,
+returns a bare `499`) from a genuine upstream failure (still the existing
+502 `Upstream error: ...`) — the `499` response is never delivered anywhere
+meaningful since the client already closed its own connection, it just keeps
+this from being logged/treated as a real error.
+
+Known residual gap: this relies on Next.js Route Handlers propagating
+`Request.signal` on client disconnect, which is standard Fetch API/Next.js
+behavior but hasn't been confirmed against this specific deployment target —
+verify on a Vercel preview (Stop mid-reply, confirm generation actually stops
+rather than continuing in server logs) before treating this as fully proven
+in production, per the "verification happens on preview, not local dev"
+workflow rule.
+
 **`components/chat/ChatThread.tsx`** — the shared message-list presentation component consumed by both the jefflougheed widget shell (`WidgetShell.tsx`) and the Heirloom membership shell (`MessageList.tsx`). Owns: the message loop + per-assistant-message marker parsing (`createDefaultRegistry().parse`), scroll-to-bottom behavior (see the per-surface props below), and — as of the shared markdown renderer — markdown rendering itself. Each caller supplies render "slots" (`renderUserMessage`, `renderAssistantMessage`, `renderError`, `renderStreamingIndicator`) plus a `markdownComponents` (react-markdown `Components`) map for its own styling; `ChatThread` calls `registry.parse(msg.content)` for every assistant message, buffers the resulting prose through `useBufferedMarkdown` (only for the last message while `isStreaming` — every earlier, settled message renders in full), renders it via an internal `BufferedMarkdown` sub-component (`<ReactMarkdown components={markdownComponents}>`), and passes the rendered node to `renderAssistantMessage(msg, parsed, markdown)` as a third argument. `BufferedMarkdown` is a real component (not a bare hook call inside `.map`) so `useBufferedMarkdown`'s `useMemo` call stays legal under the Rules of Hooks. The widget's `SageReply.tsx` renders the passed-through `markdown` node inside its existing wrapper div (no longer calls `ReactMarkdown` itself; `sage/markdownComponents.tsx` is unchanged). Membership's `MessageList.tsx` renders it via a new `AssistantMarkdownBubble` (same avatar/bubble chrome as `MessageBubble`, markdown owns its own block spacing) using the new `components/shells/membership/markdownComponents.tsx` — Heirloom's first markdown-rendering surface (warm-prose styling on the existing Heirloom Tailwind tokens: `text-primary`/`text-muted`/`accent`/`surface`/`border`; no table/strikethrough overrides — not needed, and inert without `remark-gfm`). Smoke-tested in `ChatThread.test.tsx`. `renderError: (retry, errorType) => ReactNode` receives the classified `ChatErrorType` (`errorType` prop, `null` when the last turn succeeded) alongside `retry`; both surfaces' implementations render the matching string from `components/chat/errorCopy.ts`'s `ERROR_COPY` map rather than one generic message.
 
 **`core/` — session + keyboard infrastructure**

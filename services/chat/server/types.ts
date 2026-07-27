@@ -47,6 +47,13 @@ export interface ChatStreamRequest {
   promptType?: string | null
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
+  /**
+   * The inbound HTTP request's AbortSignal (Request.signal), threaded through
+   * so the upstream Anthropic call is actually cancelled when the client
+   * disconnects (visitor hits Stop) rather than running to completion after
+   * the client has stopped listening. See runChatStream's abortSignal.
+   */
+  signal?: AbortSignal
 }
 
 /** Model provider abstraction (Amendment 4). */
