@@ -20,12 +20,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, Group, Modal, Select, Skeleton, Stack, Textarea, TextInput } from '@mantine/core'
+import { Button, Card, Group, Modal, Select, Skeleton, Stack, Switch, Textarea, TextInput } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconPlus } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
-import { PromptSetMetaStrip, PromptSetViewCard } from '@/components/admin/settings/PromptSetCard'
+import { PromptSetMetaStrip, PromptSetViewCard, StatusBadge } from '@/components/admin/settings/PromptSetCard'
 import { type PromptSet, type PromptSetStatus } from '@/lib/promptSet'
 
 interface PromptType {
@@ -71,6 +71,7 @@ export function PromptSets() {
   const router = useRouter()
   const [sets, setSets] = useState<PromptSet[]>([])
   const [promptTypes, setPromptTypes] = useState<PromptType[]>([])
+  const [canMakePlatform, setCanMakePlatform] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, DraftFields>>({})
@@ -100,7 +101,9 @@ export function PromptSets() {
     try {
       const res = await fetch('/api/admin/prompt-types')
       if (!res.ok) return
-      setPromptTypes(await res.json())
+      const body: { types: PromptType[]; canMakePlatform: boolean } = await res.json()
+      setPromptTypes(body.types)
+      setCanMakePlatform(body.canMakePlatform)
     } catch (err) {
       console.error('[PromptSets] prompt-types fetch failed:', err)
     }
@@ -129,11 +132,11 @@ export function PromptSets() {
     return res.json()
   }
 
-  async function createPromptType(name: string): Promise<PromptType> {
+  async function createPromptType(name: string, makePlatform: boolean): Promise<PromptType> {
     const res = await fetch('/api/admin/prompt-types', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, make_platform: makePlatform }),
     })
     if (!res.ok) {
       const body: unknown = await res.json().catch(() => null)
@@ -276,6 +279,7 @@ export function PromptSets() {
             <PromptSetEditCard
               draft={drafts[NEW_CARD_ID] ?? emptyDraft()}
               promptTypes={promptTypes}
+              canMakePlatform={canMakePlatform}
               onChange={(patch) => updateDraft(NEW_CARD_ID, patch)}
               onCreateType={createPromptType}
               onSave={() => handleSave(NEW_CARD_ID)}
@@ -297,6 +301,7 @@ export function PromptSets() {
                   draft={drafts[set.id] ?? draftFromSet(set)}
                   meta={set}
                   promptTypes={promptTypes}
+                  canMakePlatform={canMakePlatform}
                   onChange={(patch) => updateDraft(set.id, patch)}
                   onCreateType={createPromptType}
                   onSave={() => handleSave(set.id, set)}
@@ -370,17 +375,19 @@ interface EditCardProps {
   draft: DraftFields
   meta?: PromptSet
   promptTypes: PromptType[]
+  canMakePlatform: boolean
   onChange: (patch: Partial<DraftFields>) => void
-  onCreateType: (name: string) => Promise<PromptType>
+  onCreateType: (name: string, makePlatform: boolean) => Promise<PromptType>
   onSave: () => void
   onCancel: () => void
   saving: boolean
   isNew?: boolean
 }
 
-function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, onSave, onCancel, saving, isNew }: EditCardProps) {
+function PromptSetEditCard({ draft, meta, promptTypes, canMakePlatform, onChange, onCreateType, onSave, onCancel, saving, isNew }: EditCardProps) {
   const [creatingType, setCreatingType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
+  const [makePlatform, setMakePlatform] = useState(false)
   const [creatingTypeBusy, setCreatingTypeBusy] = useState(false)
   const isLive = draft.status === 'live'
 
@@ -397,10 +404,11 @@ function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, o
     if (!name) return
     setCreatingTypeBusy(true)
     try {
-      const created = await onCreateType(name)
+      const created = await onCreateType(name, makePlatform)
       onChange({ prompt_type_id: created.id })
       setCreatingType(false)
       setNewTypeName('')
+      setMakePlatform(false)
     } catch (err) {
       notifications.show({ color: 'red', title: 'Could not create type', message: err instanceof Error ? err.message : 'Failed to create prompt type.' })
     } finally {
@@ -437,56 +445,50 @@ function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, o
           maxRows={6}
           disabled={saving}
         />
-        {/* Status is a choice only for existing sets — a new set is always a draft. */}
-        {!isNew && (
-          <Select
-            label="Status"
-            description="Set by the admin. Multiple sets can be live."
-            data={[
-              { value: 'live', label: 'Live' },
-              { value: 'draft', label: 'Draft' },
-            ]}
-            value={draft.status}
-            onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
-            size="sm"
-            allowDeselect={false}
-            disabled={saving}
-          />
-        )}
-
-        {/* NEW: Type renders for drafts too; required only when Live. */}
+        {/* Type renders for drafts too; required only when Live. */}
         {creatingType ? (
-          <TextInput
-            label="New prompt type"
-            value={newTypeName}
-            onChange={(e) => setNewTypeName(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleCreateType()
+          <>
+            <TextInput
+              label="New prompt type"
+              value={newTypeName}
+              onChange={(e) => setNewTypeName(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleCreateType()
+                }
+                if (e.key === 'Escape') {
+                  setCreatingType(false)
+                  setNewTypeName('')
+                  setMakePlatform(false)
+                }
+              }}
+              placeholder="e.g. Onboarding"
+              description="Creates a new prompt type for this tenant."
+              size="sm"
+              required={isLive}
+              disabled={creatingTypeBusy}
+              rightSectionWidth={120}
+              rightSection={
+                <Group gap={4} wrap="nowrap">
+                  <Button variant="subtle" color="gray" size="compact-xs" onClick={() => { setCreatingType(false); setNewTypeName(''); setMakePlatform(false) }} disabled={creatingTypeBusy}>
+                    Cancel
+                  </Button>
+                  <Button variant="light" color="green" size="compact-xs" onClick={handleCreateType} loading={creatingTypeBusy} disabled={!newTypeName.trim()}>
+                    Create
+                  </Button>
+                </Group>
               }
-              if (e.key === 'Escape') {
-                setCreatingType(false)
-                setNewTypeName('')
-              }
-            }}
-            placeholder="e.g. Onboarding"
-            description="Creates a new prompt type for this tenant."
-            size="sm"
-            required={isLive}
-            disabled={creatingTypeBusy}
-            rightSectionWidth={120}
-            rightSection={
-              <Group gap={4} wrap="nowrap">
-                <Button variant="subtle" color="gray" size="compact-xs" onClick={() => { setCreatingType(false); setNewTypeName('') }} disabled={creatingTypeBusy}>
-                  Cancel
-                </Button>
-                <Button variant="light" color="green" size="compact-xs" onClick={handleCreateType} loading={creatingTypeBusy} disabled={!newTypeName.trim()}>
-                  Create
-                </Button>
-              </Group>
-            }
-          />
+            />
+            {canMakePlatform && (
+              <Switch
+                label="Make available to all tenants"
+                checked={makePlatform}
+                onChange={(e) => setMakePlatform(e.currentTarget.checked)}
+                disabled={creatingTypeBusy}
+              />
+            )}
+          </>
         ) : (
           <Select
             label="Type"
@@ -508,6 +510,15 @@ function PromptSetEditCard({ draft, meta, promptTypes, onChange, onCreateType, o
             disabled={saving}
           />
         )}
+
+        {/* Status is server-owned by the compile/publish pipeline (tracked as follow-on
+            work) — display-only here so this form can't set status='live' with no compile. */}
+        <Group gap={8} align="center">
+          <Text variant="label" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+            Status
+          </Text>
+          <StatusBadge status={draft.status} />
+        </Group>
 
         <PromptSetMetaStrip set={meta} isNew={isNew} />
 

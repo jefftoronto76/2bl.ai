@@ -164,8 +164,8 @@ export default function PromptBuilderPage() {
 
   useEffect(() => {
     fetch('/api/admin/prompt-types')
-      .then(r => (r.ok ? r.json() : []))
-      .then(setPromptTypes)
+      .then(r => (r.ok ? r.json() : { types: [] }))
+      .then((body: { types?: { id: string; name: string }[] }) => setPromptTypes(body.types ?? []))
       .catch(() => {})
   }, [])
 
