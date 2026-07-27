@@ -107,20 +107,34 @@ export async function PATCH(req: Request) {
 
   const supabase = getAdminClient()
 
-  // Defense-in-depth: a non-null prompt_type_id must be assigned to this tenant.
-  // prompt_types.tenant_id was dropped — assignments now live in prompt_type_tenants.
+  // Defense-in-depth: a non-null prompt_type_id must either be assigned to this
+  // tenant via prompt_type_tenants, or be a platform-shared type (is_platform =
+  // true) — the same OR the broadened GET /api/admin/prompt-types applies, so a
+  // type visible in that dropdown always passes here too. Two plain queries
+  // rather than one embedded-relation `.or()`, matching that route's approach.
   if (promptTypeId) {
-    const { data: assignment, error: typeErr } = await supabase
-      .from('prompt_type_tenants')
-      .select('prompt_type_id')
-      .eq('prompt_type_id', promptTypeId)
-      .eq('tenant_id', authCtx.tenant_id)
-      .maybeSingle()
+    const [{ data: assignment, error: typeErr }, { data: typeRow, error: platformErr }] = await Promise.all([
+      supabase
+        .from('prompt_type_tenants')
+        .select('prompt_type_id')
+        .eq('prompt_type_id', promptTypeId)
+        .eq('tenant_id', authCtx.tenant_id)
+        .maybeSingle(),
+      supabase
+        .from('prompt_types')
+        .select('is_platform')
+        .eq('id', promptTypeId)
+        .maybeSingle(),
+    ])
     if (typeErr) {
       console.error('[prompt-sets] prompt_type lookup failed:', typeErr.message)
       return Response.json({ error: typeErr.message }, { status: 500 })
     }
-    if (!assignment) {
+    if (platformErr) {
+      console.error('[prompt-sets] prompt_type platform lookup failed:', platformErr.message)
+      return Response.json({ error: platformErr.message }, { status: 500 })
+    }
+    if (!assignment && typeRow?.is_platform !== true) {
       return Response.json({ error: 'Prompt type not found for this tenant' }, { status: 400 })
     }
   }
