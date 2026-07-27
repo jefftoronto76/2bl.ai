@@ -105,6 +105,10 @@ export interface ChatSession {
   regenerate(messageId: string): Promise<void>
   /** Switches the displayed `versions` entry for a message — see useChatTurn.ts. */
   setActiveVersion(messageId: string, versionIdx: number): void
+  /** Edits + re-delivers a user message, truncating everything after it — see useChatTurn.ts. */
+  editMessage(messageId: string, text: string): Promise<void>
+  /** Re-delivers a user message unchanged, truncating everything after it — see useChatTurn.ts. */
+  resendMessage(messageId: string): Promise<void>
   setMode(mode: ChatMode): void
   /** Replace messages + sessionId (localStorage rehydrate / DB recovery). */
   hydrate(input: HydrateInput): void
@@ -161,6 +165,12 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
       },
       removeMessageById: (id) => {
         store.setState({ messages: store.getState().messages.filter((m) => m.id !== id) })
+      },
+      truncateAfter: (id) => {
+        const messages = store.getState().messages
+        const idx = messages.findIndex((m) => m.id === id)
+        if (idx === -1) return
+        store.setState({ messages: messages.slice(0, idx + 1) })
       },
       setStreaming: (val) => store.setState({ isStreaming: val }),
       setSessionId: (id) => store.setState({ sessionId: id }),
@@ -305,6 +315,8 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
     stop: turn.stop,
     regenerate: turn.regenerate,
     setActiveVersion: turn.setActiveVersion,
+    editMessage: turn.editMessage,
+    resendMessage: turn.resendMessage,
     setMode,
     hydrate,
     reset,

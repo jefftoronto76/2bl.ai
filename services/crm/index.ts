@@ -20,7 +20,7 @@ export { createSession, updateSession } from './sessions'
 export type { SessionResult, SessionUpdateInput } from './sessions'
 
 // Message feedback (thumbs + reason chips + note)
-export { upsertFeedback, listFeedback, resolveMemberId } from './feedback'
+export { upsertFeedback, listFeedback, deleteFeedbackFrom, resolveMemberId } from './feedback'
 export type { FeedbackResult, MessageFeedbackRow, UpsertFeedbackInput } from './feedback'
 
 // Inbound chat triage

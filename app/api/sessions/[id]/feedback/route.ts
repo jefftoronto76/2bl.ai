@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth'
-import { upsertFeedback, listFeedback, resolveMemberId } from '@/services/crm/feedback'
+import { upsertFeedback, listFeedback, deleteFeedbackFrom, resolveMemberId } from '@/services/crm/feedback'
 
 /**
  * GET /api/sessions/[id]/feedback — lists every message_feedback row for a
@@ -84,6 +84,43 @@ export async function POST(
     detail: detail as string | null | undefined,
     memberId,
   })
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status })
+  }
+
+  return NextResponse.json({ ok: true })
+}
+
+/**
+ * DELETE /api/sessions/[id]/feedback?fromIndex=N — clears every feedback row
+ * at or beyond `fromIndex`, tenant-scoped. Called by the chat engine
+ * (services/chat/ui/v1/useChatTurn.ts) right after a visitor edits or resends
+ * a message truncates the transcript forward from that point, so a
+ * regenerated reply can never silently inherit a rating that belonged to
+ * different, now-discarded content. Same anonymous-safe trust posture as
+ * POST above — no Clerk auth requirement, tenant + session scoping is the
+ * guard.
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+
+  const tenantId = await getTenantFromRequest(req)
+  if (!tenantId) {
+    console.error('[sessions/[id]/feedback] tenant resolution failed for host:', req.headers.get('host'))
+    return NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const fromIndexRaw = searchParams.get('fromIndex')
+  const fromIndex = fromIndexRaw !== null ? Number(fromIndexRaw) : NaN
+  if (!Number.isInteger(fromIndex) || fromIndex < 0) {
+    return NextResponse.json({ error: 'fromIndex must be a non-negative integer' }, { status: 400 })
+  }
+
+  const result = await deleteFeedbackFrom(tenantId, id, fromIndex)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }

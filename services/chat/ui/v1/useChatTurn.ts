@@ -460,5 +460,121 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors, persist],
   )
 
-  return { send, sendHidden, retry, stop, regenerate, setActiveVersion, isStreaming, errorType }
+  // Shared implementation for editMessage/resendMessage: truncate the
+  // transcript forward from `messageId`, set its content, and re-run the same
+  // delivery transition send() uses. `markEdited` is the only behavioral
+  // difference between the two public methods.
+  const truncateAndRedeliver = useCallback(
+    async (messageId: string, newContent: string, markEdited: boolean) => {
+      const before = accessors.getMessages()
+      const targetIdx = before.findIndex(m => m.id === messageId)
+      if (targetIdx === -1 || before[targetIdx].role !== 'user') return
+
+      // Cancel any in-flight turn synchronously BEFORE mutating the
+      // transcript — sequencing matters: a stream token arriving after
+      // truncation must never write into a message that no longer exists.
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = null
+      streamingRef.current = false
+
+      setErrorType(null)
+      accessors.truncateAfter(messageId)
+      accessors.patchMessageById(messageId, {
+        content: newContent,
+        status: 'sending',
+        ...(markEdited ? { edited: true } : {}),
+      })
+      // Context to send: everything truncateAfter kept, including the
+      // just-edited/resent message itself.
+      const msgsToSend = accessors.getMessages()
+      retryUserMsgIdRef.current = messageId
+      setStreaming(true)
+      accessors.addMessage({ role: 'assistant', content: '' })
+      const withAssistant = accessors.getMessages()
+      const assistantMsgId = withAssistant[withAssistant.length - 1]?.id ?? null
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const activeSessionId = accessors.getSessionId()
+      const currentMediaItems = accessors.getMediaItems?.() ?? null
+      retryMsgsRef.current = msgsToSend
+      retrySessionIdRef.current = activeSessionId
+      retryMediaItemsRef.current = currentMediaItems
+
+      // Every index this truncation dropped may have carried a rating —
+      // clear it so a new reply can never silently inherit feedback that
+      // belonged to different, now-discarded content. upsertFeedback keys
+      // only on (session_id, message_index), not message id or content, so a
+      // fresh reply landing at a previously-rated index would otherwise
+      // render as already-rated with a stale reason/note (services/crm/feedback.ts).
+      if (activeSessionId) {
+        void fetch(`/api/sessions/${activeSessionId}/feedback?fromIndex=${msgsToSend.length}`, {
+          method: 'DELETE',
+        }).catch(err => console.error('[chat/turn] DELETE feedback cleanup failed:', err))
+      }
+
+      try {
+        await streamTurn(
+          msgsToSend,
+          accessors.getMode?.() ?? null,
+          activeSessionId,
+          chunk => accessors.updateLastMessage(chunk),
+          accessors.getInviteToken?.() ?? null,
+          currentMediaItems,
+          controller.signal,
+        )
+      } catch (err) {
+        if (isAbortError(err)) {
+          accessors.patchMessageById(messageId, { status: 'sent' })
+          finishAbortedTurn(assistantMsgId)
+          setStreaming(false)
+          if (activeSessionId) persist(activeSessionId, null)
+          return
+        }
+        const classified = classifyError(err)
+        accessors.updateLastMessage('')
+        accessors.patchMessageById(messageId, { status: 'failed', error_type: classified })
+        setErrorType(classified)
+        setStreaming(false)
+        if (activeSessionId) persist(activeSessionId, null, classified)
+        return
+      }
+      accessors.patchMessageById(messageId, { status: 'sent' })
+      setStreaming(false)
+      if (activeSessionId) persist(activeSessionId, null)
+    },
+    [accessors, setStreaming, persist, finishAbortedTurn],
+  )
+
+  const editMessage = useCallback(
+    async (messageId: string, text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      await truncateAndRedeliver(messageId, trimmed, true)
+    },
+    [truncateAndRedeliver],
+  )
+
+  const resendMessage = useCallback(
+    async (messageId: string) => {
+      const msg = accessors.getMessages().find(m => m.id === messageId)
+      if (!msg) return
+      await truncateAndRedeliver(messageId, msg.content, false)
+    },
+    [accessors, truncateAndRedeliver],
+  )
+
+  return {
+    send,
+    sendHidden,
+    retry,
+    stop,
+    regenerate,
+    setActiveVersion,
+    editMessage,
+    resendMessage,
+    isStreaming,
+    errorType,
+  }
 }

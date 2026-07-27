@@ -44,6 +44,16 @@ export interface PersistedMessage {
   content: string;
   /** ISO 8601 timestamp. */
   timestamp: string;
+  /** Delivery state of a user message's send attempt — see UIMessage.status. */
+  status?: 'sending' | 'sent' | 'failed';
+  /** True if the user hit Stop mid-stream for this assistant message. */
+  stopped?: boolean;
+  /** Regenerated reply variants, oldest first — see UIMessage.versions. */
+  versions?: string[];
+  /** Index into `versions` of the currently-displayed version. */
+  versionIdx?: number;
+  /** True once this user message has been edited and resent. */
+  edited?: boolean;
 }
 
 export interface PersistedThread {
@@ -99,8 +109,11 @@ function getDB(namespace: PersistenceNamespace): Promise<IDBPDatabase> | null {
 
 /**
  * Narrow a canonical UIMessage down to the JSON-serializable PersistedMessage
- * shape this buffer stores — dropping UI-only fields (status/stopped/versions)
- * and converting the epoch-ms timestamp to ISO 8601.
+ * shape this buffer stores, converting the epoch-ms timestamp to ISO 8601.
+ * status/stopped/versions/versionIdx/edited round-trip as-is — reconciling
+ * any in-flight-looking state (e.g. a message still 'sending') back to a
+ * settled state is the revive side's job (see reviveUIMessage in message.ts),
+ * not this write path's.
  */
 export function toPersistedMessage(message: UIMessage): PersistedMessage {
   return {
@@ -108,6 +121,11 @@ export function toPersistedMessage(message: UIMessage): PersistedMessage {
     role: message.role,
     content: message.content,
     timestamp: new Date(message.timestamp).toISOString(),
+    ...(message.status !== undefined ? { status: message.status } : {}),
+    ...(message.stopped !== undefined ? { stopped: message.stopped } : {}),
+    ...(message.versions !== undefined ? { versions: message.versions } : {}),
+    ...(message.versionIdx !== undefined ? { versionIdx: message.versionIdx } : {}),
+    ...(message.edited !== undefined ? { edited: message.edited } : {}),
   };
 }
 

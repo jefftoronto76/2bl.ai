@@ -51,17 +51,40 @@ function sageCallCount(): number {
   return fetchMock.mock.calls.filter(([input]) => input === '/api/sage').length
 }
 
+function feedbackDeleteCalls(): string[] {
+  return fetchMock.mock.calls
+    .filter(
+      ([input, init]) =>
+        (init?.method ?? 'GET') === 'DELETE' && typeof input === 'string' && input.includes('/feedback'),
+    )
+    .map(([input]) => input as string)
+}
+
 // ── test consumer ─────────────────────────────────────────────────────────
 
 function Consumer({ id }: { id: string }) {
   const s = useChatSessionContext()
+  const firstUserMsg = s.messages.find((m) => m.role === 'user')
   return (
     <div data-testid={id}>
       <span data-testid={`${id}-text`}>{s.messages.map((m) => `${m.role}:${m.content}`).join('|')}</span>
       <span data-testid={`${id}-error`}>{String(s.errorType)}</span>
       <span data-testid={`${id}-sid`}>{String(s.sessionId)}</span>
+      <span data-testid={`${id}-edited`}>{String(firstUserMsg?.edited ?? false)}</span>
       <button data-testid={`${id}-send`} onClick={() => void s.send('hi')}>send</button>
       <button data-testid={`${id}-retry`} onClick={() => void s.retry()}>retry</button>
+      <button
+        data-testid={`${id}-edit-first`}
+        onClick={() => firstUserMsg && void s.editMessage(firstUserMsg.id, 'edited text')}
+      >
+        edit-first
+      </button>
+      <button
+        data-testid={`${id}-resend-first`}
+        onClick={() => firstUserMsg && void s.resendMessage(firstUserMsg.id)}
+      >
+        resend-first
+      </button>
       <button
         data-testid={`${id}-hydrate`}
         onClick={() =>
@@ -163,6 +186,111 @@ describe('shared retry state (single engine)', () => {
     expect(screen.getByTestId('a-error').textContent).toBe('null')
     expect(screen.getByTestId('b-error').textContent).toBe('null')
     expect(sageCallCount()).toBe(2) // initial failure + retry
+  })
+})
+
+describe('editMessage / resendMessage', () => {
+  it('editMessage truncates everything after the message, re-delivers, and marks it edited', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'))
+
+    fireEvent.click(screen.getByTestId('a-edit-first'))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toBe('user:edited text|assistant:Hello there'),
+    )
+    expect(screen.getByTestId('a-edited').textContent).toBe('true')
+  })
+
+  it('resendMessage re-delivers unchanged content without marking it edited', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'))
+
+    fireEvent.click(screen.getByTestId('a-resend-first'))
+    await waitFor(() => expect(sageCallCount()).toBe(2))
+    await waitFor(() =>
+      expect(screen.getByTestId('a-text').textContent).toBe('user:hi|assistant:Hello there'),
+    )
+    expect(screen.getByTestId('a-edited').textContent).toBe('false')
+  })
+
+  it('clears message_feedback for every truncated index via DELETE /api/sessions/[id]/feedback', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'))
+
+    fireEvent.click(screen.getByTestId('a-edit-first'))
+    await waitFor(() => expect(feedbackDeleteCalls().length).toBeGreaterThan(0))
+    // Truncation keeps just the edited user message (index 0), so the first
+    // index it invalidates is 1 — where the old (now-discarded) assistant
+    // reply lived. Without this, a fresh reply landing back at index 1 would
+    // silently inherit that reply's rating (upsertFeedback keys on
+    // (session_id, message_index) alone — see services/crm/feedback.ts).
+    expect(feedbackDeleteCalls()[0]).toBe('/api/sessions/sess-1/feedback?fromIndex=1')
+  })
+
+  it('cancels an in-flight turn before truncating — a late chunk from the cancelled turn never resurfaces', async () => {
+    let pushChunk: ((text: string) => void) | null = null
+    const encoder = new TextEncoder()
+    const hangingStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        pushChunk = (text) => controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`))
+        // Deliberately never closed — editMessage's abort ends this turn,
+        // not a natural stream close.
+      },
+    })
+    const hangingResponse = new Response(hangingStream, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+
+    const defaultImpl = fetchMock.getMockImplementation()
+    let sageCalls = 0
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === '/api/sessions' && method === 'POST') return jsonResponse({ id: 'sess-1' })
+      if (url.startsWith('/api/sessions/')) return jsonResponse({ ok: true })
+      if (url === '/api/sage') {
+        sageCalls += 1
+        // The first turn hangs; the redelivery after edit gets the normal
+        // fast stream.
+        return sageCalls === 1 ? hangingResponse : streamResponse('Hello there')
+      }
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    try {
+      render(
+        <ChatSessionProvider instanceKey="sage">
+          <Consumer id="a" />
+        </ChatSessionProvider>,
+      )
+      fireEvent.click(screen.getByTestId('a-send'))
+      await waitFor(() => expect(pushChunk).not.toBeNull())
+      pushChunk!('partial')
+      await waitFor(() => expect(screen.getByTestId('a-text').textContent).toContain('assistant:partial'))
+
+      // Edit while the first turn is still streaming.
+      fireEvent.click(screen.getByTestId('a-edit-first'))
+
+      await waitFor(() =>
+        expect(screen.getByTestId('a-text').textContent).toBe('user:edited text|assistant:Hello there'),
+      )
+      expect(screen.getByTestId('a-text').textContent).not.toContain('partial')
+    } finally {
+      fetchMock.mockImplementation(defaultImpl!)
+    }
   })
 })
 

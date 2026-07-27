@@ -129,6 +129,54 @@ describe('reviveUIMessage', () => {
     expect(reviveUIMessage({ id: 'f', role: 'user', content: 'x', error_type: 'bogus' }).error_type).toBeNull()
     expect(reviveUIMessage({ id: 'g', role: 'user', content: 'x' }).error_type).toBeNull()
   })
+
+  it("reconciles a revived 'sending' status to 'failed' — no in-flight request survives a reload", () => {
+    const m = reviveUIMessage({ id: 'h', role: 'user', content: 'x', status: 'sending' })
+    expect(m.status).toBe('failed')
+  })
+
+  it("passes through settled 'sent'/'failed' statuses unchanged", () => {
+    expect(reviveUIMessage({ id: 'i', role: 'user', content: 'x', status: 'sent' }).status).toBe('sent')
+    expect(reviveUIMessage({ id: 'j', role: 'user', content: 'x', status: 'failed' }).status).toBe('failed')
+  })
+
+  it('omits status entirely when absent or invalid, rather than defaulting it', () => {
+    expect(reviveUIMessage({ id: 'k', role: 'user', content: 'x' }).status).toBeUndefined()
+    expect(reviveUIMessage({ id: 'l', role: 'user', content: 'x', status: 'bogus' }).status).toBeUndefined()
+  })
+
+  it('revives stopped/versions/versionIdx/edited when valid', () => {
+    const m = reviveUIMessage({
+      id: 'm',
+      role: 'assistant',
+      content: 'v2',
+      stopped: true,
+      versions: ['v1', 'v2'],
+      versionIdx: 1,
+    })
+    expect(m.stopped).toBe(true)
+    expect(m.versions).toEqual(['v1', 'v2'])
+    expect(m.versionIdx).toBe(1)
+
+    const edited = reviveUIMessage({ id: 'n', role: 'user', content: 'x', edited: true })
+    expect(edited.edited).toBe(true)
+  })
+
+  it('discards malformed stopped/versions/versionIdx/edited rather than throwing', () => {
+    const m = reviveUIMessage({
+      id: 'o',
+      role: 'assistant',
+      content: 'x',
+      stopped: 'yes',
+      versions: ['a', 2, 'c'],
+      versionIdx: '1',
+      edited: 'true',
+    })
+    expect(m.stopped).toBeUndefined()
+    expect(m.versions).toBeUndefined()
+    expect(m.versionIdx).toBeUndefined()
+    expect(m.edited).toBeUndefined()
+  })
 })
 
 describe('reviveUIMessages', () => {
