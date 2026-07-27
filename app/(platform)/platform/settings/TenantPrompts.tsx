@@ -67,10 +67,48 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
   const [showNewCard, setShowNewCard] = useState(false)
   const [viewTarget, setViewTarget] = useState<PlatformPromptSet | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [typeNamesByTenant, setTypeNamesByTenant] = useState<Record<string, Record<string, string>>>({})
 
   function toggle(tenantId: string) {
     setExpanded((e) => ({ ...e, [tenantId]: !e[tenantId] }))
   }
+
+  // Resolve each set's prompt_type_id to a display name for the collapsed cards —
+  // the same per-tenant endpoint the edit modal uses (/api/platform/prompt-types?
+  // tenant_id=X), fetched once per distinct tenant present in `sets` rather than
+  // per set.
+  useEffect(() => {
+    const tenantIds = Array.from(new Set(sets.map((s) => s.tenant_id)))
+    if (tenantIds.length === 0) {
+      setTypeNamesByTenant({})
+      return
+    }
+    let cancelled = false
+    Promise.all(
+      tenantIds.map((tenantId) =>
+        fetch(`/api/platform/prompt-types?tenant_id=${encodeURIComponent(tenantId)}`)
+          .then((r) => (r.ok ? r.json() : []))
+          .then((types: { id: string; name: string }[]) => [tenantId, types] as const)
+          .catch(() => [tenantId, []] as const),
+      ),
+    ).then((results) => {
+      if (cancelled) return
+      const next: Record<string, Record<string, string>> = {}
+      for (const [tenantId, types] of results) {
+        next[tenantId] = Object.fromEntries(types.map((t) => [t.id, t.name]))
+      }
+      setTypeNamesByTenant(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sets])
+
+  const resolveTypeName = useCallback(
+    (set: PlatformPromptSet): string | null =>
+      set.prompt_type_id ? typeNamesByTenant[set.tenant_id]?.[set.prompt_type_id] ?? null : null,
+    [typeNamesByTenant],
+  )
 
   const fetchSets = useCallback(async () => {
     try {
@@ -320,7 +358,7 @@ export function TenantPrompts({ onSetsChanged }: { onSetsChanged?: () => void } 
                     <PromptSetViewCard
                       key={set.id}
                       set={set}
-                      typeName={null /* platform list resolves type name server-side if needed */}
+                      typeName={resolveTypeName(set)}
                       onOpenInComposer={() => openInComposer(set)}
                       onView={() => setViewTarget(set)}
                       onEdit={() => startEdit(set)}
