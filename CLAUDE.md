@@ -929,14 +929,27 @@ normal history turn gives the model no signal its own prior reply was cut
 short, so it "continues" as though it had already finished speaking, which
 produces worse continuations than telling it explicitly. The fix is
 `toModelMessages()` (`services/chat/ui/v1/message.ts`): when building the
-wire-format `ChatMessage[]` sent to `/api/sage`, any `stopped: true` assistant
-turn is **excluded** from the array entirely and its verbatim content is
-folded into the *next user* turn as a `[SYSTEM: ...]`-tagged continuation
-note instead (reusing the codebase's existing hidden-system-content
-convention — see `dispatchSystemSignal` in `chatStore.tsx`). Excluding the
-stopped turn rather than appending a second consecutive user message also
-keeps strict user/assistant role alternation, which the Anthropic Messages
-API requires.
+wire-format `ChatMessage[]` sent to `/api/sage`, a `stopped: true` assistant
+turn's **role slot stays in the array** — its content is swapped for a short
+neutral `STOPPED_PLACEHOLDER` rather than the visitor's own cut-off words —
+and the verbatim partial text is folded into the *next user* turn as a
+`[SYSTEM: ...]`-tagged continuation note instead (reusing the codebase's
+existing hidden-system-content convention — see `dispatchSystemSignal` in
+`chatStore.tsx`).
+
+**Correctness fix (2026-07-28):** an earlier version of this function
+*dropped* the stopped assistant turn from the array entirely instead of
+keeping its role slot. That broke strict user/assistant role alternation,
+which the Anthropic Messages API requires: the message that prompted the
+now-stopped reply stayed in the array as its own `user` entry, and with the
+assistant turn removed, the very next entry was the fold — also `role:
+'user'` — producing two consecutive `user` entries with no `assistant`
+between them. Every send following a stop-with-content would have sent
+malformed history to Anthropic. Caught during review, not in production;
+fixed by keeping the placeholder instead of dropping the turn.
+`message.test.ts` has an explicit invariant test (`toModelMessages` >
+"never produces two consecutive same-role entries") covering this going
+forward.
 
 This is a **wire-only transform** — `send()`/`sendHidden()`/`regenerate()`
 call `toModelMessages()` only when building the array passed to

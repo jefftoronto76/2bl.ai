@@ -222,23 +222,24 @@ describe('toModelMessages', () => {
     expect(toModelMessages(msgs)).toEqual(toChatMessages(msgs))
   })
 
-  it('folds a trailing stopped assistant message into the following user turn', () => {
+  it('folds a stopped assistant message into the following user turn, keeping its role slot as a placeholder', () => {
     const msgs = [
       { role: 'user' as const, content: 'tell me a story' },
       { role: 'assistant' as const, content: 'Once upon a tim', stopped: true },
       { role: 'user' as const, content: 'please continue' },
     ]
     const out = toModelMessages(msgs)
-    expect(out).toHaveLength(2)
+    expect(out).toHaveLength(3)
     expect(out[0]).toEqual({ role: 'user', content: 'tell me a story' })
-    expect(out[1].role).toBe('user')
-    expect(out[1].content).toContain('[SYSTEM:')
-    expect(out[1].content).toContain('Once upon a tim')
-    expect(out[1].content).toContain('please continue')
-    // No assistant turn was emitted for the stopped message — role
-    // alternation stays strict (user, user-with-fold), never
-    // user/assistant/user with a raw partial assistant turn in between.
-    expect(out.some(m => m.role === 'assistant')).toBe(false)
+    // The stopped turn's role slot stays present — alternation intact —
+    // but its content is never the visitor's own cut-off words replayed as
+    // if the reply had finished.
+    expect(out[1].role).toBe('assistant')
+    expect(out[1].content).not.toContain('Once upon a tim')
+    expect(out[2].role).toBe('user')
+    expect(out[2].content).toContain('[SYSTEM:')
+    expect(out[2].content).toContain('Once upon a tim')
+    expect(out[2].content).toContain('please continue')
   })
 
   it('does not mutate the input array or its message objects', () => {
@@ -262,10 +263,20 @@ describe('toModelMessages', () => {
       { role: 'user' as const, content: 'fourth' },
     ]
     const out = toModelMessages(msgs)
-    expect(out.filter(m => m.role === 'assistant')).toEqual([{ role: 'assistant', content: 'complete reply' }])
-    expect(out.filter(m => m.role === 'user')).toHaveLength(4)
-    expect(out[1].content).toContain('cut off once')
-    expect(out[1].content).toContain('second')
+    // Every message maps 1:1 now — nothing is dropped, only relabeled.
+    // [u:first, a:PLACEHOLDER, u:fold1, a:'complete reply', u:third, a:PLACEHOLDER, u:fold2]
+    expect(out).toHaveLength(msgs.length)
+    const assistantEntries = out.filter(m => m.role === 'assistant')
+    expect(assistantEntries).toHaveLength(3)
+    expect(assistantEntries[0].content).not.toContain('cut off once')
+    expect(assistantEntries[1]).toEqual({ role: 'assistant', content: 'complete reply' })
+    expect(assistantEntries[2].content).not.toContain('cut off again')
+    const userEntries = out.filter(m => m.role === 'user')
+    expect(userEntries).toHaveLength(4)
+    expect(out[2].content).toContain('cut off once')
+    expect(out[2].content).toContain('second')
+    expect(out[6].content).toContain('cut off again')
+    expect(out[6].content).toContain('fourth')
   })
 
   it('leaves a non-stopped assistant message untouched', () => {
@@ -279,19 +290,24 @@ describe('toModelMessages', () => {
     ])
   })
 
-  it('drops a trailing stopped assistant message with no following turn rather than emitting it raw', () => {
+  it('keeps a trailing stopped assistant message as a placeholder rather than dropping it', () => {
     const msgs = [
       { role: 'user' as const, content: 'hi' },
       { role: 'assistant' as const, content: 'cut off', stopped: true },
     ]
     const out = toModelMessages(msgs)
-    expect(out).toEqual([{ role: 'user', content: 'hi' }])
+    expect(out).toHaveLength(2)
+    expect(out[0]).toEqual({ role: 'user', content: 'hi' })
+    expect(out[1].role).toBe('assistant')
+    expect(out[1].content).not.toContain('cut off')
   })
 
-  it('passes the next user turn through unchanged when the stopped message has empty content', () => {
+  it('keeps the placeholder assistant turn even when the stopped message has empty content', () => {
     // Reachable since finishAbortedTurn (useChatTurn.ts) always tags stopped:true
-    // now, even when Stop was hit before any content streamed back — there's
-    // nothing to fold into a continuation note in that case.
+    // now, even when Stop was hit before any content streamed back. There's
+    // nothing to fold into a continuation note in that case, but the role
+    // slot still has to stay — dropping it would leave two consecutive user
+    // turns, exactly the alternation bug this function exists to avoid.
     const msgs = [
       { role: 'user' as const, content: 'tell me a story' },
       { role: 'assistant' as const, content: '', stopped: true },
@@ -300,7 +316,51 @@ describe('toModelMessages', () => {
     const out = toModelMessages(msgs)
     expect(out).toEqual([
       { role: 'user', content: 'tell me a story' },
+      { role: 'assistant', content: '[Response interrupted.]' },
       { role: 'user', content: 'try again' },
     ])
+  })
+
+  it('never produces two consecutive same-role entries, for any stopped-message scenario', () => {
+    const scenarios: Array<Array<{ role: 'user' | 'assistant'; content: string; stopped?: boolean }>> = [
+      // non-empty partial, followed by a user turn
+      [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'partial', stopped: true },
+        { role: 'user', content: 'b' },
+      ],
+      // empty partial, followed by a user turn
+      [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: '', stopped: true },
+        { role: 'user', content: 'b' },
+      ],
+      // stopped with nothing following at all
+      [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'partial', stopped: true },
+      ],
+      // multiple stopped messages spread through history
+      [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'p1', stopped: true },
+        { role: 'user', content: 'b' },
+        { role: 'assistant', content: 'p2', stopped: true },
+        { role: 'user', content: 'c' },
+      ],
+    ]
+    // Two stopped assistant messages back-to-back isn't included above: the
+    // store only ever alternates strictly (one assistant reply per user
+    // turn), so that shape can never actually reach this function — it's not
+    // a real gap to guard against, just an impossible input.
+    for (const scenario of scenarios) {
+      const out = toModelMessages(scenario)
+      for (let i = 1; i < out.length; i++) {
+        expect(
+          out[i].role,
+          `adjacent same-role entries at index ${i} for scenario ${JSON.stringify(scenario)}: ${JSON.stringify(out)}`,
+        ).not.toBe(out[i - 1].role)
+      }
+    }
   })
 })

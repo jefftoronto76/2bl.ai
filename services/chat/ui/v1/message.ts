@@ -156,6 +156,14 @@ export function toChatMessages(messages: UIMessage[]): ChatMessage[] {
   return messages.map(toChatMessage)
 }
 
+/**
+ * Stands in for a stopped assistant turn's own content in the model-facing
+ * array — never the visitor-facing UI, never persisted. Keeps the turn's
+ * role slot present (so alternation holds) without replaying the visitor's
+ * own cut-off words back as if they were a complete, satisfying reply.
+ */
+const STOPPED_PLACEHOLDER = '[Response interrupted.]'
+
 /** A message a stopped turn's partial text is folded into as continuation context. */
 function buildContinuationContext(partialReply: string, nextUserText: string): string {
   return (
@@ -168,25 +176,35 @@ function buildContinuationContext(partialReply: string, nextUserText: string): s
 }
 
 /**
- * Narrow messages to the wire `ChatMessage[]` sent to `/api/sage`, folding any
- * `stopped: true` assistant turn into the user message that follows it as
- * continuation context, instead of replaying it as a completed assistant
- * turn.
+ * Narrow messages to the wire `ChatMessage[]` sent to `/api/sage`. A
+ * `stopped: true` assistant turn's role slot is kept in place — never
+ * dropped — but its content is replaced with `STOPPED_PLACEHOLDER`; the
+ * verbatim partial text is instead folded into the user message that
+ * follows it, as continuation context.
  *
  * Protocol note (Sonnet 4.6+): an interrupted/partial assistant reply must
  * never be resent to the model as if it were a finished turn — the model has
  * no signal it was cut short and will "continue" as though it already said
- * something complete. Folding the partial text into the *next user* turn
- * (rather than leaving it as the assistant's own message) also preserves
- * strict user/assistant role alternation, which the Anthropic Messages API
- * requires — it is dropped from the array entirely rather than appended as a
- * second consecutive user turn.
+ * something complete. That's why the partial text moves to the *next user*
+ * turn instead of staying as the assistant's own message.
+ *
+ * Why the assistant turn is kept (not dropped): dropping it entirely would
+ * leave two consecutive `user`-role entries — the message that prompted the
+ * now-stopped reply, immediately followed by the next user turn — which
+ * breaks the strict user/assistant alternation the Anthropic Messages API
+ * requires. (An earlier version of this function did drop it; every send
+ * following a stop-with-content would have sent malformed history. Fixed
+ * 2026-07-28, see CLAUDE.md's Stop / interrupted-turn protocol section.)
+ * Swapping in a neutral placeholder keeps the role slot — and therefore
+ * alternation — intact without replaying the visitor's own words as if the
+ * reply had finished.
  *
  * Wire-only transform: the caller's own message list — what's rendered and
  * what's persisted to `chat_sessions.messages` — is never read from mutated
- * or written to here. The `[SYSTEM: ...]` tag this produces exists only in
- * this function's return value (the `/api/sage` POST body); it is never
- * passed to a store accessor, so it can never be displayed or persisted.
+ * or written to here. Neither `STOPPED_PLACEHOLDER` nor the `[SYSTEM: ...]`
+ * tag this produces exists anywhere but this function's return value (the
+ * `/api/sage` POST body); neither is ever passed to a store accessor, so
+ * neither can be displayed or persisted.
  */
 export function toModelMessages(
   messages: Array<{ role: ChatRole; content: string; stopped?: boolean }>,
@@ -196,6 +214,7 @@ export function toModelMessages(
   for (const m of messages) {
     if (m.role === 'assistant' && m.stopped) {
       pendingPartial = m.content
+      out.push({ role: 'assistant', content: STOPPED_PLACEHOLDER })
       continue
     }
     if (m.role === 'user' && pendingPartial !== null) {
