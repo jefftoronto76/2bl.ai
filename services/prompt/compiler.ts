@@ -36,6 +36,7 @@ export async function getSystemPrompt(tenantId: string | null): Promise<string> 
       .from('compiled_prompts')
       .select('content')
       .eq('tenant_id', tenantId)
+      .eq('status', 'live')
       .order('version', { ascending: false })
       .limit(1)
       .maybeSingle()
