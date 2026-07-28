@@ -1415,6 +1415,16 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   Schema change (add key to `tenants.settings` JSONB) is Jeff's Studio work;
   code work proceeds once the column convention is confirmed.
 
+- **Server-side Stop-abort relies on unverified `Request.signal` propagation
+  on this deployment target.** (2026-07-28, see the Chat UI service section's
+  "Stop / interrupted-turn protocol" for the full fix.) `AbortSignal` is now
+  correctly threaded from the inbound `/api/sage` request into the Anthropic
+  `streamText()` call, so hitting Stop cancels the upstream generation rather
+  than letting it run to completion. This is standard Next.js Route Handler /
+  Fetch API behavior, but has only been verified against the installed `ai`
+  SDK's source in this pass — not yet confirmed end-to-end against a live
+  Stop-mid-reply on a Vercel preview. Do this check before treating server-side
+  Stop as fully proven in production.
 - **`services/payments/` not created.** Stripe Connect work is deferred; not
   even a scaffold exists yet.
 - **Chat-UI strangle — widget shell extracted (centralization Step E).** The
