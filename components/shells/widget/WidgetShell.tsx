@@ -106,15 +106,20 @@ function makeRenderUserMessage(
     }
 
     return (
-      // grid (not flex-col + items-end): bubble, DeliveryStatus, and
-      // UserMessageActions must render at IDENTICAL widths so the action
-      // row's right edge lands exactly under the bubble's — independent
-      // flex-item shrink-to-fit let them drift apart. Only the bubble row
-      // supplies real (non-percentage) content, so it alone drives the
-      // grid's auto column width; other rows get w-full + min-w-0 so their
-      // own content never stretches that column, they just match whatever
-      // the bubble computes to. Mirrors components/shells/membership/MessageList.tsx.
-      <div key={msg.id} data-chat-message className="group grid justify-end gap-1.5">
+      // flex-col + items-end (not grid): each child right-aligns to the
+      // container's own edge independently, regardless of its own width —
+      // this is what actually guarantees the action row's right edge lands
+      // under the bubble's. A prior "grid" version of this got that
+      // backwards: a single-column CSS grid stretches every item to a
+      // shared track width (default justify-items: stretch), and that
+      // track is sized to the WIDEST row's max-content — usually the
+      // actions row, not the bubble — so the bubble's own max-w-[90%]
+      // resolved against the actions row's width instead of the real
+      // container, and the two rows' right edges didn't actually align.
+      // Verified empirically (Playwright/Chromium harness reproducing this
+      // exact DOM+CSS) before reverting. Mirrors
+      // components/shells/membership/MessageList.tsx.
+      <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1.5">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -136,18 +141,14 @@ function makeRenderUserMessage(
             {msg.content}
           </p>
         </div>
-        <div className="w-full min-w-0">
-          <DeliveryStatus status={status} onRetry={retry} />
-        </div>
+        <DeliveryStatus status={status} onRetry={retry} />
         {status === 'sent' && (
-          <div className="w-full min-w-0">
-            <UserMessageActions
-              content={msg.content}
-              edited={msg.edited}
-              onEdit={() => setEditingId(msg.id)}
-              onResend={() => void resendMessage(msg.id)}
-            />
-          </div>
+          <UserMessageActions
+            content={msg.content}
+            edited={msg.edited}
+            onEdit={() => setEditingId(msg.id)}
+            onResend={() => void resendMessage(msg.id)}
+          />
         )}
       </div>
     )
