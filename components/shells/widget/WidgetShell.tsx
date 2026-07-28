@@ -981,9 +981,7 @@ export function WidgetShellHero() {
             scrollDeps={[messages.length, conversationVisible]}
             useRaf
             scrollBlock="end"
-            // DIAGNOSTIC (temporary): Hero auto-scroll disabled for keyboard/scroll
-            // testing. Original guard: () => conversationVisible && messages.length > 0
-            scrollGuard={() => false}
+            scrollGuard={() => conversationVisible && messages.length > 0}
             scrollAnchorClassName="messages-end"
           />
         </div>
