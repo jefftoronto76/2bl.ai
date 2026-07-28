@@ -1,5 +1,29 @@
 # DB Changelog
 
+##2026-07-28
+
+Add a `DB_CHANGELOG.md` entry for `conversion_events`, following the existing format in that file. Table is live in Studio:
+
+```sql
+create table conversion_events (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null,
+  session_id uuid not null references chat_sessions(id),
+  member_id uuid null,
+  event_type text not null,   -- 'booking_offered' | 'contact_captured'
+  marker_type text not null,  -- 'BOOKING' | 'NAME' | 'EMAIL' | 'PHONE'
+  status text not null default 'presented',  -- 'presented' | 'accepted' | 'ignored' | 'overwritten'
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_conversion_events_tenant_type_status
+  on conversion_events (tenant_id, event_type, status);
+```
+
+Purpose, for the changelog note: records that a conversion-relevant marker fired (booking offer, contact capture) and what happened to it — written on marker fire (`status: 'presented'`), updated to `'overwritten'` if `truncateAfter` removes the message it's tied to before resolution. `'accepted'`/`'ignored'` are reserved states, not yet written — they need a real completion signal (e.g. calendar booking confirmation) that doesn't exist yet.
+
+
 ## 2026-07-27
 
 ### Add release-note columns to `compiled_prompts` and `compiled_prompts_history`

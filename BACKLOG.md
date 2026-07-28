@@ -1,4 +1,18 @@
 
+
+##Tracking & Conversion Work: July 28, 2026
+
+Visitor message actions — jefflougheed parity. Shipped: full edit/truncate/resend parity on both surfaces (previously Copy-only on jefflougheed, gated on truncation risk to booking/contact-capture markers).
+
+Risk mitigation: new conversion_events table records marker fire (status: 'presented') and flips to 'overwritten' if truncateAfter removes the tied message before resolution. Built as a general-purpose, extensible event log (plain-text event_type/marker_type, no enum constraint, marker→event mapping as a lookup) — not scoped only to booking/contact, so other conversion points (e.g. account_created) can be added later without a schema change.
+
+Deferred, not blocking:
+
+'accepted'/'ignored' states reserved but not written — need a real completion signal (calendar booking confirmation) that doesn't exist yet
+No timing/position detail beyond created_at/updated_at — revisit if funnel analysis needs turn-position or elapsed-time granularity
+chat_sessions.calendar_offered left as its own flag, not derived from this table — two sources of truth for "was booking offered," acceptable for now
+chat_sessions.status has no explicit ended/abandoned terminal state — session "end" is currently inferred from updated_at, not a real event
+
 # Admin work July - 2026 (when noted)
 
 Bug: Check & Save freezes UI when multiple blocks are presented and saved in rapid succession
