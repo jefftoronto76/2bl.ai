@@ -508,10 +508,20 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       // only on (session_id, message_index), not message id or content, so a
       // fresh reply landing at a previously-rated index would otherwise
       // render as already-rated with a stale reason/note (services/crm/feedback.ts).
+      // Also flips any still-'presented' conversion_events (booking offer /
+      // contact capture) tied to the discarded replies to 'overwritten' —
+      // see services/crm/conversion-events.ts. Both fire-and-forget; a
+      // failure in either must never block the edit/resend flow itself.
       if (activeSessionId) {
         void fetch(`/api/sessions/${activeSessionId}/feedback?fromIndex=${msgsToSend.length}`, {
           method: 'DELETE',
         }).catch(err => console.error('[chat/turn] DELETE feedback cleanup failed:', err))
+
+        const cutoffTimestamp = new Date(msgsToSend[msgsToSend.length - 1].timestamp).toISOString()
+        void fetch(
+          `/api/sessions/${activeSessionId}/conversion-events?after=${encodeURIComponent(cutoffTimestamp)}`,
+          { method: 'PATCH' },
+        ).catch(err => console.error('[chat/turn] PATCH conversion-events cleanup failed:', err))
       }
 
       try {

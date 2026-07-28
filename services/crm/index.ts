@@ -23,6 +23,10 @@ export type { SessionResult, SessionUpdateInput } from './sessions'
 export { upsertFeedback, listFeedback, deleteFeedbackFrom, resolveMemberId } from './feedback'
 export type { FeedbackResult, MessageFeedbackRow, UpsertFeedbackInput } from './feedback'
 
+// Conversion events (booking offers / contact captures — presented/overwritten log)
+export { recordConversionEvents, overwriteConversionEventsFrom } from './conversion-events'
+export type { ConversionEventType } from './conversion-events'
+
 // Inbound chat triage
 export { getInboundChats } from './inbound'
 export type { ChatSession } from './inbound'

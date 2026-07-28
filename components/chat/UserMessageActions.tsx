@@ -15,13 +15,15 @@
  * 'sending'/'failed', and the two must never render together.
  *
  * Per-surface reduction: `showEdit`/`showResend` (both default `true`) let a
- * caller drop the truncate-and-redeliver actions while keeping Copy. Used by
- * jefflougheed (components/shells/widget/WidgetShell.tsx), which passes both
- * `false` — editing/truncating history is a Heirloom-only affordance for now;
- * on the public lead-gen chat it could silently discard an already-offered
- * booking card or an already-captured NAME/EMAIL/PHONE with no undo, a risk
- * Heirloom's signed-in membership context doesn't share. Copy carries none of
- * that risk, so it ships everywhere.
+ * caller drop the truncate-and-redeliver actions while keeping Copy — used
+ * briefly by jefflougheed (components/shells/widget/WidgetShell.tsx) to ship
+ * Copy-only ahead of full parity, since editing/truncating history there
+ * could silently discard an already-offered booking card or an
+ * already-captured NAME/EMAIL/PHONE with no undo. Both surfaces get the full
+ * row again once `conversion_events` (services/crm/conversion-events.ts)
+ * started tracking that discard instead of silently losing it — see the
+ * WidgetShellChat entry in CLAUDE.md. Kept as a live escape hatch in case a
+ * future surface needs the same reduction.
  */
 
 import { useState } from 'react'

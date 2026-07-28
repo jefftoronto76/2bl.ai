@@ -13,6 +13,7 @@ import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { MessageActions } from '@/components/chat/MessageActions'
 import { UserMessageActions } from '@/components/chat/UserMessageActions'
+import { EditableUserBubble } from '@/components/chat/EditableUserBubble'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
@@ -79,9 +80,31 @@ function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: 
   }
 }
 
-function makeRenderUserMessage(retry: () => void) {
+function makeRenderUserMessage(
+  retry: () => void,
+  editingId: string | null,
+  setEditingId: (id: string | null) => void,
+  editMessage: (id: string, text: string) => Promise<void>,
+  resendMessage: (id: string) => Promise<void>,
+) {
   return function renderUserMessage(msg: UIMessage): ReactNode {
     const status = msg.status ?? 'sent'
+
+    if (editingId === msg.id) {
+      return (
+        <div key={msg.id} data-chat-message className="flex justify-end">
+          <EditableUserBubble
+            initialValue={msg.content}
+            onCancel={() => setEditingId(null)}
+            onSave={text => {
+              setEditingId(null)
+              void editMessage(msg.id, text)
+            }}
+          />
+        </div>
+      )
+    }
+
     return (
       <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
@@ -98,9 +121,12 @@ function makeRenderUserMessage(retry: () => void) {
         </div>
         <DeliveryStatus status={status} onRetry={retry} />
         {status === 'sent' && (
-          // Copy only — no Edit/Send again on the public lead-gen chat, see
-          // the showEdit/showResend doc comment on UserMessageActions.
-          <UserMessageActions content={msg.content} showEdit={false} showResend={false} />
+          <UserMessageActions
+            content={msg.content}
+            edited={msg.edited}
+            onEdit={() => setEditingId(msg.id)}
+            onResend={() => void resendMessage(msg.id)}
+          />
         )}
       </div>
     )
@@ -144,16 +170,37 @@ function renderStreamingIndicator(): ReactNode {
 export function WidgetShellChat() {
   const ref = useReveal()
   const { isExpanded, expand, collapse } = useWidgetShell()
-  const { messages, sessionId, isStreaming, errorType, mode, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
-    useChatSessionContext()
+  const {
+    messages,
+    sessionId,
+    isStreaming,
+    errorType,
+    mode,
+    send,
+    retry,
+    stop,
+    regenerate,
+    setActiveVersion,
+    editMessage,
+    resendMessage,
+    setMode,
+    reset,
+  } = useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
 
   const [input, setInput] = useState('')
   const [composerFocused, setComposerFocused] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const sageParameters = useSageParameters()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const overlayInnerRef = useRef<HTMLDivElement>(null)
+
+  // Which visitor message (if any) is swapped into its editing textarea —
+  // local, single-message-at-a-time, doesn't need to survive reload.
+  useEffect(() => {
+    if (editingId && !messages.some(m => m.id === editingId)) setEditingId(null)
+  }, [editingId, messages])
 
   // DIAGNOSTIC (temporary): mobile taps on the Hero composer now route here
   // (expand()) instead of focusing Hero's inline composer, so Hero's own
@@ -333,7 +380,7 @@ export function WidgetShellChat() {
     setActiveVersion,
     feedback,
   })
-  const renderUserMessage = makeRenderUserMessage(retry)
+  const renderUserMessage = makeRenderUserMessage(retry, editingId, setEditingId, editMessage, resendMessage)
 
   return (
     <>
@@ -576,8 +623,21 @@ function detectModeFromLocation(): 'question' | null {
 
 export function WidgetShellHero() {
   const { setComposerRef, setHeroEngaged, expand } = useWidgetShell()
-  const { messages, sessionId, isStreaming, errorType, send, retry, stop, regenerate, setActiveVersion, setMode, reset } =
-    useChatSessionContext()
+  const {
+    messages,
+    sessionId,
+    isStreaming,
+    errorType,
+    send,
+    retry,
+    stop,
+    regenerate,
+    setActiveVersion,
+    editMessage,
+    resendMessage,
+    setMode,
+    reset,
+  } = useChatSessionContext()
   const feedback = useMessageFeedback(sessionId)
 
   const startNewConversation = () => {
@@ -589,8 +649,15 @@ export function WidgetShellHero() {
   const [input, setInput] = useState('')
   const [conversationVisible, setConversationVisible] = useState(false)
   const [composerFocused, setComposerFocused] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const composerWrapperRef = useRef<HTMLDivElement>(null)
+
+  // Which visitor message (if any) is swapped into its editing textarea —
+  // local, single-message-at-a-time, doesn't need to survive reload.
+  useEffect(() => {
+    if (editingId && !messages.some(m => m.id === editingId)) setEditingId(null)
+  }, [editingId, messages])
 
   const sageParameters = useSageParameters()
 
@@ -788,7 +855,7 @@ export function WidgetShellHero() {
     setActiveVersion,
     feedback,
   })
-  const renderUserMessage = makeRenderUserMessage(retry)
+  const renderUserMessage = makeRenderUserMessage(retry, editingId, setEditingId, editMessage, resendMessage)
 
   return (
     <section

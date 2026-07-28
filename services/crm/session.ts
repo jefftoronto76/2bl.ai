@@ -11,6 +11,7 @@
 // separate commits.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { recordConversionEvents } from './conversion-events'
 import type { TokenUsage } from '@/services/chat/server/types'
 
 function isPlausibleName(candidate: string): boolean {
@@ -387,9 +388,10 @@ async function persistTokenUsage(
 /**
  * onFinish detection flows for a streamed chat turn. No-ops when sessionId is
  * null (e.g. the greeting turn before a session exists). Sequence: main-turn
- * token usage → calendar-offer detection → [EMAIL:] marker capture + persist →
- * [PHONE:] marker capture + persist → visitor-message regex fallback →
- * visitor_name pre-check → [NAME:] marker capture + persist.
+ * token usage → conversion-event recording → calendar-offer detection →
+ * [EMAIL:] marker capture + persist → [PHONE:] marker capture + persist →
+ * visitor-message regex fallback → visitor_name pre-check → [NAME:] marker
+ * capture + persist.
  *
  * Phone and email each run the marker path first; the visitor-message regex
  * fallback for a field is short-circuited when the marker path already wrote it
@@ -407,8 +409,9 @@ export async function handleSessionFinish(params: {
   text: string
   usage: TokenUsage | null
   visitorText?: string | null
+  memberId?: string | null
 }): Promise<void> {
-  const { sessionId, tenantId, text, usage, visitorText } = params
+  const { sessionId, tenantId, text, usage, visitorText, memberId = null } = params
 
   if (!sessionId) {
     console.log('[chat/session] onFinish: no session_id, skipping detection flows')
@@ -427,6 +430,11 @@ export async function handleSessionFinish(params: {
   if (usage) {
     await persistTokenUsage(sessionId, tenantId, usage.promptTokens, usage.completionTokens)
   }
+
+  // Conversion event tracking (booking offers / contact captures) — see
+  // services/crm/conversion-events.ts. Self-contained: any failure is caught
+  // and logged there, never thrown, so it cannot abort the flows below.
+  await recordConversionEvents({ tenantId, sessionId, memberId, text })
 
   // Calendar offer detection. Pre-check bounds cost: once true for a session,
   // no further scans fire. Self-contained try/catch so a failure here does

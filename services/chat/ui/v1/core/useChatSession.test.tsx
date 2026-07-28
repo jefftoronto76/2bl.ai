@@ -60,6 +60,17 @@ function feedbackDeleteCalls(): string[] {
     .map(([input]) => input as string)
 }
 
+function conversionEventsPatchCalls(): string[] {
+  return fetchMock.mock.calls
+    .filter(
+      ([input, init]) =>
+        (init?.method ?? 'GET') === 'PATCH' &&
+        typeof input === 'string' &&
+        input.includes('/conversion-events'),
+    )
+    .map(([input]) => input as string)
+}
+
 // ── test consumer ─────────────────────────────────────────────────────────
 
 function Consumer({ id }: { id: string }) {
@@ -240,6 +251,28 @@ describe('editMessage / resendMessage', () => {
     // silently inherit that reply's rating (upsertFeedback keys on
     // (session_id, message_index) alone — see services/crm/feedback.ts).
     expect(feedbackDeleteCalls()[0]).toBe('/api/sessions/sess-1/feedback?fromIndex=1')
+  })
+
+  it('flips presented conversion_events to overwritten via PATCH /api/sessions/[id]/conversion-events', async () => {
+    render(
+      <ChatSessionProvider instanceKey="sage">
+        <Consumer id="a" />
+      </ChatSessionProvider>,
+    )
+    fireEvent.click(screen.getByTestId('a-send'))
+    await waitFor(() => expect(screen.getByTestId('a-text').textContent).toContain('assistant:Hello there'))
+
+    fireEvent.click(screen.getByTestId('a-edit-first'))
+    await waitFor(() => expect(conversionEventsPatchCalls().length).toBeGreaterThan(0))
+
+    // Cutoff is the edited message's own timestamp — a booking offer or
+    // contact capture tied to any reply after it (per services/crm/
+    // conversion-events.ts) is exactly what this truncation could have
+    // dropped.
+    const call = conversionEventsPatchCalls()[0]
+    expect(call.startsWith('/api/sessions/sess-1/conversion-events?after=')).toBe(true)
+    const after = decodeURIComponent(call.split('after=')[1])
+    expect(Number.isNaN(Date.parse(after))).toBe(false)
   })
 
   it('cancels an in-flight turn before truncating — a late chunk from the cancelled turn never resurfaces', async () => {
