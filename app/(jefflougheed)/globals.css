@@ -569,7 +569,7 @@ html[data-brand="jefflougheed"] .chat-overlay-composer {
 .chat-overlay-close:hover { color: var(--color-text-primary); }
 .chat-overlay-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: rgb(var(--color-bg)); }
 .chat-overlay-log {
-  margin: 24px auto 0; display: flex; width: min(900px, 100% - 64px); flex: 1; flex-direction: column; gap: 24px;
+  margin: 24px auto 0; display: flex; width: min(900px, 100% - 64px); flex: 1; flex-direction: column; gap: 20px;
   padding: clamp(24px, 5vw, 40px); background: rgb(245 244 240); border: 1px solid rgb(24 32 41 / 0.12);
   border-radius: 18px; box-shadow: 0 8px 32px rgba(0,0,0,.05);
 }

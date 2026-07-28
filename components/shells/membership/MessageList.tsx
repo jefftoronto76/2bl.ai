@@ -221,7 +221,7 @@ function MessageBubble({
   }
 
   return (
-    <div className={`group flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+    <div className={`group flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
       <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
         {!isUser && (
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
@@ -232,10 +232,17 @@ function MessageBubble({
           <div
             onClick={deliveryStatus === 'failed' ? onRetry : undefined}
             className={[
-              'max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap',
-              isUser ? 'bg-surface text-text-primary rounded-br-sm' : 'bg-transparent text-text-primary rounded-bl-sm',
+              'px-4 py-3 font-body whitespace-pre-wrap text-text-primary',
+              // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
+              // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62 type
+              // ramp. Assistant styling (never actually exercised — MessageBubble
+              // is only ever called with a user message, see makeRenderUserMessage)
+              // is left as it was.
+              isUser
+                ? 'w-fit max-w-[76%] rounded-[18px] rounded-br-[5px] border text-[15.5px] leading-[1.62]'
+                : 'max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent text-base leading-relaxed',
+              isUser ? (deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border') : '',
               deliveryStatus === 'sending' ? 'opacity-55' : '',
-              deliveryStatus === 'failed' ? 'cursor-pointer border border-red-400/60' : '',
             ].filter(Boolean).join(' ')}
           >
             {content}
@@ -545,7 +552,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       aria-atomic="false"
       aria-busy={isLoading}
     >
-      <div className="max-w-2xl mx-auto flex flex-col gap-6">
+      <div className="max-w-2xl mx-auto flex flex-col gap-5">
         <ChatThread
           messages={messages}
           isStreaming={isLoading}

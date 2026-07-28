@@ -2,11 +2,20 @@
 
 /**
  * EditableUserBubble — the user bubble in its editing state, swapped in place
- * of the read-state bubble (same position, same width behavior) so nothing
- * jumps when editing starts. Type ramp matches the read-state bubble
- * (font-body text-base leading-relaxed — see MessageBubble in
- * components/shells/membership/MessageList.tsx) so the text doesn't reflow
- * on the swap.
+ * of the read-state bubble (same position) so nothing jumps when editing
+ * starts. Shared by both chat surfaces (Heirloom's MessageList.tsx and
+ * jefflougheed's WidgetShell.tsx) — bg-surface, the border classes, and
+ * text-text-primary all resolve to each brand's own tokens via its own CSS
+ * cascade, so this one component renders correctly on both without any
+ * per-brand branching.
+ *
+ * Per docs/spec_visitor_bubble.md's "editing" state: 15.5px/1.62 type ramp
+ * (matches the read-state bubble so text doesn't reflow on the swap), 18px
+ * radius with a 5px tail (same as read state), border-border-hover (the
+ * spec's "border-border-strong" doesn't exist as a token in this repo — this
+ * reuses the existing --color-border-hover CSS var via an arbitrary value),
+ * 12px padding on all sides, max-width widened to 86% (more room to type
+ * than the read state's 76% measure).
  *
  * Enter saves · Shift+Enter newline · Esc cancels.
  */
@@ -52,7 +61,7 @@ export function EditableUserBubble({ initialValue, onCancel, onSave }: EditableU
   }
 
   return (
-    <div className="flex w-full max-w-[75%] flex-col gap-2 rounded-2xl rounded-br-sm border border-border bg-surface px-4 py-3">
+    <div className="flex w-full max-w-[86%] flex-col gap-2 rounded-[18px] rounded-br-[5px] border border-[rgb(var(--color-border-hover))] bg-surface p-3">
       <textarea
         ref={ref}
         rows={1}
@@ -71,7 +80,7 @@ export function EditableUserBubble({ initialValue, onCancel, onSave }: EditableU
             onCancel()
           }
         }}
-        className="w-full resize-none overflow-hidden border-none bg-transparent p-0 font-body text-base leading-relaxed text-text-primary outline-none"
+        className="w-full resize-none overflow-hidden border-none bg-transparent p-0 font-body text-[15.5px] leading-[1.62] text-text-primary outline-none"
       />
       <div className="flex justify-end gap-2">
         <button

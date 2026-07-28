@@ -106,14 +106,23 @@ function makeRenderUserMessage(
     }
 
     return (
-      <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1">
+      <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1.5">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
             className={[
-              'sage-visitor-msg sage-animate max-w-[560px] whitespace-pre-wrap text-right font-display text-[18px] italic leading-[1.5] text-[color:var(--color-text-muted)] [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+              // Visitor bubble spec (docs/spec_visitor_bubble.md), converged with
+              // Heirloom's structure (shrink-to-fit, 18px radius + 5px tail,
+              // border, 15.5/1.62 body-text ramp — was font-display/italic at
+              // 18px, a real token violation: Playfair is the display font,
+              // DM Sans is body). bg-surface/border-border resolve to
+              // jefflougheed's own cream-on-white fill via this file's own CSS
+              // cascade (app/(jefflougheed)/globals.css), not Heirloom's. The
+              // curly-quote treatment (sage-visitor-msg) and italic are kept —
+              // decorative flourishes, not structural, no reason to lose them.
+              'sage-visitor-msg sage-animate w-fit max-w-[76%] whitespace-pre-wrap text-left rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] italic leading-[1.62] text-text-primary [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+              status === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
               status === 'sending' ? 'opacity-55' : '',
-              status === 'failed' ? 'cursor-pointer rounded-md border border-red-400/60 px-2 py-1' : '',
             ].filter(Boolean).join(' ')}
           >
             {msg.content}
