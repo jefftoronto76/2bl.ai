@@ -250,21 +250,34 @@ function MessageBubble({
     // didn't actually align. Verified empirically (Playwright/Chromium
     // harness reproducing this exact DOM+CSS) before reverting.
     <div className="group flex flex-col items-end gap-1.5">
-      <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
-        <div
-          onClick={deliveryStatus === 'failed' ? onRetry : undefined}
-          className={[
-            // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
-            // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
-            // type ramp. Widened past the spec's original 76% (2026-07-28) —
-            // it read as cramped next to the assistant's much wider reply.
-            'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
-            deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
-            deliveryStatus === 'sending' ? 'opacity-55' : '',
-          ].filter(Boolean).join(' ')}
-        >
-          {content}
-        </div>
+      <div
+        onClick={deliveryStatus === 'failed' ? onRetry : undefined}
+        className={[
+          // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
+          // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
+          // type ramp. Widened past the spec's original 76% (2026-07-28) —
+          // it read as cramped next to the assistant's much wider reply.
+          //
+          // The shake animation used to live on a wrapping <div> around this
+          // bubble (present unconditionally, class toggled). That extra
+          // shrink-to-fit layer between this flex item and its w-fit content
+          // broke max-w-[90%]'s percentage resolution in Chrome — a
+          // percentage max-width on a plain block descendant of an
+          // align-items:flex-end flex item (not the item itself) hits an
+          // indeterminate/circular sizing case, and Chrome resolved it to a
+          // width far narrower than the content needed (measured: "Hello"
+          // computed to ~72px and wrapped into 2 lines, vs. ~80px/1 line
+          // once unwrapped). Applying `chat-bubble-shake` directly on this
+          // element — making it the direct flex item, no wrapper — fixes it.
+          // Verified via Playwright against the real dev server (not a
+          // synthetic harness): before 71.7×76.2px (wrapped), after
+          // 79.7×51.1px (single line) for the same "Hello" content.
+          'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
+          deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45 chat-bubble-shake' : 'bg-surface border-border',
+          deliveryStatus === 'sending' ? 'opacity-55' : '',
+        ].filter(Boolean).join(' ')}
+      >
+        {content}
       </div>
       {onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
       {deliveryStatus === 'sent' && onStartEdit && onResend && (

@@ -120,27 +120,41 @@ function makeRenderUserMessage(
       // exact DOM+CSS) before reverting. Mirrors
       // components/shells/membership/MessageList.tsx.
       <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1.5">
-        <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
-          <p
-            onClick={status === 'failed' ? retry : undefined}
-            className={[
-              // Visitor bubble spec (docs/spec_visitor_bubble.md), converged with
-              // Heirloom's structure (shrink-to-fit, 18px radius + 5px tail,
-              // border, 15.5/1.62 body-text ramp — was font-display/italic at
-              // 18px, a real token violation: Playfair is the display font,
-              // DM Sans is body). bg-surface/border-border resolve to
-              // jefflougheed's own cream-on-white fill via this file's own CSS
-              // cascade (app/(jefflougheed)/globals.css), not Heirloom's. The
-              // curly-quote treatment (sage-visitor-msg) and italic are kept —
-              // decorative flourishes, not structural, no reason to lose them.
-              'sage-visitor-msg sage-animate w-fit max-w-[90%] whitespace-pre-wrap text-left rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] italic leading-[1.62] text-text-primary [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
-              status === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
-              status === 'sending' ? 'opacity-55' : '',
-            ].filter(Boolean).join(' ')}
-          >
-            {msg.content}
-          </p>
-        </div>
+        <p
+          onClick={status === 'failed' ? retry : undefined}
+          className={[
+            // Visitor bubble spec (docs/spec_visitor_bubble.md), converged with
+            // Heirloom's structure (shrink-to-fit, 18px radius + 5px tail,
+            // border, 15.5/1.62 body-text ramp — was font-display/italic at
+            // 18px, a real token violation: Playfair is the display font,
+            // DM Sans is body). bg-surface/border-border resolve to
+            // jefflougheed's own cream-on-white fill via this file's own CSS
+            // cascade (app/(jefflougheed)/globals.css), not Heirloom's. The
+            // curly-quote treatment (sage-visitor-msg) and italic are kept —
+            // decorative flourishes, not structural, no reason to lose them.
+            //
+            // The shake animation used to live on a wrapping <div> around
+            // this bubble (present unconditionally, class toggled). That
+            // extra shrink-to-fit layer between this flex item and its
+            // w-fit content broke max-w-[90%]'s percentage resolution in
+            // Chrome: a percentage max-width on a plain block descendant of
+            // an align-items:flex-end flex item (rather than the item
+            // itself) hits an indeterminate/circular sizing case, and
+            // Chrome resolved it to a width far narrower than the content
+            // needed. Reproduced live on production and on this dev build
+            // (Playwright, real React render, not a synthetic harness):
+            // typing "Hello" computed the bubble to 71.7×76.2px and wrapped
+            // it into 2 lines ("Hel"/"o"), despite ~962px of available
+            // width. Applying `chat-bubble-shake` directly on this element
+            // — making it the direct flex item, no wrapper — fixes it:
+            // re-measured at 79.7×51.1px, single line, same content.
+            'sage-visitor-msg sage-animate w-fit max-w-[90%] whitespace-pre-wrap text-left rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] italic leading-[1.62] text-text-primary [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+            status === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45 chat-bubble-shake' : 'bg-surface border-border',
+            status === 'sending' ? 'opacity-55' : '',
+          ].filter(Boolean).join(' ')}
+        >
+          {msg.content}
+        </p>
         <DeliveryStatus status={status} onRetry={retry} />
         {status === 'sent' && (
           <UserMessageActions
