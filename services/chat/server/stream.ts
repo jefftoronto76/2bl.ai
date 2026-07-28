@@ -108,12 +108,15 @@ export interface RunChatStreamParams {
   messages: ChatMessage[]
   onFinish?: (args: { text: string; usage: TokenUsage | null }) => Promise<void> | void
   /**
-   * Cancels the underlying Anthropic call when it fires (e.g. the visitor
-   * hits Stop and the client's fetch to /api/sage disconnects). Threaded
-   * straight into streamText's own abortSignal, which the AI SDK forwards to
-   * the provider's doStream() call. When the signal fires mid-generation the
-   * stream errors out rather than reaching its normal finish step, so
-   * `onFinish` correctly does not run for text the visitor never saw finish.
+   * Cancels the underlying Anthropic call when it fires — built by
+   * streamChat()'s createServerAbortController (services/chat/server/index.ts),
+   * which triggers it either from the inbound request's own signal (best
+   * effort) or, reliably, from polling chat_sessions.stop_requested_at.
+   * Threaded straight into streamText's own abortSignal, which the AI SDK
+   * forwards to the provider's doStream() call. When it fires mid-generation
+   * the stream errors out rather than reaching its normal finish step, so
+   * `onFinish` correctly does not run — no handleSessionFinish /
+   * recordConversionEvents for text the visitor never saw finish.
    */
   abortSignal?: AbortSignal
 }

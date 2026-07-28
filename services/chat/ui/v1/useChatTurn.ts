@@ -391,28 +391,34 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     if (sessionId) persist(sessionId, null)
   }, [accessors, setStreaming, persist, finishAbortedTurn])
 
-  // Cancels the client's own fetch (unchanged) AND explicitly tells the
-  // server to stop generating — an ordinary new HTTP request, sent
-  // immediately, rather than relying on the inbound /api/sage request's own
-  // AbortSignal to propagate the disconnect server-side. That propagation
-  // isn't reliable across this app's request path (confirmed: the client
-  // consistently observes Stop and records it, but the server kept
-  // generating regardless), so the server can't be a passive listener here
-  // — it has to be told. streamChat()'s poll (services/chat/server/index.ts)
+  // Explicitly tells the server to stop generating — an ordinary new HTTP
+  // request, sent immediately, rather than relying on the inbound /api/sage
+  // request's own AbortSignal to propagate the disconnect server-side. That
+  // propagation isn't reliable across this app's request path (confirmed:
+  // the client consistently observes Stop and records it, but the server
+  // kept generating regardless), so the server can't be a passive listener
+  // here — it has to be told. streamChat()'s poll (services/chat/server/index.ts)
   // picks this up within ~500ms. Fire-and-forget; a failed PATCH here still
   // leaves the client-side abort (silence, no reply) intact, it just means
-  // the server won't learn to stop on its own.
-  const stop = useCallback(() => {
-    abortControllerRef.current?.abort()
-    const sessionId = accessors.getSessionId()
-    if (sessionId) {
+  // the server won't learn to stop on its own. Shared by stop() and
+  // truncateAndRedeliver()'s hard-cancel-before-edit/resend — any client-side
+  // cancellation of an in-flight turn needs this, not just the Stop button.
+  const notifyServerStopRequested = useCallback(
+    (sessionId: string | null) => {
+      if (!sessionId) return
       void fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stop_requested: true }),
       }).catch(err => console.error('[chat/turn] stop-request PATCH failed:', err))
-    }
-  }, [accessors])
+    },
+    [],
+  )
+
+  const stop = useCallback(() => {
+    abortControllerRef.current?.abort()
+    notifyServerStopRequested(accessors.getSessionId())
+  }, [accessors, notifyServerStopRequested])
 
   const regenerate = useCallback(
     async (messageId: string) => {
@@ -500,5 +506,137 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors, persist],
   )
 
-  return { send, sendHidden, retry, stop, regenerate, setActiveVersion, isStreaming, errorType }
+  // Shared implementation for editMessage/resendMessage: truncate the
+  // transcript forward from `messageId`, set its content, and re-run the same
+  // delivery transition send() uses. `markEdited` is the only behavioral
+  // difference between the two public methods.
+  const truncateAndRedeliver = useCallback(
+    async (messageId: string, newContent: string, markEdited: boolean) => {
+      const before = accessors.getMessages()
+      const targetIdx = before.findIndex(m => m.id === messageId)
+      if (targetIdx === -1 || before[targetIdx].role !== 'user') return
+
+      // Cancel any in-flight turn synchronously BEFORE mutating the
+      // transcript — sequencing matters: a stream token arriving after
+      // truncation must never write into a message that no longer exists.
+      // If there was one, the server needs telling too (same reliability gap
+      // as the Stop button — see notifyServerStopRequested above) or it
+      // keeps generating the turn this edit/resend just discarded.
+      const hadInFlightTurn = abortControllerRef.current !== null
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = null
+      streamingRef.current = false
+      if (hadInFlightTurn) notifyServerStopRequested(accessors.getSessionId())
+
+      setErrorType(null)
+      accessors.truncateAfter(messageId)
+      accessors.patchMessageById(messageId, {
+        content: newContent,
+        status: 'sending',
+        ...(markEdited ? { edited: true } : {}),
+      })
+      // Context to send: everything truncateAfter kept, including the
+      // just-edited/resent message itself.
+      const msgsToSend = accessors.getMessages()
+      retryUserMsgIdRef.current = messageId
+      setStreaming(true)
+      accessors.addMessage({ role: 'assistant', content: '' })
+      const withAssistant = accessors.getMessages()
+      const assistantMsgId = withAssistant[withAssistant.length - 1]?.id ?? null
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const activeSessionId = accessors.getSessionId()
+      const currentMediaItems = accessors.getMediaItems?.() ?? null
+      retryMsgsRef.current = msgsToSend
+      retrySessionIdRef.current = activeSessionId
+      retryMediaItemsRef.current = currentMediaItems
+
+      // Every index this truncation dropped may have carried a rating —
+      // clear it so a new reply can never silently inherit feedback that
+      // belonged to different, now-discarded content. upsertFeedback keys
+      // only on (session_id, message_index), not message id or content, so a
+      // fresh reply landing at a previously-rated index would otherwise
+      // render as already-rated with a stale reason/note (services/crm/feedback.ts).
+      // Also flips any still-'presented' conversion_events (booking offer /
+      // contact capture) tied to the discarded replies to 'overwritten' —
+      // see services/crm/conversion-events.ts. Both fire-and-forget; a
+      // failure in either must never block the edit/resend flow itself.
+      if (activeSessionId) {
+        void fetch(`/api/sessions/${activeSessionId}/feedback?fromIndex=${msgsToSend.length}`, {
+          method: 'DELETE',
+        }).catch(err => console.error('[chat/turn] DELETE feedback cleanup failed:', err))
+
+        const cutoffTimestamp = new Date(msgsToSend[msgsToSend.length - 1].timestamp).toISOString()
+        void fetch(
+          `/api/sessions/${activeSessionId}/conversion-events?after=${encodeURIComponent(cutoffTimestamp)}`,
+          { method: 'PATCH' },
+        ).catch(err => console.error('[chat/turn] PATCH conversion-events cleanup failed:', err))
+      }
+
+      try {
+        await streamTurn(
+          msgsToSend,
+          accessors.getMode?.() ?? null,
+          activeSessionId,
+          chunk => accessors.updateLastMessage(chunk),
+          accessors.getInviteToken?.() ?? null,
+          currentMediaItems,
+          controller.signal,
+        )
+      } catch (err) {
+        if (isAbortError(err)) {
+          accessors.patchMessageById(messageId, { status: 'sent' })
+          finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
+          setStreaming(false)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
+          return
+        }
+        const classified = classifyError(err)
+        accessors.updateLastMessage('')
+        accessors.patchMessageById(messageId, { status: 'failed', error_type: classified })
+        setErrorType(classified)
+        setStreaming(false)
+        if (activeSessionId) persist(activeSessionId, null, classified)
+        return
+      }
+      accessors.patchMessageById(messageId, { status: 'sent' })
+      setStreaming(false)
+      if (activeSessionId) persist(activeSessionId, null)
+    },
+    [accessors, setStreaming, persist, finishAbortedTurn, notifyServerStopRequested],
+  )
+
+  const editMessage = useCallback(
+    async (messageId: string, text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      await truncateAndRedeliver(messageId, trimmed, true)
+    },
+    [truncateAndRedeliver],
+  )
+
+  const resendMessage = useCallback(
+    async (messageId: string) => {
+      const msg = accessors.getMessages().find(m => m.id === messageId)
+      if (!msg) return
+      await truncateAndRedeliver(messageId, msg.content, false)
+    },
+    [accessors, truncateAndRedeliver],
+  )
+
+  return {
+    send,
+    sendHidden,
+    retry,
+    stop,
+    regenerate,
+    setActiveVersion,
+    editMessage,
+    resendMessage,
+    isStreaming,
+    errorType,
+  }
 }

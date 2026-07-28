@@ -48,10 +48,17 @@ export interface ChatStreamRequest {
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
   /**
-   * The inbound HTTP request's AbortSignal (Request.signal), threaded through
-   * so the upstream Anthropic call is actually cancelled when the client
-   * disconnects (visitor hits Stop) rather than running to completion after
-   * the client has stopped listening. See runChatStream's abortSignal.
+   * The inbound HTTP request's AbortSignal (Request.signal in
+   * app/api/sage/route.ts). Fires when the client disconnects — Stop, or
+   * editMessage/resendMessage's hard-cancel of an in-flight turn
+   * (services/chat/ui/v1/useChatTurn.ts) — IF this deployment's request
+   * pipeline propagates it, which isn't guaranteed (middleware reconstructs
+   * this request via header-forwarding at the edge→function boundary; see
+   * CLAUDE.md's "Stop / interrupted-turn protocol"). Kept as a best-effort
+   * fast path only: streamChat()'s stop_requested_at poll is the reliable
+   * mechanism. Either path aborts the same controller, so streamText still
+   * never calls onFinish (and therefore handleSessionFinish /
+   * recordConversionEvents never runs) for a cancelled turn.
    */
   signal?: AbortSignal
 }

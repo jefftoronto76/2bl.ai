@@ -9,6 +9,8 @@ import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
+import { UserMessageActions } from '@/components/chat/UserMessageActions';
+import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
@@ -187,18 +189,39 @@ function MessageBubble({
   content,
   status,
   onRetry,
+  isEditing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onResend,
 }: {
   message: Message;
   content: string;
   /** User messages only — delivery status of this message's send attempt. */
   status?: 'sending' | 'sent' | 'failed';
   onRetry?: () => void;
+  /** User messages only — Edit/Copy/Send again row (components/chat/UserMessageActions.tsx). */
+  isEditing?: boolean;
+  onStartEdit?: () => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: (text: string) => void;
+  onResend?: () => void;
 }) {
   const isUser = message.role === 'user';
   const deliveryStatus = isUser ? status ?? 'sent' : 'sent';
 
+  // Swaps the bubble in place for the editing textarea — same position, no
+  // layout jump. DeliveryStatus/UserMessageActions never render alongside it.
+  if (isUser && isEditing && onCancelEdit && onSaveEdit) {
+    return (
+      <div className="flex justify-end">
+        <EditableUserBubble initialValue={content} onCancel={onCancelEdit} onSave={onSaveEdit} />
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+    <div className={`group flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
       <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
         {!isUser && (
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
@@ -220,6 +243,9 @@ function MessageBubble({
         </div>
       </div>
       {isUser && onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
+      {isUser && deliveryStatus === 'sent' && onStartEdit && onResend && (
+        <UserMessageActions content={content} edited={message.edited} onEdit={onStartEdit} onResend={onResend} />
+      )}
     </div>
   );
 }
@@ -281,8 +307,17 @@ function TypingIndicator() {
 }
 
 // Renders a user message exactly as before: the admin-only [SYSTEM:] debug
-// branch, then media chips (image/audio/document/failed), then prose.
-function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[], retry: () => void) {
+// branch, then media chips (image/audio/document/failed), then prose — now
+// with the Edit/Copy/Send again row (or the editing textarea) below the prose.
+function makeRenderUserMessage(
+  isAdmin: boolean,
+  mediaItems: ClientMediaItem[],
+  retry: () => void,
+  editingId: string | null,
+  setEditingId: (id: string | null) => void,
+  editMessage: (id: string, text: string) => Promise<void>,
+  resendMessage: (id: string) => Promise<void>,
+) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
     // added to the store, so this branch handles any future case where
@@ -328,7 +363,20 @@ function makeRenderUserMessage(isAdmin: boolean, mediaItems: ClientMediaItem[], 
         ))}
         {/* Prose — only when there's actual text alongside the upload */}
         {userMsg.text && (
-          <MessageBubble message={msg} content={userMsg.text} status={msg.status} onRetry={retry} />
+          <MessageBubble
+            message={msg}
+            content={userMsg.text}
+            status={msg.status}
+            onRetry={retry}
+            isEditing={editingId === msg.id}
+            onStartEdit={() => setEditingId(msg.id)}
+            onCancelEdit={() => setEditingId(null)}
+            onSaveEdit={text => {
+              setEditingId(null);
+              void editMessage(msg.id, text);
+            }}
+            onResend={() => void resendMessage(msg.id)}
+          />
         )}
       </div>
     );
@@ -427,10 +475,26 @@ function renderStreamingIndicator(): ReactNode {
 }
 
 export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
-  const { claimCurrentSession, inviteToken, mediaItems, retry, regenerate, setActiveVersion, state } =
-    useChatStore();
+  const {
+    claimCurrentSession,
+    inviteToken,
+    mediaItems,
+    retry,
+    regenerate,
+    setActiveVersion,
+    editMessage,
+    resendMessage,
+    state,
+  } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
   const { user } = useAuthUser();
+
+  // Which user message (if any) is currently swapped into its editing
+  // textarea — local, single-message-at-a-time, doesn't need to survive reload.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (editingId && !messages.some(m => m.id === editingId)) setEditingId(null);
+  }, [editingId, messages]);
 
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
   // services/auth) — never expose debug view to members.
@@ -487,7 +551,15 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
           isStreaming={isLoading}
           errorType={errorType}
           retry={retry}
-          renderUserMessage={makeRenderUserMessage(isAdmin, mediaItems, retry)}
+          renderUserMessage={makeRenderUserMessage(
+            isAdmin,
+            mediaItems,
+            retry,
+            editingId,
+            setEditingId,
+            editMessage,
+            resendMessage,
+          )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
             inviteToken,

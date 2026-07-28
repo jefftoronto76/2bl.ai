@@ -48,6 +48,10 @@ function isValidStatus(value: unknown): value is NonNullable<UIMessage['status']
   return typeof value === 'string' && (VALID_STATUSES as readonly string[]).includes(value)
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(v => typeof v === 'string')
+}
+
 /** True for a string that is purely digits (a bare epoch-ms value as text). */
 function isDigits(value: string): boolean {
   return value.length > 0 && /^\d+$/.test(value)
@@ -103,39 +107,43 @@ export function createUIMessage(
 }
 
 /**
- * Revive an unknown persisted/wire object (DB jsonb row, localStorage entry,
- * legacy SageMessage/Message) into a canonical UIMessage. Tolerant by design —
- * this is the back-compat read path for the mixed-shape data already in
- * `chat_sessions.messages` (jefflougheed numbers, Heirloom ISO strings) and in
- * Heirloom localStorage. Missing/invalid fields are coerced to safe defaults:
- * a fresh id, an empty string body, and `role` defaulting to 'assistant' only
- * when absent/invalid.
+ * Revive an unknown persisted/wire object (DB jsonb row, IndexedDB buffer
+ * entry, legacy SageMessage/Message) into a canonical UIMessage. Tolerant by
+ * design — this is the back-compat read path for the mixed-shape data already
+ * in `chat_sessions.messages` (jefflougheed numbers, Heirloom ISO strings) and
+ * in the IndexedDB thread buffer (services/chat/ui/v1/persistence.ts).
+ * Missing/invalid fields are coerced to safe defaults: a fresh id, an empty
+ * string body, and `role` defaulting to 'assistant' only when absent/invalid.
  *
- * `status`/`stopped`/`versions`/`versionIdx` are optional UI-state fields —
- * carried through only when present and well-formed, otherwise left absent
- * (equivalent to their "never happened" defaults). Without this, a page
- * reload or the admin transcript view silently loses a Stopped badge (and the
- * regenerate carousel) even though the DB row still has the field — see
- * useChatTurn.ts's `finishAbortedTurn` for where `stopped` is written.
+ * `status`/`stopped`/`versions`/`versionIdx`/`edited` are optional UI-state
+ * fields — carried through only when present and well-formed, otherwise left
+ * absent (equivalent to their "never happened" defaults). Without this, a
+ * page reload or the admin transcript view silently loses a Stopped badge
+ * (and the regenerate carousel) even though the DB row still has the field —
+ * see useChatTurn.ts's `finishAbortedTurn` for where `stopped` is written.
+ *
+ * Also reconciles one piece of async state: a revived message still carrying
+ * `status: 'sending'` means the tab closed mid-delivery — there is no
+ * in-flight request left to resume, so it reads back as 'failed' rather than
+ * showing an eternal "Sending…" spinner. `stopped`/`versions`/`versionIdx`/
+ * `edited` are historical display metadata, not in-flight indicators, so they
+ * revive as-is.
  */
 export function reviveUIMessage(raw: unknown): UIMessage {
   const obj = (raw ?? {}) as Record<string, unknown>
-  const message: UIMessage = {
+  const revivedStatus = isValidStatus(obj.status) ? obj.status : undefined
+  return {
     id: typeof obj.id === 'string' && obj.id.length > 0 ? obj.id : crypto.randomUUID(),
     role: isValidRole(obj.role) ? obj.role : 'assistant',
     content: typeof obj.content === 'string' ? obj.content : '',
     timestamp: normalizeTimestamp(obj.timestamp),
     error_type: isValidErrorType(obj.error_type) ? obj.error_type : null,
+    ...(revivedStatus !== undefined ? { status: revivedStatus === 'sending' ? 'failed' : revivedStatus } : {}),
+    ...(typeof obj.stopped === 'boolean' ? { stopped: obj.stopped } : {}),
+    ...(isStringArray(obj.versions) ? { versions: obj.versions } : {}),
+    ...(typeof obj.versionIdx === 'number' && Number.isFinite(obj.versionIdx) ? { versionIdx: obj.versionIdx } : {}),
+    ...(typeof obj.edited === 'boolean' ? { edited: obj.edited } : {}),
   }
-  if (isValidStatus(obj.status)) message.status = obj.status
-  if (typeof obj.stopped === 'boolean') message.stopped = obj.stopped
-  if (Array.isArray(obj.versions) && obj.versions.every(v => typeof v === 'string')) {
-    message.versions = obj.versions as string[]
-  }
-  if (typeof obj.versionIdx === 'number' && Number.isFinite(obj.versionIdx)) {
-    message.versionIdx = obj.versionIdx
-  }
-  return message
 }
 
 /** Revive an array of unknown persisted/wire objects into UIMessages. */

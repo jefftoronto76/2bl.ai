@@ -202,7 +202,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
         // still running and needs to be told to stop.
         stopPolling()
         if (!tenantId) return
-        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText })
+        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText, memberId })
       },
     })
   } catch (error) {

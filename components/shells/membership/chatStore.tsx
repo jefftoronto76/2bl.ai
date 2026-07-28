@@ -78,6 +78,10 @@ interface ChatContextType {
   regenerate: (messageId: string) => Promise<void>;
   /** Switches the displayed `versions` entry for a message — see useChatTurn.ts. */
   setActiveVersion: (messageId: string, versionIdx: number) => void;
+  /** Edits + re-delivers a user message, truncating everything after it — see useChatTurn.ts. */
+  editMessage: (messageId: string, text: string) => Promise<void>;
+  /** Re-delivers a user message unchanged, truncating everything after it — see useChatTurn.ts. */
+  resendMessage: (messageId: string) => Promise<void>;
   recentSessions: RecentSession[];
   loadSession: (id: string) => void;
   /** Clear the active conversation and start fresh (New Chat). History stays. */
@@ -267,6 +271,8 @@ export function ChatProvider({
     stop,
     regenerate,
     setActiveVersion,
+    editMessage,
+    resendMessage,
     hydrate,
     reset,
   } = session;
@@ -876,7 +882,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
     >
       {children}
     </ChatContext.Provider>

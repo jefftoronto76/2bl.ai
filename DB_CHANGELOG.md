@@ -60,22 +60,54 @@ ALTER TABLE public.chat_sessions
 ```
 
 **Purpose:** Direct, DB-level proof that the server-side Stop-abort handler
-(`abortSignal` wired into `streamText()`, `services/chat/server/stream.ts`)
 actually runs when a visitor hits Stop — added specifically because Vercel
 function logs weren't reachable to verify this any other way. Written by
-`confirmServerAbort` (`services/chat/server/index.ts`) the instant the
-inbound request's `AbortSignal` fires, scoped by `id` + `tenant_id`. Deliberately
-separate from `chat_sessions.last_error_type` (`user_stopped`), which is
-written client-side and only proves the client observed a Stop — this column
-proves the server's cancellation path independently. Test protocol: click
-Stop mid-stream, then query `server_abort_confirmed_at` for that session —
-populated (and timestamped close to the click) confirms the handler fired;
-null confirms it didn't.
+`createServerAbortController` (`services/chat/server/index.ts`) the instant
+either of its two triggers fires (the `stop_requested_at` poll above, or —
+best-effort only — the inbound request's own `AbortSignal`), scoped by `id` +
+`tenant_id`. Deliberately separate from `chat_sessions.last_error_type`
+(`user_stopped`), which is written client-side and only proves the client
+observed a Stop — this column proves the server's cancellation path
+independently. Test protocol: click Stop mid-stream, then query
+`server_abort_confirmed_at` for that session — populated (and timestamped
+close to the click) confirms the handler fired; null confirms it didn't.
 
 **Notes:**
 - No default, always nullable — never set on insert, only on an observed abort.
 - Always overwritten on each occurrence (no self-guard), so it reflects the
   most recent Stop attempt for that session, not a first-ever one.
+
+### Add `conversion_events` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+create table conversion_events (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null,
+  session_id uuid not null references chat_sessions(id),
+  member_id uuid null,
+  event_type text not null,   -- 'booking_offered' | 'contact_captured'
+  marker_type text not null,  -- 'BOOKING' | 'NAME' | 'EMAIL' | 'PHONE'
+  status text not null default 'presented',  -- 'presented' | 'accepted' | 'ignored' | 'overwritten'
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_conversion_events_tenant_type_status
+  on conversion_events (tenant_id, event_type, status);
+```
+
+**Purpose:** Records that a conversion-relevant marker fired (booking offer,
+contact capture) and what happened to it — written on marker fire
+(`status: 'presented'`), updated to `'overwritten'` if `truncateAfter` removes
+the message it's tied to before resolution (see `editMessage`/`resendMessage`,
+`services/chat/ui/v1/useChatTurn.ts`). `'accepted'`/`'ignored'` are reserved
+states, not yet written — they need a real completion signal (e.g. a calendar
+booking confirmation) that doesn't exist yet.
 
 ## 2026-07-27
 

@@ -80,6 +80,7 @@ export function FeedbackPopover({ sentiment, onClose, onSubmit }: FeedbackPopove
       <button
         type="button"
         aria-label="Close"
+        title="Close"
         onClick={onClose}
         className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 hover:text-text-primary before:absolute before:content-[''] before:-inset-3"
       >
