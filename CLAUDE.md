@@ -981,38 +981,81 @@ Anthropic call kept generating to completion after the visitor had stopped
 listening, billing for the full generation and still running `onFinish`
 (token accounting + `[NAME:]`/`[EMAIL:]`/`[PHONE:]` marker detection, calendar-
 offer detection) against text the visitor explicitly cut off and never
-confirmed. Fixed by threading the inbound `Request.signal`
-(`app/api/sage/route.ts`) through `streamChat()`'s `ChatStreamRequest.signal`
-(`services/chat/server/types.ts`) into `runChatStream()`'s `abortSignal`
-(`services/chat/server/stream.ts`), which passes straight into `streamText()`'s
-own `abortSignal` — the AI SDK forwards it to the provider's `doStream()` call,
-so it cancels the actual upstream HTTP request to Anthropic. Verified against
-the installed `ai@3.4.33` source: an aborted stream errors out rather than
-reaching its normal "finish" step, so `onFinish` correctly never fires for a
-stopped turn — no code change was needed in `handleSessionFinish` itself, this
-was a direct consequence of actually cancelling the call. `runChatStream`'s
-catch block distinguishes an `AbortError` (client-initiated, logged quietly,
-returns a bare `499`) from a genuine upstream failure (still the existing
-502 `Upstream error: ...`) — the `499` response is never delivered anywhere
-meaningful since the client already closed its own connection, it just keeps
-this from being logged/treated as a real error.
+confirmed.
 
-Known residual gap: this relies on Next.js Route Handlers propagating
-`Request.signal` on client disconnect, which is standard Fetch API/Next.js
-behavior but hasn't been confirmed against this specific deployment target.
-There's no Vercel dashboard/log access available to verify this directly, so
-**verification is DB-based instead of log-based**: `confirmServerAbort`
-(`services/chat/server/index.ts`) listens on `req.signal` directly — not on
-any AI SDK callback, so it fires for both a pre-response and a mid-stream
-abort — and writes `chat_sessions.server_abort_confirmed_at = now()` the
-instant it fires, scoped by `id` + `tenant_id` (added 2026-07-28, see
-DB_CHANGELOG.md and the `chat_sessions` schema row above). The test: click
-Stop mid-reply, then query that column for the session — populated (and
-timestamped close to the click) is direct proof the handler ran; null is
-direct proof it didn't. This closes the *how do we check* gap, not the
-*has anyone actually checked* one — until that query has actually been run
-against a real Stop click, treat server-side Stop as still unproven in
-production.
+**First attempt (2026-07-28, since replaced): threading `Request.signal`
+through.** The initial fix threaded the inbound `Request.signal`
+(`app/api/sage/route.ts`) through `streamChat()` into `runChatStream()`'s
+`abortSignal` (`services/chat/server/stream.ts`), which passes straight into
+`streamText()`'s own `abortSignal` — verified against the installed
+`ai@3.4.33` source that the AI SDK forwards it to the provider's `doStream()`
+call, correctly cancelling the upstream request and correctly preventing
+`onFinish` from firing on an aborted stream. This was sound in principle, but
+**live-tested and confirmed broken on this deployment**: the client correctly
+recorded every Stop (`chat_sessions.last_error_type = 'user_stopped'`
+populated as expected), but `server_abort_confirmed_at` stayed null after a
+real mid-stream Stop — the server kept generating the full response
+regardless. Root cause, as far as it can be determined from code:
+`middleware.ts` runs on every `/api/sage` request (its matcher includes
+`/(api|trpc)(.*)`) and reconstructs the request via Next.js's internal
+header-forwarding mechanism (`x-middleware-override-headers`, confirmed in
+the installed `next` package's source) rather than passing a live object
+through — a `Headers` object is just strings, structurally incapable of
+carrying a live `AbortSignal` reference across that hop. Whatever `req.signal`
+the route handler ends up with is tied to a separate internal edge→function
+request, not reliably to the original browser connection. This is plausible,
+not certain — confirming it definitively would need Vercel-internal
+visibility neither Jeff nor Claude Code has from this environment — but it
+matches the observed behavior exactly, and it's why the fix stopped depending
+on `Request.signal` at all rather than trying to patch around it.
+
+**Current mechanism: explicit client-driven signal, server-side poll.**
+Since connection-level disconnect detection can't be trusted here, the client
+tells the server explicitly instead — an ordinary new HTTP request, which
+doesn't have the cross-hop reliability problem a connection-state signal
+does. `useChatTurn.ts`'s `stop()` now fires an immediate
+`PATCH /api/sessions/[id]` with `{ stop_requested: true }` the instant Stop is
+clicked (alongside its existing `abortControllerRef.current?.abort()`, which
+only cancels the client's own fetch and was never the part that was broken).
+`updateSession` (`services/crm/sessions.ts`) stamps
+`chat_sessions.stop_requested_at` using the *server's* clock — never a
+client-supplied timestamp, to avoid clock skew between the client and
+whichever server instance later polls it.
+
+`streamChat()` (`services/chat/server/index.ts`) captures `turnStartedAt` at
+the top of the function and builds its own `AbortController` via
+`createServerAbortController`, which can be triggered by either of two
+independent paths:
+1. **The poll (reliable, load-bearing):** a `setInterval` every 500ms reads
+   `stop_requested_at` for this session and aborts if it's set *and newer
+   than `turnStartedAt`* — comparing against the turn's own start time,
+   rather than requiring a reset write between turns, is what stops a stale
+   flag left over from an earlier stopped turn from false-triggering a later,
+   unrelated one.
+2. **`req.signal` (best-effort, not load-bearing):** kept wired as a zero-cost
+   bonus — if this deployment's request pipeline ever does propagate a real
+   disconnect onto it, it aborts immediately instead of waiting for the next
+   poll tick. Confirmed not to be what's actually catching Stops today.
+
+Whichever path fires first stops the other (the poll included, so it doesn't
+keep querying after the turn is already cancelled) and writes
+`chat_sessions.server_abort_confirmed_at` — unchanged from the original
+design, just now fed by a mechanism proven to actually fire. `runChatStream`'s
+catch block still distinguishes an `AbortError` (quiet `499`) from a genuine
+upstream failure (`502`).
+
+**Accepted trade-offs:** worst case ~500ms of continued generation after
+Stop is clicked (bounded by the poll interval, a large improvement over
+running to full completion, but not instant), plus roughly one extra
+lightweight DB read per 500ms of generation time per in-flight turn. Both
+are the direct cost of not being able to trust the platform's own connection
+state — tighten the interval if faster cutoff is worth more polling reads.
+
+**Still open:** this design hasn't yet been retested live. The mechanism is
+built specifically to not depend on the thing that was confirmed broken, but
+"should work now" and "confirmed working" are different claims — the same
+DB check applies (click Stop mid-reply, query `server_abort_confirmed_at` for
+that session afterward) and needs to actually happen before this is proven.
 
 **`components/chat/ChatThread.tsx`** — the shared message-list presentation component consumed by both the jefflougheed widget shell (`WidgetShell.tsx`) and the Heirloom membership shell (`MessageList.tsx`). Owns: the message loop + per-assistant-message marker parsing (`createDefaultRegistry().parse`), scroll-to-bottom behavior (see the per-surface props below), and — as of the shared markdown renderer — markdown rendering itself. Each caller supplies render "slots" (`renderUserMessage`, `renderAssistantMessage`, `renderError`, `renderStreamingIndicator`) plus a `markdownComponents` (react-markdown `Components`) map for its own styling; `ChatThread` calls `registry.parse(msg.content)` for every assistant message, buffers the resulting prose through `useBufferedMarkdown` (only for the last message while `isStreaming` — every earlier, settled message renders in full), renders it via an internal `BufferedMarkdown` sub-component (`<ReactMarkdown components={markdownComponents}>`), and passes the rendered node to `renderAssistantMessage(msg, parsed, markdown)` as a third argument. `BufferedMarkdown` is a real component (not a bare hook call inside `.map`) so `useBufferedMarkdown`'s `useMemo` call stays legal under the Rules of Hooks. The widget's `SageReply.tsx` renders the passed-through `markdown` node inside its existing wrapper div (no longer calls `ReactMarkdown` itself; `sage/markdownComponents.tsx` is unchanged). Membership's `MessageList.tsx` renders it via a new `AssistantMarkdownBubble` (same avatar/bubble chrome as `MessageBubble`, markdown owns its own block spacing) using the new `components/shells/membership/markdownComponents.tsx` — Heirloom's first markdown-rendering surface (warm-prose styling on the existing Heirloom Tailwind tokens: `text-primary`/`text-muted`/`accent`/`surface`/`border`; no table/strikethrough overrides — not needed, and inert without `remark-gfm`). Smoke-tested in `ChatThread.test.tsx`. `renderError: (retry, errorType) => ReactNode` receives the classified `ChatErrorType` (`errorType` prop, `null` when the last turn succeeded) alongside `retry`; both surfaces' implementations render the matching string from `components/chat/errorCopy.ts`'s `ERROR_COPY` map rather than one generic message.
 
@@ -1146,7 +1189,7 @@ Backs the `/platform/settings` page. Both routes gate on `getCurrentUser().isPla
 | `/api/sage` | POST | Public visitor chat. Resolves tenant via `getTenantFromRequest(req)`, reads the highest-version `compiled_prompts` row for that tenant, and — when a tenant is resolved — also fetches all `sage_parameters` rows for that tenant and appends a "Booking cards" section to the system prompt containing one `[BOOKING: label \| description \| cta_label \| url]` line per parameter. Section is omitted when no parameters exist. Also accepts an optional `mode` field in the request body; when `mode === 'question'`, appends the `QUESTION_MODE_CONTEXT` string to the end of the system prompt (after the booking section) so Sage skips the name-ask/discovery phase and answers directly. The master prompt content itself is never modified — question mode is additive context only. All other modes (absent, unknown) leave the prompt unchanged. Streams the Anthropic response. Falls back to `DEFAULT_SYSTEM_PROMPT` when no tenant is resolved or no compiled_prompts row exists. |
 | `/api/sage/parameters` | GET | Public read for the visitor chat renderer. Resolves tenant via `getTenantFromRequest(req)` and returns `[{ key, label, description, cta_label, url, open_as, embed_code }]` for that tenant (no admin fields, no `value`). Returns `[]` when no tenant is resolved or on DB error — never 4xx/5xx so client rendering stays resilient. Consumed by the widget-shell `WidgetShellChat` and `WidgetShellHero` (`components/shells/widget/WidgetShell.tsx`, both via `useSageParameters`) to resolve `open_as` / `embed_code` for each parsed `[BOOKING: ...]` card by URL match. |
 | `/api/sessions` | GET, POST | Anonymous visitor chat sessions (tenant from Host). **GET** lists the signed-in user's sessions for the tenant, newest first (`getCurrentUserId` + `listSessions`); returns `{ sessions: [] }` for anonymous/unresolved requests so the client stays resilient. **POST** creates a session and, when a Clerk user is signed in, links it via `chat_sessions.user_id` (`syncUser` → upsert `users`, no `tenant_users` membership); anonymous creates leave `user_id` null. Backs the Heirloom localStorage→DB recovery + Recent sidebar. |
-| `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Also accepts `last_error_type` — written to `chat_sessions.last_error_type` only when it is one of the known `ChatErrorType` values, including `user_stopped` (never explicitly cleared back to null on a successful turn); fired by `useChatTurn.ts`'s `persist()` on a failed or stopped turn. Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
+| `/api/sessions/[id]` | PATCH | Persists a session's `messages` (+ `visitor_name` when non-empty, + optional `phone` / `email`, each written to its own `chat_sessions.phone` / `chat_sessions.email` column) and marks it `in_progress`. Only supplied fields are written, so a contact-only PATCH (no messages) never clobbers the transcript. The `phone` / `email` fields are still accepted, but the Heirloom contact card that sent them was removed — visitor contact is now captured server-side in `onFinish` by the visitor-message watcher (which writes the columns directly, not via this PATCH). Also accepts `last_error_type` — written to `chat_sessions.last_error_type` only when it is one of the known `ChatErrorType` values, including `user_stopped` (never explicitly cleared back to null on a successful turn); fired by `useChatTurn.ts`'s `persist()` on a failed or stopped turn. Also accepts `stop_requested` (boolean) — when `true`, stamps `chat_sessions.stop_requested_at` with this server's own clock (never a client-supplied timestamp); fired immediately by `useChatTurn.ts`'s `stop()` the instant Stop is clicked, so `streamChat()`'s poll (`services/chat/server/index.ts`) can detect it without depending on the unreliable `Request.signal` propagation — see "Stop / interrupted-turn protocol". Scoped by `id` + host-derived `tenant_id` (cross-tenant → 404). |
 | `/api/sessions/[id]/claim` | POST | Links an anonymous session to the now-signed-in user. Resolves the user **server-side** from the active Clerk session (`ensureClerkUser`, no client-supplied `user_id` → no IDOR) and stamps `chat_sessions.user_id` (`claimSession`, scoped by `id` + host `tenant_id`). 401 when no Clerk session. **Now client-orphaned** — its only caller (the Heirloom `ContactCard` inline phone/OTP sign-up) was removed; the route is retained, reversible, for a future signed-in flow (account creation is deferred). |
 | `/api/heirloom/members/claim` | POST | Creates a `pending` membership record for the signed-in Clerk user (`claimMembership`). Called by `GateView.handleClaimSuccess` after MagicLinkCard sign-up completes. Idempotent — existing rows (any status) are left unchanged. Returns 401 when no Clerk session, 500 on DB error. |
 | `/api/heirloom/members/waitlist` | POST | Public, unauthenticated. Accepts `{ email: string }`, inserts a members row with `status='waitlist'` for `HEIRLOOM_TENANT_ID`. Idempotent — if a row with that email already exists (any status), returns 200 without writing. Email stored lowercased, trimmed. Returns 400 on missing/invalid email, 500 on DB error. Called by `WaitlistView` in `GateView` when the visitor has no invite token. |
@@ -1318,7 +1361,7 @@ Row Level Security is enforced at the Supabase layer.
 | `blocks` | id, topic_id, owner_id, tenant_id, type, title, body, active, status (text default 'active': 'active' \| 'disabled' \| 'deleted'), order (integer, nullable — actively used: within each type, blocks with `order > 0` sort ascending by order, blocks with `order` = 0 or null sort last by title ascending; consumed by `/api/admin/prompt/compile` and the Blocks page inline Order input), is_default (bool default false), default_edited_at (timestamptz), default_edited_by (uuid references users(id)), default_action (text: 'edited' \| 'deleted'), default_acknowledged (bool default false), default_acknowledged_at (timestamptz), created_at (timestamptz), updated_at (timestamptz NOT NULL default now() — auto-set on every UPDATE via the `blocks_updated_at_trigger` Postgres trigger; do not write client-side), updated_by (uuid references users(id), nullable — application-managed; PATCH `/api/admin/blocks/[id]` stamps it from `authCtx.owner_id` on every write; null for legacy rows), scope (text NOT NULL default 'runtime': 'platform' \| 'composer' \| 'runtime' — added 2026-06-18; `platform` = 2BL-owned defaults flowing to all tenants, `composer` = Prompt Studio Composer UI blocks never compiled into runtime, `runtime` = existing blocks that compile into the tenant Sage prompt; default 'runtime' so all pre-existing blocks are valid without backfill), prompt_set_id (uuid, nullable — added 2026-06-18 as `prompt_type_key`, renamed `prompt_type_key` → `prompt_set_key` → `prompt_set_id` 2026-06-25; null = shared across all prompt types, non-null = block only compiles into the matching prompt set's prompt type) |
 | `topics` | id, tenant_id, type, name |
 | `content` | id, owner_id, tenant_id, block_id, type, name, raw, storage_path |
-| `chat_sessions` | id, tenant_id, visitor_name, messages, status, message_count (integer, GENERATED ALWAYS AS `jsonb_array_length(messages)` STORED — read-only, always reflects messages array length), session_type (text default 'prospect': 'prospect' \| 'composer' \| 'client'), session_subtype (text nullable: 'block' \| 'wizard'), block_id (uuid references blocks(id)), reviewed (boolean NOT NULL default false — owner-set triage flag indicating whether Jeff has reviewed this chat), input_tokens (integer NOT NULL default 0 — cumulative input tokens consumed by this session, visitor + system; incremented server-side in `onFinish` via `persistTokenUsage` from the main `streamText` turn — the Haiku name-extractor was removed in PR #46), output_tokens (integer NOT NULL default 0 — cumulative output tokens generated by Sage in this session; incremented from the same `persistTokenUsage` helper), calendar_offered (boolean NOT NULL default false — flips to true the first time Sage emits a booking-card line or a raw `calendly.com` URL in the streamed response; set server-side from `/api/sage/route.ts` `onFinish` via `scanForCalendarOffer` + `persistCalendarOffered`, pre-checked to short-circuit once true), corrective_feedback (text, nullable — non-canonical, slated for retirement when reinforcement loop ships; canonical store is the `chat_corrections` table), email (text, nullable — visitor email captured on a chat session; added 2026-05-25. Populated server-side in `onFinish` two ways: via `detectVisitorEmailMarker` + `persistVisitorEmail` when Sage emits an `[EMAIL: address]` marker, and via the visitor-message contact watcher (`detectEmailInText` → `persistVisitorEmail`) scanning the visitor's own message; both self-guard against overwrite. Existing rows + anonymous write path unaffected), phone (text, nullable — visitor phone captured on a chat session; added 2026-05-29 in Studio. Populated server-side in `onFinish` three ways: via `detectVisitorPhoneMarker` + `persistVisitorPhone` when Sage emits a `[PHONE: value]` marker (value kept verbatim), via the visitor-message contact watcher (`detectPhoneInText` → `persistVisitorPhone`, normalized to E.164), and by the Heirloom contact-card PATCH; all self-guarded against overwrite. Existing rows + anonymous write path unaffected), user_id (uuid, nullable, FK → users(id) — links a session to a signed-in end-customer for cross-device DB recovery; added 2026-05-28 with index `idx_chat_sessions_user_id_updated` on `(user_id, updated_at DESC)`. Written by `POST /api/sessions` via `syncUser` when a Clerk user is signed in, and by `POST /api/sessions/[id]/claim` via `ensureClerkUser` (the claim route is retained but now client-orphaned — the Heirloom inline phone/OTP sign-up that called it was removed); null for anonymous sessions, so the anonymous path is unaffected. NOTE: phone-only sign-ups require `users.email` to be nullable — `ensureClerkUser` inserts a `users` row without an email), ttft_ms (integer, nullable — time-to-first-token for a turn, in milliseconds; added 2026-07-14. Measured client-side in `useChatTurn.ts`'s `send()` (from the initial user send to the first streamed chunk, `performance.now()`), sent on the turn-completion `PATCH /api/sessions/[id]` call, and written by `updateSession` (`services/crm/sessions.ts`) — overwritten on every turn, so it reflects the latest turn, not a self-guarded first-turn value. `sendHidden()`/`retry()` do not measure or send it. **Admin surfacing note (2026-07-15):** because this is a single overwritten value with no per-turn history, `getTtftTrend` (`services/crm/inbound.ts`) can only produce a *day-bucketed proxy* trend for the Inbound Chats dashboard sparkline — each day's point averages "the latest known ttft_ms among sessions touched that day," not a true intra-day average across every turn. For the same reason, the session drawer (`SessionDrawer.tsx`) renders the TTFT badge only on the most recent assistant message, since the stored value can only ever correspond to that turn), last_error_type (text, nullable — the classified `ChatErrorType` of the most recent turn that didn't complete normally (`network` \| `rate_limited` \| `stream_interrupted` \| `auth_error` \| `unknown` \| `user_stopped`); added 2026-07-14, `user_stopped` added 2026-07-28. Written by `useChatTurn.ts`'s `persist()` via `PATCH /api/sessions/[id]` → `updateSession` only when a turn ends in one of these 6 classes — a normally-completed turn does not clear a prior value, so this reflects the most recent *non-completion* (failure or a visitor-initiated Stop), not the most recent turn's outcome), server_abort_confirmed_at (timestamptz, nullable — added 2026-07-28 in Studio. Diagnostic ground truth, entirely separate from `last_error_type`: written server-side, not by the client, the instant the inbound `/api/sage` request's `AbortSignal` fires — see `confirmServerAbort` in `services/chat/server/index.ts`. Exists specifically because `last_error_type: 'user_stopped'` only proves the *client* observed a Stop; this proves the *server's* abort-cancellation handler (commit wiring `abortSignal` into `streamText()`) actually ran, checkable directly in the DB with no Vercel log/dashboard access needed. Always overwritten on each occurrence, not self-guarded, so it reflects the latest Stop attempt, not a first-ever one) |
+| `chat_sessions` | id, tenant_id, visitor_name, messages, status, message_count (integer, GENERATED ALWAYS AS `jsonb_array_length(messages)` STORED — read-only, always reflects messages array length), session_type (text default 'prospect': 'prospect' \| 'composer' \| 'client'), session_subtype (text nullable: 'block' \| 'wizard'), block_id (uuid references blocks(id)), reviewed (boolean NOT NULL default false — owner-set triage flag indicating whether Jeff has reviewed this chat), input_tokens (integer NOT NULL default 0 — cumulative input tokens consumed by this session, visitor + system; incremented server-side in `onFinish` via `persistTokenUsage` from the main `streamText` turn — the Haiku name-extractor was removed in PR #46), output_tokens (integer NOT NULL default 0 — cumulative output tokens generated by Sage in this session; incremented from the same `persistTokenUsage` helper), calendar_offered (boolean NOT NULL default false — flips to true the first time Sage emits a booking-card line or a raw `calendly.com` URL in the streamed response; set server-side from `/api/sage/route.ts` `onFinish` via `scanForCalendarOffer` + `persistCalendarOffered`, pre-checked to short-circuit once true), corrective_feedback (text, nullable — non-canonical, slated for retirement when reinforcement loop ships; canonical store is the `chat_corrections` table), email (text, nullable — visitor email captured on a chat session; added 2026-05-25. Populated server-side in `onFinish` two ways: via `detectVisitorEmailMarker` + `persistVisitorEmail` when Sage emits an `[EMAIL: address]` marker, and via the visitor-message contact watcher (`detectEmailInText` → `persistVisitorEmail`) scanning the visitor's own message; both self-guard against overwrite. Existing rows + anonymous write path unaffected), phone (text, nullable — visitor phone captured on a chat session; added 2026-05-29 in Studio. Populated server-side in `onFinish` three ways: via `detectVisitorPhoneMarker` + `persistVisitorPhone` when Sage emits a `[PHONE: value]` marker (value kept verbatim), via the visitor-message contact watcher (`detectPhoneInText` → `persistVisitorPhone`, normalized to E.164), and by the Heirloom contact-card PATCH; all self-guarded against overwrite. Existing rows + anonymous write path unaffected), user_id (uuid, nullable, FK → users(id) — links a session to a signed-in end-customer for cross-device DB recovery; added 2026-05-28 with index `idx_chat_sessions_user_id_updated` on `(user_id, updated_at DESC)`. Written by `POST /api/sessions` via `syncUser` when a Clerk user is signed in, and by `POST /api/sessions/[id]/claim` via `ensureClerkUser` (the claim route is retained but now client-orphaned — the Heirloom inline phone/OTP sign-up that called it was removed); null for anonymous sessions, so the anonymous path is unaffected. NOTE: phone-only sign-ups require `users.email` to be nullable — `ensureClerkUser` inserts a `users` row without an email), ttft_ms (integer, nullable — time-to-first-token for a turn, in milliseconds; added 2026-07-14. Measured client-side in `useChatTurn.ts`'s `send()` (from the initial user send to the first streamed chunk, `performance.now()`), sent on the turn-completion `PATCH /api/sessions/[id]` call, and written by `updateSession` (`services/crm/sessions.ts`) — overwritten on every turn, so it reflects the latest turn, not a self-guarded first-turn value. `sendHidden()`/`retry()` do not measure or send it. **Admin surfacing note (2026-07-15):** because this is a single overwritten value with no per-turn history, `getTtftTrend` (`services/crm/inbound.ts`) can only produce a *day-bucketed proxy* trend for the Inbound Chats dashboard sparkline — each day's point averages "the latest known ttft_ms among sessions touched that day," not a true intra-day average across every turn. For the same reason, the session drawer (`SessionDrawer.tsx`) renders the TTFT badge only on the most recent assistant message, since the stored value can only ever correspond to that turn), last_error_type (text, nullable — the classified `ChatErrorType` of the most recent turn that didn't complete normally (`network` \| `rate_limited` \| `stream_interrupted` \| `auth_error` \| `unknown` \| `user_stopped`); added 2026-07-14, `user_stopped` added 2026-07-28. Written by `useChatTurn.ts`'s `persist()` via `PATCH /api/sessions/[id]` → `updateSession` only when a turn ends in one of these 6 classes — a normally-completed turn does not clear a prior value, so this reflects the most recent *non-completion* (failure or a visitor-initiated Stop), not the most recent turn's outcome), server_abort_confirmed_at (timestamptz, nullable — added 2026-07-28 in Studio. Diagnostic ground truth, entirely separate from `last_error_type`: written server-side, not by the client, the instant `streamChat()`'s server-side abort actually fires (see `createServerAbortController` in `services/chat/server/index.ts`). Exists specifically because `last_error_type: 'user_stopped'` only proves the *client* observed a Stop; this proves the *server's* abort-cancellation handler actually ran, checkable directly in the DB with no Vercel log/dashboard access needed. Always overwritten on each occurrence, not self-guarded, so it reflects the latest Stop attempt, not a first-ever one), stop_requested_at (timestamptz, nullable — added 2026-07-28 in Studio. The reliable trigger for the above: confirmed live that the inbound `/api/sage` request's own `AbortSignal` does not reliably propagate the client's disconnect to the server (see `server_abort_confirmed_at`'s note and the "Stop / interrupted-turn protocol" section), so the client instead tells the server explicitly. `useChatTurn.ts`'s `stop()` PATCHes this via the ordinary `PATCH /api/sessions/[id]` route the instant Stop is clicked; `updateSession` stamps it with the *server's* clock, never a client-supplied timestamp. `streamChat()` polls it every 500ms while a turn streams, comparing against that turn's own start time so a stale flag from an earlier, already-finished turn can never false-trigger a later one. Always overwritten, not self-guarded) |
 | `message_feedback` | id (uuid, PK), session_id (uuid, FK → chat_sessions), tenant_id (uuid, FK → tenants), member_id (uuid, nullable, FK → members — null for an anonymous jefflougheed visitor), message_index (integer, NOT NULL — 0-indexed position in that session's `chat_sessions.messages` array, counting both user and assistant turns; matches the index the admin transcript renders each message at), rating (text NOT NULL: `'up' \| 'down'`), tags (text[], default `'{}'` — reason chips), detail (text, nullable — free-text note), created_at (timestamptz), updated_at (timestamptz). Unique on (session_id, message_index) — one rating per message, upserted. Written by the visitor-facing widget (thumbs rating UI, `POST /api/sessions/[id]/feedback` → `upsertFeedback`, `services/crm/feedback.ts`); read there via `listFeedback`, and in bulk (all sessions in one query) by `getInboundChats` (`services/crm/inbound.ts`) for the admin Inbound Chats table/dashboard/drawer. |
 | `chat_corrections` | id, session_id, tenant_id, block_id, jeff_note. Documented and exists in DB but currently unused — reserved for the reinforcement loop sprint. |
 | `do_not_engage` | id, owner_id, tenant_id, content, version |
@@ -1462,20 +1505,23 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   Schema change (add key to `tenants.settings` JSONB) is Jeff's Studio work;
   code work proceeds once the column convention is confirmed.
 
-- **Server-side Stop-abort relies on unverified `Request.signal` propagation
-  on this deployment target — a DB-based check now exists, but hasn't been
-  run yet.** (2026-07-28, see the Chat UI service section's "Stop /
-  interrupted-turn protocol" for the full fix.) `AbortSignal` is now
-  correctly threaded from the inbound `/api/sage` request into the Anthropic
-  `streamText()` call, so hitting Stop cancels the upstream generation rather
-  than letting it run to completion — verified against the installed `ai` SDK's
-  source, not yet against a live Stop-mid-reply. There's no Vercel log/dashboard
-  access available here, so instead of a log check: `chat_sessions.server_abort_confirmed_at`
-  is written directly by `confirmServerAbort` the instant the request's
-  `AbortSignal` fires. Click Stop mid-reply, query that column for the
-  session — populated is proof the handler ran; null is proof it didn't. This
-  makes the check possible without log access; it does not mean the check has
-  been run. Do it before treating server-side Stop as proven in production.
+- **Server-side Stop-abort's reliable mechanism (poll-based) hasn't been
+  live-tested yet.** (2026-07-28, see the Chat UI service section's "Stop /
+  interrupted-turn protocol" for the full history.) The first attempt
+  (threading `Request.signal` into `streamText()`'s `abortSignal`) was
+  live-tested and confirmed **not working** on this deployment — the client
+  correctly recorded every Stop, but the server kept generating regardless,
+  most likely because Next.js middleware reconstructs the request via
+  header-forwarding at the edge→function boundary rather than passing a live
+  signal object through (see the protocol section for the full trace). The
+  current mechanism no longer depends on that connection-level signal at
+  all: the client explicitly PATCHes `chat_sessions.stop_requested_at` the
+  instant Stop is clicked, and `streamChat()` polls it every 500ms, comparing
+  against the current turn's own start time. This is designed specifically
+  to route around the confirmed failure mode, but it has not itself been
+  retested live yet. Same DB check as before: click Stop mid-reply, query
+  `server_abort_confirmed_at` for that session afterward — populated is
+  proof it fired; null means it's still broken and needs another pass.
 - **`services/payments/` not created.** Stripe Connect work is deferred; not
   even a scaffold exists yet.
 - **Chat-UI strangle — widget shell extracted (centralization Step E).** The

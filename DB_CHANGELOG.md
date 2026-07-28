@@ -2,6 +2,51 @@
 
 ## 2026-07-28
 
+### Add `chat_sessions.stop_requested_at`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio (proposed — run this before the code
+that reads/writes it deploys, or the writes will fail-and-log-quietly with
+nothing actually working yet)
+
+**SQL run:**
+
+```sql
+ALTER TABLE public.chat_sessions
+  ADD COLUMN stop_requested_at timestamptz;
+```
+
+**Purpose:** The reliable half of the server-side Stop fix. Confirmed live
+(via `server_abort_confirmed_at` staying null after a real mid-stream Stop
+test) that this app's inbound `/api/sage` request's own `AbortSignal` is not
+reliably propagated to the server when the client disconnects — likely
+because Next.js middleware sits in this request's path and reconstructs the
+request via header-forwarding at the edge→function boundary rather than
+passing a live object through, so whatever `req.signal` the route handler
+receives isn't reliably tied to the original browser connection's state.
+
+Rather than depend on that connection-level signal, the client now tells the
+server explicitly: `useChatTurn.ts`'s `stop()` fires an immediate
+`PATCH /api/sessions/[id]` with `{ stop_requested: true }` the instant Stop is
+clicked — an ordinary new HTTP request, not an implicit disconnect signal, so
+it doesn't have the same reliability problem. `updateSession`
+(`services/crm/sessions.ts`) stamps this column with the *server's* clock
+(never a client-supplied timestamp, to avoid clock skew across server
+instances). `streamChat()` (`services/chat/server/index.ts`) polls it every
+500ms while a turn streams, comparing it against that turn's own start time
+so a stale flag from an earlier stopped turn can never false-trigger a later,
+unrelated one.
+
+**Notes:**
+- No default, always nullable.
+- Not self-guarded — each Stop click overwrites it, reflecting the latest
+  attempt for that session, same convention as `server_abort_confirmed_at`
+  and `last_error_type`.
+- Worst case ~500ms of continued generation after Stop is clicked (the poll
+  interval), plus one extra lightweight DB read per interval tick while a
+  turn is in flight — an accepted trade-off for not being able to trust the
+  platform's own disconnect signal.
+
 ### Add `chat_sessions.server_abort_confirmed_at`
 
 **Type:** Schema change

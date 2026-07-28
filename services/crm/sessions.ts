@@ -95,6 +95,18 @@ export interface SessionUpdateInput {
    * clearing a prior value back to null.
    */
   lastErrorType?: unknown
+  /**
+   * Set true by useChatTurn.ts's stop() the instant Stop is clicked — an
+   * explicit, ordinary HTTP request rather than a connection-level abort
+   * signal, since the latter isn't reliably propagated across this app's
+   * request path (see the Stop / interrupted-turn protocol note in
+   * CLAUDE.md). Written server-side using this server's own clock (never a
+   * client-supplied timestamp, to avoid clock-skew between the client and
+   * whichever server instance later polls it) into
+   * chat_sessions.stop_requested_at, which streamChat()'s poll compares
+   * against its own turn-start time to decide whether to abort.
+   */
+  stopRequested?: unknown
 }
 
 const VALID_ERROR_TYPES = new Set([
@@ -169,7 +181,7 @@ export async function updateSession(
   // from Sage's response, and client PATCHes still send `visitorName: null`
   // until front-end name capture lands — so unconditionally writing would
   // clobber the server's value.
-  const { messages, visitorName, phone, email, title, starred, ttftMs, lastErrorType } = input
+  const { messages, visitorName, phone, email, title, starred, ttftMs, lastErrorType, stopRequested } = input
   const trimmedName = typeof visitorName === 'string' ? visitorName.trim() : ''
   // Contact card → dedicated columns. The visitor may supply phone, email, or
   // both; each non-empty value writes to its own column (no more funneling
@@ -197,6 +209,7 @@ export async function updateSession(
     starred?: boolean
     ttft_ms?: number
     last_error_type?: string
+    stop_requested_at?: string
   } = {
     updated_at: new Date().toISOString(),
     status: 'in_progress',
@@ -209,6 +222,7 @@ export async function updateSession(
   if (typeof starred === 'boolean') update.starred = starred
   if (validTtftMs !== null) update.ttft_ms = validTtftMs
   if (validErrorType !== null) update.last_error_type = validErrorType
+  if (stopRequested === true) update.stop_requested_at = new Date().toISOString()
 
   const { data, error } = await supabase
     .from('chat_sessions')

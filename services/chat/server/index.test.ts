@@ -1,20 +1,30 @@
-// Verifies streamChat's server-side abort confirmation write: the instant
-// the inbound request's AbortSignal fires, chat_sessions.server_abort_confirmed_at
-// should be written via getAdminClient — this is the DB-level proof that the
-// server-side abort handler actually ran, checkable without log access. See
-// CLAUDE.md's "Stop / interrupted-turn protocol" section.
+// Verifies streamChat's server-side stop detection: since req.signal isn't
+// reliably propagated on this deployment (confirmed live — the client
+// correctly recorded Stop, but the server kept generating anyway), the
+// reliable mechanism is polling chat_sessions.stop_requested_at (written by
+// useChatTurn.ts's stop() via an ordinary PATCH /api/sessions/[id]) and
+// comparing it against this turn's own start time. req.signal stays wired as
+// a zero-cost bonus fast path. Either trigger writes
+// chat_sessions.server_abort_confirmed_at — the DB-checkable proof this
+// actually ran. See CLAUDE.md's "Stop / interrupted-turn protocol".
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ModelConfig } from './types'
 
-const mockThen = vi.fn((cb: (arg: { error: null }) => void) => {
+const mockConfirmThen = vi.fn((cb: (arg: { error: null }) => void) => {
   cb({ error: null })
   return Promise.resolve()
 })
-const mockEqTenant = vi.fn(() => ({ then: mockThen }))
-const mockEqId = vi.fn(() => ({ eq: mockEqTenant }))
-const mockUpdate = vi.fn(() => ({ eq: mockEqId }))
-const mockFrom = vi.fn(() => ({ update: mockUpdate }))
+const mockConfirmEqTenant = vi.fn(() => ({ then: mockConfirmThen }))
+const mockConfirmEqId = vi.fn(() => ({ eq: mockConfirmEqTenant }))
+const mockUpdate = vi.fn(() => ({ eq: mockConfirmEqId }))
+
+const mockMaybeSingle = vi.fn(async () => ({ data: null as { stop_requested_at: string | null } | null }))
+const mockSelectEqTenant = vi.fn(() => ({ maybeSingle: mockMaybeSingle }))
+const mockSelectEqId = vi.fn(() => ({ eq: mockSelectEqTenant }))
+const mockSelect = vi.fn(() => ({ eq: mockSelectEqId }))
+
+const mockFrom = vi.fn(() => ({ update: mockUpdate, select: mockSelect }))
 
 vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => ({ from: mockFrom }),
@@ -38,9 +48,24 @@ vi.mock('@/services/crm/session', () => ({
   handleSessionFinish: vi.fn(async () => undefined),
 }))
 
-const mockRunChatStream = vi.fn(async (_opts: unknown) => new Response('ok'))
+// A stand-in for streamText/runChatStream that behaves like the real thing
+// with respect to abortSignal: rejects with an AbortError the instant the
+// signal fires, and otherwise stays pending until the test resolves it via
+// resolveRunChatStream (simulating an in-progress generation) or never
+// resolves at all for tests that only care about the abort path.
+let resolveRunChatStream: ((value: Response) => void) | null = null
+let runChatStreamOnFinish: ((args: { text: string; usage: null }) => Promise<void>) | null = null
+const mockRunChatStream = vi.fn((opts: { abortSignal?: AbortSignal; onFinish?: typeof runChatStreamOnFinish }) => {
+  runChatStreamOnFinish = opts.onFinish ?? null
+  return new Promise<Response>((resolve, reject) => {
+    resolveRunChatStream = resolve
+    opts.abortSignal?.addEventListener('abort', () => {
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+    })
+  })
+})
 vi.mock('./stream', () => ({
-  runChatStream: (opts: unknown) => mockRunChatStream(opts),
+  runChatStream: (opts: Parameters<typeof mockRunChatStream>[0]) => mockRunChatStream(opts),
   resolveModelConfig: vi.fn(async () => ({
     provider: 'anthropic',
     chatModel: 'claude-sonnet-4-6',
@@ -53,83 +78,123 @@ vi.mock('./stream', () => ({
 import { streamChat } from './index'
 
 beforeEach(() => {
+  vi.useFakeTimers()
   mockFrom.mockClear()
   mockUpdate.mockClear()
-  mockEqId.mockClear()
-  mockEqTenant.mockClear()
-  mockThen.mockClear()
+  mockConfirmEqId.mockClear()
+  mockConfirmEqTenant.mockClear()
+  mockConfirmThen.mockClear()
+  mockSelect.mockClear()
+  mockSelectEqId.mockClear()
+  mockSelectEqTenant.mockClear()
+  mockMaybeSingle.mockClear()
+  mockMaybeSingle.mockResolvedValue({ data: null })
   mockRunChatStream.mockClear()
+  resolveRunChatStream = null
+  runChatStreamOnFinish = null
 })
 
-describe('streamChat — server-side abort confirmation', () => {
-  it('writes server_abort_confirmed_at scoped by session and tenant when the signal aborts', async () => {
-    const controller = new AbortController()
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('streamChat — server-side stop detection', () => {
+  it('aborts and confirms when the poll finds stop_requested_at newer than turn start', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     const responsePromise = streamChat({
       messages: [],
       tenant: { tenantId: 'tenant-1' },
       sessionId: 'session-1',
-      signal: controller.signal,
     })
 
-    controller.abort()
-    // Let the abort-listener's fire-and-forget microtask run.
-    await Promise.resolve()
-    await Promise.resolve()
-    await responsePromise
+    // Stop clicked 300ms into this turn.
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.300Z'))
+    mockMaybeSingle.mockResolvedValue({ data: { stop_requested_at: '2026-01-01T00:00:00.300Z' } })
 
-    expect(mockFrom).toHaveBeenCalledWith('chat_sessions')
+    await vi.advanceTimersByTimeAsync(500) // first poll tick
+    const response = await responsePromise
+
+    expect(response.status).toBe(499)
+    expect(mockSelectEqId).toHaveBeenCalledWith('id', 'session-1')
+    expect(mockSelectEqTenant).toHaveBeenCalledWith('tenant_id', 'tenant-1')
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ server_abort_confirmed_at: expect.any(String) }),
     )
-    expect(mockEqId).toHaveBeenCalledWith('id', 'session-1')
-    expect(mockEqTenant).toHaveBeenCalledWith('tenant_id', 'tenant-1')
+    expect(mockConfirmEqId).toHaveBeenCalledWith('id', 'session-1')
+    expect(mockConfirmEqTenant).toHaveBeenCalledWith('tenant_id', 'tenant-1')
   })
 
-  it('does not write anything when the signal never aborts', async () => {
-    const controller = new AbortController()
-    await streamChat({
+  it('does not abort on a stale stop_requested_at left over from an earlier, already-finished turn', async () => {
+    vi.setSystemTime(new Date('2026-01-01T00:10:00.000Z'))
+    // This session was stopped once already, 10 minutes before this new turn began.
+    mockMaybeSingle.mockResolvedValue({ data: { stop_requested_at: '2026-01-01T00:00:00.000Z' } })
+
+    streamChat({
       messages: [],
       tenant: { tenantId: 'tenant-1' },
       sessionId: 'session-1',
-      signal: controller.signal,
     })
 
-    expect(mockFrom).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(mockMaybeSingle).toHaveBeenCalled()
+    expect(mockUpdate).not.toHaveBeenCalled()
   })
 
-  it('does not attempt the write when there is no session to attribute it to', async () => {
-    const controller = new AbortController()
+  it('stops polling once the stream finishes normally', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0) // let streamChat reach runChatStream
+
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+    await runChatStreamOnFinish?.({ text: 'a complete reply', usage: null })
+
+    const callsAtFinish = mockMaybeSingle.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2000) // several more poll intervals, if it were still running
+    expect(mockMaybeSingle.mock.calls.length).toBe(callsAtFinish)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('does not poll when there is no session to attribute the stop to', async () => {
     const responsePromise = streamChat({
       messages: [],
       tenant: { tenantId: 'tenant-1' },
       sessionId: null,
-      signal: controller.signal,
     })
-
-    controller.abort()
-    await Promise.resolve()
-    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(2000)
+    resolveRunChatStream?.(new Response('ok'))
     await responsePromise
 
-    expect(mockFrom).not.toHaveBeenCalled()
+    expect(mockSelect).not.toHaveBeenCalled()
   })
 
-  it('registers the listener before any awaited work, so an immediate abort is still caught', async () => {
+  it('still confirms via req.signal as a bonus fast path, and stops the poll once it fires', async () => {
     const controller = new AbortController()
-    // Abort synchronously, before streamChat has had a chance to await
-    // anything (getSystemPrompt/resolveModelConfig/etc.) — the listener must
-    // already be armed at this point.
     const responsePromise = streamChat({
       messages: [],
       tenant: { tenantId: 'tenant-1' },
       sessionId: 'session-1',
       signal: controller.signal,
     })
+    await vi.advanceTimersByTimeAsync(0)
+
     controller.abort()
     await Promise.resolve()
     await Promise.resolve()
-    await responsePromise
+    const response = await responsePromise
 
-    expect(mockFrom).toHaveBeenCalledWith('chat_sessions')
+    expect(response.status).toBe(499)
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ server_abort_confirmed_at: expect.any(String) }),
+    )
+
+    const pollCallsAtAbort = mockMaybeSingle.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mockMaybeSingle.mock.calls.length).toBe(pollCallsAtAbort)
   })
 })

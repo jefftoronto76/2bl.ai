@@ -391,9 +391,28 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     if (sessionId) persist(sessionId, null)
   }, [accessors, setStreaming, persist, finishAbortedTurn])
 
+  // Cancels the client's own fetch (unchanged) AND explicitly tells the
+  // server to stop generating — an ordinary new HTTP request, sent
+  // immediately, rather than relying on the inbound /api/sage request's own
+  // AbortSignal to propagate the disconnect server-side. That propagation
+  // isn't reliable across this app's request path (confirmed: the client
+  // consistently observes Stop and records it, but the server kept
+  // generating regardless), so the server can't be a passive listener here
+  // — it has to be told. streamChat()'s poll (services/chat/server/index.ts)
+  // picks this up within ~500ms. Fire-and-forget; a failed PATCH here still
+  // leaves the client-side abort (silence, no reply) intact, it just means
+  // the server won't learn to stop on its own.
   const stop = useCallback(() => {
     abortControllerRef.current?.abort()
-  }, [])
+    const sessionId = accessors.getSessionId()
+    if (sessionId) {
+      void fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stop_requested: true }),
+      }).catch(err => console.error('[chat/turn] stop-request PATCH failed:', err))
+    }
+  }, [accessors])
 
   const regenerate = useCallback(
     async (messageId: string) => {

@@ -42,39 +42,86 @@ function normalizeMessages(messages: ChatMessage[]): ChatMessage[] {
   return conversation
 }
 
+/** How often to poll chat_sessions.stop_requested_at while a turn streams. */
+const STOP_POLL_INTERVAL_MS = 500
+
 /**
- * Registers a listener that fires the instant `signal` aborts — hooked
- * directly to the signal itself, not to any AI SDK callback, so it fires for
- * BOTH a pre-response abort and a mid-stream one (streamText's `onFinish`
- * deliberately never runs on either — see the Stop / interrupted-turn
- * protocol section in CLAUDE.md). Writes a plain, unambiguous fact directly
- * to the DB: this is diagnostic ground truth for whether the server-side
- * abort handler actually ran, checkable without any log access — populated
- * `server_abort_confirmed_at` means it fired; null means it didn't.
- * Fire-and-forget (same pattern as services/audit/audit.ts's logEvent);
- * always overwritten, not self-guarded, so each test run reflects the latest
- * attempt. No-ops when there's no session to attribute the write to.
+ * Builds the AbortController actually passed to streamText/runChatStream.
+ * Two independent triggers can fire it:
+ *
+ * 1. `requestSignal` (the inbound `/api/sage` request's own `req.signal`) —
+ *    a best-effort fast path, kept because it's free if this deployment's
+ *    request pipeline ever does propagate the client's disconnect onto it.
+ *    Confirmed NOT reliable here: the client correctly observes and records
+ *    every Stop (`chat_sessions.last_error_type = 'user_stopped'`), but the
+ *    server kept generating regardless — this signal is not load-bearing.
+ * 2. Polling `chat_sessions.stop_requested_at` — the reliable path.
+ *    `useChatTurn.ts`'s `stop()` explicitly PATCHes this the instant Stop is
+ *    clicked: an ordinary new HTTP request, not a connection-level signal,
+ *    so it doesn't depend on whatever the edge→function hop does or doesn't
+ *    preserve. Compared against `turnStartedAt` (this turn's own start time)
+ *    rather than requiring a reset write, so a stale flag left over from an
+ *    earlier stopped turn can never false-trigger a later, unrelated one.
+ *
+ * Whichever trigger fires first writes `chat_sessions.server_abort_confirmed_at`
+ * — the DB-checkable proof the abort actually happened — and stops the other
+ * trigger from doing anything further (the poll included, so it doesn't keep
+ * querying after the turn is already cancelled).
  */
-function confirmServerAbort(
-  signal: AbortSignal | undefined,
+function createServerAbortController(
+  requestSignal: AbortSignal | undefined,
   sessionId: string | null,
   tenantId: string | null,
-): void {
-  if (!signal || !sessionId || !tenantId) return
-  signal.addEventListener(
-    'abort',
-    () => {
+  turnStartedAt: Date,
+): { signal: AbortSignal; stopPolling: () => void } {
+  const controller = new AbortController()
+  let pollHandle: ReturnType<typeof setInterval> | null = null
+
+  const stopPolling = () => {
+    if (pollHandle) {
+      clearInterval(pollHandle)
+      pollHandle = null
+    }
+  }
+
+  const confirmAbort = () => {
+    if (!sessionId || !tenantId) return
+    void getAdminClient()
+      .from('chat_sessions')
+      .update({ server_abort_confirmed_at: new Date().toISOString() })
+      .eq('id', sessionId)
+      .eq('tenant_id', tenantId)
+      .then(({ error }: { error: { message: string } | null }) => {
+        if (error) console.error('[chat] server_abort_confirmed_at write failed:', error.message)
+      })
+  }
+
+  const triggerAbort = () => {
+    if (controller.signal.aborted) return
+    controller.abort()
+    stopPolling()
+    confirmAbort()
+  }
+
+  requestSignal?.addEventListener('abort', triggerAbort, { once: true })
+
+  if (sessionId && tenantId) {
+    pollHandle = setInterval(() => {
       void getAdminClient()
         .from('chat_sessions')
-        .update({ server_abort_confirmed_at: new Date().toISOString() })
+        .select('stop_requested_at')
         .eq('id', sessionId)
         .eq('tenant_id', tenantId)
-        .then(({ error }: { error: { message: string } | null }) => {
-          if (error) console.error('[chat] server_abort_confirmed_at write failed:', error.message)
+        .maybeSingle()
+        .then(({ data }: { data: { stop_requested_at: string | null } | null }) => {
+          if (data?.stop_requested_at && new Date(data.stop_requested_at) > turnStartedAt) {
+            triggerAbort()
+          }
         })
-    },
-    { once: true },
-  )
+    }, STOP_POLL_INTERVAL_MS)
+  }
+
+  return { signal: controller.signal, stopPolling }
 }
 
 /**
@@ -88,11 +135,16 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const questionMode = req.mode === 'question'
   const sessionId =
     typeof req.sessionId === 'string' && req.sessionId.length > 0 ? req.sessionId : null
+  const turnStartedAt = new Date()
 
-  // Registered up front, before any async work — so it's armed even if the
-  // client aborts before the system-prompt/model-config Promise.all below
-  // has settled.
-  confirmServerAbort(req.signal, sessionId, tenantId)
+  // Built up front, before any async work — so the poll is armed even if the
+  // system-prompt/model-config Promise.all below hasn't settled yet.
+  const { signal: abortSignal, stopPolling } = createServerAbortController(
+    req.signal,
+    sessionId,
+    tenantId,
+    turnStartedAt,
+  )
 
   console.log('[chat] streamChat:', {
     tenant_id: tenantId,
@@ -144,21 +196,26 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       config,
       system: systemPrompt,
       messages: messagesForModel,
-      abortSignal: req.signal,
+      abortSignal,
       onFinish: async ({ text, usage }) => {
+        // Normal completion — the poll never had anything to catch, so it's
+        // still running and needs to be told to stop.
+        stopPolling()
         if (!tenantId) return
         await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText })
       },
     })
   } catch (error) {
-    // The client disconnected (Stop, or the tab closing) before the
-    // Anthropic call even started streaming back — req.signal fired and
-    // streamText threw before returning a Response. This is an expected,
-    // client-initiated cancellation, not an upstream failure: log it quietly
-    // and skip the "Upstream error" 502, which nothing is listening for
-    // anyway since the client already closed its own fetch.
+    stopPolling()
+    // The client stopped (poll-detected `stop_requested_at`, or — best
+    // effort — req.signal itself) before the Anthropic call even started
+    // streaming back, so abortSignal fired and streamText threw before
+    // returning a Response. This is an expected, client-initiated
+    // cancellation, not an upstream failure: log it quietly and skip the
+    // "Upstream error" 502, which nothing is listening for anyway since the
+    // client already closed its own fetch.
     if (isAbortError(error)) {
-      console.log('[chat] streamChat aborted by client disconnect')
+      console.log('[chat] streamChat aborted (stop detected before first response byte)')
       return new Response(null, { status: 499 })
     }
     console.error('[chat] streamChat error:', error)
