@@ -467,7 +467,14 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
       <div key={msg.id} className="group flex flex-col gap-3">
         {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
         {prose && !isActive && (
-          <div className="ml-11">
+          // 60px, not the avatar-only 44px (w-8 avatar + gap-3): the text
+          // bubble itself adds another 16px of left padding (px-4) before
+          // its actual text starts, so ml-11 alone left the action row
+          // sitting under the avatar rather than under the text — visibly
+          // misaligned next to jefflougheed's equivalent (SageReply's prose
+          // and its MessageActions row share a single pl-4, no avatar to
+          // offset for, so they align by construction there).
+          <div className="ml-[60px]">
             <MessageActions
               content={msg.content}
               stopped={msg.stopped}
@@ -492,7 +499,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
           />
         )}
         {debugMarkers.length > 0 && (
-          <div className="flex flex-col gap-1.5 ml-11">
+          <div className="flex flex-col gap-1.5 ml-[60px]">
             {debugMarkers.map((m, idx) => (
               <DebugPill key={idx} raw={m.raw} />
             ))}
