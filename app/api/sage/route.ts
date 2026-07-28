@@ -87,5 +87,10 @@ export async function POST(req: Request) {
       ? body.prompt_type
       : null,
     mediaItems,
+    // Fires when the client disconnects (Stop, or editMessage/resendMessage's
+    // hard-cancel of an in-flight turn) — threaded through to streamText's
+    // abortSignal so the model call actually stops instead of finishing in
+    // the background after nobody's listening. See services/chat/server/types.ts.
+    signal: req.signal,
   })
 }
