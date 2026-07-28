@@ -220,38 +220,58 @@ function MessageBubble({
     );
   }
 
-  return (
-    <div className={`group flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
-      <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-        {!isUser && (
+  // Assistant path — never actually exercised (MessageBubble is only ever
+  // called with a user message; see makeRenderUserMessage) but kept intact.
+  if (!isUser) {
+    return (
+      <div className="group flex flex-col items-start gap-1.5">
+        <div className="flex gap-3 justify-start">
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
             <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
           </div>
-        )}
-        <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
-          <div
-            onClick={deliveryStatus === 'failed' ? onRetry : undefined}
-            className={[
-              'px-4 py-3 font-body whitespace-pre-wrap text-text-primary',
-              // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
-              // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62 type
-              // ramp. Assistant styling (never actually exercised — MessageBubble
-              // is only ever called with a user message, see makeRenderUserMessage)
-              // is left as it was.
-              isUser
-                ? 'w-fit max-w-[76%] rounded-[18px] rounded-br-[5px] border text-[15.5px] leading-[1.62]'
-                : 'max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent text-base leading-relaxed',
-              isUser ? (deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border') : '',
-              deliveryStatus === 'sending' ? 'opacity-55' : '',
-            ].filter(Boolean).join(' ')}
-          >
+          <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap text-text-primary">
             {content}
           </div>
         </div>
       </div>
-      {isUser && onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
-      {isUser && deliveryStatus === 'sent' && onStartEdit && onResend && (
-        <UserMessageActions content={content} edited={message.edited} onEdit={onStartEdit} onResend={onResend} />
+    );
+  }
+
+  return (
+    // grid (not flex-col + items-end): the bubble, DeliveryStatus, and
+    // UserMessageActions must render at IDENTICAL widths so the action row's
+    // right edge lands exactly under the bubble's — independent flex-item
+    // shrink-to-fit let them drift apart. Only the bubble row supplies real
+    // (non-percentage) content, so it alone drives the grid's auto column
+    // width; the other rows get w-full + min-w-0 (overrides the browser's
+    // default min-width:auto) so their own content never stretches that
+    // column, they just always match whatever the bubble computes to.
+    <div className="group grid justify-end gap-1.5">
+      <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
+        <div
+          onClick={deliveryStatus === 'failed' ? onRetry : undefined}
+          className={[
+            // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
+            // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
+            // type ramp. Widened past the spec's original 76% (2026-07-28) —
+            // it read as cramped next to the assistant's much wider reply.
+            'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
+            deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
+            deliveryStatus === 'sending' ? 'opacity-55' : '',
+          ].filter(Boolean).join(' ')}
+        >
+          {content}
+        </div>
+      </div>
+      {onRetry && (
+        <div className="w-full min-w-0">
+          <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />
+        </div>
+      )}
+      {deliveryStatus === 'sent' && onStartEdit && onResend && (
+        <div className="w-full min-w-0">
+          <UserMessageActions content={content} edited={message.edited} onEdit={onStartEdit} onResend={onResend} />
+        </div>
       )}
     </div>
   );

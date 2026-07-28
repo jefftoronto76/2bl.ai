@@ -106,7 +106,15 @@ function makeRenderUserMessage(
     }
 
     return (
-      <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1.5">
+      // grid (not flex-col + items-end): bubble, DeliveryStatus, and
+      // UserMessageActions must render at IDENTICAL widths so the action
+      // row's right edge lands exactly under the bubble's — independent
+      // flex-item shrink-to-fit let them drift apart. Only the bubble row
+      // supplies real (non-percentage) content, so it alone drives the
+      // grid's auto column width; other rows get w-full + min-w-0 so their
+      // own content never stretches that column, they just match whatever
+      // the bubble computes to. Mirrors components/shells/membership/MessageList.tsx.
+      <div key={msg.id} data-chat-message className="group grid justify-end gap-1.5">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -120,7 +128,7 @@ function makeRenderUserMessage(
               // cascade (app/(jefflougheed)/globals.css), not Heirloom's. The
               // curly-quote treatment (sage-visitor-msg) and italic are kept —
               // decorative flourishes, not structural, no reason to lose them.
-              'sage-visitor-msg sage-animate w-fit max-w-[76%] whitespace-pre-wrap text-left rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] italic leading-[1.62] text-text-primary [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
+              'sage-visitor-msg sage-animate w-fit max-w-[90%] whitespace-pre-wrap text-left rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] italic leading-[1.62] text-text-primary [animation:sage-slide-up_0.24s_ease-out_both] [text-wrap:pretty]',
               status === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
               status === 'sending' ? 'opacity-55' : '',
             ].filter(Boolean).join(' ')}
@@ -128,14 +136,18 @@ function makeRenderUserMessage(
             {msg.content}
           </p>
         </div>
-        <DeliveryStatus status={status} onRetry={retry} />
+        <div className="w-full min-w-0">
+          <DeliveryStatus status={status} onRetry={retry} />
+        </div>
         {status === 'sent' && (
-          <UserMessageActions
-            content={msg.content}
-            edited={msg.edited}
-            onEdit={() => setEditingId(msg.id)}
-            onResend={() => void resendMessage(msg.id)}
-          />
+          <div className="w-full min-w-0">
+            <UserMessageActions
+              content={msg.content}
+              edited={msg.edited}
+              onEdit={() => setEditingId(msg.id)}
+              onResend={() => void resendMessage(msg.id)}
+            />
+          </div>
         )}
       </div>
     )

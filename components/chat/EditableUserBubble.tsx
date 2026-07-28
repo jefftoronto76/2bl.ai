@@ -14,8 +14,8 @@
  * radius with a 5px tail (same as read state), border-border-hover (the
  * spec's "border-border-strong" doesn't exist as a token in this repo — this
  * reuses the existing --color-border-hover CSS var via an arbitrary value),
- * 12px padding on all sides, max-width widened to 86% (more room to type
- * than the read state's 76% measure).
+ * 12px padding on all sides, max-width widened to 95% (more room to type
+ * than the read state's 90% measure).
  *
  * Enter saves · Shift+Enter newline · Esc cancels.
  */
@@ -61,7 +61,7 @@ export function EditableUserBubble({ initialValue, onCancel, onSave }: EditableU
   }
 
   return (
-    <div className="flex w-full max-w-[86%] flex-col gap-2 rounded-[18px] rounded-br-[5px] border border-[rgb(var(--color-border-hover))] bg-surface p-3">
+    <div className="flex w-full max-w-[95%] flex-col gap-2 rounded-[18px] rounded-br-[5px] border border-[rgb(var(--color-border-hover))] bg-surface p-3">
       <textarea
         ref={ref}
         rows={1}
