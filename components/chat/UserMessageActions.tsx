@@ -2,11 +2,13 @@
 
 /**
  * UserMessageActions — Edit / Copy / Send again on the visitor's own
- * messages. Renders BELOW the user bubble, right-aligned, at reduced opacity
- * by default and full opacity on hover of the message group — never fully
- * hidden, matching the "nothing important is hover-only" rule the assistant
- * action row (MessageActions.tsx) already follows, so the row is reachable on
- * touch without a separate `hover: none` media-query carve-out.
+ * messages. Renders BELOW the user bubble, right-aligned, hover-gated on
+ * pointer devices (invisible at rest, full opacity on hover of the message
+ * group or keyboard focus within the row) — unlike the assistant action row
+ * (MessageActions.tsx), which is deliberately never fully hidden. Under
+ * `@media (hover: none)` (touch) it is always visible, since a touch device
+ * has no persistent hover state to reveal it — this is the one carve-out to
+ * the "nothing important is hover-only" rule, not a violation of it.
  *
  * Mount rule (owned by the caller): only render this when status is 'sent'
  * and the message isn't being edited — DeliveryStatus owns that space during
@@ -38,7 +40,15 @@ export function UserMessageActions({ content, edited, onEdit, onResend }: UserMe
   }
 
   return (
-    <div className="flex items-center justify-end gap-0.5 pr-1 opacity-60 transition-opacity group-hover:opacity-100">
+    <div
+      className={[
+        'flex items-center justify-end gap-0.5 pr-1',
+        // Hover-gated on pointer devices…
+        'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+        // …but ALWAYS visible on touch. Without this the actions are unreachable on mobile.
+        '[@media(hover:none)]:opacity-100',
+      ].join(' ')}
+    >
       {edited && (
         <span className="mr-1.5 font-mono text-[10.5px] tracking-wide text-text-muted">Edited</span>
       )}
