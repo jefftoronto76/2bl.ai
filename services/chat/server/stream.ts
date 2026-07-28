@@ -107,6 +107,14 @@ export interface RunChatStreamParams {
   system: string
   messages: ChatMessage[]
   onFinish?: (args: { text: string; usage: TokenUsage | null }) => Promise<void> | void
+  /**
+   * Aborts the underlying model call when the client disconnects (passed
+   * through from the incoming request's Request.signal — see ChatStreamRequest
+   * in ./types.ts). streamText does not call onFinish for an aborted call, so
+   * a turn nobody's waiting on no longer runs handleSessionFinish /
+   * recordConversionEvents in the background after the fact.
+   */
+  abortSignal?: AbortSignal
 }
 
 /**
@@ -115,12 +123,13 @@ export interface RunChatStreamParams {
  * stream completes; its argument normalizes the SDK usage shape to TokenUsage.
  */
 export async function runChatStream(params: RunChatStreamParams): Promise<Response> {
-  const { config, system, messages, onFinish } = params
+  const { config, system, messages, onFinish, abortSignal } = params
   const result = await streamText({
     model: getModelInstance(config.provider, config.chatModel),
     system,
     messages,
     maxTokens: config.maxTokens,
+    abortSignal,
     onFinish: onFinish
       ? async ({ text, usage }) => {
           const normalized: TokenUsage | null = usage

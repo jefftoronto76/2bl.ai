@@ -41,6 +41,16 @@ function isValidErrorType(value: unknown): value is ChatErrorType {
   return typeof value === 'string' && (VALID_ERROR_TYPES as readonly string[]).includes(value)
 }
 
+const VALID_STATUSES = ['sending', 'sent', 'failed'] as const
+
+function isValidStatus(value: unknown): value is 'sending' | 'sent' | 'failed' {
+  return typeof value === 'string' && (VALID_STATUSES as readonly string[]).includes(value)
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(v => typeof v === 'string')
+}
+
 /** True for a string that is purely digits (a bare epoch-ms value as text). */
 function isDigits(value: string): boolean {
   return value.length > 0 && /^\d+$/.test(value)
@@ -96,22 +106,35 @@ export function createUIMessage(
 }
 
 /**
- * Revive an unknown persisted/wire object (DB jsonb row, localStorage entry,
- * legacy SageMessage/Message) into a canonical UIMessage. Tolerant by design —
- * this is the back-compat read path for the mixed-shape data already in
- * `chat_sessions.messages` (jefflougheed numbers, Heirloom ISO strings) and in
- * Heirloom localStorage. Missing/invalid fields are coerced to safe defaults:
- * a fresh id, an empty string body, and `role` defaulting to 'assistant' only
- * when absent/invalid.
+ * Revive an unknown persisted/wire object (DB jsonb row, IndexedDB buffer
+ * entry, legacy SageMessage/Message) into a canonical UIMessage. Tolerant by
+ * design — this is the back-compat read path for the mixed-shape data already
+ * in `chat_sessions.messages` (jefflougheed numbers, Heirloom ISO strings) and
+ * in the IndexedDB thread buffer (services/chat/ui/v1/persistence.ts).
+ * Missing/invalid fields are coerced to safe defaults: a fresh id, an empty
+ * string body, and `role` defaulting to 'assistant' only when absent/invalid.
+ *
+ * Also reconciles one piece of async state: a revived message still carrying
+ * `status: 'sending'` means the tab closed mid-delivery — there is no
+ * in-flight request left to resume, so it reads back as 'failed' rather than
+ * showing an eternal "Sending…" spinner. `stopped`/`versions`/`versionIdx`/
+ * `edited` are historical display metadata, not in-flight indicators, so they
+ * revive as-is.
  */
 export function reviveUIMessage(raw: unknown): UIMessage {
   const obj = (raw ?? {}) as Record<string, unknown>
+  const revivedStatus = isValidStatus(obj.status) ? obj.status : undefined
   return {
     id: typeof obj.id === 'string' && obj.id.length > 0 ? obj.id : crypto.randomUUID(),
     role: isValidRole(obj.role) ? obj.role : 'assistant',
     content: typeof obj.content === 'string' ? obj.content : '',
     timestamp: normalizeTimestamp(obj.timestamp),
     error_type: isValidErrorType(obj.error_type) ? obj.error_type : null,
+    ...(revivedStatus !== undefined ? { status: revivedStatus === 'sending' ? 'failed' : revivedStatus } : {}),
+    ...(typeof obj.stopped === 'boolean' ? { stopped: obj.stopped } : {}),
+    ...(isStringArray(obj.versions) ? { versions: obj.versions } : {}),
+    ...(typeof obj.versionIdx === 'number' ? { versionIdx: obj.versionIdx } : {}),
+    ...(typeof obj.edited === 'boolean' ? { edited: obj.edited } : {}),
   }
 }
 

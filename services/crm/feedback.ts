@@ -148,6 +148,38 @@ export async function upsertFeedback(
 }
 
 /**
+ * Deletes every feedback row for a session at or beyond `fromIndex`,
+ * tenant-scoped. Called when editing/resending a visitor message truncates
+ * the transcript forward from that point (services/chat/ui/v1/useChatTurn.ts
+ * `truncateAndRedeliver`) — upsertFeedback keys only on
+ * (session_id, message_index), so without this cleanup a brand-new reply
+ * landing at a previously-rated index would silently inherit a rating/reason/
+ * note that belonged to different, now-discarded content.
+ */
+export async function deleteFeedbackFrom(
+  tenantId: string,
+  sessionId: string,
+  fromIndex: number,
+): Promise<FeedbackResult<null>> {
+  const supabase = getAdminClient('[sessions/feedback DELETE]')
+
+  const { error } = await supabase
+    .from('message_feedback')
+    .delete()
+    .eq('session_id', sessionId)
+    .eq('tenant_id', tenantId)
+    .gte('message_index', fromIndex)
+
+  if (error) {
+    console.error('[sessions/feedback DELETE] delete error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  console.log('[sessions/feedback DELETE] cleared feedback from index:', { sessionId, fromIndex })
+  return { ok: true, data: null }
+}
+
+/**
  * Lists all feedback rows for a session, tenant-scoped. Used to hydrate the
  * thumbs/rating state on mount so a reloaded conversation shows previously-
  * set ratings.

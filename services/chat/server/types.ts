@@ -47,6 +47,16 @@ export interface ChatStreamRequest {
   promptType?: string | null
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
+  /**
+   * The incoming request's abort signal (Request.signal in app/api/sage/route.ts),
+   * threaded through to streamText's own abortSignal option. Fires when the
+   * client disconnects — e.g. Stop, or editMessage/resendMessage's hard-cancel
+   * of an in-flight turn (services/chat/ui/v1/useChatTurn.ts) — so the model
+   * call actually stops generating instead of finishing in the background
+   * after the client has moved on. onFinish (and therefore handleSessionFinish
+   * / recordConversionEvents) does not fire for an aborted call.
+   */
+  signal?: AbortSignal
 }
 
 /** Model provider abstraction (Amendment 4). */

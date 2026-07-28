@@ -7,10 +7,12 @@ import {
   readThread,
   readIndex,
   findMostRecentThread,
+  toPersistedMessage,
   __resetPersistenceForTests,
   DRAFT_ID,
   type PersistedMessage,
 } from './persistence';
+import type { UIMessage } from './types';
 
 function msg(role: 'user' | 'assistant', content: string): PersistedMessage {
   return { id: crypto.randomUUID(), role, content, timestamp: '2026-05-28T00:00:00.000Z' };
@@ -27,6 +29,39 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('toPersistedMessage', () => {
+  const base: UIMessage = { id: 'x', role: 'user', content: 'hi', timestamp: Date.parse('2026-05-28T00:00:00.000Z') };
+
+  it('carries status/stopped/versions/versionIdx/edited through when present', () => {
+    const p = toPersistedMessage({
+      ...base,
+      status: 'failed',
+      stopped: true,
+      versions: ['a', 'b'],
+      versionIdx: 1,
+      edited: true,
+    });
+    expect(p.status).toBe('failed');
+    expect(p.stopped).toBe(true);
+    expect(p.versions).toEqual(['a', 'b']);
+    expect(p.versionIdx).toBe(1);
+    expect(p.edited).toBe(true);
+  });
+
+  it('omits the optional fields entirely when absent, rather than writing them as undefined', () => {
+    const p = toPersistedMessage(base);
+    expect('status' in p).toBe(false);
+    expect('stopped' in p).toBe(false);
+    expect('versions' in p).toBe(false);
+    expect('versionIdx' in p).toBe(false);
+    expect('edited' in p).toBe(false);
+  });
+
+  it('converts the epoch-ms timestamp to ISO 8601', () => {
+    expect(toPersistedMessage(base).timestamp).toBe('2026-05-28T00:00:00.000Z');
+  });
 });
 
 describe('bufferThread', () => {

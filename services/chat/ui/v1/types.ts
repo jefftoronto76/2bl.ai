@@ -79,6 +79,12 @@ export interface UIMessage {
    * sendHidden). Absent/null on every message whose turn succeeded.
    */
   error_type?: ChatErrorType | null
+  /**
+   * True once this user message has been edited and resent — renders the
+   * "Edited" label (see components/chat/UserMessageActions.tsx). User
+   * messages only.
+   */
+  edited?: boolean
 }
 
 // ── Marker contract ───────────────────────────────────────────────────────
@@ -178,6 +184,14 @@ export interface ChatEngineAccessors {
    * or persists (see useChatTurn.ts `send`/`retry`).
    */
   removeMessageById(id: string): void
+  /**
+   * Drops every message AFTER the one matching `id`, keeping `id` itself —
+   * the truncate-forward step editMessage/resendMessage use before
+   * re-delivering, so a rewritten history never leaves stale replies (or
+   * memory cards, once those exist) trailing the edit point. No-ops if `id`
+   * doesn't resolve.
+   */
+  truncateAfter(id: string): void
   setStreaming(val: boolean): void
   setSessionId(id: string): void
   getSessionId(): string | null
@@ -240,6 +254,26 @@ export interface UseChatTurnReturn {
    * or the message has no `versions`.
    */
   setActiveVersion(messageId: string, versionIdx: number): void
+  /**
+   * Replaces a user message's content, truncates every message after it, and
+   * re-delivers — the mental model is that editing rewrites history forward
+   * from that point. Marks the message `edited: true`. Any in-flight turn is
+   * cancelled first (sequencing matters: a stream token arriving after
+   * truncation must never write into a message that no longer exists). Also
+   * clears any `message_feedback` rows for the truncated indices, so a new
+   * reply can never silently inherit a rating that belonged to different,
+   * now-discarded content. No-ops if `text` is empty/whitespace or
+   * `messageId` doesn't resolve to a user message.
+   */
+  editMessage(messageId: string, text: string): Promise<void>
+  /**
+   * Re-delivers a user message unchanged: same truncate-and-redeliver flow as
+   * editMessage, but the content is untouched and `edited` is not set.
+   * Distinct from `retry()` — retry replays the last turn's delivery attempt
+   * without truncating; this always truncates forward from `messageId`, even
+   * if it isn't the most recent message.
+   */
+  resendMessage(messageId: string): Promise<void>
   isStreaming: boolean
   /** Classified reason the most recent turn failed, or null when it succeeded. */
   errorType: ChatErrorType | null

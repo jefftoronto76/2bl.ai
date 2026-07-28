@@ -103,9 +103,10 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       config,
       system: systemPrompt,
       messages: messagesForModel,
+      abortSignal: req.signal,
       onFinish: async ({ text, usage }) => {
         if (!tenantId) return
-        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText })
+        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText, memberId })
       },
     })
   } catch (error) {
