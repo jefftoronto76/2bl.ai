@@ -13,6 +13,15 @@
  * Mount rule (owned by the caller): only render this when status is 'sent'
  * and the message isn't being edited — DeliveryStatus owns that space during
  * 'sending'/'failed', and the two must never render together.
+ *
+ * Per-surface reduction: `showEdit`/`showResend` (both default `true`) let a
+ * caller drop the truncate-and-redeliver actions while keeping Copy. Used by
+ * jefflougheed (components/shells/widget/WidgetShell.tsx), which passes both
+ * `false` — editing/truncating history is a Heirloom-only affordance for now;
+ * on the public lead-gen chat it could silently discard an already-offered
+ * booking card or an already-captured NAME/EMAIL/PHONE with no undo, a risk
+ * Heirloom's signed-in membership context doesn't share. Copy carries none of
+ * that risk, so it ships everywhere.
  */
 
 import { useState } from 'react'
@@ -22,11 +31,22 @@ import { ActionIconButton } from './ActionIconButton'
 export interface UserMessageActionsProps {
   content: string
   edited?: boolean
-  onEdit: () => void
-  onResend: () => void
+  /** Show the Edit action. Default true. */
+  showEdit?: boolean
+  /** Show the Send again action. Default true. */
+  showResend?: boolean
+  onEdit?: () => void
+  onResend?: () => void
 }
 
-export function UserMessageActions({ content, edited, onEdit, onResend }: UserMessageActionsProps) {
+export function UserMessageActions({
+  content,
+  edited,
+  showEdit = true,
+  showResend = true,
+  onEdit,
+  onResend,
+}: UserMessageActionsProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
@@ -49,18 +69,22 @@ export function UserMessageActions({ content, edited, onEdit, onResend }: UserMe
         '[@media(hover:none)]:opacity-100',
       ].join(' ')}
     >
-      {edited && (
+      {showEdit && edited && (
         <span className="mr-1.5 font-mono text-[10.5px] tracking-wide text-text-muted">Edited</span>
       )}
-      <ActionIconButton label="Edit message" onClick={onEdit}>
-        <Pencil size={14} />
-      </ActionIconButton>
+      {showEdit && onEdit && (
+        <ActionIconButton label="Edit message" onClick={onEdit}>
+          <Pencil size={14} />
+        </ActionIconButton>
+      )}
       <ActionIconButton label={copied ? 'Copied' : 'Copy'} onClick={handleCopy}>
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </ActionIconButton>
-      <ActionIconButton label="Send again" onClick={onResend}>
-        <RefreshCw size={14} />
-      </ActionIconButton>
+      {showResend && onResend && (
+        <ActionIconButton label="Send again" onClick={onResend}>
+          <RefreshCw size={14} />
+        </ActionIconButton>
+      )}
     </div>
   )
 }

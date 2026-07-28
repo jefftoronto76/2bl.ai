@@ -12,6 +12,7 @@ import { clearSession, clearDraft } from '@/services/chat/ui/v1/persistence'
 import { ChatThread } from '@/components/chat/ChatThread'
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus'
 import { MessageActions } from '@/components/chat/MessageActions'
+import { UserMessageActions } from '@/components/chat/UserMessageActions'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { SageReply } from './sage/SageReply'
 import { markdownComponents } from './sage/markdownComponents'
@@ -82,7 +83,7 @@ function makeRenderUserMessage(retry: () => void) {
   return function renderUserMessage(msg: UIMessage): ReactNode {
     const status = msg.status ?? 'sent'
     return (
-      <div key={msg.id} data-chat-message className="flex flex-col items-end gap-1">
+      <div key={msg.id} data-chat-message className="group flex flex-col items-end gap-1">
         <div className={status === 'failed' ? 'chat-bubble-shake' : undefined}>
           <p
             onClick={status === 'failed' ? retry : undefined}
@@ -96,6 +97,11 @@ function makeRenderUserMessage(retry: () => void) {
           </p>
         </div>
         <DeliveryStatus status={status} onRetry={retry} />
+        {status === 'sent' && (
+          // Copy only — no Edit/Send again on the public lead-gen chat, see
+          // the showEdit/showResend doc comment on UserMessageActions.
+          <UserMessageActions content={msg.content} showEdit={false} showResend={false} />
+        )}
       </div>
     )
   }
