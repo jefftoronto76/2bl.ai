@@ -1,5 +1,37 @@
 # DB Changelog
 
+## 2026-07-28
+
+### Add `chat_sessions.server_abort_confirmed_at`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+ALTER TABLE public.chat_sessions
+  ADD COLUMN server_abort_confirmed_at timestamptz;
+```
+
+**Purpose:** Direct, DB-level proof that the server-side Stop-abort handler
+(`abortSignal` wired into `streamText()`, `services/chat/server/stream.ts`)
+actually runs when a visitor hits Stop — added specifically because Vercel
+function logs weren't reachable to verify this any other way. Written by
+`confirmServerAbort` (`services/chat/server/index.ts`) the instant the
+inbound request's `AbortSignal` fires, scoped by `id` + `tenant_id`. Deliberately
+separate from `chat_sessions.last_error_type` (`user_stopped`), which is
+written client-side and only proves the client observed a Stop — this column
+proves the server's cancellation path independently. Test protocol: click
+Stop mid-stream, then query `server_abort_confirmed_at` for that session —
+populated (and timestamped close to the click) confirms the handler fired;
+null confirms it didn't.
+
+**Notes:**
+- No default, always nullable — never set on insert, only on an observed abort.
+- Always overwritten on each occurrence (no self-guard), so it reflects the
+  most recent Stop attempt for that session, not a first-ever one.
+
 ## 2026-07-27
 
 ### Add release-note columns to `compiled_prompts` and `compiled_prompts_history`

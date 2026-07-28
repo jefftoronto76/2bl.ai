@@ -14,6 +14,7 @@ import { getBookingCardSection } from './booking'
 import { getMemberPrimer } from './member-context'
 import { resolveMediaContext, stripMediaMarkers } from './media-context'
 import { handleSessionFinish } from '@/services/crm/session'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { ChatMessage, ChatStreamRequest } from './types'
 
 export type {
@@ -42,6 +43,41 @@ function normalizeMessages(messages: ChatMessage[]): ChatMessage[] {
 }
 
 /**
+ * Registers a listener that fires the instant `signal` aborts — hooked
+ * directly to the signal itself, not to any AI SDK callback, so it fires for
+ * BOTH a pre-response abort and a mid-stream one (streamText's `onFinish`
+ * deliberately never runs on either — see the Stop / interrupted-turn
+ * protocol section in CLAUDE.md). Writes a plain, unambiguous fact directly
+ * to the DB: this is diagnostic ground truth for whether the server-side
+ * abort handler actually ran, checkable without any log access — populated
+ * `server_abort_confirmed_at` means it fired; null means it didn't.
+ * Fire-and-forget (same pattern as services/audit/audit.ts's logEvent);
+ * always overwritten, not self-guarded, so each test run reflects the latest
+ * attempt. No-ops when there's no session to attribute the write to.
+ */
+function confirmServerAbort(
+  signal: AbortSignal | undefined,
+  sessionId: string | null,
+  tenantId: string | null,
+): void {
+  if (!signal || !sessionId || !tenantId) return
+  signal.addEventListener(
+    'abort',
+    () => {
+      void getAdminClient()
+        .from('chat_sessions')
+        .update({ server_abort_confirmed_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('tenant_id', tenantId)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) console.error('[chat] server_abort_confirmed_at write failed:', error.message)
+        })
+    },
+    { once: true },
+  )
+}
+
+/**
  * Stream one assistant turn. Returns the data-stream Response on success, or a
  * 502 Response when the upstream model call fails (matching the prior route
  * behavior). Callers resolve tenancy/auth and guard ANTHROPIC_API_KEY before
@@ -52,6 +88,11 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const questionMode = req.mode === 'question'
   const sessionId =
     typeof req.sessionId === 'string' && req.sessionId.length > 0 ? req.sessionId : null
+
+  // Registered up front, before any async work — so it's armed even if the
+  // client aborts before the system-prompt/model-config Promise.all below
+  // has settled.
+  confirmServerAbort(req.signal, sessionId, tenantId)
 
   console.log('[chat] streamChat:', {
     tenant_id: tenantId,
