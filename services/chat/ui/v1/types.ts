@@ -14,12 +14,24 @@ import type { ChatMessage, ChatMode, ChatRole, MediaAttachmentInput } from '@/se
 // ── Error classification ────────────────────────────────────────────────────
 
 /**
- * Classifies why a chat turn failed, so each surface can show on-brand,
- * specific copy (see components/chat/errorCopy.ts) instead of one generic
- * "something went wrong." Persisted per-message (UIMessage.error_type below)
- * and per-session (chat_sessions.last_error_type) — see useChatTurn.ts.
+ * Classifies why a chat turn ended without a normal completion, so each
+ * surface can show on-brand, specific copy (see components/chat/errorCopy.ts)
+ * instead of one generic "something went wrong." Persisted per-message
+ * (UIMessage.error_type below) and per-session (chat_sessions.last_error_type)
+ * — see useChatTurn.ts. `'user_stopped'` is the one member that isn't a
+ * failure — the visitor deliberately hit Stop — but it's modeled as a class
+ * here rather than a special-cased branch so it gets the same consistent
+ * banner + persistence treatment as the other 5, regardless of whether any
+ * content had streamed back yet when Stop was clicked (see
+ * `finishAbortedTurn` in useChatTurn.ts).
  */
-export type ChatErrorType = 'network' | 'rate_limited' | 'stream_interrupted' | 'auth_error' | 'unknown'
+export type ChatErrorType =
+  | 'network'
+  | 'rate_limited'
+  | 'stream_interrupted'
+  | 'auth_error'
+  | 'unknown'
+  | 'user_stopped'
 
 // ── Canonical UI message ────────────────────────────────────────────────────
 
@@ -61,7 +73,13 @@ export interface UIMessage {
    * equivalent to 'sent' for any pre-existing persisted message.
    */
   status?: 'sending' | 'sent' | 'failed'
-  /** True if the user hit Stop mid-stream for this assistant message. */
+  /**
+   * True if the user hit Stop for this assistant message — regardless of
+   * whether any content had streamed back yet. Always set on Stop (see
+   * `finishAbortedTurn` in useChatTurn.ts); the message itself is always
+   * kept, even with `content: ''`, so there is a durable record that a stop
+   * happened rather than the turn silently disappearing.
+   */
   stopped?: boolean
   /**
    * Regenerated reply variants for an assistant message, oldest first.
@@ -73,10 +91,14 @@ export interface UIMessage {
   /** Index into `versions` of the currently-displayed version. */
   versionIdx?: number
   /**
-   * Set when this message's turn ended in an error (see ChatErrorType above).
-   * User messages carry it alongside `status: 'failed'`; the assistant
-   * placeholder carries it for turns with no trackable user message (e.g.
-   * sendHidden). Absent/null on every message whose turn succeeded.
+   * Set when this message's turn ended without a normal completion (see
+   * ChatErrorType above). For a genuine failure, the user message carries it
+   * alongside `status: 'failed'`; the assistant placeholder carries it for
+   * turns with no trackable user message (e.g. sendHidden). For a Stop
+   * (`error_type: 'user_stopped'`), it's carried on the assistant message
+   * alongside `stopped: true` — the user message's `status` stays `'sent'`,
+   * since Stop is a deliberate choice, not a delivery failure. Absent/null on
+   * every message whose turn completed normally.
    */
   error_type?: ChatErrorType | null
 }

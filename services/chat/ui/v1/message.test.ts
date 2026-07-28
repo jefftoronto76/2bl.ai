@@ -126,6 +126,12 @@ describe('reviveUIMessage', () => {
     expect(m.error_type).toBe('rate_limited')
   })
 
+  it('revives user_stopped as a valid error_type', () => {
+    const m = reviveUIMessage({ id: 'e2', role: 'assistant', content: '', error_type: 'user_stopped', stopped: true })
+    expect(m.error_type).toBe('user_stopped')
+    expect(m.stopped).toBe(true)
+  })
+
   it('discards an invalid/missing error_type as null', () => {
     expect(reviveUIMessage({ id: 'f', role: 'user', content: 'x', error_type: 'bogus' }).error_type).toBeNull()
     expect(reviveUIMessage({ id: 'g', role: 'user', content: 'x' }).error_type).toBeNull()
@@ -280,5 +286,21 @@ describe('toModelMessages', () => {
     ]
     const out = toModelMessages(msgs)
     expect(out).toEqual([{ role: 'user', content: 'hi' }])
+  })
+
+  it('passes the next user turn through unchanged when the stopped message has empty content', () => {
+    // Reachable since finishAbortedTurn (useChatTurn.ts) always tags stopped:true
+    // now, even when Stop was hit before any content streamed back — there's
+    // nothing to fold into a continuation note in that case.
+    const msgs = [
+      { role: 'user' as const, content: 'tell me a story' },
+      { role: 'assistant' as const, content: '', stopped: true },
+      { role: 'user' as const, content: 'try again' },
+    ]
+    const out = toModelMessages(msgs)
+    expect(out).toEqual([
+      { role: 'user', content: 'tell me a story' },
+      { role: 'user', content: 'try again' },
+    ])
   })
 })

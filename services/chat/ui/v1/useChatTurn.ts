@@ -153,20 +153,21 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors],
   )
 
-  // Resolves the assistant side of a Stop: if nothing streamed in yet, the
-  // still-empty placeholder is dropped entirely (never rendered or
-  // persisted); otherwise the partial content is kept and flagged `stopped`.
+  // Resolves the assistant side of a Stop. One path regardless of timing —
+  // whether Stop was hit before the first token arrived or mid-stream, the
+  // message is always kept (never removed) and always tagged both
+  // `stopped: true` and `error_type: 'user_stopped'`, so there is a durable
+  // record that a stop happened even when there was nothing yet to show.
+  // (Previously the empty-content case deleted the placeholder outright —
+  // silently indistinguishable from the assistant never having been asked
+  // to respond at all, with no trace in the persisted transcript.)
   const finishAbortedTurn = useCallback(
     (assistantMsgId: string | null) => {
       if (!assistantMsgId) return
       const current = accessors.getMessages()
       const assistantMsg = current.find(m => m.id === assistantMsgId)
       if (!assistantMsg) return
-      if (assistantMsg.content === '') {
-        accessors.removeMessageById(assistantMsgId)
-      } else {
-        accessors.patchMessageById(assistantMsgId, { stopped: true })
-      }
+      accessors.patchMessageById(assistantMsgId, { stopped: true, error_type: 'user_stopped' })
     },
     [accessors],
   )
@@ -239,11 +240,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         if (isAbortError(err)) {
           // The user's message genuinely reached the server (the fetch was in
           // flight) — Stop is a client-side choice to cut the reply short, not
-          // a delivery failure, so this still counts as 'sent'.
+          // a delivery failure, so this still counts as 'sent'. 'user_stopped'
+          // still goes through the same classify → banner → persist path as
+          // the other 5 error types, so Stop gets consistent feedback and a
+          // durable last_error_type regardless of whether any content had
+          // streamed back yet.
           if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
           finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         const classified = classifyError(err)
@@ -310,8 +316,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       } catch (err) {
         if (isAbortError(err)) {
           finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         const classified = classifyError(err)
@@ -362,9 +369,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       if (isAbortError(err)) {
         if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
         finishAbortedTurn(assistantMsgId)
+        setErrorType('user_stopped')
         setStreaming(false)
         const sessionId = retrySessionIdRef.current
-        if (sessionId) persist(sessionId, null)
+        if (sessionId) persist(sessionId, null, 'user_stopped')
         return
       }
       const classified = classifyError(err)
@@ -427,16 +435,20 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         )
       } catch (err) {
         if (isAbortError(err)) {
+          // Unlike send()/sendHidden()/retry() (finishAbortedTurn), a
+          // regenerate always has a known-good prior version to fall back to,
+          // so the zero-content case restores it rather than leaving the
+          // message blank — no data loss either way. The banner + persisted
+          // last_error_type still apply uniformly, matching every other Stop.
           const current = accessors.getMessages().find(m => m.id === messageId)
           if (current?.content === '') {
-            // Nothing streamed for this attempt — restore the prior version
-            // rather than leaving the message empty.
             accessors.patchMessageById(messageId, { content: priorContent, stopped: false })
           } else {
-            accessors.patchMessageById(messageId, { stopped: true })
+            accessors.patchMessageById(messageId, { stopped: true, error_type: 'user_stopped' })
           }
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         // Regenerate failed outright — restore the prior version; the

@@ -103,6 +103,7 @@ const VALID_ERROR_TYPES = new Set([
   'stream_interrupted',
   'auth_error',
   'unknown',
+  'user_stopped',
 ])
 
 /**

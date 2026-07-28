@@ -31,6 +31,7 @@ const VALID_ERROR_TYPES: readonly ChatErrorType[] = [
   'stream_interrupted',
   'auth_error',
   'unknown',
+  'user_stopped',
 ]
 
 const VALID_STATUSES: readonly NonNullable<UIMessage['status']>[] = ['sending', 'sent', 'failed']
@@ -198,7 +199,14 @@ export function toModelMessages(
       continue
     }
     if (m.role === 'user' && pendingPartial !== null) {
-      out.push({ role: 'user', content: buildContinuationContext(pendingPartial, m.content) })
+      // An empty partial (Stop hit before any content streamed back) has
+      // nothing to continue from — pass the user turn through unchanged
+      // rather than wrapping a "here's the partial reply: ''" note that
+      // would only confuse the model. Non-empty partials still fold as usual.
+      out.push({
+        role: 'user',
+        content: pendingPartial === '' ? m.content : buildContinuationContext(pendingPartial, m.content),
+      })
       pendingPartial = null
       continue
     }
