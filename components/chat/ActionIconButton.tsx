@@ -34,6 +34,7 @@ export function ActionIconButton({
     <button
       type="button"
       aria-label={label}
+      title={label}
       aria-pressed={pressed}
       onClick={onClick}
       disabled={disabled}
