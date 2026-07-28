@@ -220,30 +220,54 @@ function MessageBubble({
     );
   }
 
-  return (
-    <div className={`group flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
-      <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-        {!isUser && (
+  // Assistant path — never actually exercised (MessageBubble is only ever
+  // called with a user message; see makeRenderUserMessage) but kept intact.
+  if (!isUser) {
+    return (
+      <div className="group flex flex-col items-start gap-1.5">
+        <div className="flex gap-3 justify-start">
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
             <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
           </div>
-        )}
-        <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
-          <div
-            onClick={deliveryStatus === 'failed' ? onRetry : undefined}
-            className={[
-              'max-w-[75%] rounded-2xl px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap',
-              isUser ? 'bg-surface text-text-primary rounded-br-sm' : 'bg-transparent text-text-primary rounded-bl-sm',
-              deliveryStatus === 'sending' ? 'opacity-55' : '',
-              deliveryStatus === 'failed' ? 'cursor-pointer border border-red-400/60' : '',
-            ].filter(Boolean).join(' ')}
-          >
+          <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap text-text-primary">
             {content}
           </div>
         </div>
       </div>
-      {isUser && onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
-      {isUser && deliveryStatus === 'sent' && onStartEdit && onResend && (
+    );
+  }
+
+  return (
+    // flex-col + items-end (not grid): each child right-aligns to the
+    // container's own edge independently, regardless of its own width — this
+    // is what actually guarantees the action row's right edge lands under
+    // the bubble's. A prior "grid" version of this got that backwards: a
+    // single-column CSS grid stretches every item to a shared track width
+    // (default justify-items: stretch), and that track is sized to the
+    // WIDEST row's max-content — usually the actions row, not the bubble —
+    // so the bubble's own max-w-[90%] resolved against the actions row's
+    // width instead of the real container, and the two rows' right edges
+    // didn't actually align. Verified empirically (Playwright/Chromium
+    // harness reproducing this exact DOM+CSS) before reverting.
+    <div className="group flex flex-col items-end gap-1.5">
+      <div className={deliveryStatus === 'failed' ? 'chat-bubble-shake' : undefined}>
+        <div
+          onClick={deliveryStatus === 'failed' ? onRetry : undefined}
+          className={[
+            // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
+            // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
+            // type ramp. Widened past the spec's original 76% (2026-07-28) —
+            // it read as cramped next to the assistant's much wider reply.
+            'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
+            deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45' : 'bg-surface border-border',
+            deliveryStatus === 'sending' ? 'opacity-55' : '',
+          ].filter(Boolean).join(' ')}
+        >
+          {content}
+        </div>
+      </div>
+      {onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
+      {deliveryStatus === 'sent' && onStartEdit && onResend && (
         <UserMessageActions content={content} edited={message.edited} onEdit={onStartEdit} onResend={onResend} />
       )}
     </div>
@@ -545,7 +569,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       aria-atomic="false"
       aria-busy={isLoading}
     >
-      <div className="max-w-2xl mx-auto flex flex-col gap-6">
+      <div className="max-w-2xl mx-auto flex flex-col gap-5">
         <ChatThread
           messages={messages}
           isStreaming={isLoading}
