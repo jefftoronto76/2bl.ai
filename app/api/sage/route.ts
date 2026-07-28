@@ -87,10 +87,13 @@ export async function POST(req: Request) {
       ? body.prompt_type
       : null,
     mediaItems,
-    // Fires when the client disconnects (Stop, or editMessage/resendMessage's
-    // hard-cancel of an in-flight turn) — threaded through to streamText's
-    // abortSignal so the model call actually stops instead of finishing in
-    // the background after nobody's listening. See services/chat/server/types.ts.
+    // Best-effort fast path only — fires when the client disconnects (Stop,
+    // or editMessage/resendMessage's hard-cancel of an in-flight turn) IF
+    // this deployment's request pipeline propagates it, which is not
+    // guaranteed (middleware reconstructs this request via header-forwarding
+    // at the edge→function boundary). The reliable mechanism is
+    // streamChat()'s stop_requested_at poll — see services/chat/server/index.ts
+    // and CLAUDE.md's "Stop / interrupted-turn protocol".
     signal: req.signal,
   })
 }

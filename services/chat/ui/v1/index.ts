@@ -33,6 +33,7 @@ export {
   reviveUIMessages,
   toChatMessage,
   toChatMessages,
+  toModelMessages,
 } from './message'
 
 // Shared session core type contracts (Phase 1). Types only — the runtime hook

@@ -48,13 +48,17 @@ export interface ChatStreamRequest {
   /** Media items attached to this turn. Resolved server-side via resolveMediaContext. */
   mediaItems?: MediaAttachmentInput[] | null
   /**
-   * The incoming request's abort signal (Request.signal in app/api/sage/route.ts),
-   * threaded through to streamText's own abortSignal option. Fires when the
-   * client disconnects — e.g. Stop, or editMessage/resendMessage's hard-cancel
-   * of an in-flight turn (services/chat/ui/v1/useChatTurn.ts) — so the model
-   * call actually stops generating instead of finishing in the background
-   * after the client has moved on. onFinish (and therefore handleSessionFinish
-   * / recordConversionEvents) does not fire for an aborted call.
+   * The inbound HTTP request's AbortSignal (Request.signal in
+   * app/api/sage/route.ts). Fires when the client disconnects — Stop, or
+   * editMessage/resendMessage's hard-cancel of an in-flight turn
+   * (services/chat/ui/v1/useChatTurn.ts) — IF this deployment's request
+   * pipeline propagates it, which isn't guaranteed (middleware reconstructs
+   * this request via header-forwarding at the edge→function boundary; see
+   * CLAUDE.md's "Stop / interrupted-turn protocol"). Kept as a best-effort
+   * fast path only: streamChat()'s stop_requested_at poll is the reliable
+   * mechanism. Either path aborts the same controller, so streamText still
+   * never calls onFinish (and therefore handleSessionFinish /
+   * recordConversionEvents never runs) for a cancelled turn.
    */
   signal?: AbortSignal
 }

@@ -12,4 +12,5 @@ export const ERROR_COPY: Record<ChatErrorType, string> = {
   stream_interrupted: "Your response was cut off. Tap retry and we'll pick it up.",
   auth_error: 'Your session has expired. Refresh the page to continue.',
   unknown: "Something went sideways on our end. It's not you — try again in a moment.",
+  user_stopped: 'You stopped the response.',
 }

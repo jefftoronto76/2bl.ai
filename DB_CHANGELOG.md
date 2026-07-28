@@ -1,8 +1,88 @@
 # DB Changelog
 
-##2026-07-28
+## 2026-07-28
 
-Add a `DB_CHANGELOG.md` entry for `conversion_events`, following the existing format in that file. Table is live in Studio:
+### Add `chat_sessions.stop_requested_at`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio (proposed — run this before the code
+that reads/writes it deploys, or the writes will fail-and-log-quietly with
+nothing actually working yet)
+
+**SQL run:**
+
+```sql
+ALTER TABLE public.chat_sessions
+  ADD COLUMN stop_requested_at timestamptz;
+```
+
+**Purpose:** The reliable half of the server-side Stop fix. Confirmed live
+(via `server_abort_confirmed_at` staying null after a real mid-stream Stop
+test) that this app's inbound `/api/sage` request's own `AbortSignal` is not
+reliably propagated to the server when the client disconnects — likely
+because Next.js middleware sits in this request's path and reconstructs the
+request via header-forwarding at the edge→function boundary rather than
+passing a live object through, so whatever `req.signal` the route handler
+receives isn't reliably tied to the original browser connection's state.
+
+Rather than depend on that connection-level signal, the client now tells the
+server explicitly: `useChatTurn.ts`'s `stop()` fires an immediate
+`PATCH /api/sessions/[id]` with `{ stop_requested: true }` the instant Stop is
+clicked — an ordinary new HTTP request, not an implicit disconnect signal, so
+it doesn't have the same reliability problem. `updateSession`
+(`services/crm/sessions.ts`) stamps this column with the *server's* clock
+(never a client-supplied timestamp, to avoid clock skew across server
+instances). `streamChat()` (`services/chat/server/index.ts`) polls it every
+500ms while a turn streams, comparing it against that turn's own start time
+so a stale flag from an earlier stopped turn can never false-trigger a later,
+unrelated one.
+
+**Notes:**
+- No default, always nullable.
+- Not self-guarded — each Stop click overwrites it, reflecting the latest
+  attempt for that session, same convention as `server_abort_confirmed_at`
+  and `last_error_type`.
+- Worst case ~500ms of continued generation after Stop is clicked (the poll
+  interval), plus one extra lightweight DB read per interval tick while a
+  turn is in flight — an accepted trade-off for not being able to trust the
+  platform's own disconnect signal.
+
+### Add `chat_sessions.server_abort_confirmed_at`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+ALTER TABLE public.chat_sessions
+  ADD COLUMN server_abort_confirmed_at timestamptz;
+```
+
+**Purpose:** Direct, DB-level proof that the server-side Stop-abort handler
+actually runs when a visitor hits Stop — added specifically because Vercel
+function logs weren't reachable to verify this any other way. Written by
+`createServerAbortController` (`services/chat/server/index.ts`) the instant
+either of its two triggers fires (the `stop_requested_at` poll above, or —
+best-effort only — the inbound request's own `AbortSignal`), scoped by `id` +
+`tenant_id`. Deliberately separate from `chat_sessions.last_error_type`
+(`user_stopped`), which is written client-side and only proves the client
+observed a Stop — this column proves the server's cancellation path
+independently. Test protocol: click Stop mid-stream, then query
+`server_abort_confirmed_at` for that session — populated (and timestamped
+close to the click) confirms the handler fired; null confirms it didn't.
+
+**Notes:**
+- No default, always nullable — never set on insert, only on an observed abort.
+- Always overwritten on each occurrence (no self-guard), so it reflects the
+  most recent Stop attempt for that session, not a first-ever one.
+
+### Add `conversion_events` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
 
 ```sql
 create table conversion_events (
@@ -21,8 +101,13 @@ create index idx_conversion_events_tenant_type_status
   on conversion_events (tenant_id, event_type, status);
 ```
 
-Purpose, for the changelog note: records that a conversion-relevant marker fired (booking offer, contact capture) and what happened to it — written on marker fire (`status: 'presented'`), updated to `'overwritten'` if `truncateAfter` removes the message it's tied to before resolution. `'accepted'`/`'ignored'` are reserved states, not yet written — they need a real completion signal (e.g. calendar booking confirmation) that doesn't exist yet.
-
+**Purpose:** Records that a conversion-relevant marker fired (booking offer,
+contact capture) and what happened to it — written on marker fire
+(`status: 'presented'`), updated to `'overwritten'` if `truncateAfter` removes
+the message it's tied to before resolution (see `editMessage`/`resendMessage`,
+`services/chat/ui/v1/useChatTurn.ts`). `'accepted'`/`'ignored'` are reserved
+states, not yet written — they need a real completion signal (e.g. a calendar
+booking confirmation) that doesn't exist yet.
 
 ## 2026-07-27
 

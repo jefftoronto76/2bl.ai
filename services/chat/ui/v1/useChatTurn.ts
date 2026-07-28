@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from 'react'
 import { readDataStream } from '@/services/chat/server/stream-utils'
 import type { ChatMessage, ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import type { ChatErrorType, UseChatTurnOptions, UseChatTurnReturn } from './types'
+import { toModelMessages } from './message'
 
 // Thrown from streamTurn's three failure checkpoints so the call sites below
 // can classify without re-deriving the reason from a bare Error. AbortError
@@ -152,20 +153,21 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     [accessors],
   )
 
-  // Resolves the assistant side of a Stop: if nothing streamed in yet, the
-  // still-empty placeholder is dropped entirely (never rendered or
-  // persisted); otherwise the partial content is kept and flagged `stopped`.
+  // Resolves the assistant side of a Stop. One path regardless of timing —
+  // whether Stop was hit before the first token arrived or mid-stream, the
+  // message is always kept (never removed) and always tagged both
+  // `stopped: true` and `error_type: 'user_stopped'`, so there is a durable
+  // record that a stop happened even when there was nothing yet to show.
+  // (Previously the empty-content case deleted the placeholder outright —
+  // silently indistinguishable from the assistant never having been asked
+  // to respond at all, with no trace in the persisted transcript.)
   const finishAbortedTurn = useCallback(
     (assistantMsgId: string | null) => {
       if (!assistantMsgId) return
       const current = accessors.getMessages()
       const assistantMsg = current.find(m => m.id === assistantMsgId)
       if (!assistantMsg) return
-      if (assistantMsg.content === '') {
-        accessors.removeMessageById(assistantMsgId)
-      } else {
-        accessors.patchMessageById(assistantMsgId, { stopped: true })
-      }
+      accessors.patchMessageById(assistantMsgId, { stopped: true, error_type: 'user_stopped' })
     },
     [accessors],
   )
@@ -183,7 +185,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
       setErrorType(null)
       const userMsg: ChatMessage = { role: 'user', content: text }
-      const msgsToSend = [...accessors.getMessages(), userMsg]
+      // toModelMessages folds a trailing stopped:true assistant message into
+      // this new user turn as continuation context instead of replaying it
+      // as a completed assistant turn (see message.ts). userMsg itself
+      // (added to the store below) stays the clean, unmodified text — only
+      // the array sent to the model is transformed.
+      const msgsToSend = toModelMessages([...accessors.getMessages(), userMsg])
       accessors.addMessage(userMsg)
       // Read the id the store just assigned to the message we added (addMessage
       // takes the lean ChatMessage in, the canonical UIMessage — with id — is
@@ -233,11 +240,16 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         if (isAbortError(err)) {
           // The user's message genuinely reached the server (the fetch was in
           // flight) — Stop is a client-side choice to cut the reply short, not
-          // a delivery failure, so this still counts as 'sent'.
+          // a delivery failure, so this still counts as 'sent'. 'user_stopped'
+          // still goes through the same classify → banner → persist path as
+          // the other 5 error types, so Stop gets consistent feedback and a
+          // durable last_error_type regardless of whether any content had
+          // streamed back yet.
           if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
           finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         const classified = classifyError(err)
@@ -267,7 +279,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
 
       setErrorType(null)
       const hiddenMsg: ChatMessage = { role: 'user', content: content.trim() }
-      const msgsToSend = [...accessors.getMessages(), hiddenMsg]
+      // See send() above — folds a trailing stopped assistant turn into this
+      // hidden user turn as continuation context.
+      const msgsToSend = toModelMessages([...accessors.getMessages(), hiddenMsg])
       // Deliberately NOT calling accessors.addMessage(hiddenMsg) — hidden from UI.
       setStreaming(true)
       accessors.addMessage({ role: 'assistant', content: '' })
@@ -302,8 +316,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       } catch (err) {
         if (isAbortError(err)) {
           finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         const classified = classifyError(err)
@@ -354,9 +369,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       if (isAbortError(err)) {
         if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
         finishAbortedTurn(assistantMsgId)
+        setErrorType('user_stopped')
         setStreaming(false)
         const sessionId = retrySessionIdRef.current
-        if (sessionId) persist(sessionId, null)
+        if (sessionId) persist(sessionId, null, 'user_stopped')
         return
       }
       const classified = classifyError(err)
@@ -375,9 +391,34 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
     if (sessionId) persist(sessionId, null)
   }, [accessors, setStreaming, persist, finishAbortedTurn])
 
+  // Explicitly tells the server to stop generating — an ordinary new HTTP
+  // request, sent immediately, rather than relying on the inbound /api/sage
+  // request's own AbortSignal to propagate the disconnect server-side. That
+  // propagation isn't reliable across this app's request path (confirmed:
+  // the client consistently observes Stop and records it, but the server
+  // kept generating regardless), so the server can't be a passive listener
+  // here — it has to be told. streamChat()'s poll (services/chat/server/index.ts)
+  // picks this up within ~500ms. Fire-and-forget; a failed PATCH here still
+  // leaves the client-side abort (silence, no reply) intact, it just means
+  // the server won't learn to stop on its own. Shared by stop() and
+  // truncateAndRedeliver()'s hard-cancel-before-edit/resend — any client-side
+  // cancellation of an in-flight turn needs this, not just the Stop button.
+  const notifyServerStopRequested = useCallback(
+    (sessionId: string | null) => {
+      if (!sessionId) return
+      void fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stop_requested: true }),
+      }).catch(err => console.error('[chat/turn] stop-request PATCH failed:', err))
+    },
+    [],
+  )
+
   const stop = useCallback(() => {
     abortControllerRef.current?.abort()
-  }, [])
+    notifyServerStopRequested(accessors.getSessionId())
+  }, [accessors, notifyServerStopRequested])
 
   const regenerate = useCallback(
     async (messageId: string) => {
@@ -390,8 +431,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const targetMsg = allMessages[targetIdx]
       // Context is everything up to (not including) the message being
       // regenerated — a later message never re-derives the context that
-      // followed it.
-      const contextMsgs = allMessages.slice(0, targetIdx)
+      // followed it. toModelMessages folds any stopped assistant turn
+      // earlier in that context the same way send()/sendHidden() do.
+      const contextMsgs = toModelMessages(allMessages.slice(0, targetIdx))
       // Seed `versions` with the pre-regenerate content on the first
       // regenerate for this message; subsequent regenerates just keep adding.
       const priorVersions = targetMsg.versions?.length ? targetMsg.versions : [targetMsg.content]
@@ -418,16 +460,20 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         )
       } catch (err) {
         if (isAbortError(err)) {
+          // Unlike send()/sendHidden()/retry() (finishAbortedTurn), a
+          // regenerate always has a known-good prior version to fall back to,
+          // so the zero-content case restores it rather than leaving the
+          // message blank — no data loss either way. The banner + persisted
+          // last_error_type still apply uniformly, matching every other Stop.
           const current = accessors.getMessages().find(m => m.id === messageId)
           if (current?.content === '') {
-            // Nothing streamed for this attempt — restore the prior version
-            // rather than leaving the message empty.
             accessors.patchMessageById(messageId, { content: priorContent, stopped: false })
           } else {
-            accessors.patchMessageById(messageId, { stopped: true })
+            accessors.patchMessageById(messageId, { stopped: true, error_type: 'user_stopped' })
           }
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         // Regenerate failed outright — restore the prior version; the
@@ -473,9 +519,14 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       // Cancel any in-flight turn synchronously BEFORE mutating the
       // transcript — sequencing matters: a stream token arriving after
       // truncation must never write into a message that no longer exists.
+      // If there was one, the server needs telling too (same reliability gap
+      // as the Stop button — see notifyServerStopRequested above) or it
+      // keeps generating the turn this edit/resend just discarded.
+      const hadInFlightTurn = abortControllerRef.current !== null
       abortControllerRef.current?.abort()
       abortControllerRef.current = null
       streamingRef.current = false
+      if (hadInFlightTurn) notifyServerStopRequested(accessors.getSessionId())
 
       setErrorType(null)
       accessors.truncateAfter(messageId)
@@ -538,8 +589,9 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         if (isAbortError(err)) {
           accessors.patchMessageById(messageId, { status: 'sent' })
           finishAbortedTurn(assistantMsgId)
+          setErrorType('user_stopped')
           setStreaming(false)
-          if (activeSessionId) persist(activeSessionId, null)
+          if (activeSessionId) persist(activeSessionId, null, 'user_stopped')
           return
         }
         const classified = classifyError(err)
@@ -554,7 +606,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       setStreaming(false)
       if (activeSessionId) persist(activeSessionId, null)
     },
-    [accessors, setStreaming, persist, finishAbortedTurn],
+    [accessors, setStreaming, persist, finishAbortedTurn, notifyServerStopRequested],
   )
 
   const editMessage = useCallback(
