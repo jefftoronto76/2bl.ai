@@ -64,7 +64,7 @@ export function UserMessageActions({
   return (
     <div
       className={[
-        'flex items-center justify-end gap-0.5 pr-1',
+        'flex items-center justify-end gap-1.5 pr-1',
         // Hover-gated on pointer devices…
         'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
         // …but ALWAYS visible on touch. Without this the actions are unreachable on mobile.

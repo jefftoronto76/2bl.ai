@@ -66,7 +66,7 @@ export function MessageActions({
   }
 
   return (
-    <div className="relative flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+    <div className="relative flex items-center gap-1.5 opacity-60 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
       {stopped && (
         <span className="mr-1 font-mono text-[10.5px] tracking-wide text-text-muted">Stopped</span>
       )}
