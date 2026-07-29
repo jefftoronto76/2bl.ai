@@ -14,10 +14,11 @@ import { readDataStream } from '@/services/chat/server/stream-utils'
 import { DraftCard } from '@/components/admin/prompt-builder/DraftCard'
 import { Composer, type ComposerPill, UploadSavedRow } from '@/components/admin/prompt-builder/Composer'
 import { ConversationSidebar } from '@/components/admin/prompt-builder/ConversationSidebar'
-import { PromptSetPicker } from '@/components/admin/prompt-builder/PromptSetPicker'
+import { PromptSetSelect } from '@/components/admin/prompt-studio/PromptSetSelect'
+import { mapPromptSetRow, type PromptSet } from '@/components/admin/prompt-studio/promptSet'
 import {
   type BlockType, type Topic, type ChatMessage, type DraftBlock, type ExistingBlock,
-  type DraftCardMeta, type CheckResult, type Conversation, type PromptSet,
+  type DraftCardMeta, type CheckResult, type Conversation,
   TYPES, VALID_TYPES, MAX_EXCHANGES, WARN_THRESHOLD, formatTime,
 } from '@/components/admin/prompt-builder/types'
 
@@ -140,8 +141,13 @@ export default function PromptBuilderPage() {
         // ordinary tenant Settings panel that shares this same route.
         const res = await fetch('/api/admin/prompt-sets?include_composer=true')
         if (res.status === 404 || !res.ok) { setPromptSets([]); setActivePromptSetId(null); return }
-        const body = await res.json()
-        const data: PromptSet[] = Array.isArray(body) ? body : []
+        const body: unknown = await res.json()
+        // The route returns raw snake_case rows (is_composer_prompt, prompt_type_id,
+        // ...) -- map onto the shared camelCase PromptSet shape PromptSetSelect expects,
+        // the same mapping getPromptSets.ts applies server-side for the Blocks picker.
+        const data: PromptSet[] = Array.isArray(body)
+          ? body.map((row) => mapPromptSetRow(row as Record<string, unknown>))
+          : []
         if (data.length === 0) { setPromptSets([]); setActivePromptSetId(null); return }
         setPromptSets(data)
         const liveSet = data.find(s => s.status === 'live')
@@ -350,7 +356,16 @@ export default function PromptBuilderPage() {
   async function createPromptSet(input: { label: string; promptTypeId: string | null; description: string }) {
     const name = input.label.trim()
     if (!name) return
-    const optimistic: PromptSet = { id: 'new-' + Date.now(), label: name, version: 1, status: 'draft' }
+    const optimistic: PromptSet = {
+      id: 'new-' + Date.now(),
+      label: name,
+      version: 1,
+      status: 'draft',
+      promptTypeId: input.promptTypeId,
+      lastCompiledAt: null,
+      compiledVersion: null,
+      isComposerPrompt: false,
+    }
     setPromptSets(prev => [...prev, optimistic])
     setActivePromptSetId(optimistic.id)
     try {
@@ -369,7 +384,10 @@ export default function PromptBuilderPage() {
         if (activePromptSetId === optimistic.id) setActivePromptSetId(null)
         return
       }
-      const saved: PromptSet = await res.json()
+      // PATCH returns the raw row (snake_case) -- map it the same way the
+      // initial fetch does, not a bare cast.
+      const savedRow: unknown = await res.json()
+      const saved: PromptSet = mapPromptSetRow(savedRow as Record<string, unknown>)
       setPromptSets(prev => prev.map(s => (s.id === optimistic.id ? saved : s)))
       setActivePromptSetId(saved.id)
     } catch (err) {
@@ -1021,9 +1039,10 @@ export default function PromptBuilderPage() {
           <div style={{ marginLeft: 'auto' }} />
 
           {promptSets.length > 0 && activePromptSetId && (
-            <PromptSetPicker
+            <PromptSetSelect
               sets={promptSets}
               activeId={activePromptSetId}
+              label="Building in"
               promptTypes={promptTypes}
               onSelect={setActivePromptSetId}
               onCreate={createPromptSet}
