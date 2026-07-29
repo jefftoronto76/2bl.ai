@@ -19,7 +19,7 @@ import { notifications } from '@mantine/notifications'
 import { IconChevronRight, IconPlus, IconSearch } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
-import { PromptSetMetaStrip, PromptSetViewCard } from '@/components/admin/settings/PromptSetCard'
+import { PromptSetMetaStrip, PromptSetViewCard, StatusBadge } from '@/components/admin/settings/PromptSetCard'
 import { type PlatformPromptSet, type PromptSetStatus } from '@/lib/promptSet'
 
 interface Tenant {
@@ -506,23 +506,17 @@ function EditCardFields({
         maxRows={6}
         disabled={saving}
       />
-      <Select
-        label="Status"
-        description="Set by the admin. Multiple sets can be live."
-        data={[
-          { value: 'live', label: 'Live' },
-          { value: 'draft', label: 'Draft' },
-          // Retired is compile-pipeline-owned, never admin-selectable — this option
-          // only appears (disabled) so a retired set's current status still renders
-          // instead of showing an empty Select.
-          ...(draft.status === 'retired' ? [{ value: 'retired', label: 'Retired', disabled: true }] : []),
-        ]}
-        value={draft.status}
-        onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}
-        size="sm"
-        allowDeselect={false}
-        disabled={saving}
-      />
+      {/* Status is server-owned by the compile/publish pipeline — display-only
+          here so this form can't set status='live' with no compile, matching
+          the tenant-side Settings screen (PromptSets.tsx). A new set is
+          always created as 'draft'; activating one only ever happens via
+          Compile & Publish on the Blocks screen. */}
+      <Group gap={8} align="center">
+        <Text variant="label" style={{ fontSize: 'var(--mantine-font-size-sm)' }}>
+          Status
+        </Text>
+        <StatusBadge status={draft.status} />
+      </Group>
       <Select
         label="Type"
         description={isLive ? 'Which prompt type this live set is wired to.' : 'Optional for a draft — set where it’s used when it goes live.'}

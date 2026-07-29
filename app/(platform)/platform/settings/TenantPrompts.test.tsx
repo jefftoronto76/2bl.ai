@@ -145,6 +145,22 @@ describe('TenantPrompts — nested per-tenant tree', () => {
     expect(screen.getByRole('button', { name: /^edit sage base$/i })).toBeInTheDocument()
   })
 
+  it('Status in the Edit modal is a read-only badge, not a Select — Compile & Publish is the only activation path', async () => {
+    const user = userEvent.setup()
+    mockFetch()
+    render(<TenantPrompts />)
+
+    await user.click(await screen.findByRole('button', { name: /jeff lougheed/i }))
+    await user.click(await screen.findByRole('button', { name: /^edit sage base$/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit prompt set' })
+    // Two comboboxes remain (Tenant is read-only TextInput on edit, so just
+    // Type) — none of them is a Status Select.
+    expect(within(dialog).queryByRole('combobox', { name: /status/i })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Status')).toBeInTheDocument()
+    expect(within(dialog).getByText('Live')).toBeInTheDocument()
+  })
+
   it('canceling the modal closes it without changing the list', async () => {
     const user = userEvent.setup()
     mockFetch()
