@@ -607,6 +607,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     editMessage,
     resendMessage,
     dispatchSystemSignal,
+    bumpMemoryCount,
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
@@ -635,7 +636,14 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   }, [messages, memories]);
 
   const memoryHandlers = {
-    onKeep: (memory: MemoryRow) => void memories.keep(memory),
+    onKeep: (memory: MemoryRow) => {
+      void memories.keep(memory);
+      // Sidebar badge (SidebarV2, via recentSessions) doesn't share state with
+      // this hook — reconcile it locally rather than waiting on the next full
+      // /api/sessions refetch. Server truth (services/crm/sessions.ts's bulk
+      // count) is unaffected either way.
+      bumpMemoryCount(memory.session_id, 1);
+    },
     onRewrite: (memory: MemoryRow) => {
       pendingRewriteRef.current = {
         memoryId: memory.id,
@@ -647,6 +655,9 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
         `The visitor wants to revise the memory titled "${memory.title}". Ask them, briefly and warmly, what they'd like to change about it.`,
       );
     },
+    // Discard is only ever reachable from the draft card (MemorySavedReceipt
+    // has no Discard action) — a discarded memory never counted toward the
+    // published total, so there's nothing to reconcile in recentSessions here.
     onDiscard: (memory: MemoryRow) => void memories.discard(memory),
   };
 

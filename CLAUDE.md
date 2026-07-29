@@ -1545,3 +1545,30 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   reach into `app` or `src` internals. This is the same allowance the
   `components/shells/` widget + membership shells will consume in Steps E/F. The
   rule stays at `warn` until the shells land and Step G flips it to `error`.
+- **Memories (Heirloom) — Manual path shipped 2026-07-29; Offered and Auto are
+  not, and Offered is explicitly blocked, not just deferred.** The memory
+  bookmark, card (running/draft/saved/error states), and Keep/Rewrite/Discard
+  all ship in this pass — see `services/chat/ui/v1/useMemories.ts`,
+  `components/shells/membership/memory/`, and the bookmark on
+  `components/chat/MessageActions.tsx` / `UserMessageActions.tsx` (behind
+  `onKeep`, which the jefflougheed widget shell doesn't pass — memories are
+  Heirloom-only). Two of the design's three creation paths are **not** built:
+  - **Offered** (the guide asks inline via "Write it up" / "Not yet" chips)
+    needs the guide to know memories exist at all — a new marker plus prompt
+    instructions telling it when to emit one. Heirloom has no compiled system
+    prompt of its own yet; it falls back to jefflougheed's shared
+    `DEFAULT_SYSTEM_PROMPT` (see the Heirloom storefront chat section's
+    "Tenant note" above). Editing that shared prompt to teach the guide about
+    memories would leak Heirloom-only behavior into jefflougheed's Sage chat.
+    **Do not work around this by touching the shared default prompt** — it
+    stays blocked until Heirloom has its own compiled prompt (already a
+    separate, pre-existing follow-up item), not something to route around.
+  - **Auto** (the guide invokes a save tool itself, mid-conversation) needs
+    real tool-calling infrastructure — `services/chat/server/stream.ts`'s
+    `streamText()` call passes no `tools` today; there is no tool-use wiring
+    anywhere in this codebase. Deferred to a later phase once that capability
+    exists.
+  Also not in this pass: the story-linking concept entirely — a memory does
+  not require a story to be saved (there is no `stories` table), and when
+  story-linking is eventually built it should be many-to-many (a memory
+  connecting to more than one thing), not a single column on `artifacts`.

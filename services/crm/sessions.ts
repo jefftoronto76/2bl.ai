@@ -131,6 +131,8 @@ export interface ChatSessionSummary {
   visitor_name: string | null
   title: string | null
   starred: boolean
+  /** Count of published (kept) memories anchored to this session — see memoriesBySession below. */
+  memory_count: number
 }
 
 /**
@@ -158,8 +160,38 @@ export async function listSessions(
     return { ok: false, status: 500, error: error.message }
   }
 
-  console.log('[sessions/route GET] listed sessions:', data?.length ?? 0, '| user_id:', userId, '| tenant_id:', tenantId)
-  return { ok: true, data: (data ?? []) as ChatSessionSummary[] }
+  const sessionRows = data ?? []
+
+  // Single bulk fetch for the whole list's published-memory counts, keyed by
+  // session_id — avoids one query per session (N+1), same pattern
+  // getInboundChats uses for message_feedback (services/crm/inbound.ts).
+  // Draft memories (awaiting Keep/Rewrite/Discard) don't count — "kept" means
+  // published.
+  const memoriesBySession = new Map<string, number>()
+  if (sessionRows.length > 0) {
+    const { data: memoryRows, error: memoryError } = await supabase
+      .from('artifacts')
+      .select('session_id')
+      .eq('tenant_id', tenantId)
+      .eq('type', 'memory')
+      .eq('status', 'published')
+      .in('session_id', sessionRows.map(s => s.id))
+
+    if (memoryError) {
+      console.error('[sessions/route GET] memory count fetch error:', JSON.stringify(memoryError))
+    }
+    for (const row of (memoryRows ?? []) as { session_id: string }[]) {
+      memoriesBySession.set(row.session_id, (memoriesBySession.get(row.session_id) ?? 0) + 1)
+    }
+  }
+
+  const withCounts: ChatSessionSummary[] = sessionRows.map(s => ({
+    ...s,
+    memory_count: memoriesBySession.get(s.id) ?? 0,
+  })) as ChatSessionSummary[]
+
+  console.log('[sessions/route GET] listed sessions:', withCounts.length, '| user_id:', userId, '| tenant_id:', tenantId)
+  return { ok: true, data: withCounts }
 }
 
 /**

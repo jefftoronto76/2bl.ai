@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
+  Bookmark,
   ChevronRight,
   Clock,
   FolderInput,
@@ -121,6 +122,26 @@ function SectionLabel({
       </span>
       {trailing && <span className="ml-auto">{trailing}</span>}
     </div>
+  );
+}
+
+// ── Memory count mark ───────────────────────────────────────────────────────
+// One mark — accent bookmark + mono numeral — used on both conversation rows
+// and the section header's aggregate, so they read as one system. Rows/totals
+// with no memories render NOTHING — the absence is what makes a marked row a
+// signal. Counts are derived from each session's own memory_count (itself
+// derived server-side from published artifacts rows — see
+// services/crm/sessions.ts) — never stored beyond that.
+function SidebarMemoryCount({ count }: { count: number }) {
+  if (!count) return null;
+  return (
+    <span
+      title={`${count} ${count === 1 ? 'memory' : 'memories'} kept`}
+      className="inline-flex shrink-0 items-center gap-[3px] text-accent"
+    >
+      <Bookmark size={11} />
+      <span className="font-mono text-[10.5px] leading-none">{count}</span>
+    </span>
   );
 }
 
@@ -332,6 +353,7 @@ export function SidebarV2({
   // to <body> with fixed positioning — see RowMenu).
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
   const searchRevealed = recentSessions.length >= searchThreshold;
+  const totalMemoryCount = recentSessions.reduce((sum, s) => sum + s.memoryCount, 0);
 
   // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
   // its window listener on every SidebarV2 render.
@@ -438,6 +460,7 @@ export function SidebarV2({
                 <span className="font-body text-sm font-normal truncate flex-1 text-left">
                   Memories
                 </span>
+                <SidebarMemoryCount count={totalMemoryCount} />
                 <ChevronRight
                   size={14}
                   className={`text-text-muted transition-transform ${convosOpen ? 'rotate-90' : ''}`}
@@ -483,6 +506,7 @@ export function SidebarV2({
                           {session.title}
                         </button>
                       )}
+                      <SidebarMemoryCount count={session.memoryCount} />
                       {onRowAction && (
                         // One 28×28 slot: star marker at rest, kebab on hover.
                         // Both fill the same absolute box — no layout shift.
