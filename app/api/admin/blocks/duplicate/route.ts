@@ -1,5 +1,7 @@
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { duplicateBlock } from '@/services/prompt/blocks'
+import { resolveTenantForPromptSet } from '@/services/prompt'
 
 /**
  * POST /api/admin/blocks/duplicate
@@ -30,7 +32,28 @@ export async function POST(req: Request) {
     return Response.json({ error: 'source_id is required' }, { status: 400 })
   }
 
-  const result = await duplicateBlock(authCtx, sourceId)
+  // Resolve which prompt_set the SOURCE block belongs to (unscoped by
+  // tenant — see resolveTenantForPromptSet). A miss just means an
+  // ordinary/unknown block; duplicateBlock's own tenant-scoped lookup still
+  // 404s normally in that case.
+  const { data: sourceRow } = await getAdminClient()
+    .from('blocks')
+    .select('prompt_set_id')
+    .eq('id', sourceId)
+    .maybeSingle()
+
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(
+    (sourceRow?.prompt_set_id as string | null) ?? null,
+    authCtx,
+    user?.isPlatformAdmin === true,
+  )
+  if (!tenantResult.ok) {
+    return Response.json({ error: tenantResult.error }, { status: tenantResult.status })
+  }
+  const scope = { owner_id: authCtx.owner_id, tenant_id: tenantResult.tenantId }
+
+  const result = await duplicateBlock(scope, sourceId)
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }

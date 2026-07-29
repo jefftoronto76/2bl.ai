@@ -8,10 +8,15 @@
 export { getSystemPrompt, QUESTION_MODE_CONTEXT, DEFAULT_SYSTEM_PROMPT } from './compiler'
 
 // Master-prompt compilation + manual save
-export { compilePrompt } from './compile'
-export type { CompileResult, CompileSuccess } from './compile'
+export { compilePrompt, buildCompiledContent } from './compile'
+export type { CompileResult, CompileSuccess, BuildContentResult } from './compile'
 export { saveCompiledPrompt } from './save'
 export type { SaveResult } from './save'
+
+// Cross-tenant resolution for a specific prompt_set (composer-family override
+// + platform-admin gate)
+export { resolveTenantForPromptSet } from './resolve-tenant-for-prompt-set'
+export type { ResolveTenantForPromptSetResult } from './resolve-tenant-for-prompt-set'
 
 // Block CRUD
 export { listActiveBlocks, updateBlock, createBlock, duplicateBlock } from './blocks'

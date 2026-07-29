@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/services/auth'
-import { buildCompiledContent } from '@/services/prompt/compile'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { buildCompiledContent, resolveTenantForPromptSet } from '@/services/prompt'
 
 export async function POST(req: NextRequest) {
   let authCtx: { owner_id: string; tenant_id: string }
@@ -17,7 +17,13 @@ export async function POST(req: NextRequest) {
       ? body.prompt_set_id
       : null
 
-  const result = await buildCompiledContent(authCtx.tenant_id, promptSetId)
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(promptSetId, authCtx, user?.isPlatformAdmin === true)
+  if (!tenantResult.ok) {
+    return NextResponse.json({ error: tenantResult.error }, { status: tenantResult.status })
+  }
+
+  const result = await buildCompiledContent(tenantResult.tenantId, promptSetId)
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
