@@ -245,6 +245,39 @@ export async function updateSession(
   return { ok: true, data: null }
 }
 
+/**
+ * Reads back a session's raw `messages` jsonb, tenant-scoped — the same
+ * cross-tenant IDOR guard every other read/write in this file uses. Backs
+ * the archivist call (services/chat/server/memory-archivist.ts), which needs
+ * the transcript up to and including the anchor message to write the memory
+ * from. Deliberately narrow (messages only) rather than reusing
+ * ChatSessionSummary, which is shaped for the signed-in Recent list.
+ */
+export async function getSessionMessages(
+  tenantId: string,
+  id: string,
+): Promise<SessionResult<{ messages: unknown }>> {
+  const supabase = getAdminClient('[sessions/[id]/messages]')
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('messages')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[sessions/[id]/messages] select error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[sessions/[id]/messages] no session matched id + tenant:', { id, tenant_id: tenantId })
+    return { ok: false, status: 404, error: 'Session not found' }
+  }
+
+  return { ok: true, data: { messages: data.messages } }
+}
+
 export interface TransferSessionRow {
   id: string
   prev_user_id: string | null
