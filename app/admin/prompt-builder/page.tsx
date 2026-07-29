@@ -135,7 +135,10 @@ export default function PromptBuilderPage() {
   useEffect(() => {
     async function fetchPromptSets() {
       try {
-        const res = await fetch('/api/admin/prompt-sets')
+        // include_composer: this IS the composer authoring surface — the
+        // "Building in" picker needs to see composer-family sets, unlike the
+        // ordinary tenant Settings panel that shares this same route.
+        const res = await fetch('/api/admin/prompt-sets?include_composer=true')
         if (res.status === 404 || !res.ok) { setPromptSets([]); setActivePromptSetId(null); return }
         const body = await res.json()
         const data: PromptSet[] = Array.isArray(body) ? body : []

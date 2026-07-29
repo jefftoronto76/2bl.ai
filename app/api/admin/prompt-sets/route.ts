@@ -18,7 +18,7 @@ function isStatus(value: unknown): value is PromptSetStatus {
   return typeof value === 'string' && (VALID_STATUS as readonly string[]).includes(value)
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   let authCtx: { owner_id: string; tenant_id: string }
   try {
     authCtx = await getAuthContext()
@@ -27,19 +27,31 @@ export async function GET() {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Two different callers share this one route:
+  //   - The ordinary tenant Settings "Prompt Sets" panel (default) — composer-
+  //     family sets are managed exclusively from Platform Settings + Blocks,
+  //     never here, even for the SBL tenant itself.
+  //   - The Composer editor's own "Building in" picker
+  //     (app/admin/prompt-builder/page.tsx), which IS the composer authoring
+  //     context — it needs to see composer-family sets (on the SBL tenant,
+  //     that's the ONLY kind of set there is), so it opts in with
+  //     ?include_composer=true rather than getting the exclusion.
+  const includeComposer = new URL(req.url).searchParams.get('include_composer') === 'true'
+
   const supabase = getAdminClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('prompt_sets_with_compile_meta')
     .select(SELECT_COLUMNS_WITH_META)
     .eq('tenant_id', authCtx.tenant_id)
-    // This is the ordinary tenant Settings screen — composer-family sets
-    // (is_composer_prompt=true) are managed exclusively from Platform
-    // Settings + Blocks, never here, even for the SBL tenant itself. `.not(
-    // ..., 'is', true)` rather than `.eq(..., false)` so a NULL (there
+
+  if (!includeComposer) {
+    // `.not(..., 'is', true)` rather than `.eq(..., false)` so a NULL (there
     // shouldn't be one — the column is NOT NULL DEFAULT false — but this
     // reads as "IS NOT TRUE" either way) is excluded too, not just `false`.
-    .not('is_composer_prompt', 'is', true)
-    .order('created_at', { ascending: false })
+    query = query.not('is_composer_prompt', 'is', true)
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false })
 
   if (error) {
     console.error('[prompt-sets] fetch failed:', error.message)
@@ -47,7 +59,7 @@ export async function GET() {
   }
 
   const promptSets: PromptSet[] = data ?? []
-  console.log('[prompt-sets] GET', { tenant_id: authCtx.tenant_id, count: promptSets.length })
+  console.log('[prompt-sets] GET', { tenant_id: authCtx.tenant_id, count: promptSets.length, includeComposer })
 
   return Response.json(promptSets)
 }
