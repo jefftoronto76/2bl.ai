@@ -32,6 +32,13 @@ export async function GET() {
     .from('prompt_sets_with_compile_meta')
     .select(SELECT_COLUMNS_WITH_META)
     .eq('tenant_id', authCtx.tenant_id)
+    // This is the ordinary tenant Settings screen — composer-family sets
+    // (is_composer_prompt=true) are managed exclusively from Platform
+    // Settings + Blocks, never here, even for the SBL tenant itself. `.not(
+    // ..., 'is', true)` rather than `.eq(..., false)` so a NULL (there
+    // shouldn't be one — the column is NOT NULL DEFAULT false — but this
+    // reads as "IS NOT TRUE" either way) is excluded too, not just `false`.
+    .not('is_composer_prompt', 'is', true)
     .order('created_at', { ascending: false })
 
   if (error) {
