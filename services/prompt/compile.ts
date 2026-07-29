@@ -228,12 +228,16 @@ export async function compilePrompt(
   // 5. Clear-then-set, BOTH tables, same (tenant_id, prompt_type_id) slot —
   //    mirrors the is_composer_prompt pattern (clear siblings first so the
   //    partial unique index never sees two live rows, then write the target
-  //    live). Excludes the target's own current row/set from the clear query
-  //    (a no-op optimization, not a correctness requirement — the write below
-  //    sets it live explicitly regardless).
+  //    live). Demoted siblings go to 'retired', not 'draft' — 'draft' means
+  //    genuinely never-published, and these rows were live a moment ago. Both
+  //    queries below are pre-scoped to status='live', so only rows that were
+  //    actually live get retired; a row already 'draft' is never touched.
+  //    Excludes the target's own current row/set from the clear query (a no-op
+  //    optimization, not a correctness requirement — the write below sets it
+  //    live explicitly regardless).
   let clearSiblingCompiled = supabase
     .from('compiled_prompts')
-    .update({ status: 'draft' })
+    .update({ status: 'retired' })
     .eq('tenant_id', tenantId)
     .eq('status', 'live')
   clearSiblingCompiled = promptTypeId
@@ -250,7 +254,7 @@ export async function compilePrompt(
   if (promptSetId) {
     let clearSiblingSets = supabase
       .from('prompt_sets')
-      .update({ status: 'draft' })
+      .update({ status: 'retired' })
       .eq('tenant_id', tenantId)
       .eq('status', 'live')
       .neq('id', promptSetId)

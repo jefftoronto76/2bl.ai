@@ -111,7 +111,7 @@ function makeClient({
         return {
           select: () => makeQuery({ data: existing, error: null }),
           update(payload: unknown) {
-            const isClear = (payload as Record<string, unknown>)?.status === 'draft'
+            const isClear = (payload as Record<string, unknown>)?.status === 'retired'
             return makeQuery({ error: isClear ? clearCompiledError : updateError }, filters => {
               if (isClear) compiledClearUpdates.push({ payload, filters })
               else compiledMainUpdates.push({ payload, filters })
@@ -130,7 +130,7 @@ function makeClient({
               promptSetsSelects.push(filters)
             }),
           update(payload: unknown) {
-            const isClear = (payload as Record<string, unknown>)?.status === 'draft'
+            const isClear = (payload as Record<string, unknown>)?.status === 'retired'
             return makeQuery({ error: isClear ? clearSetsError : activateSetError }, filters => {
               if (isClear) setsClearUpdates.push({ payload, filters })
               else setsActivateUpdates.push({ payload, filters })
@@ -282,7 +282,7 @@ describe('compilePrompt — single-live-per-(tenant_id, prompt_type_id) activati
     expect(result.ok).toBe(true)
     expect(compiledClearUpdates).toHaveLength(1)
     const { payload, filters } = compiledClearUpdates[0]
-    expect(payload).toEqual({ status: 'draft' })
+    expect(payload).toEqual({ status: 'retired' })
     expect(hasFilter(filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
     expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
     expect(hasFilter(filters, 'eq', 'prompt_type_id', 'type-base')).toBe(true)
@@ -344,7 +344,7 @@ describe('compilePrompt — single-live-per-(tenant_id, prompt_type_id) activati
 
     expect(setsClearUpdates).toHaveLength(1)
     const { payload, filters } = setsClearUpdates[0]
-    expect(payload).toEqual({ status: 'draft' })
+    expect(payload).toEqual({ status: 'retired' })
     expect(hasFilter(filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
     expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
     expect(hasFilter(filters, 'eq', 'prompt_type_id', 'type-base')).toBe(true)

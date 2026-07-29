@@ -22,7 +22,7 @@ interface PlatformPromptSet {
   tenant_name: string
   label: string
   description: string | null
-  status: 'live' | 'draft'
+  status: 'live' | 'draft' | 'retired'
   is_composer_prompt: boolean
   is_default: boolean
   prompt_type_id: string | null
@@ -86,7 +86,7 @@ export async function GET() {
 // Server-owned, NEVER written here: version / is_composer_prompt / is_default /
 // timestamps / the derived compile metadata. Only label / description / status /
 // prompt_type_id (and tenant_id on insert) are client-supplied.
-const VALID_STATUS = ['live', 'draft'] as const
+const VALID_STATUS = ['live', 'draft', 'retired'] as const
 type PatchStatus = (typeof VALID_STATUS)[number]
 const isStatus = (v: unknown): v is PatchStatus => typeof v === 'string' && (VALID_STATUS as readonly string[]).includes(v)
 

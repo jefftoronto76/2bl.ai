@@ -24,7 +24,7 @@ export interface Tenant {
 }
 
 /* ── prompt sets ────────────────────────────────────────────────────────── */
-export type PromptSetStatus = 'live' | 'draft'
+export type PromptSetStatus = 'live' | 'draft' | 'retired'
 
 export interface PromptSet {
   id: string
@@ -184,8 +184,13 @@ export interface SelectOption {
 /** services/prompt/tokenize.ts — ceil(chars / 4). */
 export const tokensFor = (text: string): number => Math.ceil((text || '').length / 4)
 
-export const statusLabel = (status: string): string =>
-  status.toLowerCase() === 'live' ? 'Live' : 'Draft'
+export const statusLabel = (status: string): string => {
+  switch (status.toLowerCase()) {
+    case 'live': return 'Live'
+    case 'retired': return 'Retired'
+    default: return 'Draft'
+  }
+}
 
 export const initials = (name: string): string => {
   const p = name.trim().split(/\s+/)
