@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { resolveTenantForPromptSet } from '@/services/prompt'
 import { Box, Center, Flex, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import type { Topic } from '@/components/admin/content/BlockEditForm'
@@ -27,6 +28,29 @@ const FALLBACK_CONTENT_STYLE: CSSProperties = {
   flex: 1,
 }
 
+function BlocksFallback({ message }: { message: string }) {
+  return (
+    <Stack h="100%" gap={0}>
+      <Flex
+        direction={{ base: 'column', sm: 'row' }}
+        justify="space-between"
+        align={{ base: 'stretch', sm: 'center' }}
+        gap="sm"
+        px={{ base: 16, sm: 24 }}
+        py={{ base: 12, sm: 16 }}
+        style={HEADER_FRAME_STYLE}
+      >
+        <Title order={1} fz="lg" fw={600}>
+          Blocks
+        </Title>
+      </Flex>
+      <Center p="md" style={FALLBACK_CONTENT_STYLE}>
+        <Text variant="muted">{message}</Text>
+      </Center>
+    </Stack>
+  )
+}
+
 export default async function BlocksPage({
   searchParams,
 }: {
@@ -34,32 +58,25 @@ export default async function BlocksPage({
 }) {
   const { set: requestedSet } = await searchParams
 
-  let tenantId: string
+  let authCtx: { owner_id: string; tenant_id: string }
   try {
-    const authCtx = await getAuthContext()
-    tenantId = authCtx.tenant_id
+    authCtx = await getAuthContext()
   } catch {
-    return (
-      <Stack h="100%" gap={0}>
-        <Flex
-          direction={{ base: 'column', sm: 'row' }}
-          justify="space-between"
-          align={{ base: 'stretch', sm: 'center' }}
-          gap="sm"
-          px={{ base: 16, sm: 24 }}
-          py={{ base: 12, sm: 16 }}
-          style={HEADER_FRAME_STYLE}
-        >
-          <Title order={1} fz="lg" fw={600}>
-            Blocks
-          </Title>
-        </Flex>
-        <Center p="md" style={FALLBACK_CONTENT_STYLE}>
-          <Text variant="muted">Unable to load blocks.</Text>
-        </Center>
-      </Stack>
-    )
+    return <BlocksFallback message="Unable to load blocks." />
   }
+
+  // Composer-family sets (is_composer_prompt=true) belong to the SBL/platform
+  // tenant, which almost never matches a platform admin's own session tenant
+  // — getAuthContext() resolves by host/membership, unrelated to which set
+  // ?set= is asking for. When the requested set IS composer-family, this
+  // overrides tenantId to the set's own tenant and requires isPlatformAdmin;
+  // otherwise it's a no-op and tenantId stays exactly what it was.
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(requestedSet ?? null, authCtx, user?.isPlatformAdmin === true)
+  if (!tenantResult.ok) {
+    return <BlocksFallback message={tenantResult.error} />
+  }
+  const tenantId = tenantResult.tenantId
 
   const supabase = getAdminClient()
 

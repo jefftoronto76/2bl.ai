@@ -1,77 +1,77 @@
 'use client'
 
-// MasterPromptPicker — the cross-tenant prompt-set selector on Platform Settings.
-// Presentational only: options, the pending selection, the live masterId, and
-// onSelect are all driven by page.tsx (which owns the fetch + Save). Rebuilt in
-// Mantine (per CLAUDE.md: admin/platform surfaces are Mantine v7, not CSS modules)
-// as a searchable Select — the list spans every tenant, so search matters.
+// MasterPromptPicker — Platform Settings → Composer Prompt. A read-only list
+// of composer-family prompt sets (is_composer_prompt = true — page.tsx
+// filters), each with an Edit pencil that routes to Blocks.
+//
+// There is no Select/Save here anymore (July 2026): the old picker flipped
+// is_composer_prompt directly as a bare live pointer, with no compile step,
+// no release note, and no real audit trail. Compile & Publish on the Blocks
+// screen — reached via the pencil below — is now the only way to make a
+// composer set live, same as it already is for every ordinary tenant set.
+// See CLAUDE.md Known Gaps for the retired master-prompt PUT route.
+//
+// No per-row "Composer Prompt" badge: every row in this list is already
+// composer-family by construction, so the status badge (Live/Draft/Retired)
+// is the only marker needed — unlike the old cross-tenant, unfiltered list,
+// where it distinguished composer sets from ordinary ones.
 
-import { Badge, Box, Group, Paper, Select, Text } from '@mantine/core'
+import { ActionIcon, Badge, Box, Group, Paper, Stack, Text, Tooltip } from '@mantine/core'
+import { IconPencil } from '@tabler/icons-react'
 import { type MasterPromptOption, statusLabel } from './types'
 
-interface MasterPromptPickerProps {
-  options: MasterPromptOption[]
-  /** The pending selection (defaults to the current master on load). */
-  selectedId: string | null
-  /** The set currently live as master — gets the "Master" badge in the list. */
-  masterId: string | null
-  onSelect: (id: string) => void
-  disabled?: boolean
+function RowStatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase()
+  const color = normalized === 'live' ? 'green' : normalized === 'retired' ? 'gray' : 'yellow'
+  return (
+    <Badge size="sm" radius="sm" variant="light" color={color} style={{ flexShrink: 0 }}>
+      {statusLabel(status)}
+    </Badge>
+  )
 }
 
-export function MasterPromptPicker({ options, selectedId, masterId, onSelect, disabled }: MasterPromptPickerProps) {
-  const byId = new Map(options.map((o) => [o.id, o]))
+interface MasterPromptPickerProps {
+  /** Composer-family sets only — page.tsx filters. */
+  options: MasterPromptOption[]
+  /** Route to the Blocks screen for this set, with it selected. */
+  onEdit: (option: MasterPromptOption) => void
+}
 
-  // Search matches on label OR tenant name (the dropdown spans every tenant).
-  const data = options.map((o) => ({ value: o.id, label: `${o.label} — ${o.tenantName}` }))
+export function MasterPromptPicker({ options, onEdit }: MasterPromptPickerProps) {
+  if (options.length === 0) return null
 
   return (
-    <Select
-      label="System prompt set"
-      placeholder="Select a prompt set…"
-      data={data}
-      value={selectedId}
-      onChange={(value) => {
-        if (value) onSelect(value)
-      }}
-      searchable
-      nothingFoundMessage="No matching prompt sets"
-      disabled={disabled}
-      maxDropdownHeight={320}
-      comboboxProps={{ withinPortal: true }}
-      renderOption={({ option }) => {
-        const o = byId.get(option.value)
-        if (!o) return <Text size="sm">{option.label}</Text>
-        const isLive = o.status.toLowerCase() === 'live'
-        return (
-          <Group justify="space-between" wrap="nowrap" w="100%" gap="sm">
-            <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-              <Text size="sm" fw={500} truncate>
-                {o.label}
-              </Text>
-              <Text size="xs" c="dimmed" truncate>
-                · {o.tenantName}
-              </Text>
-            </Group>
-            <Group gap={6} wrap="nowrap">
+    <Stack gap="xs">
+      {options.map((o) => (
+        <Paper key={o.id} withBorder radius="sm" p="sm">
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Text size="sm" fw={500} truncate style={{ minWidth: 0 }}>
+              {o.label}
+            </Text>
+            <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
               {o.version != null && (
-                <Text size="xs" c="dimmed" ff="monospace">
+                <Text size="xs" c="dimmed" ff="monospace" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
                   v{o.version}
                 </Text>
               )}
-              <Badge size="sm" radius="sm" variant="light" color={isLive ? 'green' : 'yellow'}>
-                {statusLabel(o.status)}
-              </Badge>
-              {o.id === masterId && (
-                <Badge size="sm" radius="sm" variant="filled" color="green">
-                  Composer Prompt
-                </Badge>
-              )}
+              <RowStatusBadge status={o.status} />
+              <Tooltip label="Edit blocks" withArrow position="left" openDelay={400}>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  aria-label={`Edit ${o.label} in Blocks`}
+                  style={{ flexShrink: 0 }}
+                  onClick={() => onEdit(o)}
+                >
+                  <IconPencil size={14} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
           </Group>
-        )
-      }}
-    />
+        </Paper>
+      ))}
+    </Stack>
   )
 }
 

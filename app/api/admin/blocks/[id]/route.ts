@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAdminClient } from '@/services/auth/supabase-admin'
 import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
+import { resolveTenantForPromptSet } from '@/services/prompt'
 import { BLOCK_TYPES } from '@/services/prompt/block-types'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -20,6 +22,28 @@ export async function PATCH(
   }
 
   const { id } = await params
+
+  // Resolve which prompt_set this block belongs to (unscoped by tenant —
+  // that's the point: a composer-family block's own tenant_id is what
+  // resolveTenantForPromptSet needs to check, not the caller's session
+  // tenant). A miss here just means an ordinary/unknown block; the
+  // downstream updateBlock call still tenant-scopes and 404s normally.
+  const { data: blockRow } = await getAdminClient()
+    .from('blocks')
+    .select('prompt_set_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(
+    (blockRow?.prompt_set_id as string | null) ?? null,
+    authCtx,
+    user?.isPlatformAdmin === true,
+  )
+  if (!tenantResult.ok) {
+    return Response.json({ error: tenantResult.error }, { status: tenantResult.status })
+  }
+  const scope = { owner_id: authCtx.owner_id, tenant_id: tenantResult.tenantId }
 
   let body: { status?: string; title?: string; body?: string; order?: number; type?: string }
   try {
@@ -71,7 +95,7 @@ export async function PATCH(
     return Response.json({ error: 'No updates provided' }, { status: 400 })
   }
 
-  const result = await updateBlock(authCtx, id, updates)
+  const result = await updateBlock(scope, id, updates)
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
@@ -82,7 +106,7 @@ export async function PATCH(
 
   void logEvent({
     action,
-    tenant_id: authCtx.tenant_id,
+    tenant_id: scope.tenant_id,
     actor_id: authCtx.owner_id,
     target_type: 'block',
     target_id: id,

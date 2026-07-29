@@ -24,9 +24,17 @@ interface FilterCall {
 // this feature's correctness lives entirely in the WHERE clauses. Resolves to
 // `result` whether the caller awaits it directly (a .then() consumer) or calls
 // a terminal .maybeSingle()/.single().
-function makeQuery(result: unknown, onSettle?: (filters: FilterCall[]) => void) {
+// `result` may be a plain value, or a function of the accumulated filters —
+// needed for a query whose outcome depends on filters only known once the
+// caller finishes chaining .eq()/.is()/etc (e.g. distinguishing the
+// composer-clear update from the type-clear update, which share a payload).
+function makeQuery(
+  result: unknown | ((filters: FilterCall[]) => unknown),
+  onSettle?: (filters: FilterCall[]) => void,
+) {
   const filters: FilterCall[] = []
   const obj: Record<string, unknown> = {}
+  const resolveResult = () => (typeof result === 'function' ? (result as (f: FilterCall[]) => unknown)(filters) : result)
   for (const fn of ['eq', 'is', 'in', 'or', 'neq', 'limit', 'order', 'select']) {
     obj[fn] = (...args: unknown[]) => {
       filters.push({ fn, args })
@@ -34,16 +42,19 @@ function makeQuery(result: unknown, onSettle?: (filters: FilterCall[]) => void) 
     }
   }
   obj.maybeSingle = async () => {
+    const resolved = resolveResult()
     onSettle?.(filters)
-    return result
+    return resolved
   }
   obj.single = async () => {
+    const resolved = resolveResult()
     onSettle?.(filters)
-    return result
+    return resolved
   }
   obj.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+    const resolved = resolveResult()
     onSettle?.(filters)
-    return Promise.resolve(result).then(resolve, reject)
+    return Promise.resolve(resolved).then(resolve, reject)
   }
   return obj
 }
@@ -65,13 +76,14 @@ function makeClient({
   blocks = [ACTIVE_BLOCK],
   blocksError = null,
   existing = null as Record<string, unknown> | null,
-  targetSet = { id: 'set-1', prompt_type_id: null } as Record<string, unknown> | null,
+  targetSet = { id: 'set-1', prompt_type_id: null, is_composer_prompt: false } as Record<string, unknown> | null,
   targetSetError = null,
   historyInsertError = null,
   updateError = null,
   insertError = null,
   clearCompiledError = null,
   clearSetsError = null,
+  clearComposerSetsError = null,
   activateSetError = null,
 }: {
   blocks?: unknown[]
@@ -84,6 +96,7 @@ function makeClient({
   insertError?: unknown
   clearCompiledError?: unknown
   clearSetsError?: unknown
+  clearComposerSetsError?: unknown
   activateSetError?: unknown
 } = {}) {
   const historyInserts: unknown[] = []
@@ -91,8 +104,12 @@ function makeClient({
   const compiledMainUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
   const compiledInserts: unknown[] = []
   const setsClearUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
+  const composerClearUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
   const setsActivateUpdates: Array<{ payload: unknown; filters: FilterCall[] }> = []
   const promptSetsSelects: FilterCall[][] = []
+
+  const isComposerClearFilters = (filters: FilterCall[]) =>
+    filters.some(f => f.fn === 'eq' && f.args[0] === 'is_composer_prompt' && f.args[1] === true)
 
   const client = {
     from(table: string) {
@@ -131,10 +148,21 @@ function makeClient({
             }),
           update(payload: unknown) {
             const isClear = (payload as Record<string, unknown>)?.status === 'retired'
-            return makeQuery({ error: isClear ? clearSetsError : activateSetError }, filters => {
-              if (isClear) setsClearUpdates.push({ payload, filters })
-              else setsActivateUpdates.push({ payload, filters })
-            })
+            if (!isClear) {
+              return makeQuery({ error: activateSetError }, filters => {
+                setsActivateUpdates.push({ payload, filters })
+              })
+            }
+            // Composer-clear and type-clear share the exact same payload
+            // ({status: 'retired'}) — only distinguishable by which filter
+            // this particular call chained, known only once resolved.
+            return makeQuery(
+              (filters: FilterCall[]) => ({ error: isComposerClearFilters(filters) ? clearComposerSetsError : clearSetsError }),
+              filters => {
+                if (isComposerClearFilters(filters)) composerClearUpdates.push({ payload, filters })
+                else setsClearUpdates.push({ payload, filters })
+              },
+            )
           },
         }
       }
@@ -149,6 +177,7 @@ function makeClient({
     compiledMainUpdates,
     compiledInserts,
     setsClearUpdates,
+    composerClearUpdates,
     setsActivateUpdates,
     promptSetsSelects,
   }
@@ -410,5 +439,93 @@ describe('compilePrompt — single-live-per-(tenant_id, prompt_type_id) activati
     if (result.ok) return
     expect(result.status).toBe(409)
     expect(result.error).toMatch(/just landed/i)
+  })
+
+  it('surfaces a unique-constraint race on the prompt_sets activation UPDATE as a friendly 409, not a raw 500', async () => {
+    const { client } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base' },
+      activateSetError: { code: '23505', message: 'duplicate key value violates unique constraint "prompt_sets_single_composer_idx"' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(409)
+    expect(result.error).toMatch(/just landed/i)
+  })
+})
+
+describe('compilePrompt — composer-family exclusivity (is_composer_prompt, July 2026)', () => {
+  beforeEach(() => {
+    adminHolder.client = null
+  })
+
+  it('publishing a composer set clears any other live composer set, independent of type slot', async () => {
+    const { client, composerClearUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-composer-b', prompt_type_id: null, is_composer_prompt: true },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-sbl', 'set-composer-b', NOTE)
+
+    expect(result.ok).toBe(true)
+    expect(composerClearUpdates).toHaveLength(1)
+    const { payload, filters } = composerClearUpdates[0]
+    expect(payload).toEqual({ status: 'retired' })
+    expect(hasFilter(filters, 'eq', 'is_composer_prompt', true)).toBe(true)
+    expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
+    expect(hasFilter(filters, 'neq', 'id', 'set-composer-b')).toBe(true)
+    // Platform-wide — never scoped to tenant_id or prompt_type_id, unlike the
+    // ordinary type-based clear (a composer set in a different type slot must
+    // still be caught).
+    expect(filters.some(f => f.fn === 'eq' && f.args[0] === 'tenant_id')).toBe(false)
+    expect(filters.some(f => f.args[0] === 'prompt_type_id')).toBe(false)
+  })
+
+  it('publishing an ordinary (non-composer) set never runs the composer clear', async () => {
+    const { client, composerClearUpdates, setsClearUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-1', prompt_type_id: 'type-base', is_composer_prompt: false },
+    })
+    adminHolder.client = client
+
+    await compilePrompt('tenant-1', 'set-1', NOTE)
+
+    expect(composerClearUpdates).toHaveLength(0)
+    // The ordinary type-based clear still runs, unaffected.
+    expect(setsClearUpdates).toHaveLength(1)
+  })
+
+  it('a composer set still gets the ordinary type-based clear too, when it has a type', async () => {
+    const { client, setsClearUpdates, composerClearUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-composer-a', prompt_type_id: 'type-base', is_composer_prompt: true },
+    })
+    adminHolder.client = client
+
+    await compilePrompt('tenant-sbl', 'set-composer-a', NOTE)
+
+    expect(setsClearUpdates).toHaveLength(1)
+    expect(composerClearUpdates).toHaveLength(1)
+  })
+
+  it('propagates a failure from the composer clear step as a 500, without activating', async () => {
+    const { client, setsActivateUpdates } = makeClient({
+      existing: null,
+      targetSet: { id: 'set-composer-b', prompt_type_id: null, is_composer_prompt: true },
+      clearComposerSetsError: { message: 'db down' },
+    })
+    adminHolder.client = client
+
+    const result = await compilePrompt('tenant-sbl', 'set-composer-b', NOTE)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(500)
+    expect(setsActivateUpdates).toHaveLength(0)
   })
 })

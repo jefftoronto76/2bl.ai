@@ -35,6 +35,12 @@ export interface PromptSet {
    * increments compiled_prompts.version, never prompt_sets.version.
    */
   compiledVersion: number | null
+  /**
+   * Category flag, not a lifecycle one — true for every composer-family set
+   * (draft or live), false for an ordinary tenant-family set. Drives the
+   * Blocks screen's 2bl.ai / Composer family switch (PromptSetSelect.tsx).
+   */
+  isComposerPrompt: boolean
 }
 
 /**

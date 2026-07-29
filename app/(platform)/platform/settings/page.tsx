@@ -1,14 +1,18 @@
 'use client'
 
-// Platform Settings — Master Prompt. One screen, one field for now: a cross-tenant
-// picker that marks one prompt set as the platform-wide composer prompt
-// (is_composer_prompt). This
-// page owns all state: it fetches every prompt set across tenants + the current
-// master pointer, holds the PENDING selection (defaults to the live master), and
-// owns the Save call — nothing auto-saves. Rebuilt in Mantine per CLAUDE.md.
+// Platform Settings — Composer Prompt. Read-only list of composer-family
+// prompt sets (is_composer_prompt = true) plus Add New. There is no
+// Select/Save/Revert here anymore (July 2026) — the old flow only ever
+// flipped is_composer_prompt as a bare live pointer, with no compile step,
+// no release note, and no real audit trail. The only way to make a composer
+// set live is Compile & Publish on the Blocks screen, reached via each row's
+// Edit pencil — the same one true activation path every ordinary tenant
+// prompt set already goes through. See CLAUDE.md Known Gaps.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Accordion, Button, Card, Group, Modal, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { useRouter } from 'next/navigation'
+import { Accordion, Button, Card, Group, Modal, Skeleton, Stack, Text, Textarea, TextInput, Title } from '@mantine/core'
+import { IconPlus } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { CurrentSystemPromptPill, MasterPromptPicker } from './MasterPromptPicker'
 import { TenantPrompts } from './TenantPrompts'
@@ -16,17 +20,22 @@ import { type MasterPromptOption, type MasterPromptSetting } from './types'
 
 export const dynamic = 'force-dynamic'
 
+function isComposerSet(o: MasterPromptOption): boolean {
+  return o.is_composer_prompt === true
+}
+
 export default function PlatformSettingsPage() {
+  const router = useRouter()
   const [options, setOptions] = useState<MasterPromptOption[]>([])
   const [master, setMaster] = useState<MasterPromptSetting>({ promptSetId: null })
-  const [pending, setPending] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [reverting, setReverting] = useState(false)
-  const [confirmRevert, setConfirmRevert] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newLabel, setNewLabel] = useState('')
+  const [newDescription, setNewDescription] = useState('')
 
   // Re-fetch just the picker options. Called on mount and whenever TenantPrompts
-  // mutates a set (create/edit/delete) so the Master Prompt picker never goes stale.
+  // mutates a set (create/edit/delete) so this list never goes stale.
   const loadOptions = useCallback(async () => {
     try {
       const res = await fetch('/api/platform/prompt-sets')
@@ -46,11 +55,7 @@ export default function PlatformSettingsPage() {
         ])
         if (cancelled) return
         if (optsRes.ok) setOptions(await optsRes.json())
-        if (masterRes.ok) {
-          const m: MasterPromptSetting = await masterRes.json()
-          setMaster(m)
-          setPending(m.promptSetId) // default the pending pick to the live master
-        }
+        if (masterRes.ok) setMaster(await masterRes.json())
       } catch (err) {
         console.error('[PlatformSettings] load failed:', err)
         notifications.show({ color: 'red', title: 'Failed to load', message: 'Could not reach the server.' })
@@ -64,81 +69,59 @@ export default function PlatformSettingsPage() {
     }
   }, [])
 
-  const isEmpty = !loading && options.length === 0
-  const dirty = pending !== master.promptSetId
+  const composerOptions = options.filter(isComposerSet)
+  const isEmpty = !loading && composerOptions.length === 0
   const current = options.find((o) => o.id === master.promptSetId) ?? null
 
-  async function save() {
-    if (!dirty || pending == null || saving) return
-    setSaving(true)
+  function editInBlocks(option: MasterPromptOption) {
+    router.push(`/admin/prompt-studio/blocks?set=${encodeURIComponent(option.id)}`)
+  }
+
+  async function createComposerSet() {
+    if (!newLabel.trim() || creating) return
+    setCreating(true)
     try {
-      const res = await fetch('/api/platform/settings/master-prompt', {
-        method: 'PUT',
+      const res = await fetch('/api/platform/prompt-sets', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptSetId: pending }),
+        body: JSON.stringify({
+          label: newLabel.trim(),
+          description: newDescription.trim(),
+          status: 'draft',
+          is_composer_prompt: true,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
         notifications.show({
           color: 'red',
-          title: 'Save failed',
-          message: (data?.error as string) ?? 'Could not save. Try again.',
+          title: 'Create failed',
+          message: (data?.error as string) ?? 'Could not create the prompt set.',
         })
         return
       }
-      const saved: MasterPromptSetting = await res.json()
-      setMaster(saved)
-      setPending(saved.promptSetId)
-      const savedSet = options.find((o) => o.id === saved.promptSetId)
+      await loadOptions()
+      setCreateOpen(false)
+      setNewLabel('')
+      setNewDescription('')
       notifications.show({
         color: 'green',
-        title: 'System prompt updated',
-        message: savedSet ? `${savedSet.label} — ${savedSet.tenantName}` : 'Saved.',
+        title: 'Composer prompt set created',
+        message: 'Edit it in Blocks, then Compile & Publish to make it live.',
       })
     } catch (err) {
-      console.error('[PlatformSettings] save failed:', err)
+      console.error('[PlatformSettings] create failed:', err)
       notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })
     } finally {
-      setSaving(false)
+      setCreating(false)
     }
   }
 
-  function cancel() {
-    setPending(master.promptSetId)
-  }
-
-  async function revertToFallback() {
-    setReverting(true)
-    try {
-      const res = await fetch('/api/platform/settings/master-prompt', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptSetId: null }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        notifications.show({
-          color: 'red',
-          title: 'Revert failed',
-          message: (data?.error as string) ?? 'Could not revert. Try again.',
-        })
-        return
-      }
-      const saved: MasterPromptSetting = await res.json()
-      setMaster(saved)
-      setPending(saved.promptSetId)
-      notifications.show({
-        color: 'green',
-        title: 'Reverted to system fallback',
-        message: 'Production is now using the default prompt built into the app.',
-      })
-      setConfirmRevert(false)
-    } catch (err) {
-      console.error('[PlatformSettings] revert failed:', err)
-      notifications.show({ color: 'red', title: 'Network error', message: 'Could not reach the server.' })
-    } finally {
-      setReverting(false)
-    }
+  function closeCreate() {
+    if (creating) return
+    setCreateOpen(false)
+    setNewLabel('')
+    setNewDescription('')
   }
 
   return (
@@ -155,7 +138,8 @@ export default function PlatformSettingsPage() {
           <Accordion.Control>
             <span style={{ display: 'block', fontWeight: 600, fontSize: 'var(--mantine-font-size-md)' }}>Composer Prompt</span>
             <span style={{ display: 'block', fontSize: 'var(--mantine-font-size-sm)', color: 'var(--mantine-color-dimmed)' }}>
-              The compiled prompt that powers the Composer AI when building blocks. Only one can be active at a time.
+              The compiled prompt that powers the Composer AI when building blocks. Activate one by editing it in
+              Blocks and using Compile &amp; Publish there.
             </span>
           </Accordion.Control>
           <Accordion.Panel>
@@ -165,52 +149,25 @@ export default function PlatformSettingsPage() {
                   <Skeleton height={40} radius="sm" />
                   <Skeleton height={40} radius="sm" />
                 </Stack>
-              ) : isEmpty ? (
-                <Stack gap={4}>
-                  <Text fw={500}>No prompt sets yet.</Text>
-                  <Text c="dimmed" size="sm">
-                    Create a prompt set in any tenant&rsquo;s Settings, then return here to mark it as the platform Composer Prompt.
-                  </Text>
-                </Stack>
               ) : (
                 <>
                   <Group gap="sm" align="center" wrap="wrap">
                     <CurrentSystemPromptPill set={current} setByName={master.setByName} setAt={master.setAt} />
-                    <Button
-                      variant="light"
-                      color="red"
-                      size="sm"
-                      disabled={!current}
-                      loading={reverting}
-                      onClick={() => setConfirmRevert(true)}
-                    >
-                      Revert to fallback
+                    <Button color="green" size="sm" leftSection={<IconPlus size={14} />} onClick={() => setCreateOpen(true)}>
+                      Add New
                     </Button>
                   </Group>
 
-                  <MasterPromptPicker
-                    options={options}
-                    selectedId={pending}
-                    masterId={master.promptSetId}
-                    onSelect={setPending}
-                    disabled={saving}
-                  />
-
-                  <Group gap="sm" align="center">
-                    <Button color="green" onClick={save} loading={saving} disabled={!dirty || pending == null}>
-                      Save
-                    </Button>
-                    {dirty && !saving && (
-                      <Button variant="subtle" color="gray" onClick={cancel}>
-                        Cancel
-                      </Button>
-                    )}
-                    {dirty && !saving && (
-                      <Text size="sm" c="dimmed">
-                        Unsaved change
+                  {isEmpty ? (
+                    <Stack gap={4}>
+                      <Text fw={500}>No composer prompt sets yet.</Text>
+                      <Text c="dimmed" size="sm">
+                        Add New here, then edit it in Blocks and Compile &amp; Publish to make it live.
                       </Text>
-                    )}
-                  </Group>
+                    </Stack>
+                  ) : (
+                    <MasterPromptPicker options={composerOptions} onEdit={editInBlocks} />
+                  )}
                 </>
               )}
             </Stack>
@@ -228,25 +185,32 @@ export default function PlatformSettingsPage() {
         </Stack>
       </Card>
 
-      <Modal
-        opened={confirmRevert}
-        onClose={() => setConfirmRevert(false)}
-        title="Revert to system fallback?"
-        centered
-        size="sm"
-      >
+      <Modal opened={createOpen} onClose={closeCreate} title="New composer prompt set" centered size="sm">
         <Stack gap="md">
-          <Text size="sm">
-            This turns off the current Composer Prompt (<strong>{current?.label}</strong>). Production immediately
-            falls back to the default prompt built into the app. You can restore a composed prompt any time by
-            selecting one below and saving.
-          </Text>
+          <TextInput
+            label="Label"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.currentTarget.value)}
+            placeholder="e.g. Composer v2"
+            required
+            disabled={creating}
+          />
+          <Textarea
+            label="Description"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.currentTarget.value)}
+            placeholder="What this set is for…"
+            autosize
+            minRows={2}
+            maxRows={6}
+            disabled={creating}
+          />
           <Group justify="flex-end" gap="sm">
-            <Button variant="subtle" color="gray" onClick={() => setConfirmRevert(false)}>
+            <Button variant="subtle" color="gray" onClick={closeCreate} disabled={creating}>
               Cancel
             </Button>
-            <Button color="red" loading={reverting} onClick={revertToFallback}>
-              Revert to fallback
+            <Button color="green" loading={creating} disabled={!newLabel.trim()} onClick={createComposerSet}>
+              Create
             </Button>
           </Group>
         </Stack>

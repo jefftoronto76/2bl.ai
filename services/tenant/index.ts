@@ -21,3 +21,5 @@ export {
   type TenantInput,
   type TenantResult,
 } from './tenants'
+
+export { SBL_TENANT_ID } from './constants'

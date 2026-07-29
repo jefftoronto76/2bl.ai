@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext } from '@/services/auth'
-import { compilePrompt } from '@/services/prompt/compile'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { compilePrompt, resolveTenantForPromptSet } from '@/services/prompt'
 import { parseNote } from '@/services/prompt/release-note'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -26,14 +26,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A release summary is required.' }, { status: 400 })
   }
 
-  const result = await compilePrompt(authCtx.tenant_id, promptSetId, note)
+  // A composer-family target overrides tenantId to its own (SBL) tenant and
+  // requires isPlatformAdmin — see resolveTenantForPromptSet. Ordinary sets
+  // are unaffected; tenantId stays authCtx.tenant_id.
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(promptSetId, authCtx, user?.isPlatformAdmin === true)
+  if (!tenantResult.ok) {
+    return NextResponse.json({ error: tenantResult.error }, { status: tenantResult.status })
+  }
+  const tenantId = tenantResult.tenantId
+
+  const result = await compilePrompt(tenantId, promptSetId, note)
   if (!result.ok) {
     void logEvent({
       action: AuditAction.PROMPT_COMPILE,
-      tenant_id: authCtx.tenant_id,
+      tenant_id: tenantId,
       actor_id: authCtx.owner_id,
       target_type: 'compiled_prompt',
-      target_id: authCtx.tenant_id,
+      target_id: tenantId,
       outcome: 'failure',
       correlation_id: req.headers.get('x-correlation-id'),
       metadata: { error: result.error },
@@ -43,10 +53,10 @@ export async function POST(req: NextRequest) {
 
   void logEvent({
     action: AuditAction.PROMPT_COMPILE,
-    tenant_id: authCtx.tenant_id,
+    tenant_id: tenantId,
     actor_id: authCtx.owner_id,
     target_type: 'compiled_prompt',
-    target_id: authCtx.tenant_id,
+    target_id: tenantId,
     correlation_id: req.headers.get('x-correlation-id'),
     metadata: { version: result.data.version, token_count: result.data.tokenCount, summary: note.summary },
   })

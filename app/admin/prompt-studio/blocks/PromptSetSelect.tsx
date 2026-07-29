@@ -1,11 +1,38 @@
 'use client'
 
-import { useState } from 'react'
+// PromptSetSelect — the Blocks screen's "Current Prompt Set" picker.
+//
+// July 2026: prompt sets belong to one of two FAMILIES and the screen shows
+// one at a time.
+//   'tenant'   — 2bl.ai prompt sets: the assistants a tenant ships to its own users.
+//   'composer' — the prompt that powers the Composer AI itself (the tool you're standing in).
+//
+// The distinction is deliberately quiet: a scope switch INSIDE this dropdown,
+// plus a small chip on the trigger when a composer set is active. No new
+// screen chrome — most sessions never leave 'tenant', and the marker should
+// cost them nothing.
+//
+// Browsing the other family does not change the screen; only picking a set
+// navigates.
+
+import { useEffect, useMemo, useState } from 'react'
 import { Badge, Box, Group, Menu, Text, TextInput, UnstyledButton } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { Text as MutedText } from '@/components/admin/primitives/Text'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { resolveActiveSet, type PromptSet, type PromptSetStatus } from './promptSets'
+
+export type SetFamily = 'tenant' | 'composer'
+
+const SET_FAMILIES: { value: SetFamily; label: string; hint: string }[] = [
+  { value: 'tenant', label: '2bl.ai', hint: 'Prompt sets your tenants ship to their users.' },
+  { value: 'composer', label: 'Composer', hint: 'The prompt that powers the Composer AI itself.' },
+]
+
+/** Which family a set belongs to. is_composer_prompt is a plain category flag. */
+function familyOf(set: PromptSet): SetFamily {
+  return set.isComposerPrompt === true ? 'composer' : 'tenant'
+}
 
 function Caret({ open }: { open: boolean }) {
   return (
@@ -60,6 +87,30 @@ function StatusBadge({ status }: { status: PromptSetStatus }) {
   )
 }
 
+/** The quiet marker on the trigger. Composer sets only. */
+function FamilyChip() {
+  return (
+    <Box
+      component="span"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        height: 20,
+        padding: '0 7px',
+        flexShrink: 0,
+        borderRadius: 'var(--mantine-radius-sm)',
+        background: 'var(--mantine-color-gray-1)',
+        color: 'var(--mantine-color-dimmed)',
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: '.02em',
+      }}
+    >
+      Composer
+    </Box>
+  )
+}
+
 export interface PromptSetSelectProps {
   sets: PromptSet[]
   activeId: string
@@ -70,23 +121,51 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
   const [search, setSearch] = useState('')
   const router = useRouter()
   const pathname = usePathname()
-  const params = useSearchParams()
 
   const active = resolveActiveSet(sets, activeId)
+  const activeFamilyValue: SetFamily = active ? familyOf(active) : 'tenant'
+
+  // The scope you're BROWSING. Local state, not the URL — browsing is
+  // transient, picking navigates. Reopening always returns you to the
+  // family you're actually in.
+  const [family, setFamily] = useState<SetFamily>(activeFamilyValue)
+
+  useEffect(() => {
+    if (menuOpen) setFamily(activeFamilyValue)
+  }, [menuOpen, activeFamilyValue])
+
+  const counts = useMemo(() => {
+    const c: Record<SetFamily, number> = { tenant: 0, composer: 0 }
+    for (const s of sets) c[familyOf(s)] += 1
+    return c
+  }, [sets])
+
+  // With only one family present there is nothing to switch between — don't
+  // show the control. The normal case for a tenant admin with no composer
+  // sets in their tenant's own list.
+  const showFamilySwitch = counts.tenant > 0 && counts.composer > 0
+
+  const inFamily = useMemo(
+    () => (showFamilySwitch ? sets.filter((s) => familyOf(s) === family) : sets),
+    [sets, family, showFamilySwitch],
+  )
+
   if (!active) return null
 
   function select(id: string) {
     if (id === active!.id) return
-    // Strip stale filter params when switching sets — start clean.
+    // Strip stale filter params when switching sets — start clean (unchanged behaviour).
     const next = new URLSearchParams()
     next.set('set', id)
     router.push(`${pathname}?${next.toString()}`)
   }
 
-  const showSearch = sets.length > 6
-  const visible = showSearch && search.trim()
-    ? sets.filter((s) => s.label.toLowerCase().includes(search.trim().toLowerCase()))
-    : sets
+  const showSearch = inFamily.length > 6
+  const visible =
+    showSearch && search.trim()
+      ? inFamily.filter((s) => s.label.toLowerCase().includes(search.trim().toLowerCase()))
+      : inFamily
+  const activeFamilyMeta = SET_FAMILIES.find((f) => f.value === family)
 
   return (
     <Group gap="sm" align="center" wrap="nowrap">
@@ -105,12 +184,15 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
 
       <Menu
         position="bottom-start"
-        width={280}
+        width={300}
         radius="md"
         shadow="md"
         withinPortal
         opened={menuOpen}
-        onChange={(open) => { setMenuOpen(open); if (!open) setSearch('') }}
+        onChange={(open) => {
+          setMenuOpen(open)
+          if (!open) setSearch('')
+        }}
       >
         <Menu.Target>
           <UnstyledButton
@@ -126,13 +208,63 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
               background: '#fff',
             }}
           >
-            <Text fw={600} style={{ fontSize: 14, whiteSpace: 'nowrap' }}>{active.label}</Text>
+            {activeFamilyValue === 'composer' && <FamilyChip />}
+            <Text fw={600} style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+              {active.label}
+            </Text>
             <StatusBadge status={active.status} />
             <Caret open={menuOpen} />
           </UnstyledButton>
         </Menu.Target>
 
         <Menu.Dropdown>
+          {showFamilySwitch && (
+            <Box px={6} pt={6} pb={2}>
+              <Box
+                style={{
+                  display: 'flex',
+                  gap: 2,
+                  padding: 3,
+                  background: 'var(--mantine-color-gray-1)',
+                  borderRadius: 'var(--mantine-radius-sm)',
+                }}
+              >
+                {SET_FAMILIES.map((f) => {
+                  const on = f.value === family
+                  return (
+                    <UnstyledButton
+                      key={f.value}
+                      title={f.hint}
+                      aria-pressed={on}
+                      onClick={(e) => {
+                        // Switching scope must not close the menu or select anything.
+                        e.stopPropagation()
+                        setFamily(f.value)
+                        setSearch('')
+                      }}
+                      style={{
+                        flex: 1,
+                        height: 26,
+                        borderRadius: 'calc(var(--mantine-radius-sm) - 1px)',
+                        textAlign: 'center',
+                        fontSize: 12.5,
+                        fontWeight: on ? 600 : 500,
+                        background: on ? '#fff' : 'transparent',
+                        color: on ? 'var(--mantine-color-text)' : 'var(--mantine-color-dimmed)',
+                        boxShadow: on ? '0 1px 2px rgba(0,0,0,.06)' : 'none',
+                      }}
+                    >
+                      {f.label}
+                    </UnstyledButton>
+                  )
+                })}
+              </Box>
+              <Text size="xs" c="dimmed" mt={6} mb={2} style={{ lineHeight: 1.45 }}>
+                {activeFamilyMeta?.hint}
+              </Text>
+            </Box>
+          )}
+
           {showSearch && (
             <Box px={6} pt={6} pb={4}>
               <TextInput
@@ -145,12 +277,17 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
               />
             </Box>
           )}
+
           {visible.map((s) => (
             <Menu.Item key={s.id} onClick={() => select(s.id)} aria-selected={s.id === active.id}>
               <Group justify="space-between" wrap="nowrap" gap="sm">
-                <Text size="sm" fw={500} style={{ whiteSpace: 'nowrap' }}>{s.label}</Text>
-                <Group gap={8} wrap="nowrap">
-                  <Text ff="monospace" size="xs" c="dimmed">v{s.version}</Text>
+                <Text size="sm" fw={500} truncate style={{ minWidth: 0 }}>
+                  {s.label}
+                </Text>
+                <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
+                  <Text ff="monospace" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                    v{s.version}
+                  </Text>
                   <StatusBadge status={s.status} />
                   <span style={{ width: 14, display: 'inline-flex' }}>
                     {s.id === active.id ? <Check /> : null}
@@ -159,8 +296,11 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
               </Group>
             </Menu.Item>
           ))}
-          {showSearch && visible.length === 0 && (
-            <Text c="dimmed" size="sm" ta="center" py="sm">No prompt sets match.</Text>
+
+          {visible.length === 0 && (
+            <Text c="dimmed" size="sm" ta="center" py="sm">
+              No {activeFamilyMeta?.label ?? ''} prompt sets{search.trim() ? ' match.' : ' yet.'}
+            </Text>
           )}
         </Menu.Dropdown>
       </Menu>

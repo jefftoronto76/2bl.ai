@@ -1,5 +1,6 @@
-import { getAuthContext } from '@/services/auth'
+import { getAuthContext, getCurrentUser } from '@/services/auth'
 import { createBlock } from '@/services/prompt/blocks'
+import { resolveTenantForPromptSet } from '@/services/prompt'
 import { logEvent, AuditAction } from '@/services/audit'
 
 export async function POST(req: Request) {
@@ -38,7 +39,14 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Body is required' }, { status: 400 })
   }
 
-  const result = await createBlock(authCtx, body)
+  const user = await getCurrentUser()
+  const tenantResult = await resolveTenantForPromptSet(body.prompt_set_id ?? null, authCtx, user?.isPlatformAdmin === true)
+  if (!tenantResult.ok) {
+    return Response.json({ error: tenantResult.error }, { status: tenantResult.status })
+  }
+  const scope = { owner_id: authCtx.owner_id, tenant_id: tenantResult.tenantId }
+
+  const result = await createBlock(scope, body)
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status })
   }
@@ -46,7 +54,7 @@ export async function POST(req: Request) {
   const created = result.data as { id?: string; title?: string; type?: string }
   void logEvent({
     action: AuditAction.BLOCK_CREATE,
-    tenant_id: authCtx.tenant_id,
+    tenant_id: scope.tenant_id,
     actor_id: authCtx.owner_id,
     target_type: 'block',
     target_id: created.id ?? null,

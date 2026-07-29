@@ -5,8 +5,7 @@ import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
 import { derivePaperStack, paperStackVars } from '@/services/branding/paper-stack';
-
-const SBL_TENANT_ID = '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb';
+import { SBL_TENANT_ID } from '@/services/tenant';
 
 const serif = Newsreader({
   subsets: ["latin"],
