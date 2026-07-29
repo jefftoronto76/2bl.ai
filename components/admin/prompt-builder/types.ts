@@ -72,17 +72,11 @@ export interface Conversation {
   messages?: ChatMessage[]
 }
 
-// ── NEW (prompt-set picker) ───────────────────────────────────────────────────
-// A prompt set is the collection of blocks that compiles into one deployed prompt.
-// The Composer top bar lets you choose which set a saved block lands in (and make
-// a new one). See handover §4.
-export interface PromptSet {
-  id: string
-  label: string
-  version: number
-  // DB check-constraint is lowercase ('live' | 'draft' | 'retired').
-  status: 'live' | 'draft' | 'retired'
-}
+// Prompt-set picker: the shared `PromptSet` shape (id/label/version/status/
+// promptTypeId/isComposerPrompt/...) now lives in
+// components/admin/prompt-studio/promptSet.ts — the same type Blocks' picker
+// uses, since the Composer's "Building in" control is the same component
+// (components/admin/prompt-studio/PromptSetSelect.tsx) as of July 2026.
 
 export const TYPES: { value: BlockType; label: string }[] = [
   { value: 'identity', label: 'Identity & Voice' },

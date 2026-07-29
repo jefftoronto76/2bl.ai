@@ -1,6 +1,6 @@
 import 'server-only'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import type { PromptSet, PromptSetStatus } from './promptSets'
+import { mapPromptSetRow, type PromptSet } from '@/components/admin/prompt-studio/promptSet'
 
 /**
  * Fetch the tenant's prompt sets for the Blocks picker. The page scopes the
@@ -32,15 +32,6 @@ export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
   const STATUS_RANK: Record<string, number> = { live: 0, draft: 1, retired: 2 }
 
   return data
-    .map((row) => ({
-      id: row.id as string,
-      promptTypeId: (row.prompt_type_id as string | null) ?? null,
-      label: row.label as string,
-      version: (row.version as number | null) ?? 0,
-      status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
-      lastCompiledAt: (row.last_compiled_at as string | null) ?? null,
-      compiledVersion: (row.compiled_version as number | null) ?? null,
-      isComposerPrompt: row.is_composer_prompt === true,
-    }))
+    .map((row) => mapPromptSetRow(row as Record<string, unknown>))
     .sort((a, b) => (STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1))
 }

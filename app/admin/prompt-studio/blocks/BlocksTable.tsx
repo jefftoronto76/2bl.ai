@@ -38,7 +38,7 @@ import type { BlockType } from '@/services/prompt/block-types'
 import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
-import type { PromptSet } from './promptSets'
+import type { PromptSet } from '@/components/admin/prompt-studio/promptSet'
 
 type BlockStatus = 'active' | 'disabled' | 'deleted'
 

@@ -6,9 +6,9 @@ import { Box, Center, Flex, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { BlocksTable, type BlockRow } from './BlocksTable'
-import { PromptSetSelect } from './PromptSetSelect'
+import { PromptSetSelect } from '@/components/admin/prompt-studio/PromptSetSelect'
 import { getPromptSets } from './getPromptSets'
-import { resolveActiveSet } from './promptSets'
+import { resolveActiveSet } from '@/components/admin/prompt-studio/promptSet'
 
 export const dynamic = 'force-dynamic'
 

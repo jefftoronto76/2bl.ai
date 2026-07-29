@@ -1,6 +1,11 @@
 'use client'
 
-// PromptSetSelect — the Blocks screen's "Current Prompt Set" picker.
+// PromptSetSelect — the prompt-set picker shared by two surfaces: the Blocks
+// screen's "Current Prompt Set" header control and the Composer's "Building
+// in" top-bar control. One component, one family-switch mechanism — this
+// used to be two separate implementations (components/admin/prompt-builder/
+// PromptSetPicker.tsx duplicated this one in plain CSS Modules); that copy is
+// retired in favor of this one, generalized via props rather than forked.
 //
 // July 2026: prompt sets belong to one of two FAMILIES and the screen shows
 // one at a time.
@@ -13,26 +18,23 @@
 // cost them nothing.
 //
 // Browsing the other family does not change the screen; only picking a set
-// navigates.
+// acts (navigates, on Blocks; sets local state, on the Composer).
+//
+// Two things vary by caller, both optional so Blocks' existing usage is
+// untouched:
+//   - `onSelect`: when absent, picking a set navigates via `?set=<id>`
+//     (Blocks' behavior). When supplied (the Composer), it's called instead —
+//     no navigation happens.
+//   - `onCreate` (+ `promptTypes`): when supplied (the Composer), an inline
+//     "New prompt set…" form renders at the bottom of the dropdown. Absent on
+//     Blocks — creation lives on the Settings screen there.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Box, Group, Menu, Text, TextInput, UnstyledButton } from '@mantine/core'
-import { IconSearch } from '@tabler/icons-react'
+import { Badge, Box, Button, Group, Menu, Select, Text, Textarea, TextInput, UnstyledButton } from '@mantine/core'
+import { IconPlus, IconSearch } from '@tabler/icons-react'
 import { Text as MutedText } from '@/components/admin/primitives/Text'
 import { usePathname, useRouter } from 'next/navigation'
-import { resolveActiveSet, type PromptSet, type PromptSetStatus } from './promptSets'
-
-export type SetFamily = 'tenant' | 'composer'
-
-const SET_FAMILIES: { value: SetFamily; label: string; hint: string }[] = [
-  { value: 'tenant', label: '2bl.ai', hint: 'Prompt sets your tenants ship to their users.' },
-  { value: 'composer', label: 'Composer', hint: 'The prompt that powers the Composer AI itself.' },
-]
-
-/** Which family a set belongs to. is_composer_prompt is a plain category flag. */
-function familyOf(set: PromptSet): SetFamily {
-  return set.isComposerPrompt === true ? 'composer' : 'tenant'
-}
+import { resolveActiveSet, familyOf, SET_FAMILIES, type PromptSet, type PromptSetStatus, type SetFamily } from './promptSet'
 
 function Caret({ open }: { open: boolean }) {
   return (
@@ -111,14 +113,34 @@ function FamilyChip() {
   )
 }
 
+export interface CreatePromptSetInput {
+  label: string
+  promptTypeId: string | null
+  description: string
+}
+
 export interface PromptSetSelectProps {
   sets: PromptSet[]
   activeId: string
+  /** Label above the trigger. Defaults to Blocks' copy. */
+  label?: string
+  /** Called instead of the default `?set=<id>` navigation, when supplied. */
+  onSelect?: (id: string) => void
+  /** Supplying this renders the inline "New prompt set…" form. */
+  onCreate?: (input: CreatePromptSetInput) => void
+  /** Options for the create form's optional Type field. */
+  promptTypes?: { id: string; name: string }[]
 }
 
-export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
+const NO_TYPE = ''
+
+export function PromptSetSelect({ sets, activeId, label, onSelect, onCreate, promptTypes = [] }: PromptSetSelectProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newLabel, setNewLabel] = useState('')
+  const [newTypeId, setNewTypeId] = useState(NO_TYPE)
+  const [newDescription, setNewDescription] = useState('')
   const router = useRouter()
   const pathname = usePathname()
 
@@ -150,14 +172,33 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
     [sets, family, showFamilySwitch],
   )
 
+  function resetCreate() {
+    setCreating(false)
+    setNewLabel('')
+    setNewTypeId(NO_TYPE)
+    setNewDescription('')
+  }
+
   if (!active) return null
 
   function select(id: string) {
     if (id === active!.id) return
+    if (onSelect) {
+      onSelect(id)
+      return
+    }
     // Strip stale filter params when switching sets — start clean (unchanged behaviour).
     const next = new URLSearchParams()
     next.set('set', id)
     router.push(`${pathname}?${next.toString()}`)
+  }
+
+  function submitCreate() {
+    const trimmed = newLabel.trim()
+    if (!trimmed || !onCreate) return
+    onCreate({ label: trimmed, promptTypeId: newTypeId || null, description: newDescription })
+    resetCreate()
+    setMenuOpen(false)
   }
 
   const showSearch = inFamily.length > 6
@@ -179,7 +220,7 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
           whiteSpace: 'nowrap',
         }}
       >
-        Current Prompt Set
+        {label ?? 'Current Prompt Set'}
       </MutedText>
 
       <Menu
@@ -191,8 +232,12 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
         opened={menuOpen}
         onChange={(open) => {
           setMenuOpen(open)
-          if (!open) setSearch('')
+          if (!open) {
+            setSearch('')
+            resetCreate()
+          }
         }}
+        closeOnItemClick={false}
       >
         <Menu.Target>
           <UnstyledButton
@@ -265,7 +310,7 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
             </Box>
           )}
 
-          {showSearch && (
+          {showSearch && !creating && (
             <Box px={6} pt={6} pb={4}>
               <TextInput
                 data-autofocus
@@ -278,29 +323,92 @@ export function PromptSetSelect({ sets, activeId }: PromptSetSelectProps) {
             </Box>
           )}
 
-          {visible.map((s) => (
-            <Menu.Item key={s.id} onClick={() => select(s.id)} aria-selected={s.id === active.id}>
-              <Group justify="space-between" wrap="nowrap" gap="sm">
-                <Text size="sm" fw={500} truncate style={{ minWidth: 0 }}>
-                  {s.label}
-                </Text>
-                <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
-                  <Text ff="monospace" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                    v{s.version}
+          {!creating &&
+            visible.map((s) => (
+              <Menu.Item key={s.id} onClick={() => select(s.id)} aria-selected={s.id === active.id}>
+                <Group justify="space-between" wrap="nowrap" gap="sm">
+                  <Text size="sm" fw={500} truncate style={{ minWidth: 0 }}>
+                    {s.label}
                   </Text>
-                  <StatusBadge status={s.status} />
-                  <span style={{ width: 14, display: 'inline-flex' }}>
-                    {s.id === active.id ? <Check /> : null}
-                  </span>
+                  <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
+                    <Text ff="monospace" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                      v{s.version}
+                    </Text>
+                    <StatusBadge status={s.status} />
+                    <span style={{ width: 14, display: 'inline-flex' }}>
+                      {s.id === active.id ? <Check /> : null}
+                    </span>
+                  </Group>
                 </Group>
-              </Group>
-            </Menu.Item>
-          ))}
+              </Menu.Item>
+            ))}
 
-          {visible.length === 0 && (
+          {!creating && visible.length === 0 && (
             <Text c="dimmed" size="sm" ta="center" py="sm">
               No {activeFamilyMeta?.label ?? ''} prompt sets{search.trim() ? ' match.' : ' yet.'}
             </Text>
+          )}
+
+          {onCreate && (
+            <>
+              <Box my={4} style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }} />
+              {creating ? (
+                <Box px={8} py={6} onClick={(e) => e.stopPropagation()}>
+                  <Text size="xs" fw={600} c="dimmed" mb={6}>
+                    New prompt set
+                  </Text>
+                  <TextInput
+                    data-autofocus
+                    size="xs"
+                    label="Name"
+                    placeholder="e.g. Sage Base"
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.stopPropagation()
+                        resetCreate()
+                      }
+                    }}
+                    mb={6}
+                  />
+                  <Select
+                    size="xs"
+                    label="Type"
+                    placeholder="No type yet"
+                    clearable
+                    data={promptTypes.map((t) => ({ value: t.id, label: t.name }))}
+                    value={newTypeId || null}
+                    onChange={(value) => setNewTypeId(value ?? NO_TYPE)}
+                    comboboxProps={{ withinPortal: true }}
+                    mb={6}
+                  />
+                  <Textarea
+                    size="xs"
+                    label="Description"
+                    placeholder="What this set is for…"
+                    autosize
+                    minRows={2}
+                    maxRows={4}
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.currentTarget.value)}
+                    mb={8}
+                  />
+                  <Group gap="xs" justify="flex-end">
+                    <Button variant="subtle" color="gray" size="xs" onClick={resetCreate}>
+                      Cancel
+                    </Button>
+                    <Button size="xs" color="green" disabled={!newLabel.trim()} onClick={submitCreate}>
+                      Create
+                    </Button>
+                  </Group>
+                </Box>
+              ) : (
+                <Menu.Item leftSection={<IconPlus size={13} />} onClick={() => setCreating(true)}>
+                  New prompt set…
+                </Menu.Item>
+              )}
+            </>
           )}
         </Menu.Dropdown>
       </Menu>
