@@ -12,6 +12,8 @@ export interface MasterPromptOption {
   tenantName: string
   status: PromptSetStatus
   version?: number
+  /** Category flag (not a live pointer) — true for every composer-family set, live or draft. */
+  is_composer_prompt: boolean
 }
 
 // The platform's current master pointer. `promptSetId` is null when no master
