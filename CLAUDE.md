@@ -1164,8 +1164,7 @@ Backs the `/platform/settings` page. Both routes gate on `getCurrentUser().isPla
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/platform/prompt-sets` | GET | Cross-tenant superset of prompt sets for the Master Prompt picker: `[{ id, label, tenantId, tenantName, status, version }]` (joins `tenants.name`; status lowercase). Sorted by tenant name then label. |
-| `/api/platform/settings/master-prompt` | GET | Returns `{ promptSetId }` — the `prompt_sets` row with `is_composer_prompt = true` (or null). |
-| `/api/platform/settings/master-prompt` | PUT | Body `{ promptSetId }`. Sets the single platform composer prompt: clears any prior `is_composer_prompt` row first, then sets the target (404 if the target doesn't exist; the `prompt_sets_single_composer_idx` partial unique index is the backstop). Writes `PROMPT_SET_MASTER_SET` audit. |
+| `/api/platform/settings/master-prompt` | GET | Returns `{ promptSetId }` — the `prompt_sets` row with `is_composer_prompt = true AND status = 'live'` (or null). Read-only as of July 2026 (composer-family work) — see Known Gaps for the retired `PUT`. |
 
 ### Heirloom Invites
 
@@ -1483,6 +1482,18 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   for Jeff:** fully remove this screen (delete the page, nav entry, and the
   three orphaned files/routes above) or repurpose it as something else. Until
   decided, do not delete it or its nav entry as a side effect of unrelated work.
+
+- **`AuditAction.PROMPT_SET_MASTER_SET` is orphaned — no remaining caller,
+  same treatment as the `/admin/prompt` orphans above.** The composer-family
+  work (July 2026) retired `PUT /api/platform/settings/master-prompt`, the
+  only place that ever wrote this action — it used to flip
+  `prompt_sets.is_composer_prompt` directly with no compile step, no release
+  note, and no real audit trail beyond a bare flag flip. Compile & Publish
+  (`services/prompt/compile.ts`) is now the only path that activates a
+  composer prompt set, same as it already was for every ordinary tenant set;
+  its writes go through `AuditAction.PROMPT_COMPILE`, not this constant. The
+  `PROMPT_SET_MASTER_SET` enum value is left in place (`services/audit/types.ts`)
+  rather than deleted, in case historical `audit_events` rows reference it.
 
 - **Heirloom chat-widget V2 is UI-first; its backends do not exist yet.**
   The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped the
