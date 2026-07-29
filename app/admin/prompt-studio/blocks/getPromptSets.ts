@@ -20,7 +20,7 @@ export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
 
   const { data, error } = await supabase
     .from('prompt_sets_with_compile_meta')
-    .select('id, label, version, status, prompt_type_id, last_compiled_at, compiled_version')
+    .select('id, label, version, status, prompt_type_id, last_compiled_at, compiled_version, is_composer_prompt')
     .eq('tenant_id', tenantId)
     .order('label', { ascending: true })
 
@@ -40,6 +40,7 @@ export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
       status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
       lastCompiledAt: (row.last_compiled_at as string | null) ?? null,
       compiledVersion: (row.compiled_version as number | null) ?? null,
+      isComposerPrompt: row.is_composer_prompt === true,
     }))
     .sort((a, b) => (STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1))
 }
