@@ -1,7 +1,7 @@
 // Shared types for the Platform Settings → Master Prompt screen.
 // Status is the DB lowercase ('live' | 'draft'); the UI capitalizes for display.
 
-export type PromptSetStatus = 'live' | 'draft'
+export type PromptSetStatus = 'live' | 'draft' | 'retired'
 
 // One selectable prompt set, scoped across ALL tenants the platform admin sees.
 // `id` is the value persisted as the platform master pointer.
@@ -23,5 +23,9 @@ export interface MasterPromptSetting {
 }
 
 export function statusLabel(status: string): string {
-  return status.toLowerCase() === 'live' ? 'Live' : 'Draft'
+  switch (status.toLowerCase()) {
+    case 'live': return 'Live'
+    case 'retired': return 'Retired'
+    default: return 'Draft'
+  }
 }

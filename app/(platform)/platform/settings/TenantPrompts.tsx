@@ -512,6 +512,10 @@ function EditCardFields({
         data={[
           { value: 'live', label: 'Live' },
           { value: 'draft', label: 'Draft' },
+          // Retired is compile-pipeline-owned, never admin-selectable — this option
+          // only appears (disabled) so a retired set's current status still renders
+          // instead of showing an empty Select.
+          ...(draft.status === 'retired' ? [{ value: 'retired', label: 'Retired', disabled: true }] : []),
         ]}
         value={draft.status}
         onChange={(value) => onChange({ status: value === 'live' ? 'live' : 'draft' })}

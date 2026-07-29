@@ -12,7 +12,7 @@ const SELECT_COLUMNS =
 const SELECT_COLUMNS_WITH_META =
   'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at, block_count, last_compiled_at, compiled_version'
 
-const VALID_STATUS: readonly PromptSetStatus[] = ['live', 'draft']
+const VALID_STATUS: readonly PromptSetStatus[] = ['live', 'draft', 'retired']
 
 function isStatus(value: unknown): value is PromptSetStatus {
   return typeof value === 'string' && (VALID_STATUS as readonly string[]).includes(value)

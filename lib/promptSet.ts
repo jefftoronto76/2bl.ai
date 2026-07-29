@@ -12,7 +12,7 @@
 // "Stale" is computed, never stored: a set is stale when it was edited after it
 // was last compiled (prompt_sets.updated_at > last_compiled_at). See handover §4.
 
-export type PromptSetStatus = 'live' | 'draft'
+export type PromptSetStatus = 'live' | 'draft' | 'retired'
 
 // The shipping base row — exactly the columns stored on `prompt_sets`. This is the
 // shape the PATCH (write) routes return: a write reads back the base table, which has
@@ -65,5 +65,9 @@ export function formatDate(iso: string | null): string {
 }
 
 export function statusLabel(status: string): string {
-  return status.toLowerCase() === 'live' ? 'Live' : 'Draft'
+  switch (status.toLowerCase()) {
+    case 'live': return 'Live'
+    case 'retired': return 'Retired'
+    default: return 'Draft'
+  }
 }

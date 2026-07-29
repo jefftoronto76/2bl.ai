@@ -50,10 +50,12 @@ function Check() {
 }
 
 function StatusBadge({ status }: { status: PromptSetStatus }) {
-  const isLive = String(status).toLowerCase() === 'live'
+  const normalized = String(status).toLowerCase()
+  const color = normalized === 'live' ? 'green' : normalized === 'retired' ? 'gray' : 'yellow'
+  const label = normalized === 'live' ? 'Live' : normalized === 'retired' ? 'Retired' : 'Draft'
   return (
-    <Badge color={isLive ? 'green' : 'yellow'} variant="light" size="sm" radius="sm">
-      {isLive ? 'Live' : 'Draft'}
+    <Badge color={color} variant="light" size="sm" radius="sm">
+      {label}
     </Badge>
   )
 }

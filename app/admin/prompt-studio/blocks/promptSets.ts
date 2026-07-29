@@ -1,7 +1,7 @@
 // Type-only + pure so it can be imported from both the server page and the
 // client picker. The Supabase reader lives in getPromptSets.ts ('server-only').
 
-export type PromptSetStatus = 'live' | 'draft'
+export type PromptSetStatus = 'live' | 'draft' | 'retired'
 
 export interface PromptSet {
   id: string

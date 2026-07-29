@@ -80,8 +80,8 @@ export interface PromptSet {
   id: string
   label: string
   version: number
-  // DB check-constraint is lowercase ('live' | 'draft').
-  status: 'live' | 'draft'
+  // DB check-constraint is lowercase ('live' | 'draft' | 'retired').
+  status: 'live' | 'draft' | 'retired'
 }
 
 export const TYPES: { value: BlockType; label: string }[] = [

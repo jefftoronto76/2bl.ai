@@ -22,18 +22,24 @@ export async function getPromptSets(tenantId: string): Promise<PromptSet[]> {
     .from('prompt_sets_with_compile_meta')
     .select('id, label, version, status, prompt_type_id, last_compiled_at, compiled_version')
     .eq('tenant_id', tenantId)
-    .order('status', { ascending: false }) // 'live' sorts before 'draft'
     .order('label', { ascending: true })
 
   if (error || !data) return []
 
-  return data.map((row) => ({
-    id: row.id as string,
-    promptTypeId: (row.prompt_type_id as string | null) ?? null,
-    label: row.label as string,
-    version: (row.version as number | null) ?? 0,
-    status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
-    lastCompiledAt: (row.last_compiled_at as string | null) ?? null,
-    compiledVersion: (row.compiled_version as number | null) ?? null,
-  }))
+  // status ordering isn't lexical (a plain `.order('status')` would put 'retired'
+  // ahead of 'live' — 'r' > 'l' alphabetically), so live/draft/retired priority is
+  // applied here rather than in the query.
+  const STATUS_RANK: Record<string, number> = { live: 0, draft: 1, retired: 2 }
+
+  return data
+    .map((row) => ({
+      id: row.id as string,
+      promptTypeId: (row.prompt_type_id as string | null) ?? null,
+      label: row.label as string,
+      version: (row.version as number | null) ?? 0,
+      status: ((row.status as string | null) ?? 'draft') as PromptSetStatus,
+      lastCompiledAt: (row.last_compiled_at as string | null) ?? null,
+      compiledVersion: (row.compiled_version as number | null) ?? null,
+    }))
+    .sort((a, b) => (STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1))
 }

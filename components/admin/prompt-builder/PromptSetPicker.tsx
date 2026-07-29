@@ -24,9 +24,13 @@ interface PromptSetPickerProps {
   onCreate: (input: { label: string; promptTypeId: string | null; description: string }) => void
 }
 
-// DB status is lowercase ('live' | 'draft'); display it capitalized.
+// DB status is lowercase ('live' | 'draft' | 'retired'); display it capitalized.
 function statusLabel(status: string): string {
-  return status.toLowerCase() === 'live' ? 'Live' : 'Draft'
+  switch (status.toLowerCase()) {
+    case 'live': return 'Live'
+    case 'retired': return 'Retired'
+    default: return 'Draft'
+  }
 }
 
 export function PromptSetPicker({ sets, activeId, promptTypes, onSelect, onCreate }: PromptSetPickerProps) {

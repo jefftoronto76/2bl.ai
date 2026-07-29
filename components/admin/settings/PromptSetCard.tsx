@@ -16,11 +16,21 @@ import { Text } from '@/components/admin/primitives/Text'
 import { type PromptSet, formatDate, isStale } from '@/lib/promptSet'
 
 export function StatusBadge({ status }: { status: PromptSet['status'] }) {
-  return status === 'live' ? (
-    <Badge color="green" variant="light" radius="sm">
-      Live
-    </Badge>
-  ) : (
+  if (status === 'live') {
+    return (
+      <Badge color="green" variant="light" radius="sm">
+        Live
+      </Badge>
+    )
+  }
+  if (status === 'retired') {
+    return (
+      <Badge color="gray" variant="light" radius="sm">
+        Retired
+      </Badge>
+    )
+  }
+  return (
     <Badge color="yellow" variant="light" radius="sm">
       Draft
     </Badge>
