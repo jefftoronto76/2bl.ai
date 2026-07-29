@@ -11,14 +11,23 @@
 // the live one for its (tenant_id, prompt_type_id) slot, whether the set was
 // previously live or draft. There is no "compile without activating." Before
 // writing, any OTHER row/set currently live for that same slot is cleared first
-// (mirrors the is_composer_prompt clear-then-set pattern in
-// app/api/platform/settings/master-prompt/route.ts) so the partial unique
-// indexes (compiled_prompts_single_live_typed_idx /
-// compiled_prompts_single_live_untyped_idx) never see two live rows for the
-// same slot at once. This enforces the constraint at the write path only —
-// getSystemPrompt (services/prompt/compiler.ts) is unchanged and still reads
-// the tenant's highest-version row with no type filtering; making it slot-aware
-// is a separate, still-open piece of work.
+// (clear-then-set) so the partial unique indexes
+// (compiled_prompts_single_live_typed_idx / compiled_prompts_single_live_untyped_idx)
+// never see two live rows for the same slot at once. This enforces the
+// constraint at the write path only — getSystemPrompt (services/prompt/compiler.ts)
+// is unchanged and still reads the tenant's highest-version row with no type
+// filtering; making it slot-aware is a separate, still-open piece of work.
+//
+// Composer-family prompt_sets (is_composer_prompt=true) layer a SECOND,
+// independent exclusivity rule on top of the above: at most one may be
+// status='live' platform-wide, backed by prompt_sets_single_composer_idx
+// (WHERE is_composer_prompt=true AND status='live'). This is not scoped to
+// (tenant_id, prompt_type_id) the way the rule above is, so publishing a
+// composer set clears any other live composer set as its own step,
+// regardless of which type slot either one is in. Publishing an ordinary
+// (non-composer) set never touches this second rule. Composer sets are no
+// longer activated through a separate Platform Settings "Save" pointer — see
+// CLAUDE.md Known Gaps — Compile & Publish here is now the only path.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { isOrdered } from '@/services/prompt/block-order'
@@ -184,10 +193,11 @@ export async function compilePrompt(
   //    is always null. Fails fast with 404 rather than silently compiling into
   //    the wrong (untyped) slot.
   let promptTypeId: string | null = null
+  let isComposerPrompt = false
   if (promptSetId) {
     const { data: targetSet, error: targetSetError } = await supabase
       .from('prompt_sets')
-      .select('id, prompt_type_id')
+      .select('id, prompt_type_id, is_composer_prompt')
       .eq('id', promptSetId)
       .eq('tenant_id', tenantId)
       .maybeSingle()
@@ -200,6 +210,7 @@ export async function compilePrompt(
       return { ok: false, status: 404, error: 'Prompt set not found' }
     }
     promptTypeId = targetSet.prompt_type_id
+    isComposerPrompt = targetSet.is_composer_prompt === true
   }
 
   const built = await buildCompiledContent(tenantId, promptSetId)
@@ -266,6 +277,27 @@ export async function compilePrompt(
     if (clearSetsError) {
       console.error('[prompt/compile] clear sibling live prompt_sets failed:', clearSetsError.message)
       return { ok: false, status: 500, error: clearSetsError.message }
+    }
+
+    // 5b. Composer-family exclusivity — independent of the type-based clear
+    //     above. A composer prompt set's live-slot uniqueness is platform-wide
+    //     (is_composer_prompt=true AND status='live', backed by
+    //     prompt_sets_single_composer_idx), not scoped to (tenant_id,
+    //     prompt_type_id) — two composer sets in different type slots would
+    //     never collide in the clear above, so this runs as its own step
+    //     whenever the target itself is composer-family.
+    if (isComposerPrompt) {
+      const { error: clearComposerError } = await supabase
+        .from('prompt_sets')
+        .update({ status: 'retired' })
+        .eq('is_composer_prompt', true)
+        .eq('status', 'live')
+        .neq('id', promptSetId)
+
+      if (clearComposerError) {
+        console.error('[prompt/compile] clear sibling live composer prompt_sets failed:', clearComposerError.message)
+        return { ok: false, status: 500, error: clearComposerError.message }
+      }
     }
   }
 
@@ -359,6 +391,9 @@ export async function compilePrompt(
 
     if (activateSetError) {
       console.error('[prompt/compile] activate prompt_set failed:', activateSetError.message)
+      if (activateSetError.code === '23505') {
+        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
+      }
       return { ok: false, status: 500, error: activateSetError.message }
     }
     console.log('[prompt/compile] activated prompt_set:', promptSetId)
