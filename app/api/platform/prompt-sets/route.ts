@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
+import { SBL_TENANT_ID } from '@/services/tenant'
 
 // GET /api/platform/prompt-sets  — EXTENDED (was: lightweight MasterPromptOption[])
 //
@@ -102,6 +103,7 @@ export async function PATCH(req: Request) {
     description?: unknown
     status?: unknown
     prompt_type_id?: unknown
+    is_composer_prompt?: unknown
   }
   try {
     body = await req.json()
@@ -110,6 +112,19 @@ export async function PATCH(req: Request) {
   }
 
   const id = typeof body.id === 'string' ? body.id : undefined
+
+  // is_composer_prompt: only ever settable at creation, and only ever true —
+  // there's no supported way to un-flag a composer set through this route.
+  if (body.is_composer_prompt !== undefined) {
+    if (id) {
+      return Response.json({ error: 'is_composer_prompt cannot be changed on an existing prompt set' }, { status: 400 })
+    }
+    if (body.is_composer_prompt !== true) {
+      return Response.json({ error: 'is_composer_prompt must be true when provided' }, { status: 400 })
+    }
+  }
+  const isComposerPrompt = !id && body.is_composer_prompt === true
+
   if (typeof body.label !== 'string' || body.label.trim().length === 0) {
     return Response.json({ error: 'Label is required' }, { status: 400 })
   }
@@ -118,8 +133,12 @@ export async function PATCH(req: Request) {
   }
   const label = body.label.trim()
   const description = typeof body.description === 'string' ? body.description.trim() : ''
-  const status: PatchStatus = body.status
+  // A composer set is always created as a draft — activation only ever
+  // happens through Compile & Publish, never at creation.
+  const status: PatchStatus = isComposerPrompt ? 'draft' : body.status
   // A type can be assigned regardless of status (kept for drafts too); required only when live.
+  // Composer sets may carry a type like any other set — is_composer_prompt is
+  // purely a category flag, unrelated to which prompt type a set is wired to.
   const promptTypeId: string | null =
     typeof body.prompt_type_id === 'string' && body.prompt_type_id.length > 0 ? body.prompt_type_id : null
   if (status === 'live' && !promptTypeId) {
@@ -128,13 +147,18 @@ export async function PATCH(req: Request) {
 
   const supabase = getAdminClient()
 
-  // Resolve the owning tenant: existing row's tenant on update, explicit tenant_id on insert.
+  // Resolve the owning tenant: existing row's tenant on update, explicit
+  // tenant_id on insert — except a composer-family insert, which always
+  // belongs to the platform (SBL) tenant regardless of what the client sends
+  // (the create modal has no Tenant field to begin with).
   let tenantId: string
   if (id) {
     const { data: existing, error } = await supabase.from('prompt_sets').select('tenant_id').eq('id', id).maybeSingle()
     if (error) return Response.json({ error: error.message }, { status: 500 })
     if (!existing) return Response.json({ error: 'Prompt set not found' }, { status: 404 })
     tenantId = existing.tenant_id as string
+  } else if (isComposerPrompt) {
+    tenantId = SBL_TENANT_ID
   } else {
     if (typeof body.tenant_id !== 'string' || !body.tenant_id) {
       return Response.json({ error: 'tenant_id is required to create a prompt set' }, { status: 400 })
@@ -155,10 +179,23 @@ export async function PATCH(req: Request) {
     if (!assignment) return Response.json({ error: 'Prompt type not found for that tenant' }, { status: 400 })
   }
 
-  // version / is_composer_prompt / is_default / timestamps are server-owned — never written.
+  // version / is_default / timestamps are server-owned — never written. is_composer_prompt
+  // is likewise server-owned on UPDATE, but IS written on INSERT when the caller asked for it
+  // (validated above: creation-only, and only ever true).
   const writeId = id
     ? await supabase.from('prompt_sets').update({ label, description, status, prompt_type_id: promptTypeId }).eq('id', id).select('id').maybeSingle()
-    : await supabase.from('prompt_sets').insert({ tenant_id: tenantId, label, description, status, prompt_type_id: promptTypeId }).select('id').single()
+    : await supabase
+        .from('prompt_sets')
+        .insert({
+          tenant_id: tenantId,
+          label,
+          description,
+          status,
+          prompt_type_id: promptTypeId,
+          ...(isComposerPrompt ? { is_composer_prompt: true } : {}),
+        })
+        .select('id')
+        .single()
 
   if (writeId.error) {
     console.error('[platform/prompt-sets] upsert failed:', writeId.error.message)
@@ -194,7 +231,13 @@ export async function PATCH(req: Request) {
     target_type: 'prompt_set',
     target_id: result.id,
     correlation_id: req.headers.get('x-correlation-id'),
-    metadata: { status: result.status, has_prompt_type: Boolean(result.prompt_type_id), created: !id, cross_tenant: true },
+    metadata: {
+      status: result.status,
+      has_prompt_type: Boolean(result.prompt_type_id),
+      created: !id,
+      cross_tenant: true,
+      is_composer_prompt: isComposerPrompt,
+    },
   })
   return Response.json(result)
 }
