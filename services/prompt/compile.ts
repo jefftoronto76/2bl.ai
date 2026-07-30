@@ -9,14 +9,7 @@
 // Publish is the only activation event, and it is unconditional (July 2026):
 // every successful compile makes the target prompt_set — and its compiled row —
 // the live one for its (tenant_id, prompt_type_id) slot, whether the set was
-// previously live or draft. There is no "compile without activating." Before
-// writing, any OTHER row/set currently live for that same slot is cleared first
-// (clear-then-set) so the partial unique indexes
-// (compiled_prompts_single_live_typed_idx / compiled_prompts_single_live_untyped_idx)
-// never see two live rows for the same slot at once. This enforces the
-// constraint at the write path only — getSystemPrompt (services/prompt/compiler.ts)
-// is unchanged and still reads the tenant's highest-version row with no type
-// filtering; making it slot-aware is a separate, still-open piece of work.
+// previously live or draft. There is no "compile without activating."
 //
 // Composer-family prompt_sets (is_composer_prompt=true) layer a SECOND,
 // independent exclusivity rule on top of the above: at most one may be
@@ -24,10 +17,22 @@
 // (WHERE is_composer_prompt=true AND status='live'). This is not scoped to
 // (tenant_id, prompt_type_id) the way the rule above is, so publishing a
 // composer set clears any other live composer set as its own step,
-// regardless of which type slot either one is in. Publishing an ordinary
-// (non-composer) set never touches this second rule. Composer sets are no
+// regardless of which type slot either one is in. Composer sets are no
 // longer activated through a separate Platform Settings "Save" pointer — see
 // CLAUDE.md Known Gaps — Compile & Publish here is now the only path.
+//
+// Atomic publish (July 2026): steps 4-7 below — resolve type/composer flag,
+// clear-then-set both tables, archive the outgoing row, write the new one,
+// activate the target set — all happen inside a single Postgres function
+// (publish_compiled_prompt), called once via supabase.rpc(). The function
+// holds pg_advisory_xact_lock on (tenant_id, prompt_type_id) for the whole
+// transaction — and a second, fixed-key lock when the target is
+// composer-family, since that exclusivity is platform-wide and would
+// otherwise slip past the type-scoped lock entirely. See the SQL itself
+// (run by Jeff in Studio) for the full body. The old sequential-calls
+// implementation this replaced was never truly atomic — it relied on the
+// partial unique indexes catching a 23505 collision after the fact; that
+// catch is kept below as a backstop, not the primary defense anymore.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { isOrdered } from '@/services/prompt/block-order'
@@ -158,6 +163,12 @@ export async function buildCompiledContent(
   return { ok: true, content, tokenCount }
 }
 
+interface PublishRpcRow {
+  out_version: number
+  out_updated_at: string
+  out_prompt_type_id: string | null
+}
+
 /**
  * Compile and persist the master prompt for a tenant. Returns the success
  * payload (version, tokenCount, content, updatedAt) or an error with the HTTP
@@ -175,6 +186,13 @@ export async function buildCompiledContent(
  * history automatically the next time this slot is compiled — it is never
  * lost, just deferred one publish.
  *
+ * `expectedVersion` (optimistic concurrency, July 2026) is the compiled
+ * version the caller's UI displayed when the Compile & Publish modal opened
+ * ("Will publish as vN" → vN-1). Pass null/undefined when the slot has never
+ * been compiled (there's nothing to expect) or when the caller doesn't want
+ * the guard. If the slot's live version has since moved, the RPC returns a
+ * conflict instead of silently overwriting someone else's publish.
+ *
  * Activation (July 2026): this call always makes the target prompt_set — and
  * the compiled row it produces — the live one for its (tenant_id,
  * prompt_type_id) slot. Any other row/set currently live for that slot is
@@ -184,20 +202,21 @@ export async function compilePrompt(
   tenantId: string,
   promptSetId: string | null | undefined,
   note: ReleaseNote,
+  expectedVersion?: number | null,
 ): Promise<CompileResult> {
   const supabase = getAdminClient()
 
   // 0. Resolve the prompt type this publish activates, straight from the
   //    prompt_set row — never trust a client-supplied type. Absent promptSetId
   //    (the legacy no-set default slot) has no prompt_set to read, so its type
-  //    is always null. Fails fast with 404 rather than silently compiling into
-  //    the wrong (untyped) slot.
-  let promptTypeId: string | null = null
-  let isComposerPrompt = false
+  //    is always null. Fails fast with 404 rather than spending time compiling
+  //    blocks into a set that doesn't exist. The RPC below re-resolves the
+  //    type independently, inside the transaction — this is a cheap early
+  //    exit for UX, not the source of truth for the write.
   if (promptSetId) {
     const { data: targetSet, error: targetSetError } = await supabase
       .from('prompt_sets')
-      .select('id, prompt_type_id, is_composer_prompt')
+      .select('id')
       .eq('id', promptSetId)
       .eq('tenant_id', tenantId)
       .maybeSingle()
@@ -209,8 +228,6 @@ export async function compilePrompt(
     if (!targetSet) {
       return { ok: false, status: 404, error: 'Prompt set not found' }
     }
-    promptTypeId = targetSet.prompt_type_id
-    isComposerPrompt = targetSet.is_composer_prompt === true
   }
 
   const built = await buildCompiledContent(tenantId, promptSetId)
@@ -218,196 +235,49 @@ export async function compilePrompt(
 
   const { content, tokenCount } = built
 
-  // 4. Save to compiled_prompts — find existing row for this tenant+slot, archive
-  //    to history, then update. promptSetId (or null) scopes the slot.
-  const now = new Date().toISOString()
+  // 4-7. Clear-then-set (both tables, including the composer-family
+  //      exclusivity branch), archive the outgoing row, write the new one,
+  //      activate the target set — all inside a single Postgres transaction.
+  //      See publish_compiled_prompt (Studio) for the full body.
+  const { data, error } = await supabase
+    .rpc('publish_compiled_prompt', {
+      p_tenant_id: tenantId,
+      p_prompt_set_id: promptSetId ?? null,
+      p_content: content,
+      p_release_summary: note.summary,
+      p_release_why: note.why || null,
+      p_release_changed_block_ids: note.changed_block_ids,
+      p_expected_version: expectedVersion ?? null,
+    })
+    .single()
 
-  let existingQuery = supabase
-    .from('compiled_prompts')
-    .select('id, version, content, release_summary, release_why, release_changed_block_ids')
-    .eq('tenant_id', tenantId)
-    .limit(1)
-
-  if (promptSetId) {
-    existingQuery = existingQuery.eq('prompt_set_id', promptSetId)
-  } else {
-    existingQuery = existingQuery.is('prompt_set_id', null)
+  if (error) {
+    console.error('[prompt/compile] publish_compiled_prompt failed:', error.code, error.message)
+    if (error.code === 'P1001') {
+      return { ok: false, status: 404, error: 'Prompt set not found' }
+    }
+    if (error.code === 'P1002' || error.code === '23505') {
+      // P1002 = the optimistic-concurrency guard tripped (the slot moved since
+      // the caller's UI last read it). 23505 = the partial-unique-index
+      // backstop — kept as a defense for anything that writes to these tables
+      // outside this function; true atomicity via the RPC's advisory locks
+      // makes this path unreachable in normal operation, not dead code to
+      // delete.
+      return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
+    }
+    return { ok: false, status: 500, error: error.message }
   }
 
-  const { data: existing } = await existingQuery.maybeSingle()
-
-  // 5. Clear-then-set, BOTH tables, same (tenant_id, prompt_type_id) slot —
-  //    mirrors the is_composer_prompt pattern (clear siblings first so the
-  //    partial unique index never sees two live rows, then write the target
-  //    live). Demoted siblings go to 'retired', not 'draft' — 'draft' means
-  //    genuinely never-published, and these rows were live a moment ago. Both
-  //    queries below are pre-scoped to status='live', so only rows that were
-  //    actually live get retired; a row already 'draft' is never touched.
-  //    Excludes the target's own current row/set from the clear query (a no-op
-  //    optimization, not a correctness requirement — the write below sets it
-  //    live explicitly regardless).
-  let clearSiblingCompiled = supabase
-    .from('compiled_prompts')
-    .update({ status: 'retired' })
-    .eq('tenant_id', tenantId)
-    .eq('status', 'live')
-  clearSiblingCompiled = promptTypeId
-    ? clearSiblingCompiled.eq('prompt_type_id', promptTypeId)
-    : clearSiblingCompiled.is('prompt_type_id', null)
-  if (existing) clearSiblingCompiled = clearSiblingCompiled.neq('id', existing.id)
-
-  const { error: clearCompiledError } = await clearSiblingCompiled
-  if (clearCompiledError) {
-    console.error('[prompt/compile] clear sibling live compiled_prompts failed:', clearCompiledError.message)
-    return { ok: false, status: 500, error: clearCompiledError.message }
-  }
-
-  if (promptSetId) {
-    let clearSiblingSets = supabase
-      .from('prompt_sets')
-      .update({ status: 'retired' })
-      .eq('tenant_id', tenantId)
-      .eq('status', 'live')
-      .neq('id', promptSetId)
-    clearSiblingSets = promptTypeId
-      ? clearSiblingSets.eq('prompt_type_id', promptTypeId)
-      : clearSiblingSets.is('prompt_type_id', null)
-
-    const { error: clearSetsError } = await clearSiblingSets
-    if (clearSetsError) {
-      console.error('[prompt/compile] clear sibling live prompt_sets failed:', clearSetsError.message)
-      return { ok: false, status: 500, error: clearSetsError.message }
-    }
-
-    // 5b. Composer-family exclusivity — independent of the type-based clear
-    //     above. A composer prompt set's live-slot uniqueness is platform-wide
-    //     (is_composer_prompt=true AND status='live', backed by
-    //     prompt_sets_single_composer_idx), not scoped to (tenant_id,
-    //     prompt_type_id) — two composer sets in different type slots would
-    //     never collide in the clear above, so this runs as its own step
-    //     whenever the target itself is composer-family.
-    if (isComposerPrompt) {
-      const { error: clearComposerError } = await supabase
-        .from('prompt_sets')
-        .update({ status: 'retired' })
-        .eq('is_composer_prompt', true)
-        .eq('status', 'live')
-        .neq('id', promptSetId)
-
-      if (clearComposerError) {
-        console.error('[prompt/compile] clear sibling live composer prompt_sets failed:', clearComposerError.message)
-        return { ok: false, status: 500, error: clearComposerError.message }
-      }
-    }
-  }
-
-  let newVersion: number
-
-  if (existing) {
-    console.log('[prompt/compile] existing compiled_prompts version:', existing.version)
-
-    // Archive the OUTGOING version's content + note — not the new one being
-    // written below. The note submitted with THIS publish describes the new
-    // version and rides into history on the NEXT compile of this slot.
-    const { error: historyError } = await supabase
-      .from('compiled_prompts_history')
-      .insert({
-        prompt_id: existing.id,
-        tenant_id: tenantId,
-        content: existing.content,
-        version: existing.version,
-        release_summary: existing.release_summary ?? null,
-        release_why: existing.release_why ?? null,
-        release_changed_block_ids: existing.release_changed_block_ids ?? [],
-      })
-
-    if (historyError) {
-      console.error('[prompt/compile] history insert failed:', historyError.message)
-    } else {
-      console.log('[prompt/compile] archived version', existing.version, 'to history')
-    }
-
-    newVersion = existing.version + 1
-    const { error: updateError } = await supabase
-      .from('compiled_prompts')
-      .update({
-        content,
-        version: newVersion,
-        updated_at: now,
-        status: 'live',
-        prompt_type_id: promptTypeId,
-        release_summary: note.summary,
-        release_why: note.why || null,
-        release_changed_block_ids: note.changed_block_ids,
-      })
-      .eq('id', existing.id)
-      .eq('tenant_id', tenantId)
-
-    if (updateError) {
-      console.error('[prompt/compile] update failed:', updateError.message)
-      if (updateError.code === '23505') {
-        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
-      }
-      return { ok: false, status: 500, error: updateError.message }
-    }
-    console.log('[prompt/compile] updated to version:', newVersion)
-  } else {
-    console.log('[prompt/compile] no existing row — inserting version 1')
-    newVersion = 1
-    const { error: insertError } = await supabase
-      .from('compiled_prompts')
-      .insert({
-        tenant_id: tenantId,
-        content,
-        version: newVersion,
-        updated_at: now,
-        prompt_set_id: promptSetId ?? null,
-        status: 'live',
-        prompt_type_id: promptTypeId,
-        release_summary: note.summary,
-        release_why: note.why || null,
-        release_changed_block_ids: note.changed_block_ids,
-      })
-
-    if (insertError) {
-      console.error('[prompt/compile] insert failed:', insertError.message)
-      if (insertError.code === '23505') {
-        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
-      }
-      return { ok: false, status: 500, error: insertError.message }
-    }
-  }
-
-  // 6. Activate the target prompt_set itself, unconditionally — Publish is the
-  //    only activation event, so this always lands here regardless of the
-  //    set's prior status. Keeps Settings' displayed status truthful rather
-  //    than drifting from the compiled_prompts row it just published.
-  if (promptSetId) {
-    const { error: activateSetError } = await supabase
-      .from('prompt_sets')
-      .update({ status: 'live' })
-      .eq('id', promptSetId)
-      .eq('tenant_id', tenantId)
-
-    if (activateSetError) {
-      console.error('[prompt/compile] activate prompt_set failed:', activateSetError.message)
-      if (activateSetError.code === '23505') {
-        return { ok: false, status: 409, error: 'Another publish for this prompt type just landed — please retry.' }
-      }
-      return { ok: false, status: 500, error: activateSetError.message }
-    }
-    console.log('[prompt/compile] activated prompt_set:', promptSetId)
-  }
-
-  console.log('[prompt/compile] save complete — version:', newVersion, 'tokens:', tokenCount)
+  const row = data as PublishRpcRow
+  console.log('[prompt/compile] save complete — version:', row.out_version, 'tokens:', tokenCount)
   return {
     ok: true,
     data: {
       success: true,
-      version: newVersion,
+      version: row.out_version,
       tokenCount,
       content,
-      updatedAt: now,
+      updatedAt: row.out_updated_at,
     },
   }
 }

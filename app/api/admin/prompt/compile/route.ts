@@ -19,6 +19,14 @@ export async function POST(req: NextRequest) {
       ? body.prompt_set_id
       : null
 
+  // Optimistic concurrency (July 2026): the version the caller's UI displayed
+  // when the Compile & Publish modal opened. Absent/invalid means "skip the
+  // guard" — the RPC treats null the same way.
+  const expectedVersion: number | null =
+    typeof body.expected_version === 'number' && Number.isInteger(body.expected_version)
+      ? body.expected_version
+      : null
+
   // Release note (July 2026): required on every publish. Validation mirrors
   // the client exactly — parseNote is the single shared implementation.
   const note = parseNote(body.note)
@@ -36,7 +44,7 @@ export async function POST(req: NextRequest) {
   }
   const tenantId = tenantResult.tenantId
 
-  const result = await compilePrompt(tenantId, promptSetId, note)
+  const result = await compilePrompt(tenantId, promptSetId, note, expectedVersion)
   if (!result.ok) {
     void logEvent({
       action: AuditAction.PROMPT_COMPILE,

@@ -55,11 +55,33 @@ export function PublishButton({
   const [compiling, setCompiling] = useState(false)
   const [compiledText, setCompiledText] = useState('')
 
+  // Optimistic concurrency (July 2026): activeSetVersion is a live prop —
+  // it can move under us while the modal is open (a background refetch, a
+  // realtime update). Freeze it the moment the modal opens so the number the
+  // reviewer actually sees ("Will publish as vN") is the exact number checked
+  // against the DB at publish time — not whatever the prop has drifted to by
+  // then. null until the modal has been opened at least once.
+  const [frozenActiveVersion, setFrozenActiveVersion] = useState<number | null>(null)
+  const effectiveActiveVersion = frozenActiveVersion ?? activeSetVersion
+
   // The version this publish will create. Known BEFORE the compile POST now,
   // because stage 2 and stage 3 both label it ("Will publish as v8" / "Publish v8").
-  const nextVersion = activeSetVersion + 1
+  const nextVersion = effectiveActiveVersion + 1
+  // 0 is the "never compiled" sentinel (see activeSetVersion's doc comment
+  // above) — there's no existing row to expect a version from, so the guard
+  // is skipped (null), not sent as a literal 0.
+  const expectedVersion = effectiveActiveVersion > 0 ? effectiveActiveVersion : null
+
+  // Closes the modal and drops the frozen version snapshot, so the next
+  // Compile click re-captures activeSetVersion fresh rather than reusing a
+  // number from a previous, possibly-cancelled attempt.
+  function closeModal() {
+    setCompileOpen(false)
+    setFrozenActiveVersion(null)
+  }
 
   async function handleCompile() {
+    setFrozenActiveVersion(activeSetVersion)
     setCompiling(true)
     setCompileOpen(true)
     try {
@@ -70,7 +92,7 @@ export function PublishButton({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setCompileOpen(false)
+        closeModal()
         notifications.show({
           color: 'red',
           title: 'Compile failed',
@@ -81,7 +103,7 @@ export function PublishButton({
       const data: PreviewResponse = await res.json()
       setCompiledText(data.content)
     } catch (err) {
-      setCompileOpen(false)
+      closeModal()
       notifications.show({
         color: 'red',
         title: 'Compile failed',
@@ -97,7 +119,7 @@ export function PublishButton({
       const res = await fetch('/api/admin/prompt/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_set_id: activeSetId, note }),
+        body: JSON.stringify({ prompt_set_id: activeSetId, note, expected_version: expectedVersion }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -109,7 +131,7 @@ export function PublishButton({
         return
       }
       const data: CompileResponse = await res.json()
-      setCompileOpen(false)
+      closeModal()
       notifications.show({
         color: 'green',
         title: `Published v${data.version}`,
@@ -131,7 +153,7 @@ export function PublishButton({
       </Button>
       <CompilePublishModal
         opened={compileOpen}
-        onClose={() => setCompileOpen(false)}
+        onClose={closeModal}
         compiling={compiling}
         text={compiledText}
         set={{ id: activeSetId ?? '', label: activeSetLabel }}
