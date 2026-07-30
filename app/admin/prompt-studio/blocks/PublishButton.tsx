@@ -6,13 +6,14 @@
 // from stage 3 of <CompilePublishModal/> and sends it with the compile POST.
 // Everything else (preview → review) is unchanged.
 //
-// July 2026 (publish animation fix): handlePublish now returns a boolean —
-// true on a confirmed successful publish, false on any handled failure — so
-// the modal's stage-4 checklist can track the real request instead of an
-// independent decorative timer. It no longer closes the modal itself; the
-// modal's own success screen (Okay button) does that, via onPublished below,
-// which refreshes this server component's data so the Status/Live version/
-// Active blocks card reflects the publish without a manual reload.
+// July 2026 (publish animation fix): handlePublish now returns
+// { ok: true } | { ok: false, error } — the same message that already goes
+// into the failure toast — so the modal's stage-4 checklist can track the
+// real request instead of an independent decorative timer, and its failed
+// screen can show the actual error. It no longer closes the modal itself;
+// the modal's own success screen (Okay button) does that, via onPublished
+// below, which refreshes this server component's data so the Status/Live
+// version/Active blocks card reflects the publish without a manual reload.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -124,12 +125,14 @@ export function PublishButton({
     }
   }
 
-  // Returns true on a confirmed successful publish, false on any handled
-  // failure — the modal's stage-4 checklist awaits this to decide whether to
-  // show the success screen or drop back to the note stage. Does NOT close
-  // the modal on success; that's the success screen's Okay button (via
-  // onPublished below).
-  async function handlePublish(note: ReleaseNote): Promise<boolean> {
+  // Returns { ok: true } on a confirmed successful publish, or
+  // { ok: false, error } on any handled failure — the modal's stage-4
+  // checklist awaits this to decide whether to show the success screen or
+  // the failed screen (which displays `error` verbatim). Does NOT close the
+  // modal on success; that's the success screen's Okay button (via
+  // onPublished below). The failure toast fires here regardless — belt and
+  // suspenders alongside the modal's own failed-screen error text.
+  async function handlePublish(note: ReleaseNote): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
       const res = await fetch('/api/admin/prompt/compile', {
         method: 'POST',
@@ -138,12 +141,13 @@ export function PublishButton({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+        const error = data?.error ?? 'Publish failed'
         notifications.show({
           color: 'red',
           title: 'Publish failed',
-          message: data?.error ?? 'Publish failed',
+          message: error,
         })
-        return false
+        return { ok: false, error }
       }
       const data: CompileResponse = await res.json()
       notifications.show({
@@ -151,14 +155,15 @@ export function PublishButton({
         title: `Published v${data.version}`,
         message: note.summary,
       })
-      return true
+      return { ok: true }
     } catch (err) {
+      const error = 'Network error — could not reach the server.'
       notifications.show({
         color: 'red',
         title: 'Publish failed',
-        message: 'Network error — could not reach the server.',
+        message: error,
       })
-      return false
+      return { ok: false, error }
     }
   }
 

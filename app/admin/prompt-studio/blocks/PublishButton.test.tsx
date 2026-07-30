@@ -24,7 +24,9 @@ vi.mock('next/navigation', () => ({
 // tests below that never click past "Publish vN"), then shows a success
 // screen once the request actually resolves; only that screen's "Okay"
 // button closes the modal and refreshes the Blocks screen's status data. A
-// failed request drops the modal back to the note stage instead.
+// failed request shows a real failed screen (the actual error message, plus
+// Try again / Okay) instead of a false success screen — the failure toast
+// still fires too, belt and suspenders.
 
 let lastCompileBody: Record<string, unknown> | null
 
@@ -47,20 +49,37 @@ function mockFetch() {
   return fn
 }
 
-function mockFetchWithCompileFailure() {
+// outcomes[i] is used for the i-th call to /api/admin/prompt/compile (clamped
+// to the last entry once exhausted) — lets a test simulate a failed publish
+// followed by a successful "Try again".
+let compileCallCount = 0
+function mockFetchWithCompileOutcomes(outcomes: Array<'success' | 'failure'>) {
   lastCompileBody = null
+  compileCallCount = 0
   const fn = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/admin/prompt/preview') {
       return { ok: true, json: async () => ({ content: 'Compiled content.', tokenCount: 12 }) }
     }
     if (url === '/api/admin/prompt/compile') {
       lastCompileBody = JSON.parse((init?.body as string) ?? '{}')
-      return { ok: false, json: async () => ({ error: 'Another publish for this prompt type just landed.' }) }
+      const outcome = outcomes[Math.min(compileCallCount, outcomes.length - 1)]
+      compileCallCount += 1
+      if (outcome === 'failure') {
+        return { ok: false, json: async () => ({ error: 'Another publish for this prompt type just landed.' }) }
+      }
+      return {
+        ok: true,
+        json: async () => ({ success: true, version: 4, tokenCount: 12, content: 'x', updatedAt: '2026-07-30T00:00:00.000Z' }),
+      }
     }
     throw new Error(`unexpected fetch: ${url}`)
   })
   vi.stubGlobal('fetch', fn)
   return fn
+}
+
+function mockFetchWithCompileFailure() {
+  return mockFetchWithCompileOutcomes(['failure'])
 }
 
 async function openModal() {
@@ -183,21 +202,54 @@ describe('PublishButton — publish animation tracks the real request', () => {
     await waitFor(() => expect(screen.queryByText('v4 is live')).not.toBeInTheDocument())
   })
 
-  it('a failed publish drops back to the note stage instead of the success screen, and never refreshes', async () => {
+  it('a failed publish shows the failed screen with the real error, not a false success screen', async () => {
     mockFetchWithCompileFailure()
     render(<PublishButton activeSetId="set-1" activeSetLabel="Sage Base" activeSetVersion={3} />)
 
     await openModal()
     await advanceToPublish(4)
 
-    // Back on the note stage, retryable — not stuck on the checklist and not
-    // sailed through to a false success screen.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish v4' })).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText('Another publish for this prompt type just landed.')).toBeInTheDocument(),
+    )
     expect(screen.queryByText('v4 is live')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
 
+    // Belt and suspenders — the toast still fires alongside the modal's own error text.
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ color: 'red', title: 'Publish failed' }),
     )
+    expect(refreshMock).not.toHaveBeenCalled()
+  })
+
+  it('Try again on the failed screen resubmits the same note and can reach the success screen', async () => {
+    mockFetchWithCompileOutcomes(['failure', 'success'])
+    render(<PublishButton activeSetId="set-1" activeSetLabel="Sage Base" activeSetVersion={3} />)
+
+    await openModal()
+    await advanceToPublish(4)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(screen.getByText('v4 is live')).toBeInTheDocument())
+    expect(compileCallCount).toBe(2)
+    // Same note both times — the summary typed before the first attempt carried through.
+    expect(lastCompileBody?.note).toMatchObject({ summary: 'Tighten escalation' })
+  })
+
+  it('Okay on the failed screen drops back to the note stage with the summary preserved, without refreshing', async () => {
+    mockFetchWithCompileFailure()
+    render(<PublishButton activeSetId="set-1" activeSetLabel="Sage Base" activeSetVersion={3} />)
+
+    await openModal()
+    await advanceToPublish(4)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Okay' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Okay' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish v4' })).toBeInTheDocument())
+    expect(screen.getByLabelText(/summary/i)).toHaveValue('Tighten escalation')
     expect(refreshMock).not.toHaveBeenCalled()
   })
 })
