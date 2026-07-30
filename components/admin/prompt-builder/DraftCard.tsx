@@ -11,11 +11,12 @@
 // which doesn't support that variant.
 // NOTE: metadata row uses SimpleGrid cols={{ base:1, sm:3 }} for responsive layout.
 
+import { useState } from 'react'
 import {
   Card, Stack, Group, Text, Textarea, TextInput, Select, Checkbox, Alert,
-  ActionIcon, Button as MantineButton, SimpleGrid,
+  ActionIcon, Button as MantineButton, SimpleGrid, Tooltip,
 } from '@mantine/core'
-import { IconPencil } from '@tabler/icons-react'
+import { IconPencil, IconClipboard, IconCheck } from '@tabler/icons-react'
 import { Button } from '@/components/admin/primitives/Button'
 import { TYPES, type BlockType, type DraftBlock, type DraftCardMeta } from './types'
 
@@ -47,6 +48,17 @@ export function DraftCard({
 }: DraftCardProps) {
   const hasIssues = meta.issues.length > 0
   const busy = meta.isChecking || meta.isSaving
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(draft.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      console.error('[DraftCard] clipboard write failed')
+    }
+  }
 
   return (
     <Card variant="outlined">
@@ -55,11 +67,18 @@ export function DraftCard({
           <Text variant="muted" style={{ fontSize: 'var(--mantine-font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Block ready{count > 1 ? ` (${index + 1} of ${count})` : ''}
           </Text>
-          {!isEditing && (
-            <ActionIcon variant="subtle" color="gray" size="sm" onClick={onStartEdit} aria-label="Edit block content">
-              <IconPencil size={14} />
-            </ActionIcon>
-          )}
+          <Group gap={4} wrap="nowrap">
+            <Tooltip label={copied ? 'Copied!' : 'Copy block content'} openDelay={300} withArrow>
+              <ActionIcon variant="subtle" color={copied ? 'green' : 'gray'} size="sm" onClick={handleCopy} aria-label="Copy block content">
+                {copied ? <IconCheck size={14} /> : <IconClipboard size={14} />}
+              </ActionIcon>
+            </Tooltip>
+            {!isEditing && (
+              <ActionIcon variant="subtle" color="gray" size="sm" onClick={onStartEdit} aria-label="Edit block content">
+                <IconPencil size={14} />
+              </ActionIcon>
+            )}
+          </Group>
         </Group>
 
         {isEditing ? (
