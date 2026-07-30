@@ -5,8 +5,18 @@
 // July 2026: publish now carries a RELEASE NOTE. handlePublish takes the note
 // from stage 3 of <CompilePublishModal/> and sends it with the compile POST.
 // Everything else (preview → review) is unchanged.
+//
+// July 2026 (publish animation fix): handlePublish now returns
+// { ok: true } | { ok: false, error } — the same message that already goes
+// into the failure toast — so the modal's stage-4 checklist can track the
+// real request instead of an independent decorative timer, and its failed
+// screen can show the actual error. It no longer closes the modal itself;
+// the modal's own success screen (Okay button) does that, via onPublished
+// below, which refreshes this server component's data so the Status/Live
+// version/Active blocks card reflects the publish without a manual reload.
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { CompilePublishModal, type ChangedBlock, type ReleaseNote } from '@/components/admin/prompt-studio/CompilePublishModal'
@@ -51,6 +61,7 @@ export function PublishButton({
   lastCompiledAt = null,
   blocks = [],
 }: PublishButtonProps) {
+  const router = useRouter()
   const [compileOpen, setCompileOpen] = useState(false)
   const [compiling, setCompiling] = useState(false)
   const [compiledText, setCompiledText] = useState('')
@@ -114,7 +125,14 @@ export function PublishButton({
     }
   }
 
-  async function handlePublish(note: ReleaseNote) {
+  // Returns { ok: true } on a confirmed successful publish, or
+  // { ok: false, error } on any handled failure — the modal's stage-4
+  // checklist awaits this to decide whether to show the success screen or
+  // the failed screen (which displays `error` verbatim). Does NOT close the
+  // modal on success; that's the success screen's Okay button (via
+  // onPublished below). The failure toast fires here regardless — belt and
+  // suspenders alongside the modal's own failed-screen error text.
+  async function handlePublish(note: ReleaseNote): Promise<{ ok: true } | { ok: false; error: string }> {
     try {
       const res = await fetch('/api/admin/prompt/compile', {
         method: 'POST',
@@ -123,27 +141,37 @@ export function PublishButton({
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+        const error = data?.error ?? 'Publish failed'
         notifications.show({
           color: 'red',
           title: 'Publish failed',
-          message: data?.error ?? 'Publish failed',
+          message: error,
         })
-        return
+        return { ok: false, error }
       }
       const data: CompileResponse = await res.json()
-      closeModal()
       notifications.show({
         color: 'green',
         title: `Published v${data.version}`,
         message: note.summary,
       })
+      return { ok: true }
     } catch (err) {
+      const error = 'Network error — could not reach the server.'
       notifications.show({
         color: 'red',
         title: 'Publish failed',
-        message: 'Network error — could not reach the server.',
+        message: error,
       })
+      return { ok: false, error }
     }
+  }
+
+  // Fired from the success screen's Okay button, alongside onClose — refetches
+  // this server component's data so the Status/Live version/Active blocks
+  // card picks up the publish without a manual reload.
+  function handlePublished() {
+    router.refresh()
   }
 
   return (
@@ -161,6 +189,7 @@ export function PublishButton({
         blocks={blocks}
         lastCompiledAt={lastCompiledAt}
         onPublish={handlePublish}
+        onPublished={handlePublished}
       />
     </>
   )

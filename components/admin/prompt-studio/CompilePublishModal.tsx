@@ -2,16 +2,27 @@
 
 // CompilePublishModal — pre-publish review gate for the Blocks screen.
 //
-// THREE-stage flow (stage 3 added July 2026 — "release note"):
-//   Stage 1 · Compile  — the wiring POSTs to /api/admin/prompt/compile; this modal opens
-//                        in a loading state while the request is in flight.
-//   Stage 2 · Review   — the server's compiled output is shown read-only + scrollable, with a
-//                        "will publish as vN · N tokens · N lines" meta line and four actions:
-//                            Copy · Download · Cancel · Publish →
-//   Stage 3 · Describe — a short release note before the publish actually fires. Same modal,
-//                        no second dialog. Auto-derives the "what changed" list from blocks
-//                        edited since the set's last_compiled_at; the human only writes WHY.
-//                        Actions: Back · Publish vN.  ⌘↵ publishes.
+// FIVE-stage flow (stage 4 "publishing"/"done"/"failed" added — Publish success + failure screens):
+//   Stage 1 · Compile    — the wiring POSTs to /api/admin/prompt/compile; this modal opens
+//                          in a loading state while the request is in flight.
+//   Stage 2 · Review     — the server's compiled output is shown read-only + scrollable, with a
+//                          "will publish as vN · N tokens · N lines" meta line and four actions:
+//                              Copy · Download · Cancel · Publish →
+//   Stage 3 · Describe   — a short release note before the publish actually fires. Same modal,
+//                          no second dialog. Auto-derives the "what changed" list from blocks
+//                          edited since the set's last_compiled_at; the human only writes WHY.
+//                          Actions: Back · Publish vN.  ⌘↵ publishes.
+//   Stage 4 · Publishing/Done/Failed — onPublish(note) fires the instant this stage begins, and
+//                          the checklist animation TRACKS the real request rather than running on
+//                          an independent decorative timer: the first three steps advance on a
+//                          timer, the fourth holds in its in-progress state until onPublish's
+//                          promise actually resolves. `{ ok: true }` finishes the checklist and
+//                          shows the success screen (Okay closes the modal and refreshes the
+//                          Blocks screen's status card via onPublished). `{ ok: false, error }`
+//                          shows a failure screen with the real error message — the toast from
+//                          onPublish (PublishButton.tsx) also fires, belt and suspenders — with
+//                          Try again (resubmits the same note) and Okay (drops back to stage 3,
+//                          summary/why preserved).
 //
 // Stage 3 exists because a compiled prompt going live is a deploy with no paper trail. Same
 // principles as a good PR: a one-line imperative summary (required), a body (optional), and a
@@ -33,6 +44,7 @@ import {
   IconDownload,
   IconFileText,
   IconRocket,
+  IconX,
 } from '@tabler/icons-react'
 import { ORDERED_TYPES, TYPE_COLORS } from '@/services/prompt/block-types'
 import type { BlockType } from '@/services/prompt/block-types'
@@ -47,6 +59,13 @@ import {
 } from '@/services/prompt/release-note'
 
 export type { ChangedBlock, ReleaseNote }
+
+// Publish-in-progress checklist. Labels are cosmetic, but the LAST step's timing is not: it
+// holds in its in-progress state until onPublish's real promise resolves (see the publishing-
+// stage effect below) rather than finishing on a fixed timer, so the modal never claims success
+// before the server has actually confirmed it.
+const PUBLISH_STEPS = ['Validating blocks…', 'Compiling master prompt…', 'Publishing version…', 'Updating live prompt…']
+const STEP_MS = 550
 
 // ── Section headings ──────────────────────────────────────────────────────────────────────
 // Correction 1 applied: removed `escalation`, added `output_format`.
@@ -113,13 +132,28 @@ interface CompilePublishModalProps {
    * new) and stage 3 labels it as a first publish rather than "changed since v0".
    */
   lastCompiledAt?: string | null
-  /** Fired from stage 3 with the note. The wiring POSTs the compile WITH this payload. */
-  onPublish: (note: ReleaseNote) => void
+  /**
+   * Fired the instant stage 4 ("publishing") begins, with the note. The wiring POSTs the
+   * compile WITH this payload and resolves `{ ok: true }` on success / `{ ok: false, error }` on
+   * a handled failure (non-ok response or network error — see PublishButton.tsx's handlePublish,
+   * which already shows the failure toast with this same message before resolving). The
+   * publishing-stage checklist's last step — and the transition to the success/failure screen —
+   * is gated on this promise, not a fixed timer.
+   */
+  onPublish: (note: ReleaseNote) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * Fired when the reviewer clicks "Okay" on the success screen, alongside (not instead of)
+   * onClose — lets the caller refresh data that a successful publish just changed (e.g. the
+   * Blocks screen's Status/Live version/Active blocks card, which does not otherwise learn a
+   * publish happened).
+   */
+  onPublished?: () => void
 }
 
 export function CompilePublishModal({
   opened,
   onClose,
+  onPublished,
   compiling,
   text,
   set,
@@ -129,9 +163,11 @@ export function CompilePublishModal({
   onPublish,
 }: CompilePublishModalProps) {
   const [copied, setCopied] = useState(false)
-  const [stage, setStage] = useState<'review' | 'note'>('review')
+  const [stage, setStage] = useState<'review' | 'note' | 'publishing' | 'done' | 'failed'>('review')
   const [summary, setSummary] = useState('')
   const [why, setWhy] = useState('')
+  const [pubStep, setPubStep] = useState(-1)
+  const [publishError, setPublishError] = useState<string | null>(null)
 
   const changed = useMemo(() => changedSince(blocks, lastCompiledAt), [blocks, lastCompiledAt])
 
@@ -143,6 +179,8 @@ export function CompilePublishModal({
       setStage('review')
       setSummary('')
       setWhy('')
+      setPubStep(-1)
+      setPublishError(null)
     }
   }, [opened])
 
@@ -152,7 +190,49 @@ export function CompilePublishModal({
     if (stage === 'note') setSummary((s) => (s ? s : suggestSummary(changed)))
   }, [stage, changed])
 
+  // Stage 4 · Publishing — onPublish(note) fires the instant this stage begins (also on every
+  // "Try again" from the failed screen, since that re-enters 'publishing'). The first N-1
+  // checklist steps advance on a decorative timer; the LAST step holds in its in-progress state
+  // until the real request resolves, so the animation tracks the actual outcome instead of
+  // running independently of it (a real failure must never sail through to the success screen).
+  // Any still-pending decorative timers are cleared the moment the real result lands, so a
+  // fast-resolving request can't have a later timer tick stomp its final state.
+  useEffect(() => {
+    if (stage !== 'publishing') return
+    let cancelled = false
+    let doneTimer: ReturnType<typeof setTimeout> | undefined
+    setPubStep(0)
+    setPublishError(null)
+    const timers = PUBLISH_STEPS.slice(0, -1).map((_, i) =>
+      setTimeout(() => setPubStep(i + 1), STEP_MS * (i + 1)),
+    )
+    onPublish({ summary: summary.trim(), why: why.trim(), changed_block_ids: changed.map((b) => b.id) }).then((result) => {
+      timers.forEach(clearTimeout)
+      if (cancelled) return
+      if (result.ok) {
+        setPubStep(PUBLISH_STEPS.length)
+        doneTimer = setTimeout(() => {
+          if (!cancelled) setStage('done')
+        }, 350)
+      } else {
+        // The failure toast already fired inside onPublish (PublishButton.tsx) — belt and
+        // suspenders — but the modal also shows the real error with a way to retry or back out.
+        setPublishError(result.error)
+        setStage('failed')
+      }
+    })
+    return () => {
+      cancelled = true
+      timers.forEach(clearTimeout)
+      if (doneTimer) clearTimeout(doneTimer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage])
+
   const note = stage === 'note'
+  const publishing = stage === 'publishing'
+  const done = stage === 'done'
+  const failed = stage === 'failed'
   const tokens = tokensFor(text)
   const lines = text ? text.split('\n').length : 0
   const slug = set.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -161,8 +241,19 @@ export function CompilePublishModal({
 
   const submit = () => {
     if (!canPublish) return
-    onPublish({ summary: summary.trim(), why: why.trim(), changed_block_ids: changed.map((b) => b.id) })
+    setStage('publishing')
   }
+
+  const okay = () => {
+    onPublished?.()
+    onClose()
+  }
+
+  // Failed screen's two actions: retry resubmits the same note (re-enters
+  // 'publishing', which re-fires onPublish); Okay backs out to the note
+  // stage — summary/why are untouched, so nothing to re-type.
+  const retryPublish = () => setStage('publishing')
+  const backToNote = () => setStage('note')
 
   const copy = () => {
     navigator.clipboard?.writeText(text)
@@ -186,15 +277,23 @@ export function CompilePublishModal({
   const title = (
     <Group gap="sm" align="center" wrap="nowrap">
       <ThemeIcon variant="light" color="brand" size={34} radius="md">
-        {note ? <IconRocket size={18} /> : <IconFileText size={18} />}
+        {note || publishing || done || failed ? <IconRocket size={18} /> : <IconFileText size={18} />}
       </ThemeIcon>
       <div>
         <Text fw={600} size="sm" style={{ lineHeight: 1.2 }}>
-          {note ? 'Describe this release' : 'Review compiled prompt'}
+          {failed
+            ? 'Publish failed'
+            : done
+              ? 'Published'
+              : publishing
+                ? `Publishing v${version}…`
+                : note
+                  ? 'Describe this release'
+                  : 'Review compiled prompt'}
         </Text>
         <Text c="dimmed" size="xs">
           {set.label}
-          {note ? ` · publishing v${version}` : ''}
+          {note || publishing || done || failed ? ` · v${version}` : ''}
         </Text>
       </div>
     </Group>
@@ -205,13 +304,73 @@ export function CompilePublishModal({
       opened={opened}
       onClose={onClose}
       centered
-      size={note ? 'lg' : 'xl'}
+      size={note || publishing || done || failed ? 'lg' : 'xl'}
       radius="md"
       title={title}
+      closeOnClickOutside={!publishing && !done}
+      withCloseButton={!publishing}
       overlayProps={{ backgroundOpacity: 0.55, blur: 2 }}
       styles={{ title: { width: '100%' }, body: { paddingTop: 4 } }}
     >
-      {compiling ? (
+      {done ? (
+        // ── Stage 4b · Done ─────────────────────────────────────────────────────────
+        <Stack align="center" justify="center" gap="sm" py={40}>
+          <ThemeIcon size={56} radius="xl" color="green" variant="light">
+            <IconCheck size={30} />
+          </ThemeIcon>
+          <Text fw={600} size="lg">v{version} is live</Text>
+          <Text c="dimmed" size="sm" ta="center" maw={340}>
+            {summary.trim() || `Version ${version} published to ${set.label}.`}
+          </Text>
+          <Button mt="sm" onClick={okay}>
+            Okay
+          </Button>
+        </Stack>
+      ) : failed ? (
+        // ── Stage 4c · Failed ───────────────────────────────────────────────────────
+        <Stack align="center" justify="center" gap="sm" py={40}>
+          <ThemeIcon size={56} radius="xl" color="red" variant="light">
+            <IconX size={30} />
+          </ThemeIcon>
+          <Text fw={600} size="lg">Publish v{version} failed</Text>
+          <Text c="dimmed" size="sm" ta="center" maw={340}>
+            {publishError ?? 'Something went wrong — please try again.'}
+          </Text>
+          <Group mt="sm" gap="xs">
+            <Button variant="subtle" color="gray" onClick={backToNote}>
+              Okay
+            </Button>
+            <Button leftSection={<IconRocket size={16} />} onClick={retryPublish}>
+              Try again
+            </Button>
+          </Group>
+        </Stack>
+      ) : publishing ? (
+        // ── Stage 4a · Publishing (checklist tracks the real request) ─────────────────
+        <Stack gap="sm" py={24} px={8}>
+          {PUBLISH_STEPS.map((label, i) => (
+            <Group key={i} gap="sm" wrap="nowrap">
+              <ThemeIcon
+                size={22}
+                radius="xl"
+                variant="light"
+                color={i < pubStep ? 'green' : i === pubStep ? 'brand' : 'gray'}
+              >
+                {i < pubStep ? (
+                  <IconCheck size={13} />
+                ) : i === pubStep ? (
+                  <Loader size={11} color="brand" />
+                ) : (
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: 'currentColor', display: 'block' }} />
+                )}
+              </ThemeIcon>
+              <Text size="sm" c={i <= pubStep ? undefined : 'dimmed'} fw={i === pubStep ? 600 : 400}>
+                {label}
+              </Text>
+            </Group>
+          ))}
+        </Stack>
+      ) : compiling ? (
         <Stack align="center" justify="center" gap="md" py={64}>
           <Loader color="brand" />
           <Text c="dimmed" size="sm">
