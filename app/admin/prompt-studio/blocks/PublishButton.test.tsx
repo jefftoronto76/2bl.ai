@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, userEvent, waitFor } from '@/test/render'
 import { PublishButton } from './PublishButton'
+import { notifications } from '@mantine/notifications'
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }))
+
+const refreshMock = vi.fn()
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: refreshMock }),
+}))
 
 // Optimistic concurrency (July 2026): PublishButton freezes activeSetVersion
 // the moment Compile & Publish opens, and sends it back as expected_version
@@ -10,6 +16,15 @@ vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }))
 // under the reviewer while the modal was open (see services/prompt/compile.ts
 // and its RPC, publish_compiled_prompt). These tests exercise that contract
 // end-to-end through the real component, not just the fetch payload shape.
+//
+// Publish animation fix (July 2026): the modal's stage-4 checklist now tracks
+// the REAL request (see CompilePublishModal.tsx) instead of an independent
+// decorative timer — clicking "Publish vN" no longer closes the modal by
+// itself. It fires the request immediately (same as before, verified by the
+// tests below that never click past "Publish vN"), then shows a success
+// screen once the request actually resolves; only that screen's "Okay"
+// button closes the modal and refreshes the Blocks screen's status data. A
+// failed request drops the modal back to the note stage instead.
 
 let lastCompileBody: Record<string, unknown> | null
 
@@ -32,6 +47,22 @@ function mockFetch() {
   return fn
 }
 
+function mockFetchWithCompileFailure() {
+  lastCompileBody = null
+  const fn = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/admin/prompt/preview') {
+      return { ok: true, json: async () => ({ content: 'Compiled content.', tokenCount: 12 }) }
+    }
+    if (url === '/api/admin/prompt/compile') {
+      lastCompileBody = JSON.parse((init?.body as string) ?? '{}')
+      return { ok: false, json: async () => ({ error: 'Another publish for this prompt type just landed.' }) }
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  })
+  vi.stubGlobal('fetch', fn)
+  return fn
+}
+
 async function openModal() {
   await userEvent.click(screen.getByRole('button', { name: /compile & publish/i }))
   await waitFor(() => expect(screen.getByText(/will publish as/i)).toBeInTheDocument())
@@ -43,9 +74,16 @@ async function advanceToPublish(nextVersion: number) {
   await userEvent.click(screen.getByRole('button', { name: `Publish v${nextVersion}` }))
 }
 
+async function completePublish() {
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Okay' })).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Okay' }))
+}
+
 describe('PublishButton — expected_version wiring', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    refreshMock.mockClear()
+    vi.mocked(notifications.show).mockClear()
   })
 
   it('sends the current compiled version as expected_version', async () => {
@@ -103,6 +141,7 @@ describe('PublishButton — expected_version wiring', () => {
 
     await openModal()
     await advanceToPublish(4)
+    await completePublish()
     await waitFor(() => expect(screen.queryByText(/will publish as/i)).not.toBeInTheDocument())
 
     // Parent re-fetches after the successful publish and passes the new version.
@@ -114,5 +153,51 @@ describe('PublishButton — expected_version wiring', () => {
 
     await waitFor(() => expect(lastCompileBody).not.toBeNull())
     expect(lastCompileBody?.expected_version).toBe(4)
+  })
+})
+
+describe('PublishButton — publish animation tracks the real request', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+    refreshMock.mockClear()
+    vi.mocked(notifications.show).mockClear()
+  })
+
+  it('does not show the success screen until the real request resolves, then Okay closes and refreshes', async () => {
+    mockFetch()
+    render(<PublishButton activeSetId="set-1" activeSetLabel="Sage Base" activeSetVersion={3} />)
+
+    await openModal()
+    await advanceToPublish(4)
+
+    // The checklist stage is showing — the success screen has not appeared yet.
+    expect(screen.getByText(/validating blocks/i)).toBeInTheDocument()
+    expect(screen.queryByText('v4 is live')).not.toBeInTheDocument()
+
+    await waitFor(() => expect(screen.getByText('v4 is live')).toBeInTheDocument())
+    expect(refreshMock).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Okay' }))
+
+    expect(refreshMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByText('v4 is live')).not.toBeInTheDocument())
+  })
+
+  it('a failed publish drops back to the note stage instead of the success screen, and never refreshes', async () => {
+    mockFetchWithCompileFailure()
+    render(<PublishButton activeSetId="set-1" activeSetLabel="Sage Base" activeSetVersion={3} />)
+
+    await openModal()
+    await advanceToPublish(4)
+
+    // Back on the note stage, retryable — not stuck on the checklist and not
+    // sailed through to a false success screen.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish v4' })).toBeInTheDocument())
+    expect(screen.queryByText('v4 is live')).not.toBeInTheDocument()
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ color: 'red', title: 'Publish failed' }),
+    )
+    expect(refreshMock).not.toHaveBeenCalled()
   })
 })

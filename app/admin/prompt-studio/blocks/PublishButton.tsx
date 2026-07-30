@@ -5,8 +5,17 @@
 // July 2026: publish now carries a RELEASE NOTE. handlePublish takes the note
 // from stage 3 of <CompilePublishModal/> and sends it with the compile POST.
 // Everything else (preview → review) is unchanged.
+//
+// July 2026 (publish animation fix): handlePublish now returns a boolean —
+// true on a confirmed successful publish, false on any handled failure — so
+// the modal's stage-4 checklist can track the real request instead of an
+// independent decorative timer. It no longer closes the modal itself; the
+// modal's own success screen (Okay button) does that, via onPublished below,
+// which refreshes this server component's data so the Status/Live version/
+// Active blocks card reflects the publish without a manual reload.
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { CompilePublishModal, type ChangedBlock, type ReleaseNote } from '@/components/admin/prompt-studio/CompilePublishModal'
@@ -51,6 +60,7 @@ export function PublishButton({
   lastCompiledAt = null,
   blocks = [],
 }: PublishButtonProps) {
+  const router = useRouter()
   const [compileOpen, setCompileOpen] = useState(false)
   const [compiling, setCompiling] = useState(false)
   const [compiledText, setCompiledText] = useState('')
@@ -114,7 +124,12 @@ export function PublishButton({
     }
   }
 
-  async function handlePublish(note: ReleaseNote) {
+  // Returns true on a confirmed successful publish, false on any handled
+  // failure — the modal's stage-4 checklist awaits this to decide whether to
+  // show the success screen or drop back to the note stage. Does NOT close
+  // the modal on success; that's the success screen's Okay button (via
+  // onPublished below).
+  async function handlePublish(note: ReleaseNote): Promise<boolean> {
     try {
       const res = await fetch('/api/admin/prompt/compile', {
         method: 'POST',
@@ -128,22 +143,30 @@ export function PublishButton({
           title: 'Publish failed',
           message: data?.error ?? 'Publish failed',
         })
-        return
+        return false
       }
       const data: CompileResponse = await res.json()
-      closeModal()
       notifications.show({
         color: 'green',
         title: `Published v${data.version}`,
         message: note.summary,
       })
+      return true
     } catch (err) {
       notifications.show({
         color: 'red',
         title: 'Publish failed',
         message: 'Network error — could not reach the server.',
       })
+      return false
     }
+  }
+
+  // Fired from the success screen's Okay button, alongside onClose — refetches
+  // this server component's data so the Status/Live version/Active blocks
+  // card picks up the publish without a manual reload.
+  function handlePublished() {
+    router.refresh()
   }
 
   return (
@@ -161,6 +184,7 @@ export function PublishButton({
         blocks={blocks}
         lastCompiledAt={lastCompiledAt}
         onPublish={handlePublish}
+        onPublished={handlePublished}
       />
     </>
   )
