@@ -322,9 +322,20 @@ export function SidebarV2({
   renamingId,
   onRenameCommit,
 }: SidebarV2Props) {
-  const { state, dispatch, recentSessions, loadSession, newChat } = useChatStore();
-  const expanded = state.isSidebarExpanded;
+  const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
+
+  // Whether this docked/overlay instance shows full labels + lists (w-64) or
+  // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
+  // that flag means "is the mobile overlay open at all" (owned by ChatHero /
+  // the shell reducer). Conflating the two meant the desktop sidebar — which
+  // always renders — started in the collapsed icon rail (isSidebarExpanded's
+  // initial value is false), hiding the Memories/Conversations list and every
+  // row inside it until a visitor first found and clicked the tiny collapse
+  // chevron: clicking a conversation "did nothing" because there was nothing
+  // rendered to click. This local flag starts expanded so the conversation
+  // list is visible and clickable immediately, on both mobile and desktop.
+  const [expanded, setExpanded] = useState(true);
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`
@@ -373,7 +384,7 @@ export function SidebarV2({
       <div className={`flex items-center px-1.5 mb-2 pt-2 ${expanded ? 'justify-end' : 'justify-center'}`}>
         <IconButton
           label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          onClick={() => setExpanded((v) => !v)}
           className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronRight size={16} />
