@@ -54,7 +54,7 @@ export default function PromptBuilderPage() {
   const [chatLoading, setChatLoading] = useState(false)
   const [draftBlocks, setDraftBlocks] = useState<DraftBlock[]>([])
   const [draftMetas, setDraftMetas] = useState<DraftCardMeta[]>([])
-  const [editingCardIndex, setEditingCardIndex] = useState<number | null>(null)
+  const [editingCardId, setEditingCardId] = useState<string | null>(null)
   const [editingCardBody, setEditingCardBody] = useState('')
   const [closingMessage, setClosingMessage] = useState<string | null>(null)
   const [loadingStatusIndex, setLoadingStatusIndex] = useState(0)
@@ -231,7 +231,7 @@ export default function PromptBuilderPage() {
     setChatLoading(false)
     setDraftBlocks([])
     setDraftMetas([])
-    setEditingCardIndex(null)
+    setEditingCardId(null)
     setEditingCardBody('')
     setClosingMessage(null)
     setContentId(null)
@@ -528,7 +528,7 @@ export default function PromptBuilderPage() {
           .replace(/[‘’]/g, "'")
         const parsed = JSON.parse(normalized)
         if (parsed.done && parsed.title && parsed.content) {
-          const draft: DraftBlock = { title: parsed.title, content: parsed.content }
+          const draft: DraftBlock = { id: crypto.randomUUID(), title: parsed.title, content: parsed.content }
           if (typeof parsed.type === 'string' && VALID_TYPES.has(parsed.type.toLowerCase().replace(/\s+/g, '_'))) {
             draft.suggestedType = parsed.type.toLowerCase().replace(/\s+/g, '_') as BlockType
           }
@@ -607,6 +607,7 @@ export default function PromptBuilderPage() {
         setDraftBlocks(drafts)
         console.log('[setDraftBlocks] drafts:', JSON.stringify(drafts.map(d => ({ title: d.title, type: d.suggestedType }))))
         setDraftMetas(drafts.map(d => ({
+          id: d.id,
           blockName: d.title,
           type: d.suggestedType ?? '',
           topicName: d.suggestedTopic ?? '',
@@ -638,7 +639,7 @@ export default function PromptBuilderPage() {
     setChatInput('')
     setDraftBlocks([])
     setDraftMetas([])
-    setEditingCardIndex(null)
+    setEditingCardId(null)
     setEditingCardBody('')
     setClosingMessage(null)
     const userMsg: ChatMessage = { role: 'user', content: text, timestamp: Date.now() }
@@ -646,34 +647,34 @@ export default function PromptBuilderPage() {
     await sendChatMessage(updated)
   }
 
-  function updateDraftMeta(index: number, updates: Partial<DraftCardMeta>) {
-    setDraftMetas(prev => prev.map((m, i) => i === index ? { ...m, ...updates } : m))
+  function updateDraftMeta(id: string, updates: Partial<DraftCardMeta>) {
+    setDraftMetas(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m))
   }
 
-  function removeDraft(index: number) {
-    setDraftBlocks(prev => prev.filter((_, i) => i !== index))
-    setDraftMetas(prev => prev.filter((_, i) => i !== index))
-    if (editingCardIndex === index) {
-      setEditingCardIndex(null)
+  function removeDraft(id: string) {
+    setDraftBlocks(prev => prev.filter(d => d.id !== id))
+    setDraftMetas(prev => prev.filter(m => m.id !== id))
+    if (editingCardId === id) {
+      setEditingCardId(null)
       setEditingCardBody('')
     }
   }
 
-  function handleEditCard(index: number) {
-    const draft = draftBlocks[index]
+  function handleEditCard(id: string) {
+    const draft = draftBlocks.find(d => d.id === id)
     if (!draft) return
-    setEditingCardIndex(index)
+    setEditingCardId(id)
     setEditingCardBody(draft.content)
   }
 
   function handleCancelEditCard() {
-    setEditingCardIndex(null)
+    setEditingCardId(null)
     setEditingCardBody('')
   }
 
-  function handleSaveEditCard(index: number) {
-    setDraftBlocks(prev => prev.map((d, i) => (i === index ? { ...d, content: editingCardBody } : d)))
-    setEditingCardIndex(null)
+  function handleSaveEditCard(id: string) {
+    setDraftBlocks(prev => prev.map(d => (d.id === id ? { ...d, content: editingCardBody } : d)))
+    setEditingCardId(null)
     setEditingCardBody('')
   }
 
@@ -704,10 +705,10 @@ export default function PromptBuilderPage() {
     }
   }
 
-  async function saveBlockToSupabase(index: number, draft: DraftBlock, meta: DraftCardMeta): Promise<boolean> {
+  async function saveBlockToSupabase(id: string, draft: DraftBlock, meta: DraftCardMeta): Promise<boolean> {
     if (!ownerId) return false
 
-    updateDraftMeta(index, { saveError: null, isSaving: true })
+    updateDraftMeta(id, { saveError: null, isSaving: true })
     try {
       // Resolve topic: find existing or create new
       let topicId = ''
@@ -731,7 +732,7 @@ export default function PromptBuilderPage() {
         }
       }
 
-      console.log('[PromptBuilder] card save dispatch:', { index, title: meta.blockName })
+      console.log('[PromptBuilder] card save dispatch:', { id, title: meta.blockName })
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       const promptSetId = activePromptSetId && UUID_RE.test(activePromptSetId) ? activePromptSetId : null
 
@@ -755,12 +756,12 @@ export default function PromptBuilderPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => null)
         console.error('[PromptBuilder] card save failed:', data?.error ?? res.status)
-        updateDraftMeta(index, { saveError: data?.error ?? 'Failed to save block.', isSaving: false })
+        updateDraftMeta(id, { saveError: data?.error ?? 'Failed to save block.', isSaving: false })
         return false
       }
 
-      console.log('[PromptBuilder] card save success:', { index })
-      removeDraft(index)
+      console.log('[PromptBuilder] card save success:', { id })
+      removeDraft(id)
 
       // If all drafts saved, inject continuation message
       if (draftBlocks.length <= 1) {
@@ -770,14 +771,14 @@ export default function PromptBuilderPage() {
       return true
     } catch (err) {
       console.error('[PromptBuilder] card save request failed:', err)
-      updateDraftMeta(index, { saveError: 'Network error — could not reach the server.', isSaving: false })
+      updateDraftMeta(id, { saveError: 'Network error — could not reach the server.', isSaving: false })
       return false
     }
   }
 
-  async function handleCheckAndSaveBlock(index: number) {
-    const draft = draftBlocks[index]
-    const meta = draftMetas[index]
+  async function handleCheckAndSaveBlock(id: string) {
+    const draft = draftBlocks.find(d => d.id === id)
+    const meta = draftMetas.find(m => m.id === id)
     if (!draft || !meta || !ownerId) return
 
     // Validate required fields before spending a check call
@@ -785,54 +786,54 @@ export default function PromptBuilderPage() {
     if (!meta.type) missing.push('type')
     if (!meta.blockName.trim()) missing.push('block name')
     if (missing.length > 0) {
-      updateDraftMeta(index, { saveError: `Missing required fields: ${missing.join(', ')}.` })
+      updateDraftMeta(id, { saveError: `Missing required fields: ${missing.join(', ')}.` })
       return
     }
 
-    console.log('[PromptBuilder] check & save card:', { index })
+    console.log('[PromptBuilder] check & save card:', { id })
     // Clear stale issues and errors before running
-    updateDraftMeta(index, { isChecking: true, issues: [], saveError: null })
+    updateDraftMeta(id, { isChecking: true, issues: [], saveError: null })
     const result = await runCardSafetyCheck(draft.content)
 
     if (!result.ok && result.issues.length > 0) {
-      console.log('[PromptBuilder] card check flagged issues, keeping card open:', { index, count: result.issues.length })
-      updateDraftMeta(index, { isChecking: false, issues: result.issues })
+      console.log('[PromptBuilder] card check flagged issues, keeping card open:', { id, count: result.issues.length })
+      updateDraftMeta(id, { isChecking: false, issues: result.issues })
       return
     }
 
     // Clean — proceed to save
-    console.log('[PromptBuilder] card check clean, dispatching save:', { index })
-    updateDraftMeta(index, { isChecking: false })
-    await saveBlockToSupabase(index, draft, meta)
+    console.log('[PromptBuilder] card check clean, dispatching save:', { id })
+    updateDraftMeta(id, { isChecking: false })
+    await saveBlockToSupabase(id, draft, meta)
   }
 
-  async function handleSaveAnywayBlock(index: number) {
-    const draft = draftBlocks[index]
-    const meta = draftMetas[index]
+  async function handleSaveAnywayBlock(id: string) {
+    const draft = draftBlocks.find(d => d.id === id)
+    const meta = draftMetas.find(m => m.id === id)
     if (!draft || !meta || !ownerId) return
 
     const missing: string[] = []
     if (!meta.type) missing.push('type')
     if (!meta.blockName.trim()) missing.push('block name')
     if (missing.length > 0) {
-      updateDraftMeta(index, { saveError: `Missing required fields: ${missing.join(', ')}.` })
+      updateDraftMeta(id, { saveError: `Missing required fields: ${missing.join(', ')}.` })
       return
     }
 
-    console.log('[PromptBuilder] card save anyway (bypass check):', { index })
+    console.log('[PromptBuilder] card save anyway (bypass check):', { id })
     // Clear issues so they don't linger after the bypass save
-    updateDraftMeta(index, { issues: [], saveError: null })
-    await saveBlockToSupabase(index, draft, meta)
+    updateDraftMeta(id, { issues: [], saveError: null })
+    await saveBlockToSupabase(id, draft, meta)
   }
 
-  function handleRemoveOffendingFromCard(index: number, offendingText: string) {
-    console.log('[PromptBuilder] remove offending from card:', { index, length: offendingText.length })
-    setDraftBlocks(prev => prev.map((d, i) => (
-      i === index ? { ...d, content: d.content.replace(offendingText, '') } : d
+  function handleRemoveOffendingFromCard(id: string, offendingText: string) {
+    console.log('[PromptBuilder] remove offending from card:', { id, length: offendingText.length })
+    setDraftBlocks(prev => prev.map(d => (
+      d.id === id ? { ...d, content: d.content.replace(offendingText, '') } : d
     )))
     // Drop this issue and any duplicates referencing the same offendingText
-    setDraftMetas(prev => prev.map((m, i) => {
-      if (i !== index) return m
+    setDraftMetas(prev => prev.map(m => {
+      if (m.id !== id) return m
       return { ...m, issues: m.issues.filter(iss => iss.offendingText !== offendingText) }
     }))
   }
@@ -1227,27 +1228,27 @@ export default function PromptBuilderPage() {
 
               {/* Block confirmation cards */}
               {draftBlocks.map((draft, cardIndex) => {
-                const meta = draftMetas[cardIndex]
+                const meta = draftMetas.find(m => m.id === draft.id)
                 if (!meta) return null
                 return (
                   <DraftCard
-                    key={cardIndex}
+                    key={draft.id}
                     draft={draft}
                     meta={meta}
                     index={cardIndex}
                     count={draftBlocks.length}
                     isPlatformAdmin={isPlatformAdmin}
-                    isEditing={editingCardIndex === cardIndex}
+                    isEditing={editingCardId === draft.id}
                     editingBody={editingCardBody}
                     onEditingBodyChange={setEditingCardBody}
-                    onStartEdit={() => handleEditCard(cardIndex)}
-                    onSaveEdit={() => handleSaveEditCard(cardIndex)}
+                    onStartEdit={() => handleEditCard(draft.id)}
+                    onSaveEdit={() => handleSaveEditCard(draft.id)}
                     onCancelEdit={handleCancelEditCard}
-                    onMetaChange={updates => updateDraftMeta(cardIndex, updates)}
-                    onCheckAndSave={() => handleCheckAndSaveBlock(cardIndex)}
-                    onSaveAnyway={() => handleSaveAnywayBlock(cardIndex)}
-                    onRemove={() => removeDraft(cardIndex)}
-                    onRemoveOffending={text => handleRemoveOffendingFromCard(cardIndex, text)}
+                    onMetaChange={updates => updateDraftMeta(draft.id, updates)}
+                    onCheckAndSave={() => handleCheckAndSaveBlock(draft.id)}
+                    onSaveAnyway={() => handleSaveAnywayBlock(draft.id)}
+                    onRemove={() => removeDraft(draft.id)}
+                    onRemoveOffending={text => handleRemoveOffendingFromCard(draft.id, text)}
                   />
                 )
               })}

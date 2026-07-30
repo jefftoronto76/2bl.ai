@@ -23,6 +23,7 @@ export interface ChatMessage {
 }
 
 export interface DraftBlock {
+  id: string
   title: string
   content: string
   suggestedType?: BlockType
@@ -39,6 +40,7 @@ export interface ExistingBlock {
 }
 
 export interface DraftCardMeta {
+  id: string
   blockName: string
   type: BlockType | ''
   topicName: string
