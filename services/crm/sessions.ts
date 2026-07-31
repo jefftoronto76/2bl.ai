@@ -131,6 +131,8 @@ export interface ChatSessionSummary {
   visitor_name: string | null
   title: string | null
   starred: boolean
+  /** Count of published (kept) memories anchored to this session — see memoriesBySession below. */
+  memory_count: number
 }
 
 /**
@@ -158,8 +160,38 @@ export async function listSessions(
     return { ok: false, status: 500, error: error.message }
   }
 
-  console.log('[sessions/route GET] listed sessions:', data?.length ?? 0, '| user_id:', userId, '| tenant_id:', tenantId)
-  return { ok: true, data: (data ?? []) as ChatSessionSummary[] }
+  const sessionRows = data ?? []
+
+  // Single bulk fetch for the whole list's published-memory counts, keyed by
+  // session_id — avoids one query per session (N+1), same pattern
+  // getInboundChats uses for message_feedback (services/crm/inbound.ts).
+  // Draft memories (awaiting Keep/Rewrite/Discard) don't count — "kept" means
+  // published.
+  const memoriesBySession = new Map<string, number>()
+  if (sessionRows.length > 0) {
+    const { data: memoryRows, error: memoryError } = await supabase
+      .from('artifacts')
+      .select('session_id')
+      .eq('tenant_id', tenantId)
+      .eq('type', 'memory')
+      .eq('status', 'published')
+      .in('session_id', sessionRows.map(s => s.id))
+
+    if (memoryError) {
+      console.error('[sessions/route GET] memory count fetch error:', JSON.stringify(memoryError))
+    }
+    for (const row of (memoryRows ?? []) as { session_id: string }[]) {
+      memoriesBySession.set(row.session_id, (memoriesBySession.get(row.session_id) ?? 0) + 1)
+    }
+  }
+
+  const withCounts: ChatSessionSummary[] = sessionRows.map(s => ({
+    ...s,
+    memory_count: memoriesBySession.get(s.id) ?? 0,
+  })) as ChatSessionSummary[]
+
+  console.log('[sessions/route GET] listed sessions:', withCounts.length, '| user_id:', userId, '| tenant_id:', tenantId)
+  return { ok: true, data: withCounts }
 }
 
 /**
@@ -243,6 +275,39 @@ export async function updateSession(
 
   console.log('[sessions/[id]/route] updated session:', id, '| tenant_id:', tenantId)
   return { ok: true, data: null }
+}
+
+/**
+ * Reads back a session's raw `messages` jsonb, tenant-scoped — the same
+ * cross-tenant IDOR guard every other read/write in this file uses. Backs
+ * the archivist call (services/chat/server/memory-archivist.ts), which needs
+ * the transcript up to and including the anchor message to write the memory
+ * from. Deliberately narrow (messages only) rather than reusing
+ * ChatSessionSummary, which is shaped for the signed-in Recent list.
+ */
+export async function getSessionMessages(
+  tenantId: string,
+  id: string,
+): Promise<SessionResult<{ messages: unknown }>> {
+  const supabase = getAdminClient('[sessions/[id]/messages]')
+
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('messages')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[sessions/[id]/messages] select error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[sessions/[id]/messages] no session matched id + tenant:', { id, tenant_id: tenantId })
+    return { ok: false, status: 404, error: 'Session not found' }
+  }
+
+  return { ok: true, data: { messages: data.messages } }
 }
 
 export interface TransferSessionRow {

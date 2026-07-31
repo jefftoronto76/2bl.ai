@@ -61,6 +61,8 @@ export interface RecentSession {
   updatedAt: string;
   messages: Message[];
   starred: boolean;
+  /** Count of published (kept) memories anchored to this session — see services/crm/sessions.ts. */
+  memoryCount: number;
 }
 
 interface ChatContextType {
@@ -134,6 +136,14 @@ interface ChatContextType {
   renameSession: (id: string, title: string) => Promise<void>;
   /** Soft-delete a session (sets status=deleted). Removes from recentSessions. Optimistic. */
   deleteSession: (id: string) => Promise<void>;
+  /**
+   * Adjusts a session's memoryCount in the local recentSessions cache by
+   * `delta` — purely a local reconciliation, no network call, since the
+   * actual write already happened via the memories API (services/crm/memories.ts).
+   * Called by MessageList after Keep/Discard so the sidebar badge (SidebarV2)
+   * doesn't wait for the next full /api/sessions refetch to reflect it.
+   */
+  bumpMemoryCount: (id: string, delta: number) => void;
   /** Media items associated with the current chat session. Populated by Realtime
    *  subscription + catch-up query on session load. */
   mediaItems: ClientMediaItem[];
@@ -152,6 +162,7 @@ interface ApiSession {
   visitor_name: string | null;
   title: string | null;
   starred: boolean;
+  memory_count: number;
 }
 
 function deriveSessionTitle(visitorName: string | null, messages: Message[]): string {
@@ -174,6 +185,7 @@ function toRecentSession(row: ApiSession): RecentSession {
     messages,
     title,
     starred: row.starred ?? false,
+    memoryCount: row.memory_count ?? 0,
   };
 }
 
@@ -371,6 +383,7 @@ export function ChatProvider({
               updatedAt: new Date().toISOString(),
               messages: msgs,
               starred: false,
+              memoryCount: 0,
             },
             ...prev,
           ];
@@ -435,7 +448,9 @@ export function ChatProvider({
       m => !(m.role === 'assistant' && m.content === ''),
     );
     if (msgs.length === 0) return;
-    // Preserve the starred state for an existing session in the list.
+    // Preserve the starred state and memory count for an existing session in
+    // the list — this update only refreshes messages/title/timestamp after a
+    // turn, it doesn't touch memories.
     const existing = recentSessions.find(s => s.id === id);
     setRecentSessions(prev => [
       {
@@ -444,6 +459,7 @@ export function ChatProvider({
         updatedAt: new Date().toISOString(),
         messages: msgs,
         starred: existing?.starred ?? false,
+        memoryCount: existing?.memoryCount ?? 0,
       },
       ...prev.filter(s => s.id !== id),
     ]);
@@ -710,6 +726,12 @@ export function ChatProvider({
     }
   }, [recentSessions]);
 
+  const bumpMemoryCount = useCallback((id: string, delta: number) => {
+    setRecentSessions(sessions =>
+      sessions.map(s => s.id === id ? { ...s, memoryCount: Math.max(0, s.memoryCount + delta) } : s),
+    );
+  }, []);
+
   const renameSession = useCallback(async (id: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -882,7 +904,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem }}
     >
       {children}
     </ChatContext.Provider>

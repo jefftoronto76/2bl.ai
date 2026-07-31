@@ -42,14 +42,17 @@ export function ActionIconButton({
         'relative flex items-center justify-center w-6 h-6 rounded-md transition-colors',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
         'disabled:opacity-30 disabled:cursor-not-allowed',
-        // Invisible hit-area growth. gap-0.5 (2px) between icons only allows
-        // 1px each on the shared left/right sides without adjacent buttons'
-        // hit-zones overlapping — short of the 48px target (would need a
-        // visible gap increase to close that, not done here). Vertical is
-        // asymmetric on purpose: the prose bubble sits ~4px above (mt-1) and
-        // may contain markdown links, so top stays tight; the ~24px
-        // inter-message gap below is genuinely open, so bottom expands more.
-        "before:absolute before:content-[''] before:-inset-x-[1px] before:top-[-4px] before:bottom-[-12px]",
+        // Invisible hit-area growth. The row gap was bumped gap-0.5 → gap-1.5
+        // (2px → 6px) specifically to buy this room — 3px each on the shared
+        // left/right sides is the midpoint of that gap, so adjacent buttons'
+        // hit-zones meet exactly without overlapping. Still short of the
+        // 44-48px guideline horizontally on its own, but combined with the
+        // vertical expansion below it's a real improvement over the prior
+        // 24x24-with-1px-sides target. Vertical is asymmetric on purpose: the
+        // prose bubble sits ~4px above (mt-1) and may contain markdown links,
+        // so top stays tight; the ~24px inter-message gap below is genuinely
+        // open, so bottom expands more (24 + 4 + 12 = 40px tall).
+        "before:absolute before:content-[''] before:-inset-x-[3px] before:top-[-4px] before:bottom-[-12px]",
         active ? activeClassName ?? 'text-accent' : 'text-text-muted hover:text-text-primary',
       ].join(' ')}
     >

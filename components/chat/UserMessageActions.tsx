@@ -27,7 +27,7 @@
  */
 
 import { useState } from 'react'
-import { Pencil, Copy, Check, RefreshCw } from 'lucide-react'
+import { Bookmark, Pencil, Copy, Check, RefreshCw } from 'lucide-react'
 import { ActionIconButton } from './ActionIconButton'
 
 export interface UserMessageActionsProps {
@@ -39,6 +39,16 @@ export interface UserMessageActionsProps {
   showResend?: boolean
   onEdit?: () => void
   onResend?: () => void
+  /**
+   * Omit to hide the bookmark ("Keep this as a memory") — the widget shell
+   * (jefflougheed) simply doesn't pass it, same pattern as showEdit/showResend.
+   * Heirloom-only; the shared row itself stays product-agnostic.
+   */
+  onKeep?: () => void
+  /** True once this message already has a memory attached — the bookmark reads as active/accent rather than idle. */
+  hasMemory?: boolean
+  /** Disables the bookmark without hiding it — streaming, or another draft already open. */
+  keepDisabled?: boolean
 }
 
 export function UserMessageActions({
@@ -48,6 +58,9 @@ export function UserMessageActions({
   showResend = true,
   onEdit,
   onResend,
+  onKeep,
+  hasMemory,
+  keepDisabled,
 }: UserMessageActionsProps) {
   const [copied, setCopied] = useState(false)
 
@@ -64,13 +77,23 @@ export function UserMessageActions({
   return (
     <div
       className={[
-        'flex items-center justify-end gap-0.5 pr-1',
+        'flex items-center justify-end gap-1.5 pr-1',
         // Hover-gated on pointer devices…
         'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
         // …but ALWAYS visible on touch. Without this the actions are unreachable on mobile.
         '[@media(hover:none)]:opacity-100',
       ].join(' ')}
     >
+      {onKeep && (
+        <ActionIconButton
+          label={hasMemory ? 'Memory kept from this message' : 'Keep this as a memory'}
+          active={hasMemory}
+          disabled={keepDisabled}
+          onClick={onKeep}
+        >
+          <Bookmark size={14} fill={hasMemory ? 'currentColor' : 'none'} />
+        </ActionIconButton>
+      )}
       {showEdit && edited && (
         <span className="mr-1.5 font-mono text-[10.5px] tracking-wide text-text-muted">Edited</span>
       )}

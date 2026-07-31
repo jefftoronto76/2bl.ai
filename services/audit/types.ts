@@ -67,6 +67,12 @@ export const AuditAction = {
   // Conversations (Composer history)
   CONVERSATION_CREATE: 'conversation.create',
   CONVERSATION_UPDATE: 'conversation.update',
+  // Memories (Heirloom) — the durable per-call log half of the paired
+  // error-handling mechanism; see services/chat/server/memory-archivist.ts.
+  // One MEMORY_ARCHIVIST_RUN row per archivist call, success or failure.
+  MEMORY_ARCHIVIST_RUN: 'memory.archivist_run',
+  MEMORY_KEPT: 'memory.kept',
+  MEMORY_DISCARDED: 'memory.discarded',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
