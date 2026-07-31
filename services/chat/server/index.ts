@@ -11,7 +11,7 @@
 import { runChatStream, resolveModelConfig } from './stream'
 import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
 import { getBookingCardSection } from './booking'
-import { getMemberPrimer } from './member-context'
+import { getMemberContext } from './member-context'
 import { resolveMediaContext, stripMediaMarkers } from './media-context'
 import { handleSessionFinish } from '@/services/crm/session'
 import { getAdminClient } from '@/services/auth/supabase-admin'
@@ -164,25 +164,36 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const memberId =
     typeof req.memberId === 'string' && req.memberId.length > 0 ? req.memberId : null
 
-  const [basePrompt, bookingSection, config, memberPrimer, mediaContext] = await Promise.all([
+  // Deterministic, server-computed signal for "has Sage already replied in
+  // this conversation" — not something the model is trusted to infer from
+  // re-reading its own prior turns in the message history. A non-empty
+  // assistant turn anywhere in req.messages means this is a later turn; an
+  // empty one (a failed first-turn attempt still sitting in the stored
+  // transcript) doesn't count as a real reply, so a retry after a first-turn
+  // failure still reads as isFirstTurn.
+  const isFirstTurn = !req.messages.some(
+    m => m.role === 'assistant' && m.content.trim().length > 0,
+  )
+
+  const [basePrompt, bookingSection, config, memberContext, mediaContext] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
     (sessionId || memberId)
-      ? getMemberPrimer(sessionId, tenantId, memberId)
+      ? getMemberContext(sessionId, tenantId, memberId, isFirstTurn)
       : Promise.resolve(null),
     resolveMediaContext(req.mediaItems, tenantId, memberId),
   ])
 
-  console.log('[chat] memberPrimer', memberPrimer !== null
-    ? `found (${memberPrimer.length} chars)`
+  console.log('[chat] memberContext', memberContext !== null
+    ? `found (${memberContext.length} chars, isFirstTurn=${isFirstTurn})`
     : 'null — not injected'
   )
 
   const systemPrompt = [
     basePrompt,
     bookingSection,
-    memberPrimer ? `MEMBER CONTEXT:\n${memberPrimer}` : '',
+    memberContext ? `MEMBER CONTEXT:\n${memberContext}` : '',
     mediaContext,
     questionMode ? QUESTION_MODE_CONTEXT : '',
   ]

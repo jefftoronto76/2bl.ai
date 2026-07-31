@@ -61,7 +61,7 @@ export interface ChatSessionConfig {
   /**
    * Optional accessor for a pre-auth invited member's Supabase members.id.
    * When provided, it is threaded into every /api/sage request as `member_id`
-   * so getMemberPrimer can look up the member directly without needing
+   * so getMemberContext can look up the member directly without needing
    * chat_sessions.user_id. Only relevant for Heirloom invite-holder paths.
    */
   getMemberId?: () => string | null
