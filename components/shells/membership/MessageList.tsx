@@ -443,6 +443,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
     msg: Message,
     parsed: MarkerParseResult,
     markdown: ReactNode,
+    index: number,
   ): ReactNode {
     const prose = parsed.prose;
     const authPrompt = parsed.markers.find((m) => m.type === 'ACCOUNT_CREATE');
@@ -456,7 +457,12 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
 
     // Suppress actions on the message currently being streamed into; scope
     // Regenerate to the latest assistant message only (see MessageActions.tsx).
-    const messageIndex = config.messages.findIndex((m) => m.id === msg.id);
+    // `index` is ChatThread's own map() index — using it directly (rather
+    // than config.messages.findIndex((m) => m.id === msg.id)) turned an O(n)
+    // render into O(n^2) for a long saved conversation, which is exactly the
+    // "clunky" case: switching into an old, long Heirloom story reran a full
+    // array scan per assistant message.
+    const messageIndex = index;
     const isLast = config.messages[config.messages.length - 1]?.id === msg.id;
     const isActive = config.isStreaming && isLast;
     const versions = msg.versions ?? [];

@@ -41,11 +41,14 @@ interface AssistantMessageContext {
 }
 
 function makeRenderAssistantMessage(sageParameters: SageParameterPublic[], ctx: AssistantMessageContext) {
-  return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) {
+  return function renderAssistantMessage(msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode, index: number) {
     const cards = extractBookingCards(parsed.markers)
     if (!parsed.prose && cards.length === 0) return null
 
-    const messageIndex = ctx.messages.findIndex((m) => m.id === msg.id)
+    // `index` is ChatThread's own map() index over the same `messages` array
+    // — using it directly (rather than ctx.messages.findIndex(...)) avoids an
+    // O(n) scan per assistant message (O(n^2) for the whole render).
+    const messageIndex = index
     const isLast = ctx.messages[ctx.messages.length - 1]?.id === msg.id
     const isActive = ctx.isStreaming && isLast
     const versions = msg.versions ?? []
