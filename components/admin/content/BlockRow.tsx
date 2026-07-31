@@ -25,10 +25,10 @@ import {
 } from '@/services/prompt/block-types'
 import { orderPrefix, isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
-import { formatRelativeTime } from '@/services/shared/time'
+import { formatRelativeTime, formatShortDate } from '@/services/shared/time'
 
 const PREVIEW_LINE_LIMIT = 8
-const COLUMN_COUNT = 7 // checkbox · chevron · title · type · tokens · status · actions (copy+edit+dup+delete)
+const COLUMN_COUNT = 8 // checkbox · chevron · title · type · dates · tokens · status · actions (copy+edit+dup+delete)
 
 // Metadata entry inside the right-hand panel of the expanded row.
 // Label-on-top muted/uppercase, value below. Mono toggle for numeric
@@ -217,6 +217,7 @@ export interface BlockRowBlock {
   body: string
   status: 'active' | 'disabled' | 'deleted'
   order: number | null
+  created_at: string
   updated_at: string
   topics: { name: string } | null
   author: { name: string } | null
@@ -434,20 +435,6 @@ export function BlockRow({
               )}
             </Text>
           )}
-          {/*
-            Relative timestamp under the title. Pure render-time
-            computation — no interval tick. suppressHydrationWarning
-            covers the rare case where the row crosses a bucket
-            boundary (e.g., 59s → 1m) between SSR and client hydration.
-          */}
-          <Text
-            variant="muted"
-            style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
-            suppressHydrationWarning
-            title={new Date(block.updated_at).toLocaleString()}
-          >
-            Updated {formatRelativeTime(block.updated_at)}
-          </Text>
         </Stack>
       </Table.Td>
       <Table.Td>
@@ -459,6 +446,34 @@ export function BlockRow({
         >
           {formatTypeBadgeLabel(block.type)}
         </Badge>
+      </Table.Td>
+      <Table.Td>
+        {/*
+          Created is a fixed, absolute date — no hydration risk from
+          elapsed time, but toLocaleDateString still resolves against the
+          runtime's local zone, so a block created near local midnight can
+          render a different calendar day server- vs. client-side.
+          Updated stays relative — same suppressHydrationWarning rationale
+          as before (a bucket boundary, e.g. 59s → 1m, crossed between SSR
+          and hydration).
+        */}
+        <Stack gap={2}>
+          <Text
+            style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
+            suppressHydrationWarning
+            title={new Date(block.created_at).toLocaleString()}
+          >
+            Created {formatShortDate(block.created_at)}
+          </Text>
+          <Text
+            variant="muted"
+            style={{ fontSize: 'var(--mantine-font-size-xs)', cursor: 'default' }}
+            suppressHydrationWarning
+            title={new Date(block.updated_at).toLocaleString()}
+          >
+            Updated {formatRelativeTime(block.updated_at)}
+          </Text>
+        </Stack>
       </Table.Td>
       <Table.Td>
         <Group gap="xs" wrap="nowrap" align="center">

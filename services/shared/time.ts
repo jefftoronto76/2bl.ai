@@ -42,3 +42,23 @@ export function formatRelativeTime(input: string | Date | null | undefined): str
   if (delta < YEAR) return `${Math.floor(delta / MONTH)}mo ago`
   return `${Math.floor(delta / YEAR)}y ago`
 }
+
+/**
+ * Short absolute date ("Jan 5") — the Blocks table's Created column pairs
+ * this with formatRelativeTime's "Updated 2d ago"; a relative "Created 3mo
+ * ago" reads worse for a fixed, one-time event than an absolute date does.
+ *
+ * Time zone: uses the runtime's local zone (`toLocaleDateString` with no
+ * explicit `timeZone`), same as formatRelativeTime's consumers — a block
+ * created near local midnight can render a different day server- vs.
+ * client-side, so callers should suppressHydrationWarning the same way
+ * they already do for the Updated column.
+ *
+ * Empty / invalid input returns "" — same contract as formatRelativeTime.
+ */
+export function formatShortDate(input: string | Date | null | undefined): string {
+  if (input === null || input === undefined || input === '') return ''
+  const date = typeof input === 'string' ? new Date(input) : input
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}

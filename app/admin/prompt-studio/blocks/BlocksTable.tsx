@@ -14,6 +14,7 @@ import {
 } from '@mantine/core'
 import { useMediaQuery } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
+import { IconArrowsSort, IconSortAscending, IconSortDescending } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
 import { BlocksOverview } from './BlocksOverview'
 import { SummarySection } from './SummarySection'
@@ -39,6 +40,7 @@ import type { Topic } from '@/components/admin/content/BlockEditForm'
 import { isOrdered } from '@/services/prompt/block-order'
 import { tokensFor } from '@/services/prompt/tokenize'
 import type { PromptSet } from '@/components/admin/prompt-studio/promptSet'
+import { sortBlocks, nextSortState, type SortField, type SortDir } from './sortBlocks'
 
 type BlockStatus = 'active' | 'disabled' | 'deleted'
 
@@ -75,6 +77,50 @@ type DuplicateResponse = {
   updated_at: string
 }
 
+// Clickable column-header button — Title/Type/"Last updated". Unsorted:
+// muted double-headed arrow. Sorted: full-opacity up/down arrow reflecting
+// direction. The header text itself is the click target (no separate icon
+// button), matching the rest of the table's low-chrome style.
+function SortLabel({
+  field,
+  children,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  field: SortField
+  children: React.ReactNode
+  sortBy: SortField | null
+  sortDir: SortDir
+  onSort: (field: SortField) => void
+}) {
+  const active = sortBy === field
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(field)}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        font: 'inherit',
+        padding: 0,
+        color: active ? 'var(--mantine-color-text)' : 'inherit',
+      }}
+    >
+      {children}
+      {active ? (
+        sortDir === 'asc' ? <IconSortAscending size={13} /> : <IconSortDescending size={13} />
+      ) : (
+        <IconArrowsSort size={13} style={{ opacity: 0.35 }} />
+      )}
+    </button>
+  )
+}
+
 export function BlocksTable({
   rows,
   sets,
@@ -105,6 +151,14 @@ export function BlocksTable({
   const [bulkInFlight, setBulkInFlight] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  // sortBy: null = original/authored order (the table's default). No
+  // reset-on-prompt-set-switch — matches selectedIds/expandedIds/query,
+  // none of which are cleared on switch either (see BlocksTable.tsx's
+  // lack of any such effect; only typeFilter/statusFilter reset, and that
+  // happens because PromptSetSelect navigates to a URL stripped down to
+  // just `?set=`, not via an effect in this component).
+  const [sortBy, setSortBy] = useState<SortField | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   // URL-synced filter state — query/type/status come from ?q=, ?type=,
   // ?status=. Filtering below uses these values; the toolbar consumes
@@ -414,14 +468,30 @@ export function BlocksTable({
     return true
   })
 
+  // Sort is applied after filtering, so it always operates on what's
+  // currently visible. sortBlocks is a pure reorder (same elements, same
+  // length as `filtered`) — every derived stat below that used to read
+  // `filtered` (maxVisibleTokens, allExpanded, filteredSelectedCount, and
+  // the select-all/expand-all helpers) now reads `sorted` instead, and
+  // is guaranteed to produce the identical value either way, since none
+  // of those computations (Math.max, .every, .reduce counting a Set
+  // membership) depend on array order.
+  const sorted = sortBlocks(filtered, sortBy, sortDir)
+
+  function onSort(field: SortField) {
+    const next = nextSortState({ sortBy, sortDir }, field)
+    setSortBy(next.sortBy)
+    setSortDir(next.sortDir)
+  }
+
   // Bar-width normalization for the per-row Tokens column (Step 13 of
   // PR 2). Bars are sized relative to the heaviest currently-visible
   // block, not the 8000-token budget — the page-level meter already
-  // covers absolute budget. Single pass over `filtered`; cheap enough
+  // covers absolute budget. Single pass over `sorted`; cheap enough
   // at typical scale (~50 rows) that no useMemo is needed. Falls back
   // to 0 when nothing is visible to avoid divide-by-zero downstream.
-  const maxVisibleTokens = filtered.length > 0
-    ? Math.max(0, ...filtered.map(b => tokensFor(b.body)))
+  const maxVisibleTokens = sorted.length > 0
+    ? Math.max(0, ...sorted.map(b => tokensFor(b.body)))
     : 0
 
   // Summary recall stats — shown in the collapsed bar when the summary is hidden.
@@ -450,46 +520,46 @@ export function BlocksTable({
   // The filter state object passed to all three filter presentations.
   const filterState = { query, setQuery, typeFilter, setTypeFilter, statusFilter, setStatusFilter }
 
-  // Select-all is scoped to the currently-visible (filtered) set.
+  // Select-all is scoped to the currently-visible (filtered + sorted) set.
   // Bulk actions still operate on all selectedIds — so selections
   // made outside the current filter persist when filters change.
-  const filteredSelectedCount = filtered.reduce(
+  const filteredSelectedCount = sorted.reduce(
     (n, b) => (selectedIds.has(b.id) ? n + 1 : n),
     0,
   )
   const allSelected =
-    filtered.length > 0 && filteredSelectedCount === filtered.length
+    sorted.length > 0 && filteredSelectedCount === sorted.length
   const someSelected =
-    filteredSelectedCount > 0 && filteredSelectedCount < filtered.length
+    filteredSelectedCount > 0 && filteredSelectedCount < sorted.length
 
   function toggleSelectAll() {
     console.log('[BlocksTable] toggle select-all (filtered)', {
-      filteredCount: filtered.length,
+      filteredCount: sorted.length,
       filteredSelectedCount,
     })
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (filteredSelectedCount > 0) {
         // Any visible selection → clear ALL visible (both full and partial).
-        for (const b of filtered) next.delete(b.id)
+        for (const b of sorted) next.delete(b.id)
       } else {
         // None visible selected → select all visible.
-        for (const b of filtered) next.add(b.id)
+        for (const b of sorted) next.add(b.id)
       }
       return next
     })
   }
 
-  // Expand-all / Collapse-all operates on the currently-filtered set.
-  // "Expand all" in a filter context means "expand everything I can
-  // see." Collapse wipes the expanded set entirely (no point keeping
-  // hidden rows expanded).
+  // Expand-all / Collapse-all operates on the currently-visible (filtered
+  // + sorted) set. "Expand all" in a filter context means "expand
+  // everything I can see." Collapse wipes the expanded set entirely (no
+  // point keeping hidden rows expanded).
   const allExpanded =
-    filtered.length > 0 && filtered.every(b => expandedIds.has(b.id))
+    sorted.length > 0 && sorted.every(b => expandedIds.has(b.id))
 
   function handleExpandAll() {
-    console.log('[BlocksTable] expand all', { count: filtered.length })
-    setExpandedIds(new Set(filtered.map(b => b.id)))
+    console.log('[BlocksTable] expand all', { count: sorted.length })
+    setExpandedIds(new Set(sorted.map(b => b.id)))
   }
 
   function handleCollapseAll() {
@@ -524,7 +594,7 @@ export function BlocksTable({
           <Stack gap="md">
             <Group justify="space-between" align="center" wrap="wrap" gap="sm">
               <ResultMeta
-                filteredCount={filtered.length}
+                filteredCount={sorted.length}
                 totalCount={items.length}
                 allExpanded={allExpanded}
                 onToggleExpand={allExpanded ? handleCollapseAll : handleExpandAll}
@@ -550,7 +620,7 @@ export function BlocksTable({
                 ? <FilterPopover f={filterState} typeCounts={typeCounts} statusCounts={statusCounts} />
                 : <FilterBar f={filterState} typeCounts={typeCounts} statusCounts={statusCounts} />}
               <ResultMeta
-                filteredCount={filtered.length}
+                filteredCount={sorted.length}
                 totalCount={items.length}
                 allExpanded={allExpanded}
                 onToggleExpand={allExpanded ? handleCollapseAll : handleExpandAll}
@@ -573,7 +643,7 @@ export function BlocksTable({
       ) : null}
 
       {/* Empty state — no items at all OR no items matching current filters */}
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         items.length === 0 ? (
           <Center h={200}>
             <Text variant="muted">No blocks yet.</Text>
@@ -610,15 +680,28 @@ export function BlocksTable({
                     />
                   </Table.Th>
                   <Table.Th style={{ width: 28 }} aria-hidden />
-                  <Table.Th>Title</Table.Th>
-                  <Table.Th>Type</Table.Th>
+                  <Table.Th>
+                    <SortLabel field="title" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+                      Title
+                    </SortLabel>
+                  </Table.Th>
+                  <Table.Th>
+                    <SortLabel field="type" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+                      Type
+                    </SortLabel>
+                  </Table.Th>
+                  <Table.Th>
+                    <SortLabel field="updated" sortBy={sortBy} sortDir={sortDir} onSort={onSort}>
+                      Last updated
+                    </SortLabel>
+                  </Table.Th>
                   <Table.Th>Tokens</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filtered.map(block => (
+                {sorted.map(block => (
                   <DesktopBlockRow
                     key={block.id}
                     block={{ ...block, type: block.type as BlockType }}
@@ -640,9 +723,12 @@ export function BlocksTable({
             </Table>
           </Box>
 
-          {/* Mobile: Card stack */}
+          {/* Mobile: Card stack. No sort-header UI here (cards, not a
+              table) — but the same `sorted` order is applied so the list
+              stays consistent with whatever sort is active on desktop,
+              rather than silently reverting to filtered/unsorted order. */}
           <Stack gap="sm" hiddenFrom="md">
-            {filtered.map(block => (
+            {sorted.map(block => (
               <BlockCard
                 key={block.id}
                 block={{ ...block, type: block.type as BlockType }}
