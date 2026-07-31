@@ -480,7 +480,17 @@ function makeRenderUserMessage(
               void editMessage(msg.id, text);
             }}
             onResend={() => void resendMessage(msg.id)}
-            onKeep={() => memories.create(msg.id, sourceKindForUserMessage(userMsg))}
+            onKeep={() => {
+              // Guards against a double-save: a memory may already exist for
+              // this anchor (e.g. auto-created by a SAVE_MEMORY marker on an
+              // assistant reply this bookmark also targets — not applicable
+              // to user messages today, but the guard is symmetric with the
+              // assistant onKeep below) or a create call may already be in
+              // flight. hasMemory below only used to be cosmetic (icon state);
+              // this makes the click itself a no-op too, not just the label.
+              if (memory || memories.isPending(msg.id)) return;
+              memories.create(msg.id, sourceKindForUserMessage(userMsg));
+            }}
             hasMemory={!!memory}
             keepDisabled={keepDisabled}
           />
@@ -565,7 +575,14 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
               rating={rating}
               onRate={(val) => config.feedback.rate(messageIndex, val)}
               onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
-              onKeep={() => config.memories.create(msg.id, 'conversation')}
+              onKeep={() => {
+                // Same double-save guard as the visitor row — matters more
+                // here, since a SAVE_MEMORY marker (see the effect above)
+                // can already have created a memory for this exact anchor
+                // before the visitor ever touches the bookmark.
+                if (config.memories.getByAnchor(msg.id) || config.memories.isPending(msg.id)) return;
+                config.memories.create(msg.id, 'conversation');
+              }}
               hasMemory={!!config.memories.getByAnchor(msg.id)}
               keepDisabled={config.keepDisabled}
             />
@@ -640,6 +657,41 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     setAwaitingRewriteAnchor(null);
     void memories.rewrite(pending.memoryId, pending.anchorMessageId, last.content);
   }, [messages, memories]);
+
+  // SAVE_MEMORY: the guide's own inline signal ("enough has surfaced, write
+  // this one up") rather than a manual click — but it triggers the exact same
+  // action the bookmark does (memories.create), not a separate save path.
+  // Only fires once a reply has finished streaming, matching the bookmark
+  // button's own visibility (hidden on the still-active message — see the
+  // `!isActive` gate in makeRenderAssistantMessage below) so the archivist
+  // call never runs concurrently with the guide's own in-progress reply.
+  // Guarded against firing twice for the same message (autoSavedRef) and
+  // against double-saving if a memory already exists or is already in flight
+  // for that anchor — the same guard the manual bookmark now uses too (see
+  // the onKeep handlers below), so marker-then-click, click-then-marker, and
+  // marker-fires-twice all land on the same no-op.
+  //
+  // Also gated on memories.isLoaded: this effect can run within milliseconds
+  // of mount, well before useMemories' own GET for existing memories has
+  // resolved — without waiting, an automatic fire can race past a memory
+  // that already exists server-side (getByAnchor still returns undefined
+  // because the list simply hasn't loaded yet, not because nothing exists).
+  // A manual click doesn't need this — a human is never that fast — but the
+  // guard is the same function for both, so it's correct for both.
+  const autoSavedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!memories.isLoaded) return;
+    messages.forEach((m, i) => {
+      if (m.role !== 'assistant') return;
+      if (isLoading && i === messages.length - 1) return; // still streaming
+      if (autoSavedRef.current.has(m.id)) return;
+      const hasSaveMarker = markerRegistry.parse(m.content).markers.some((mk) => mk.type === 'SAVE_MEMORY');
+      if (!hasSaveMarker) return;
+      autoSavedRef.current.add(m.id);
+      if (memories.getByAnchor(m.id) || memories.isPending(m.id)) return;
+      void memories.create(m.id, 'conversation');
+    });
+  }, [messages, isLoading, memories]);
 
   const memoryHandlers = {
     onKeep: (memory: MemoryRow) => {

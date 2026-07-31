@@ -79,6 +79,22 @@ export const ACCOUNT_CREATE_MARKER: MarkerDefinition = {
   dispatch: 'client',
 }
 
+/**
+ * The SAVE_MEMORY marker — bare `[SAVE_MEMORY]`, no field (confirmed against
+ * the live Heirloom compiled prompt — NOT `[SAVE_MEMORY: reason]` like
+ * ACCOUNT_CREATE). Dispatch is 'client': MessageList.tsx watches for it and
+ * calls the exact same memories.create() the manual bookmark calls — this is
+ * a second trigger for that one action, not a separate save path. Stripped
+ * from prose in all contexts via createDefaultRegistry(), same as every
+ * other marker.
+ */
+export const SAVE_MEMORY_MARKER: MarkerDefinition = {
+  type: 'SAVE_MEMORY',
+  pattern: /\[SAVE_MEMORY\]/g,
+  fieldCount: 0,
+  dispatch: 'client',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -117,8 +133,14 @@ export function createMarkerRegistry(): MarkerRegistry {
 
       // Strip a trailing incomplete fragment (a marker still streaming at the
       // end of the message) so a half-open `[TYPE: ...` never flashes as prose.
+      // The trailing `(:[^\]]*)?` is optional so this also covers a bare
+      // marker like `[SAVE_MEMORY` with no colon — without it, a message that
+      // settles mid-marker (stream interrupted before the closing `]`) would
+      // leave that literal fragment in the persisted transcript forever, since
+      // the streaming-only bufferMarkdown safety net stops applying once the
+      // message is no longer active.
       for (const def of definitions) {
-        const incomplete = new RegExp(`\\[${def.type}:[^\\]]*$`)
+        const incomplete = new RegExp(`\\[${def.type}(:[^\\]]*)?$`)
         prose = prose.replace(incomplete, '')
       }
 
@@ -146,5 +168,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(EMAIL_MARKER)
   registry.register(PHONE_MARKER)
   registry.register(ACCOUNT_CREATE_MARKER)
+  registry.register(SAVE_MEMORY_MARKER)
   return registry
 }
