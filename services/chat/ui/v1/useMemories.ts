@@ -58,6 +58,17 @@ export interface UseMemoriesReturn {
    * respect this flag, so "open" and "newest" coincide by construction.
    */
   hasOpenDraft: boolean
+  /**
+   * False until the initial GET for this session has settled (success or
+   * failure). Load-bearing for any *automatic* trigger (e.g. the SAVE_MEMORY
+   * marker) that decides whether to create() based on getByAnchor already
+   * returning a row — without this, an automatic trigger can fire within
+   * milliseconds of mount, well before the fetch resolves, and race past a
+   * memory that already exists server-side. A manual bookmark click is slow
+   * enough in practice that this rarely mattered before, but the guard
+   * applies uniformly now that both paths share it.
+   */
+  isLoaded: boolean
   create(anchorMessageId: string, sourceKind: MemorySourceKind): Promise<void>
   rewrite(memoryId: string, anchorMessageId: string, note: string): Promise<void>
   keep(memory: MemoryRow): Promise<void>
@@ -68,17 +79,30 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
   const [memories, setMemories] = useState<MemoryRow[]>([])
   const [pendingAnchors, setPendingAnchors] = useState<Record<string, MemorySourceKind>>({})
   const [errorsByAnchor, setErrorsByAnchor] = useState<Record<string, MemoryErrorType>>({})
+  // No session yet -> nothing to load, so start "loaded" (there's nothing an
+  // automatic trigger could race against). A real sessionId starts unloaded
+  // until its fetch below settles.
+  const [isLoaded, setIsLoaded] = useState(!sessionId)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
 
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) {
+      setIsLoaded(true)
+      return
+    }
+    setIsLoaded(false)
     fetch(`/api/sessions/${sessionId}/memories`)
       .then(r => r.json())
       .then((data: { memories?: MemoryRow[] }) => {
         if (Array.isArray(data.memories)) setMemories(data.memories)
       })
       .catch(err => console.error('[useMemories] fetch failed:', err))
+      // Flip to loaded on failure too — matches this hook's existing
+      // fail-open posture elsewhere (log and carry on with best-known
+      // state) rather than blocking every automatic trigger forever on one
+      // network hiccup.
+      .finally(() => setIsLoaded(true))
   }, [sessionId])
 
   const getByAnchor = useCallback(
@@ -192,5 +216,5 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
-  return { memories, getByAnchor, isPending, getPendingKind, getError, hasOpenDraft, create, rewrite, keep, discard }
+  return { memories, getByAnchor, isPending, getPendingKind, getError, hasOpenDraft, isLoaded, create, rewrite, keep, discard }
 }

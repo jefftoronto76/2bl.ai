@@ -7,6 +7,7 @@ import {
   EMAIL_MARKER,
   PHONE_MARKER,
   ACCOUNT_CREATE_MARKER,
+  SAVE_MEMORY_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -129,8 +130,63 @@ describe('ACCOUNT_CREATE_MARKER definition', () => {
   })
 })
 
+describe('SAVE_MEMORY_MARKER definition', () => {
+  it('is a bare, zero-field client-dispatch marker — confirmed against the live prompt, unlike every other single-value marker here', () => {
+    expect(SAVE_MEMORY_MARKER.type).toBe('SAVE_MEMORY')
+    expect(SAVE_MEMORY_MARKER.fieldCount).toBe(0)
+    expect(SAVE_MEMORY_MARKER.dispatch).toBe('client')
+  })
+
+  it('extracts a bare [SAVE_MEMORY] and strips it from prose, with no fields', () => {
+    const r = createMarkerRegistry()
+    r.register(SAVE_MEMORY_MARKER)
+    const { prose, markers } = r.parse('That sounds like a wonderful memory. [SAVE_MEMORY]')
+    expect(prose).toBe('That sounds like a wonderful memory.')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toEqual({ type: 'SAVE_MEMORY', fields: [], raw: '[SAVE_MEMORY]' })
+  })
+
+  it('never matches a colon-qualified variant — only the exact bare shape', () => {
+    const r = createMarkerRegistry()
+    r.register(SAVE_MEMORY_MARKER)
+    const { prose, markers } = r.parse('Some reply. [SAVE_MEMORY: reason]')
+    expect(markers).toHaveLength(0)
+    // Not stripped either — an unrecognized bracket is left as-is, same as
+    // any other non-registered marker shape.
+    expect(prose).toBe('Some reply. [SAVE_MEMORY: reason]')
+  })
+
+  it('strips a trailing incomplete fragment even though the marker has no colon (regression: the shared incomplete-fragment regex used to require one)', () => {
+    // The full type name has streamed in but the closing `]` hasn't yet —
+    // the bare-marker equivalent of "[ACCOUNT_CREATE:" awaiting its field.
+    const r = createMarkerRegistry()
+    r.register(SAVE_MEMORY_MARKER)
+    const { prose, markers } = r.parse('That sounds lovely. [SAVE_MEMORY')
+    expect(prose).toBe('That sounds lovely.')
+    expect(markers).toHaveLength(0)
+  })
+
+  it('a settled (non-streaming) message with a truncated bare marker never leaks raw bracket text', () => {
+    // Simulates a stream that was interrupted right after the type name —
+    // the exact case bufferMarkdown only protects while a message is still
+    // actively streaming (active === true); once settled, parse()'s own
+    // fragment stripping is the only remaining safety net.
+    const r = createMarkerRegistry()
+    r.register(SAVE_MEMORY_MARKER)
+    const { prose } = r.parse('Here is what I heard. [SAVE_MEMORY')
+    expect(prose).not.toContain('[')
+  })
+
+  it('existing colon-based markers are unaffected by the generalized incomplete-fragment regex', () => {
+    const r = createMarkerRegistry()
+    r.register(ACCOUNT_CREATE_MARKER)
+    const { prose } = r.parse('Want to save your progress? [ACCOUNT_CREATE: claim_memb')
+    expect(prose).toBe('Want to save your progress?')
+  })
+})
+
 describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, EMAIL, PHONE, and ACCOUNT_CREATE', () => {
+  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, and SAVE_MEMORY', () => {
     const defs = createDefaultRegistry().getDefinitions()
     expect(defs.map(d => d.type).sort()).toEqual([
       'ACCOUNT_CREATE',
@@ -138,6 +194,7 @@ describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexist
       'EMAIL',
       'NAME',
       'PHONE',
+      'SAVE_MEMORY',
     ])
   })
 
