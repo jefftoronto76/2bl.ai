@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { formatRelativeTime } from './time'
+import { formatRelativeTime, formatShortDate } from './time'
 
 const NOW = new Date('2026-05-06T12:00:00.000Z')
 
@@ -145,5 +145,31 @@ describe('formatRelativeTime', () => {
       const localStr = '2026-05-06T15:00:00+05:00' // == 10:00:00Z
       expect(formatRelativeTime(localStr)).toBe('2h ago')
     })
+  })
+})
+
+describe('formatShortDate', () => {
+  it('formats an ISO date as "Mon D"', () => {
+    expect(formatShortDate('2026-01-05T12:00:00.000Z')).toBe('Jan 5')
+  })
+
+  it('formats a Date instance', () => {
+    expect(formatShortDate(new Date('2026-12-31T12:00:00.000Z'))).toBe('Dec 31')
+  })
+
+  it('empty string returns ""', () => {
+    expect(formatShortDate('')).toBe('')
+  })
+
+  it('null returns ""', () => {
+    expect(formatShortDate(null)).toBe('')
+  })
+
+  it('undefined returns ""', () => {
+    expect(formatShortDate(undefined)).toBe('')
+  })
+
+  it('garbage string returns ""', () => {
+    expect(formatShortDate('not-a-date')).toBe('')
   })
 })
