@@ -38,7 +38,7 @@ export interface ChatStreamRequest {
   messages: ChatMessage[]
   mode?: ChatMode
   sessionId?: string | null
-  /** Supabase members.id for a pre-auth invited member. When set, getMemberPrimer
+  /** Supabase members.id for a pre-auth invited member. When set, getMemberContext
    *  looks up the member directly by id rather than via chat_sessions.user_id. */
   memberId?: string | null
   tenant: ChatTenantContext

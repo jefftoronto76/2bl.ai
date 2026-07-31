@@ -221,7 +221,7 @@ export function ChatProvider({
   /** When true, open the chat panel immediately on mount. Sourced from
    *  members.auto_open on the invite row. Default: false. */
   autoOpenChat?: boolean;
-  /** Supabase members.id for the pre-auth invite holder — lets getMemberPrimer
+  /** Supabase members.id for the pre-auth invite holder — lets getMemberContext
    *  look up the member directly without chat_sessions.user_id. Only set for
    *  guests who haven't signed in yet. */
   memberId?: string;
@@ -317,7 +317,7 @@ export function ChatProvider({
   const inviteTokenRef = useRef<string | null>(inviteToken ?? null);
 
   // Stable ref for the pre-auth member id — threaded into every /api/sage
-  // request so getMemberPrimer can look up the primer without user_id.
+  // request so getMemberContext can look up the primer without user_id.
   const memberIdRef = useRef<string | null>(memberId ?? null);
 
   // Ref mirror for mediaItems state — updated every render so the getMediaItems

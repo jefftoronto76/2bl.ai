@@ -220,7 +220,7 @@ export interface ChatEngineAccessors {
   /** Optional — only the surfaces that support arrival modes implement this. */
   getMode?(): ChatMode
   /** Optional — the Supabase members.id for a pre-auth invited member.
-   *  When provided, /api/sage passes it to getMemberPrimer so the primer
+   *  When provided, /api/sage passes it to getMemberContext so the primer
    *  can be looked up without chat_sessions.user_id being set. */
   getMemberId?(): string | null
   /** Optional — the raw invite token for a pre-auth invited member. Sent to
