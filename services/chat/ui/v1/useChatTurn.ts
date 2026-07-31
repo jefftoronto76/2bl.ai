@@ -561,8 +561,12 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       // render as already-rated with a stale reason/note (services/crm/feedback.ts).
       // Also flips any still-'presented' conversion_events (booking offer /
       // contact capture) tied to the discarded replies to 'overwritten' —
-      // see services/crm/conversion-events.ts. Both fire-and-forget; a
-      // failure in either must never block the edit/resend flow itself.
+      // see services/crm/conversion-events.ts. And hard-deletes any memory
+      // (services/crm/memories.ts) anchored to one of the dropped messages —
+      // keyed by message id, not position, so (unlike feedback) there's no
+      // index-cutoff math here: just the ids truncateAfter is about to drop.
+      // All three fire-and-forget; a failure in any must never block the
+      // edit/resend flow itself.
       if (activeSessionId) {
         void fetch(`/api/sessions/${activeSessionId}/feedback?fromIndex=${msgsToSend.length}`, {
           method: 'DELETE',
@@ -573,6 +577,14 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
           `/api/sessions/${activeSessionId}/conversion-events?after=${encodeURIComponent(cutoffTimestamp)}`,
           { method: 'PATCH' },
         ).catch(err => console.error('[chat/turn] PATCH conversion-events cleanup failed:', err))
+
+        const droppedMessageIds = before.slice(targetIdx + 1).map(m => m.id)
+        if (droppedMessageIds.length > 0) {
+          void fetch(
+            `/api/sessions/${activeSessionId}/memories?messageIds=${droppedMessageIds.map(encodeURIComponent).join(',')}`,
+            { method: 'DELETE' },
+          ).catch(err => console.error('[chat/turn] DELETE memories cleanup failed:', err))
+        }
       }
 
       try {

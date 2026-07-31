@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, RefreshCw, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bookmark, Copy, Check, RefreshCw, ChevronLeft, ChevronRight, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { ActionIconButton } from './ActionIconButton'
 import { FeedbackPopover, type FeedbackSentiment } from './FeedbackPopover'
 
@@ -22,6 +22,16 @@ export interface MessageActionsProps {
   /** Tapping the already-active thumb toggles it off (caller flips rating to null). */
   onRate: (val: 'up' | 'down') => void
   onFeedback: (reasons: string[], note: string) => void
+  /**
+   * Omit to hide the bookmark ("Keep this as a memory") — the widget shell
+   * (jefflougheed) simply doesn't pass it, same pattern as onRegenerate.
+   * Heirloom-only; the shared row itself stays product-agnostic.
+   */
+  onKeep?: () => void
+  /** True once this message already has a memory attached — the bookmark reads as active/accent rather than idle. */
+  hasMemory?: boolean
+  /** Disables the bookmark without hiding it — streaming, or another draft already open (see the handoff's "never nag, never go dead" rule). */
+  keepDisabled?: boolean
 }
 
 /**
@@ -41,6 +51,9 @@ export function MessageActions({
   rating,
   onRate,
   onFeedback,
+  onKeep,
+  hasMemory,
+  keepDisabled,
 }: MessageActionsProps) {
   const [copied, setCopied] = useState(false)
   const [popover, setPopover] = useState<FeedbackSentiment | null>(null)
@@ -66,9 +79,20 @@ export function MessageActions({
   }
 
   return (
-    <div className="relative flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+    <div className="relative flex items-center gap-1.5 opacity-60 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
       {stopped && (
         <span className="mr-1 font-mono text-[10.5px] tracking-wide text-text-muted">Stopped</span>
+      )}
+
+      {onKeep && (
+        <ActionIconButton
+          label={hasMemory ? 'Memory kept from this message' : 'Keep this as a memory'}
+          active={hasMemory}
+          disabled={keepDisabled}
+          onClick={onKeep}
+        >
+          <Bookmark size={14} fill={hasMemory ? 'currentColor' : 'none'} />
+        </ActionIconButton>
       )}
 
       <ActionIconButton label={copied ? 'Copied' : 'Copy'} onClick={handleCopy}>

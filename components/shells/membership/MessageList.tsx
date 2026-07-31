@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
@@ -12,6 +12,8 @@ import { MessageActions } from '@/components/chat/MessageActions';
 import { UserMessageActions } from '@/components/chat/UserMessageActions';
 import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
+import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
+import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -77,6 +79,50 @@ function parseUserMessage(content: string): ParsedUserMessage {
     .trim();
 
   return { uploads, failures, text };
+}
+
+/** A user message's own upload (if any) drives the memory's source kind — see parseUserMessage above. Video has no upload path yet, so it's never derived here. */
+function sourceKindForUserMessage(userMsg: ParsedUserMessage): MemorySourceKind {
+  if (userMsg.uploads.some(u => u.type === 'image')) return 'photo';
+  if (userMsg.uploads.some(u => u.type === 'audio')) return 'audio';
+  if (userMsg.uploads.some(u => u.type === 'document')) return 'document';
+  return 'conversation';
+}
+
+interface MemorySlotHandlers {
+  onKeep: (memory: MemoryRow) => void;
+  onRewrite: (memory: MemoryRow) => void;
+  onDiscard: (memory: MemoryRow) => void;
+}
+
+/**
+ * Renders whatever this message's memory is doing right now — running pill,
+ * draft card, saved receipt, or a live failure line — or nothing at all.
+ * Shared by both render functions below since a bookmark (and therefore a
+ * memory) can be anchored to a guide or a visitor message alike.
+ */
+function renderMemorySlot(anchorId: string, memories: UseMemoriesReturn, handlers: MemorySlotHandlers): ReactNode {
+  if (memories.isPending(anchorId)) {
+    const kind = memories.getPendingKind(anchorId);
+    return kind ? <MemoryRunningPill sourceKind={kind} /> : null;
+  }
+  const memory = memories.getByAnchor(anchorId);
+  if (memory?.status === 'draft') {
+    return (
+      <MemoryCard
+        memory={memory}
+        onKeep={() => handlers.onKeep(memory)}
+        onRewrite={() => handlers.onRewrite(memory)}
+        onDiscard={() => handlers.onDiscard(memory)}
+      />
+    );
+  }
+  if (memory?.status === 'published') {
+    return <MemorySavedReceipt memory={memory} />;
+  }
+  const error = memories.getError(anchorId);
+  if (error) return <MemoryErrorLine errorType={error} />;
+  return null;
 }
 
 // ── Inline media components ───────────────────────────────────────────────────
@@ -194,6 +240,9 @@ function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onResend,
+  onKeep,
+  hasMemory,
+  keepDisabled,
 }: {
   message: Message;
   content: string;
@@ -206,6 +255,10 @@ function MessageBubble({
   onCancelEdit?: () => void;
   onSaveEdit?: (text: string) => void;
   onResend?: () => void;
+  /** The memory bookmark — first in UserMessageActions' row. See MessageList's renderMemorySlot for the card/pill/receipt itself. */
+  onKeep?: () => void;
+  hasMemory?: boolean;
+  keepDisabled?: boolean;
 }) {
   const isUser = message.role === 'user';
   const deliveryStatus = isUser ? status ?? 'sent' : 'sent';
@@ -281,7 +334,15 @@ function MessageBubble({
       </div>
       {onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
       {deliveryStatus === 'sent' && onStartEdit && onResend && (
-        <UserMessageActions content={content} edited={message.edited} onEdit={onStartEdit} onResend={onResend} />
+        <UserMessageActions
+          content={content}
+          edited={message.edited}
+          onEdit={onStartEdit}
+          onResend={onResend}
+          onKeep={onKeep}
+          hasMemory={hasMemory}
+          keepDisabled={keepDisabled}
+        />
       )}
     </div>
   );
@@ -345,7 +406,9 @@ function TypingIndicator() {
 
 // Renders a user message exactly as before: the admin-only [SYSTEM:] debug
 // branch, then media chips (image/audio/document/failed), then prose — now
-// with the Edit/Copy/Send again row (or the editing textarea) below the prose.
+// with the Edit/Copy/Send again row (or the editing textarea) below the prose,
+// plus the memory bookmark and whatever it produced (running pill / draft
+// card / saved receipt / failure line).
 function makeRenderUserMessage(
   isAdmin: boolean,
   mediaItems: ClientMediaItem[],
@@ -354,6 +417,9 @@ function makeRenderUserMessage(
   setEditingId: (id: string | null) => void,
   editMessage: (id: string, text: string) => Promise<void>,
   resendMessage: (id: string) => Promise<void>,
+  memories: UseMemoriesReturn,
+  keepDisabled: boolean,
+  renderMemorySlotFn: (anchorId: string) => ReactNode,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -369,6 +435,7 @@ function makeRenderUserMessage(
     }
 
     const userMsg = parseUserMessage(msg.content);
+    const memory = memories.getByAnchor(msg.id);
 
     return (
       <div key={msg.id} className="flex flex-col gap-2">
@@ -413,8 +480,12 @@ function makeRenderUserMessage(
               void editMessage(msg.id, text);
             }}
             onResend={() => void resendMessage(msg.id)}
+            onKeep={() => memories.create(msg.id, sourceKindForUserMessage(userMsg))}
+            hasMemory={!!memory}
+            keepDisabled={keepDisabled}
           />
         )}
+        {userMsg.text && renderMemorySlotFn(msg.id)}
       </div>
     );
   };
@@ -432,6 +503,9 @@ interface AssistantRenderConfig {
   regenerate: (id: string) => void;
   setActiveVersion: (id: string, versionIdx: number) => void;
   feedback: UseMessageFeedbackReturn;
+  memories: UseMemoriesReturn;
+  keepDisabled: boolean;
+  renderMemorySlotFn: (anchorId: string) => ReactNode;
 }
 
 // Renders an assistant message exactly as before: prose bubble, the
@@ -480,7 +554,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
           // misaligned next to jefflougheed's equivalent (SageReply's prose
           // and its MessageActions row share a single pl-4, no avatar to
           // offset for, so they align by construction there).
-          <div className="ml-[60px]">
+          <div className="ml-[60px] flex flex-col gap-2">
             <MessageActions
               content={msg.content}
               stopped={msg.stopped}
@@ -491,7 +565,11 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
               rating={rating}
               onRate={(val) => config.feedback.rate(messageIndex, val)}
               onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
+              onKeep={() => config.memories.create(msg.id, 'conversation')}
+              hasMemory={!!config.memories.getByAnchor(msg.id)}
+              keepDisabled={config.keepDisabled}
             />
+            {config.renderMemorySlotFn(msg.id)}
           </div>
         )}
         {authPrompt && (
@@ -534,10 +612,67 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     setActiveVersion,
     editMessage,
     resendMessage,
+    dispatchSystemSignal,
+    bumpMemoryCount,
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
+  const memories = useMemories(state.sessionId);
   const { user } = useAuthUser();
+
+  // Rewrite is a conversation, not a form: clicking it unmounts the card (no
+  // running pill either — nothing renders for this anchor until the visitor's
+  // answer actually arrives), the guide asks what should change via a hidden
+  // system turn, and the visitor's very next message is treated as the answer
+  // and re-runs the archivist with the prior draft as context. Detected by
+  // watching for a new *user* message to land after the ref below was armed,
+  // rather than threading new state through chatStore.tsx. At most one memory
+  // can be mid-rewrite at a time (matches "at most one draft open" elsewhere).
+  const pendingRewriteRef = useRef<{ memoryId: string; anchorMessageId: string; sinceMessageId: string | null } | null>(null);
+  const [awaitingRewriteAnchor, setAwaitingRewriteAnchor] = useState<string | null>(null);
+  useEffect(() => {
+    const pending = pendingRewriteRef.current;
+    if (!pending) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.id === pending.sinceMessageId) return;
+    if (last.role !== 'user' || last.status !== 'sent') return;
+    pendingRewriteRef.current = null;
+    setAwaitingRewriteAnchor(null);
+    void memories.rewrite(pending.memoryId, pending.anchorMessageId, last.content);
+  }, [messages, memories]);
+
+  const memoryHandlers = {
+    onKeep: (memory: MemoryRow) => {
+      void memories.keep(memory);
+      // Sidebar badge (SidebarV2, via recentSessions) doesn't share state with
+      // this hook — reconcile it locally rather than waiting on the next full
+      // /api/sessions refetch. Server truth (services/crm/sessions.ts's bulk
+      // count) is unaffected either way.
+      bumpMemoryCount(memory.session_id, 1);
+    },
+    onRewrite: (memory: MemoryRow) => {
+      pendingRewriteRef.current = {
+        memoryId: memory.id,
+        anchorMessageId: memory.anchor_message_id,
+        sinceMessageId: messages[messages.length - 1]?.id ?? null,
+      };
+      setAwaitingRewriteAnchor(memory.anchor_message_id);
+      dispatchSystemSignal(
+        `The visitor wants to revise the memory titled "${memory.title}". Ask them, briefly and warmly, what they'd like to change about it.`,
+      );
+    },
+    // Discard is only ever reachable from the draft card (MemorySavedReceipt
+    // has no Discard action) — a discarded memory never counted toward the
+    // published total, so there's nothing to reconcile in recentSessions here.
+    onDiscard: (memory: MemoryRow) => void memories.discard(memory),
+  };
+
+  const renderMemorySlotUnlessAwaiting = (anchorId: string) =>
+    awaitingRewriteAnchor === anchorId ? null : renderMemorySlot(anchorId, memories, memoryHandlers);
+
+  // Never nag, never go dead (handoff §6): suppressed only while a turn is
+  // streaming or a draft is already open — nothing else may hide the bookmark.
+  const keepDisabled = isLoading || memories.hasOpenDraft;
 
   // Which user message (if any) is currently swapped into its editing
   // textarea — local, single-message-at-a-time, doesn't need to survive reload.
@@ -609,6 +744,9 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             setEditingId,
             editMessage,
             resendMessage,
+            memories,
+            keepDisabled,
+            renderMemorySlotUnlessAwaiting,
           )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -622,6 +760,9 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             regenerate,
             setActiveVersion,
             feedback,
+            memories,
+            keepDisabled,
+            renderMemorySlotFn: renderMemorySlotUnlessAwaiting,
           })}
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}

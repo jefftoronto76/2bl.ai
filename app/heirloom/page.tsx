@@ -79,7 +79,7 @@ export default async function HeirloomPage({
   const validatedInviteToken =
     isAuthorized && inviteToken && !session ? inviteToken : undefined;
 
-  // Pass memberId only for pre-auth invite holders — it lets getMemberPrimer
+  // Pass memberId only for pre-auth invite holders — it lets getMemberContext
   // look up the member directly without needing chat_sessions.user_id.
   const validatedMemberId =
     isAuthorized && !session && memberId ? memberId : undefined;

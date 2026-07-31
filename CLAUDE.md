@@ -867,6 +867,62 @@ validation + response mapping). Functions return a discriminated
 | `types.ts` | `AuthScope`, `ContentResult` | Shared contracts for the service. |
 | `index.ts` | barrel | Re-exports the public surface above. |
 
+### Chat server — MEMBER CONTEXT (`services/chat/server/member-context.ts`)
+
+Undocumented until 2026-07-31 — the gap that let a real bug ship silently for
+weeks (see "Also fixed alongside this" below). `services/chat/server/` has
+other files too (`booking.ts`, `media-context.ts`, `prompt.ts`, `stream.ts`)
+referenced elsewhere in this doc (Marker Syntax, API Routes); this entry
+covers only `member-context.ts`, the one that was missing entirely.
+
+`getMemberContext(sessionId, tenantId, memberId, isFirstTurn)` resolves the
+authenticated (or pre-auth invite-holding) Heirloom member for the current
+turn and returns the MEMBER CONTEXT text `streamChat()` (`services/chat/server/index.ts`)
+injects into the system prompt as `MEMBER CONTEXT:\n${memberContext}` —
+whenever the block is non-null, alongside the booking section and
+question-mode context. **Always-on as of 2026-07-31** (previously a one-shot
+primer, see below): computed unconditionally on every request where a member
+resolves, matching `getBookingCardSection`'s pattern — fail-open, no lock.
+
+Two resolution paths, same as before: `memberId` supplied directly (the
+pre-auth invite-holder fast path — `app/api/sage/route.ts`'s `resolveMemberId`
+resolves this via `validateMemberToken` when there's no Clerk session yet), or
+`sessionId` → `chat_sessions.user_id` → `members.user_id` (the signed-in
+path, resolved once per call, not cached on the session).
+
+**What's in the block:** descriptive lines built from the member's
+`invited_name`/`email`/`phone` ("Member's name is X. Email: Y. Phone: Z.")
+plus the free-text `primer` column (see the `members` schema row) — all
+unconditional every turn a member resolves; returns `null` only when none of
+those four fields have data. **The `[NAME:]`/`[EMAIL:]`/`[PHONE:]`
+marker-emission instruction is separate and gated on the caller-supplied
+`isFirstTurn` flag** — it's appended only when `isFirstTurn` is true, never
+based on anything stored per-member.
+
+**`isFirstTurn` is computed deterministically in `streamChat()`, not inferred
+by the model:** `!req.messages.some(m => m.role === 'assistant' && m.content.trim().length > 0)`
+— true when this session's own message history (as sent on this request) has
+no prior non-empty assistant turn. This exists because the model cannot be
+trusted to reliably infer "is this my first reply in this conversation" from
+re-reading its own prior turns in context, even though it technically can see
+them (assistant content is passed through to the model unmodified turn to
+turn — `services/chat/ui/v1/message.ts`'s `toModelMessages` only special-cases
+`stopped: true` turns). The empty-content check exists so a failed first-turn
+attempt (an empty assistant placeholder left in the stored transcript) doesn't
+cause a retry to be misread as "already replied."
+
+**History — one-shot primer → always-on (2026-07-31):** the original
+implementation (`getMemberPrimer`) fired once per member, ever, gated by a
+`members.primer_used_at` column that self-locked after first use. Heirloom's
+compiled prompt was written assuming "member" and "MEMBER CONTEXT present"
+were the same condition, but the one-shot gate meant every returning member,
+from their second session onward, silently got nothing. `primer_used_at` has
+been **removed entirely** — no read, no write, no column reference — rather
+than kept as an unused diagnostic stamp; see `docs/Decision_MemberContext_Jul31.md`
+for the full decision record (Option A vs. a parked Option B: a second,
+separate "genuinely first-ever conversation" mechanism, revisit only if a real
+product reason emerges).
+
 ### Chat UI service (`services/chat/ui/v1/`)
 
 The shared client-side chat engine — the marker registry + the `useChatTurn`
@@ -1276,6 +1332,24 @@ canonical parser; each marker has a **dispatch surface**:
   from the visitor's own message by the visitor-message contact watcher; both
   paths share the self-guarded `persistVisitorPhone`.)
 
+### MEMBER CONTEXT block — not a `[bracket]` marker
+
+Unlike the entries above, `MEMBER CONTEXT:` is not parsed by the client-side
+marker registry — it never appears in the assistant's reply at all. It's a
+section the **server** injects into the *system prompt* (not the
+conversation) whenever an authenticated or invite-holding Heirloom member
+resolves for the turn — see "Chat server — MEMBER CONTEXT" above for the full
+mechanism (`services/chat/server/member-context.ts`). It's documented here
+because the compiled prompt's contact-capture instructions (see the
+`[NAME:]`/`[EMAIL:]`/`[PHONE:]` entries above) reference it directly: "if a
+MEMBER CONTEXT block is present in your context and provides a name, email,
+or phone number, emit the corresponding hidden marker(s) in your very first
+reply." As of 2026-07-31 the block is always-on (present on every turn a
+member resolves, not just once ever), and "your very first reply" is backed
+by a server-computed `isFirstTurn` signal rather than the model's own
+judgment — so the markers above only actually fire from this path on a
+session's genuine first assistant turn, not repeatedly.
+
 ### `[ACCOUNT_CREATE: reason]` — dispatch `client`
 
 - Signals the membership shell (Heirloom) to render a `MagicLinkCard` inline
@@ -1381,7 +1455,7 @@ Row Level Security is enforced at the Supabase layer.
 | `tenant_branding` | tenant_id (uuid, FK → tenants) plus per-tenant branding fields (logo, palette/colours, fonts). ⚠️ Exact column list to be confirmed from Studio. Per-tenant theming so each storefront/admin surface can be styled from data rather than hardcoded tokens. Added 2026-05-24. |
 | `artifacts` | id (uuid, PK), tenant_id (uuid, FK → tenants), user_id (uuid, FK → users), session_id (uuid, FK → chat_sessions), type (text — e.g. 'memory' for Heirloom; general-purpose across tenants), title (text), body (text), metadata (jsonb), status (text: 'draft' \| 'published'), created_at (timestamptz), updated_at (timestamptz). Created in Studio 2026-05-25; **not yet wired to chat** (pending PR). |
 | `artifact_media` | id (uuid, PK), artifact_id (uuid, FK → artifacts), type (text), url (text), filename (text), mime_type (text), size (integer), created_at (timestamptz). Media attached to an `artifact`. Created in Studio 2026-05-25; **not yet wired to chat** (pending PR). |
-| `members` | id (uuid, PK), clerk_id (text, unique, nullable — the Clerk user id `user_...`; null for invited rows before sign-up; renamed from `clerk_user_id` on 2026-06-11), user_id (uuid, nullable, FK → users.id — linked after sign-up; null for pending-invite rows), tenant_id (uuid, FK → tenants — scopes the member to a product tenant), role (text, NOT NULL, default 'member' — `owner\|admin\|member\|viewer`), name (text, nullable — display name supplied during sign-up; written via `syncMember`), email (text, nullable — synced from Clerk on auth; also written at invite creation when admin supplies it; used to match invited rows in `linkInvitedMember`), phone (text, nullable — synced from Clerk on auth; also written at invite creation when admin supplies it), status (text, default 'active' — `active\|invited\|waitlist\|suspended\|deleted`), source (text, nullable — `'invite'` when the member joined via an invite token; stamped by `acceptInvite` and `linkInvitedMember`; null for self-service / waitlist sign-ups), token (text, unique, nullable — 32-char base64url invite token; set on `createMemberInvite`, consumed by `acceptInvite`), used_at (timestamptz, nullable — stamped by `acceptInvite` or `linkInvitedMember` when the invited user signs up), invited_name (text, nullable — display name stored at invite-creation time; shown in GateView personalization and ChatHero personalized greeting), invited_by (uuid, nullable, FK → users.id ON DELETE SET NULL — added 2026-07-10; the acting admin who created the invite, stamped by `createMemberInvite`; null = seeded/self-service/waitlist, renders as a dimmed dash in the members UI; never backfilled), opened_at (timestamptz, nullable — added 2026-07-11, invite-link tracking; last redirect hit at `GET /invite/[token]`, not first — updated on every open until the invite is accepted), opens (integer, nullable — added 2026-07-11; cumulative redirect-hit count, incremented on every `GET /invite/[token]` hit while `used_at IS NULL`), expires_at (timestamptz, nullable — added 2026-07-11; stamped `INVITE_TTL_DAYS` (14 days) out on invite create/resend; read at the redirect route but **not yet enforced**), revoked_at (timestamptz, nullable — added 2026-07-11; stamped by the `POST .../invite/[memberId]/revoke` soft-revoke endpoints; non-null ⇒ the token 410s at `GET /invite/[token]` and is rejected by `validateMemberToken`/`acceptInvite`), created_at (timestamptz), updated_at (timestamptz). Heirloom membership record created/updated on each authentication via `syncMember` (`services/auth/sync-member.ts`). Invited-only rows (user_id IS NULL) created via `createMemberInvite` (`services/members/members.ts`). Heirloom tenant_id: `20767f1d-1148-4e43-ab73-f6da88f0ac56`. See `app/admin/members/inviteLink.ts` (`toInviteLink`) for the row → `InviteLink` view-model mapping used by the member-drawer timeline (Option B). |
+| `members` | id (uuid, PK), clerk_id (text, unique, nullable — the Clerk user id `user_...`; null for invited rows before sign-up; renamed from `clerk_user_id` on 2026-06-11), user_id (uuid, nullable, FK → users.id — linked after sign-up; null for pending-invite rows), tenant_id (uuid, FK → tenants — scopes the member to a product tenant), role (text, NOT NULL, default 'member' — `owner\|admin\|member\|viewer`), name (text, nullable — display name supplied during sign-up; written via `syncMember`), email (text, nullable — synced from Clerk on auth; also written at invite creation when admin supplies it; used to match invited rows in `linkInvitedMember`), phone (text, nullable — synced from Clerk on auth; also written at invite creation when admin supplies it), status (text, default 'active' — `active\|invited\|waitlist\|suspended\|deleted`), source (text, nullable — `'invite'` when the member joined via an invite token; stamped by `acceptInvite` and `linkInvitedMember`; null for self-service / waitlist sign-ups), token (text, unique, nullable — 32-char base64url invite token; set on `createMemberInvite`, consumed by `acceptInvite`), used_at (timestamptz, nullable — stamped by `acceptInvite` or `linkInvitedMember` when the invited user signs up), invited_name (text, nullable — display name stored at invite-creation time; shown in GateView personalization and ChatHero personalized greeting), invited_by (uuid, nullable, FK → users.id ON DELETE SET NULL — added 2026-07-10; the acting admin who created the invite, stamped by `createMemberInvite`; null = seeded/self-service/waitlist, renders as a dimmed dash in the members UI; never backfilled), opened_at (timestamptz, nullable — added 2026-07-11, invite-link tracking; last redirect hit at `GET /invite/[token]`, not first — updated on every open until the invite is accepted), opens (integer, nullable — added 2026-07-11; cumulative redirect-hit count, incremented on every `GET /invite/[token]` hit while `used_at IS NULL`), expires_at (timestamptz, nullable — added 2026-07-11; stamped `INVITE_TTL_DAYS` (14 days) out on invite create/resend; read at the redirect route but **not yet enforced**), revoked_at (timestamptz, nullable — added 2026-07-11; stamped by the `POST .../invite/[memberId]/revoke` soft-revoke endpoints; non-null ⇒ the token 410s at `GET /invite/[token]` and is rejected by `validateMemberToken`/`acceptInvite`), primer (text, nullable — undocumented until 2026-07-31; free-text admin-authored context set at invite creation via `createMemberInvite`'s `primer` param, e.g. "They mentioned their dog Biscuit last visit."; read by `getMemberContext` (`services/chat/server/member-context.ts`) and folded into the MEMBER CONTEXT system-prompt block on every turn the member resolves — see "Chat server — MEMBER CONTEXT" below. There is no `primer_used_at` column/gate — a prior one-shot lock was removed 2026-07-31 in favor of always-on injection), auto_open (boolean, nullable — undocumented until 2026-07-31; set at invite creation via `createMemberInvite`'s `autoOpen` param; read by `app/heirloom/page.tsx` to auto-open the Heirloom chat panel on load for that invite holder. Unrelated to `primer`/MEMBER CONTEXT — a page-load UI behavior, not a prompt-injection concern), created_at (timestamptz), updated_at (timestamptz). Heirloom membership record created/updated on each authentication via `syncMember` (`services/auth/sync-member.ts`). Invited-only rows (user_id IS NULL) created via `createMemberInvite` (`services/members/members.ts`). Heirloom tenant_id: `20767f1d-1148-4e43-ab73-f6da88f0ac56`. See `app/admin/members/inviteLink.ts` (`toInviteLink`) for the row → `InviteLink` view-model mapping used by the member-drawer timeline (Option B). |
 | `audit_events` | id (bigint generated always as identity), product_id (text, nullable — 'sage' \| 'heirloom' \| 'platform'), tenant_id (uuid, nullable — null = platform-level event), actor_id (uuid, nullable — users.id), actor_type (text default 'user': 'user' \| 'system' \| 'anonymous'), actor_email (text, nullable), clerk_user_id (text, nullable — Clerk correlation id, separate from actor_id), action (text — namespaced noun.verb e.g. 'block.update'; see `AuditAction` constants in `services/audit/types.ts`), target_type (text, nullable — 'block' \| 'tenant' \| 'session' etc.), target_id (text, nullable), outcome (text default 'success': 'success' \| 'failure'), ip_address (inet, nullable), user_agent (text, nullable), correlation_id (uuid, nullable — from `x-correlation-id` middleware header), changes (jsonb, nullable — `{before, after}` where relevant), metadata (jsonb NOT NULL default '{}'), created_at (timestamptz NOT NULL default now() — UTC). PK: (id, created_at). **Append-only** — BEFORE UPDATE/DELETE triggers raise an exception; UPDATE/DELETE/TRUNCATE revoked from all non-service-role roles. RLS enabled: tenant admins read own rows; platform admins read all. ⚠️ Must be created by Jeff in Supabase Studio before audit rows are written. |
 | `auth_events` | id (bigint generated always as identity), tenant_id (uuid, nullable), clerk_user_id (text, nullable), actor_id (uuid, nullable — users.id when resolved), email (text, nullable — claimed email, may be unverified on failure), event_type (text — 'sign_up' \| 'sign_in' \| 'sign_out' \| 'otp_sent' \| 'otp_verified' \| 'sign_in_failed' \| 'mfa_failed' \| 'session_created' \| 'session_revoked' \| 'admin_access' \| 'admin_access_failed' \| 'user_deleted' \| 'password_reset'), outcome (text default 'success'), failure_reason (text, nullable), ip_address (inet, nullable), user_agent (text, nullable), correlation_id (uuid, nullable), svix_event_id (text, unique — idempotency key for Clerk webhook deliveries; null for app-logged events), metadata (jsonb NOT NULL default '{}'), created_at (timestamptz NOT NULL default now() — UTC). PK: (id, created_at). **Append-only** — same immutability enforcement as `audit_events`. RLS enabled: users read their own rows; platform admins read all. Written by `logAuthEvent` (`services/audit/audit.ts`) and the Clerk webhook receiver (`/api/webhooks/clerk`). ⚠️ Must be created by Jeff in Supabase Studio before auth events are written. |
 | `auth_logs` | id (uuid PK), clerk_id_attempted (text), matched_table (text), matched_column (text), user_id (uuid), member_id (uuid), environment (text), created_at (timestamptz). **Pre-existing Clerk ID resolution diagnostic table** — created in Supabase Studio to help troubleshoot Clerk ID lookup issues. Not a general audit log; no `tenant_id`, `action`, `outcome`, or immutability. Preserved as-is. This is NOT the same as `auth_events` — do not confuse them. Undocumented in DB_CHANGELOG.md until 2026-06-08 (see backfill entry). |
@@ -1563,3 +1637,30 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   reach into `app` or `src` internals. This is the same allowance the
   `components/shells/` widget + membership shells will consume in Steps E/F. The
   rule stays at `warn` until the shells land and Step G flips it to `error`.
+- **Memories (Heirloom) — Manual path shipped 2026-07-29; Offered and Auto are
+  not, and Offered is explicitly blocked, not just deferred.** The memory
+  bookmark, card (running/draft/saved/error states), and Keep/Rewrite/Discard
+  all ship in this pass — see `services/chat/ui/v1/useMemories.ts`,
+  `components/shells/membership/memory/`, and the bookmark on
+  `components/chat/MessageActions.tsx` / `UserMessageActions.tsx` (behind
+  `onKeep`, which the jefflougheed widget shell doesn't pass — memories are
+  Heirloom-only). Two of the design's three creation paths are **not** built:
+  - **Offered** (the guide asks inline via "Write it up" / "Not yet" chips)
+    needs the guide to know memories exist at all — a new marker plus prompt
+    instructions telling it when to emit one. Heirloom has no compiled system
+    prompt of its own yet; it falls back to jefflougheed's shared
+    `DEFAULT_SYSTEM_PROMPT` (see the Heirloom storefront chat section's
+    "Tenant note" above). Editing that shared prompt to teach the guide about
+    memories would leak Heirloom-only behavior into jefflougheed's Sage chat.
+    **Do not work around this by touching the shared default prompt** — it
+    stays blocked until Heirloom has its own compiled prompt (already a
+    separate, pre-existing follow-up item), not something to route around.
+  - **Auto** (the guide invokes a save tool itself, mid-conversation) needs
+    real tool-calling infrastructure — `services/chat/server/stream.ts`'s
+    `streamText()` call passes no `tools` today; there is no tool-use wiring
+    anywhere in this codebase. Deferred to a later phase once that capability
+    exists.
+  Also not in this pass: the story-linking concept entirely — a memory does
+  not require a story to be saved (there is no `stories` table), and when
+  story-linking is eventually built it should be many-to-many (a memory
+  connecting to more than one thing), not a single column on `artifacts`.

@@ -67,7 +67,7 @@ interface HeirloomAppProps {
    *  isSignedIn transition to consume it. */
   inviteToken?: string;
   /** members.id for the invited member — present only for pre-auth invite holders.
-   *  Passed through to /api/sage so getMemberPrimer can look up the member
+   *  Passed through to /api/sage so getMemberContext can look up the member
    *  directly without needing chat_sessions.user_id. */
   memberId?: string;
   /** When true, the chat panel opens automatically on mount. Sourced from

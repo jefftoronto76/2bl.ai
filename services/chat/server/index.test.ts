@@ -37,8 +37,21 @@ vi.mock('./prompt', () => ({
 vi.mock('./booking', () => ({
   getBookingCardSection: vi.fn(async () => ''),
 }))
+const mockGetMemberContext = vi.fn(
+  async (
+    _sessionId: string | null,
+    _tenantId: string | null,
+    _memberId: string | null | undefined,
+    _isFirstTurn: boolean,
+  ) => null as string | null,
+)
 vi.mock('./member-context', () => ({
-  getMemberPrimer: vi.fn(async () => null),
+  getMemberContext: (
+    sessionId: string | null,
+    tenantId: string | null,
+    memberId: string | null | undefined,
+    isFirstTurn: boolean,
+  ) => mockGetMemberContext(sessionId, tenantId, memberId, isFirstTurn),
 }))
 vi.mock('./media-context', () => ({
   resolveMediaContext: vi.fn(async () => ''),
@@ -90,6 +103,7 @@ beforeEach(() => {
   mockMaybeSingle.mockClear()
   mockMaybeSingle.mockResolvedValue({ data: null })
   mockRunChatStream.mockClear()
+  mockGetMemberContext.mockClear()
   resolveRunChatStream = null
   runChatStreamOnFinish = null
 })
@@ -196,5 +210,57 @@ describe('streamChat — server-side stop detection', () => {
     const pollCallsAtAbort = mockMaybeSingle.mock.calls.length
     await vi.advanceTimersByTimeAsync(2000)
     expect(mockMaybeSingle.mock.calls.length).toBe(pollCallsAtAbort)
+  })
+})
+
+describe('streamChat — isFirstTurn computation for MEMBER CONTEXT', () => {
+  it('passes isFirstTurn=true when req.messages has no prior assistant turn', async () => {
+    const responsePromise = streamChat({
+      messages: [{ role: 'user', content: 'Hi' }],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockGetMemberContext).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
+  })
+
+  it('passes isFirstTurn=false when req.messages already has a non-empty assistant turn', async () => {
+    const responsePromise = streamChat({
+      messages: [
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: 'Hello! How can I help?' },
+        { role: 'user', content: 'Tell me more' },
+      ],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockGetMemberContext).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', false)
+  })
+
+  it('still passes isFirstTurn=true when the only prior assistant turn is an empty failed-attempt placeholder', async () => {
+    const responsePromise = streamChat({
+      messages: [
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: '' },
+        { role: 'user', content: 'Hi' },
+      ],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockGetMemberContext).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
   })
 })
