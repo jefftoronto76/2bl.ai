@@ -109,7 +109,9 @@ describe('Heirloom Recent sidebar — clicking a conversation', () => {
     // default so conversation rows are immediately visible and clickable.
     await waitFor(() => expect(screen.getByText('hello from the newest conversation')).toBeTruthy());
     expect(screen.getByText('Old conversation')).toBeInTheDocument();
-    expect(screen.getByText('Newest conversation')).toBeInTheDocument();
+    // "Newest conversation" appears twice once it's the active session: once
+    // as the sidebar row, once as the ChatHeader "Your Story" label.
+    expect(screen.getAllByText('Newest conversation').length).toBeGreaterThan(0);
   });
 
   it('loads the clicked conversation transcript into the main pane, scrolled to its last message', async () => {
@@ -131,5 +133,46 @@ describe('Heirloom Recent sidebar — clicking a conversation', () => {
       expect(screen.queryByText('hello from the old conversation')).toBeTruthy();
     });
     expect(screen.queryByText('hello from the newest conversation')).toBeNull();
+    // The header's "Your Story" label switches to reflect the newly-active
+    // conversation too — not just the sidebar.
+    await waitFor(() => expect(screen.getAllByText('Old conversation').length).toBeGreaterThan(0));
+  });
+});
+
+describe('ChatHeader "Your Story" — conversation switcher', () => {
+  it('shows the active conversation title and lets a visitor switch via the dropdown', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+
+    // The header label reflects the auto-hydrated newest session.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Switch conversation' })).toHaveTextContent(
+        'Newest conversation',
+      ),
+    );
+    // Nothing to switch to yet — the dropdown itself hasn't been opened.
+    expect(screen.queryByText('Old conversation')).not.toBeNull(); // present in the (already-expanded) sidebar
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch conversation' }));
+
+    // The dropdown lists every Recent conversation.
+    const dropdown = screen.getAllByText('Old conversation');
+    expect(dropdown.length).toBeGreaterThan(0);
+
+    // Picking the older conversation from the header dropdown switches the
+    // active transcript, same as picking it from the sidebar would.
+    fireEvent.click(dropdown[dropdown.length - 1]);
+
+    await waitFor(() =>
+      expect(screen.getByText('hello from the old conversation')).toBeTruthy(),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Switch conversation' })).toHaveTextContent(
+        'Old conversation',
+      ),
+    );
   });
 });

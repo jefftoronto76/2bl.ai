@@ -62,7 +62,8 @@ export interface ChatThreadProps {
   retry: () => void
 
   renderUserMessage: (msg: UIMessage) => ReactNode
-  renderAssistantMessage: (msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode) => ReactNode
+  /** `index` is the message's position in the full `messages` array — pass it straight through rather than re-deriving it with `messages.findIndex()` per call, which turns an O(n) render into O(n^2) for a long conversation. */
+  renderAssistantMessage: (msg: UIMessage, parsed: MarkerParseResult, markdown: ReactNode, index: number) => ReactNode
   renderError: (retry: () => void, errorType: ChatErrorType) => ReactNode
   renderStreamingIndicator: () => ReactNode
   /** Caller-computed — each surface's "show the dots" trigger differs (e.g. gated on the last message being empty vs. a plain isLoading flag), so ChatThread does not derive this itself. */
@@ -194,7 +195,7 @@ export function ChatThread({
         const markdown = (
           <BufferedMarkdown content={parsed.prose} active={active} components={markdownComponents} />
         )
-        const rendered = renderAssistantMessage(msg, parsed, markdown)
+        const rendered = renderAssistantMessage(msg, parsed, markdown, index)
         return active ? (
           <div aria-live="off" key={msg.id}>
             {rendered}

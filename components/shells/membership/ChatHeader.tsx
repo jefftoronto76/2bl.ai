@@ -37,12 +37,43 @@ export interface ChatHeaderProps {
 }
 
 export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen }: ChatHeaderProps) {
-  const { dispatch, isAdmin } = useChatStore();
+  const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // "Your Story ⌄" is the conversation switcher — its label reflects the
+  // active conversation (falling back to "Your Story" for a brand new,
+  // not-yet-saved one), and clicking it lists every Recent conversation so a
+  // visitor can switch. On mobile this used to be the ONLY visible surface
+  // for switching conversations (the docked SidebarV2 Memories list is
+  // desktop-only / tucked behind the hamburger), but the button had no
+  // onClick at all — clicking it looked like it did nothing.
+  const [storyDropdownOpen, setStoryDropdownOpen] = useState(false);
+  const storyDropdownRef = useRef<HTMLDivElement>(null);
+  const activeSession = recentSessions.find((s) => s.id === state.sessionId);
+  const storyLabel = activeSession?.title ?? 'Your Story';
+
+  const handleStoryClick = useCallback(() => {
+    setStoryDropdownOpen((prev) => !prev);
+  }, []);
+
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      setStoryDropdownOpen(false);
+      loadSession(id);
+    },
+    [loadSession],
+  );
+
+  // Close dropdown on outside click.
+  const handleStoryBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    if (!storyDropdownRef.current?.contains(e.relatedTarget as Node)) {
+      setStoryDropdownOpen(false);
+    }
+  }, []);
 
   const handleAccountClick = useCallback(() => {
     setDropdownOpen((prev) => !prev);
@@ -90,15 +121,51 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           <Menu size={18} />
         </button>
       )}
-      <button
-        type="button"
-        className="flex items-center gap-1.5 font-body text-text-primary font-semibold text-base hover:bg-text-primary/10 rounded-lg px-2 py-1.5 transition-colors"
-      >
-        <span>Your Story</span>
-        <ChevronDown size={14} className="text-text-muted" />
-      </button>
+      <div ref={storyDropdownRef} className="relative min-w-0 flex-1" onBlur={handleStoryBlur}>
+        <button
+          type="button"
+          aria-label="Switch conversation"
+          aria-expanded={storyDropdownOpen}
+          onClick={handleStoryClick}
+          className="flex items-center gap-1.5 min-w-0 max-w-full font-body text-text-primary font-semibold text-base hover:bg-text-primary/10 rounded-lg px-2 py-1.5 transition-colors"
+        >
+          <span className="truncate">{storyLabel}</span>
+          <ChevronDown
+            size={14}
+            className={`text-text-muted flex-shrink-0 transition-transform ${storyDropdownOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
 
-      <div className="flex items-center gap-1">
+        {storyDropdownOpen && (
+          <div className="absolute left-0 top-full mt-1 w-72 max-w-[85vw] rounded-xl bg-surface border border-border shadow-lg z-50 overflow-hidden">
+            <div className="max-h-80 overflow-y-auto py-1.5">
+              {recentSessions.length === 0 ? (
+                <p className="px-4 py-3 font-body text-sm italic text-text-muted">
+                  No conversations yet
+                </p>
+              ) : (
+                recentSessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => handleSelectConversation(session.id)}
+                    aria-current={state.sessionId === session.id ? 'true' : undefined}
+                    className={`w-full text-left px-4 py-2.5 font-body text-sm truncate transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                      state.sessionId === session.id
+                        ? 'bg-text-primary/10 text-text-primary'
+                        : 'text-text-muted hover:bg-text-primary/5 hover:text-text-primary'
+                    }`}
+                  >
+                    {session.title}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 flex-shrink-0">
         {/* Icon cluster: gap-1 (4px) between all of Share/Fullscreen/Account/
             Close — half-gap (2px) horizontally on every button (uniform,
             not first/last-optimized, to stay correct regardless of which
