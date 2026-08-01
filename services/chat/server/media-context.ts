@@ -8,19 +8,67 @@ import type { MediaAttachmentInput } from './types'
 const MEDIA_UPLOAD_PATTERN = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|[^\]]*\]/g
 
 /**
- * Fetches derived_content for each ready media item and returns a formatted
- * ATTACHED MEDIA section for injection into the system prompt. Any item in
- * `mediaItems` that the query does NOT come back as ready (the common case
- * for something attached in the current turn — processing is async and
- * almost never finishes before this same request builds its prompt) gets an
- * ATTACHMENT IN PROGRESS line instead, built directly from the client-
- * supplied filename/type on `mediaItems` — no second DB lookup, since the
- * ready-item query already tells us which ids are NOT ready.
+ * Maps a raw, internal error_message to a fixed, pre-written safe phrase —
+ * never the raw string itself. This is a category classifier, not string
+ * scrubbing: regex-stripping "known bad patterns" (storage paths, vendor
+ * names) out of an open-ended string is inherently incomplete, since any
+ * error shape not anticipated here would leak straight through. Mapping to
+ * a bounded set of known-safe phrases guarantees no vendor name or internal
+ * path ever reaches the prompt regardless of what the underlying error
+ * actually says — the fallback category alone is the backstop.
+ */
+export function sanitizeFailureReason(raw: string | null): string {
+  const message = raw ?? ''
+
+  if (message.includes('Storage object not available after')) {
+    return "the file didn't finish uploading before we tried to process it"
+  }
+  if (message.includes('Deepgram API error')) {
+    return "the audio transcription service couldn't process this file"
+  }
+  if (
+    message.includes('Anthropic vision error') ||
+    message.includes('No text block returned from Anthropic vision')
+  ) {
+    return "the image couldn't be analyzed"
+  }
+  if (
+    message.includes('DEEPGRAM_API_KEY is not configured') ||
+    message.includes('ANTHROPIC_API_KEY is not configured')
+  ) {
+    return "a processing service isn't available right now"
+  }
+  if (
+    message.includes('Failed to create signed download URL') ||
+    message.includes('Failed to create long-lived signed URL') ||
+    message.includes('Failed to download file')
+  ) {
+    return "the file couldn't be retrieved for processing"
+  }
+  return 'something went wrong while processing this file'
+}
+
+/**
+ * Fetches status/derived_content/error_message for every attached media item
+ * and returns a formatted context section for injection into the system
+ * prompt, split into up to three parts:
+ *
+ *  - ATTACHED MEDIA: ready items, carrying the real derived_content.
+ *  - ATTACHMENT FAILED: failed items, carrying a sanitized (never raw)
+ *    failure reason via sanitizeFailureReason — a real reason, not a bare
+ *    "failed" flag, but never the internal error string itself.
+ *  - ATTACHMENT IN PROGRESS: everything else (pending/processing, or an item
+ *    the query didn't return a row for at all — the common case for
+ *    something attached in the current turn, since processing is async and
+ *    almost never finishes before this same request builds its prompt),
+ *    built from the client-supplied filename/type on `mediaItems` — no
+ *    second DB lookup needed, since the query already tells us which ids
+ *    are ready or failed.
  *
  * Short-circuits to '' when mediaItems is empty/null, when no tenant is
- * resolved, or when no member is resolved. A DB error on the ready-item
- * query still returns '' (matching prior behavior) rather than guessing —
- * an error there means we don't reliably know status either way.
+ * resolved, or when no member is resolved. A DB error still returns ''
+ * (matching prior behavior) rather than guessing — an error there means we
+ * don't reliably know status either way.
  */
 export async function resolveMediaContext(
   mediaItems: MediaAttachmentInput[] | null | undefined,
@@ -34,20 +82,23 @@ export async function resolveMediaContext(
   const supabase = getAdminClient()
   const { data, error } = await supabase
     .from('media_items')
-    .select('id, original_filename, type, derived_content')
+    .select('id, original_filename, type, derived_content, status, error_message')
     .in('id', ids)
     .eq('tenant_id', tenantId)
     .eq('member_id', memberId)
-    .eq('status', 'ready')
-    .not('derived_content', 'is', null)
 
   if (error) {
     console.error('[chat/media-context] resolveMediaContext error:', error.message)
     return ''
   }
 
-  const readyRows = data ?? []
+  const rows = data ?? []
+
+  const readyRows = rows.filter(row => row.status === 'ready' && row.derived_content)
   const readyIds = new Set(readyRows.map(row => row.id))
+
+  const failedRows = rows.filter(row => row.status === 'failed')
+  const failedIds = new Set(failedRows.map(row => row.id))
 
   const readySection =
     readyRows.length > 0
@@ -56,7 +107,19 @@ export async function resolveMediaContext(
           .join('\n\n')}`
       : ''
 
-  const inProgressItems = mediaItems.filter(m => !readyIds.has(m.mediaItemId))
+  const failedSection =
+    failedRows.length > 0
+      ? `ATTACHMENT FAILED:\n\n${failedRows
+          .map(
+            row =>
+              `[${row.original_filename} (${row.type})] ${sanitizeFailureReason(row.error_message)}`,
+          )
+          .join('\n\n')}`
+      : ''
+
+  const inProgressItems = mediaItems.filter(
+    m => !readyIds.has(m.mediaItemId) && !failedIds.has(m.mediaItemId),
+  )
   const inProgressSection =
     inProgressItems.length > 0
       ? inProgressItems
@@ -64,7 +127,9 @@ export async function resolveMediaContext(
           .join('\n')
       : ''
 
-  return [readySection, inProgressSection].filter(section => section.length > 0).join('\n\n')
+  return [readySection, failedSection, inProgressSection]
+    .filter(section => section.length > 0)
+    .join('\n\n')
 }
 
 /**
