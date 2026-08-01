@@ -15,9 +15,13 @@ import { createClient } from '@/services/auth/supabase';
 import type { MediaItem } from '@/services/media/types';
 import type { MediaAttachmentInput } from '@/services/chat/server/types';
 import type { ChatErrorType } from '@/services/chat/ui/v1/types';
+import { mergeMediaItem } from './mediaItemMerge';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
-export type ClientMediaItem = MediaItem & { localPreviewUrl?: string };
+// `url` (image items only) is server-attached by GET /api/media, not the DB
+// row itself — it won't be present on raw Realtime postgres_changes payloads,
+// which is why mergeMediaItem (mediaItemMerge.ts) preserves a previously-fetched one.
+export type ClientMediaItem = MediaItem & { localPreviewUrl?: string; url?: string | null };
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
@@ -788,12 +792,10 @@ export function ChatProvider({
       const idx = prev.findIndex(m => m.id === item.id);
       if (idx >= 0) {
         const next = [...prev];
-        // Preserve localPreviewUrl when updating an existing item (Realtime
-        // updates won't carry it — keep the one set on initial upload).
-        next[idx] = { localPreviewUrl: prev[idx].localPreviewUrl, ...item };
+        next[idx] = mergeMediaItem(prev[idx], item);
         return next;
       }
-      return [...prev, item];
+      return [...prev, mergeMediaItem(undefined, item)];
     });
   }, []);
 
@@ -804,14 +806,14 @@ export function ChatProvider({
     let cancelled = false;
     fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
       .then(r => r.json())
-      .then((data: { items?: MediaItem[] }) => {
+      .then((data: { items?: ClientMediaItem[] }) => {
         if (!cancelled && Array.isArray(data.items) && data.items.length > 0) {
           setMediaItems(prev => {
             const merged = [...prev];
             for (const item of data.items!) {
               const idx = merged.findIndex(m => m.id === item.id);
-              if (idx >= 0) merged[idx] = item;
-              else merged.push(item);
+              if (idx >= 0) merged[idx] = mergeMediaItem(merged[idx], item);
+              else merged.push(mergeMediaItem(undefined, item));
             }
             return merged;
           });
@@ -866,16 +868,16 @@ export function ChatProvider({
     const timer = setTimeout(() => {
       fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
         .then((r) => r.json())
-        .then((data: { items?: MediaItem[] }) => {
+        .then((data: { items?: ClientMediaItem[] }) => {
           if (!Array.isArray(data.items) || data.items.length === 0) return;
           setMediaItems((prev) => {
             const merged = [...prev];
             for (const item of data.items!) {
               const idx = merged.findIndex((m) => m.id === item.id);
               if (idx >= 0) {
-                merged[idx] = { localPreviewUrl: merged[idx].localPreviewUrl, ...item };
+                merged[idx] = mergeMediaItem(merged[idx], item);
               } else {
-                merged.push(item);
+                merged.push(mergeMediaItem(undefined, item));
               }
             }
             return merged;
