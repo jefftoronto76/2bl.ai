@@ -255,6 +255,14 @@ Investigated Aug 1 against a real production test conversation:
 2. **No prompt block exists for Heirloom specifically.** The plumbing (context injection) was built and merged July 31, but nobody wrote the actual guide instructions telling it what `ATTACHED MEDIA`/`ATTACHMENT IN PROGRESS` context means or how to react — matches this spec's "Upload acknowledgement block" and "Completion re-engagement block" sections, which were speced in June but never actually authored into Heirloom's compiled prompt.  
 3. **N+1 signed-URL refetch on reload.** Every historical image in a conversation does its own uncached, unbatched signed-URL fetch on every page load — not anticipated by this spec at all, a real inefficiency in the display layer, separate from the processing pipeline itself.
 
+### New — the injected context is held to tool-result standards, even though it isn't a tool call
+
+Confirmed today: media handling stays context-injection, not a formal tool call — the model never decides to start an upload, so there's nothing for it to invoke. But the *contract* on what gets injected needs the same rigor a real tool result would require, regardless of the mechanism:
+
+- **The service reports facts. The model translates those facts for the member. It never invents.** Status, failure reason, classification — every value injected into context must be real and complete, the same standard as a literal tool call's return value, not a hint the model is free to embellish or guess around.  
+- Concretely: a failure signal must carry the actual `error_message`, not a generic `failed` flag — the guide should simplify a true reason for the member, never manufacture a plausible-sounding one.  
+- This is a standing principle for the whole pipeline, not a one-off fix — every future signal added to this system (timing estimates, retry state, whatever comes out of the Media section) should be built to this same bar from the start.
+
 ### Still confirmed absent, matching the original spec's own build sequence
 
 Per the June build sequence, steps 4 (background function), 6 (guide prompt), and 7 (Media nav section) were never fully completed. Specifically: the Realtime alert mechanism (step 5\) was never implemented — current behavior is context-injection on the visitor's *next* message, not an inline event pushed the instant processing finishes. The Media nav section doesn't exist. The guide prompt blocks are being written now, as a direct result of today's bug investigation.
