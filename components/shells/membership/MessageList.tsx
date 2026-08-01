@@ -155,22 +155,25 @@ function MediaStatusBadge({ item, small = false }: { item: ClientMediaItem | und
 }
 
 /** Inline image preview — shown in the user message thread immediately on upload.
- *  Falls back to a signed URL fetch when localPreviewUrl is not available (page reload). */
+ *  Prefers the batch-fetched signed url (GET /api/media, item.url) so a reloaded
+ *  conversation doesn't need a separate signed-url round trip per image. Falls
+ *  back to fetching its own signed URL only when neither is available yet
+ *  (e.g. item hasn't hydrated into mediaItems at all). */
 function InlineImage({ mediaItemId, filename, item }: {
   mediaItemId: string;
   filename: string;
   item: ClientMediaItem | undefined;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const src = item?.localPreviewUrl ?? signedUrl;
+  const src = item?.localPreviewUrl ?? item?.url ?? signedUrl;
 
   useEffect(() => {
-    if (item?.localPreviewUrl) return;
+    if (item?.localPreviewUrl || item?.url) return;
     fetch(`/api/media/${mediaItemId}/url`)
       .then(r => r.json())
       .then((d: { url?: string }) => { if (d.url) setSignedUrl(d.url); })
       .catch(() => {});
-  }, [mediaItemId, item?.localPreviewUrl]);
+  }, [mediaItemId, item?.localPreviewUrl, item?.url]);
 
   return (
     <div className="flex justify-end">
