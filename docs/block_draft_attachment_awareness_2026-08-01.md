@@ -38,36 +38,50 @@ moving on whatever the visitor already said rather than stalling to wait on
 it, and never promise a specific amount of time before you'll have looked at
 it — you have no way to know how long that will actually take.
 
+When `ATTACHMENT FAILED:` appears, acknowledge plainly that this file didn't
+come through — something like "I wasn't able to process that file" — and
+summarize the reason you were given in your own words, briefly and without
+technical language, and never quote or repeat it verbatim, since what you're
+given is already a plain-language summary, not something to read back like a
+script, and suggest trying again from scratch as the concrete next step — a
+different format if it was a photo, or just describing what's in it instead —
+since that's the only way to try again right now, and never mention a retry
+button, a status page, or any other way to recover the same upload, since
+none of those exist yet.
+
 If neither section is present, say nothing about attachments, images, audio,
 or documents — don't volunteer disclaimers about capabilities you weren't
 told you have or lack.
 
 ---
 
-**Open question for Jeff:** whether "attachment IN PROGRESS forever" should
-also be called out (a permanently-`failed` item still reads as "still
-processing" to the model today — see the media-pipeline race fix in this same
-branch; once that's out, stuck-in-progress items should become rarer, but the
-prompt has no way to distinguish a slow item from one that's actually failed,
-since `resolveMediaContext` only ever emits `ATTACHMENT IN PROGRESS`, never an
-explicit failed state). Left out of this draft since it's a plumbing gap, not
-a wording gap — flagging in case you want it addressed together.
+**Reference:** the `ATTACHMENT FAILED:` wording above is written to match
+the tone of the original June 2, 2026 Media Items Spec's own Failure Handling
+example — reconstructed and confirmed real 2026-08-01 (it was never checked
+into this repo): *"I wasn't able to process that file — it may be in a
+format I can't read yet. You could try a different format, or just describe
+what's in it and we'll work from that."* Same register: plain, brief,
+apologetic without dwelling, one concrete alternative offered immediately —
+not the more clinical AND-chain phrasing of the other two sections' example
+lines, which predate having this reference.
 
-**Confirmed, 2026-08-01 (following up on the open question above):**
+---
 
-1. **`resolveMediaContext`'s query doesn't select `error_message` or `status`
-   at all** (`services/chat/server/media-context.ts:35-42` — selects only
-   `id, original_filename, type, derived_content`). It's not just that failed
-   and processing collapse into the same wording — the code has no access to
-   *why* something failed even if it wanted to say so. Building the
-   failed-item distinction means adding both columns to the select and
-   branching failed items into their own section carrying the real
-   `error_message`, not a generic flag — so the guide is simplifying a true
-   reason rather than inventing a plausible one. One catch for whoever builds
-   that: today's `error_message` values are raw technical strings (vendor API
-   errors, internal storage paths) — they'd need sanitizing or an explicit
-   "summarize, don't quote" instruction before injection, not straight
-   pass-through.
+**Resolved, 2026-08-01:** the plumbing gap flagged below on 2026-08-01 is now
+built — `resolveMediaContext` selects `status`/`error_message` and emits
+`ATTACHMENT FAILED:` as its own section, carrying a sanitized reason via
+`sanitizeFailureReason` (a category classifier, not regex-scrubbing — maps
+known error origins to a fixed safe phrase, so no vendor name or storage path
+ever reaches the prompt). See `services/chat/server/media-context.ts` and its
+test file. The two facts below remain accurate and still apply directly to
+the wording above:
+
+1. **`error_message` values are raw technical strings** (vendor API errors,
+   internal storage paths) — this is exactly why the block instructs
+   summarizing in the guide's own words rather than quoting: even though the
+   *sanitizer* now guarantees the specific phrase reaching the model is
+   already safe, the model has no way to know that on its own, so the
+   instruction holds regardless.
 
 2. **There is no retry mechanism a member can actually reach today.**
    `MediaGallery.tsx` (the component with the working "Try again" →
@@ -79,8 +93,7 @@ a wording gap — flagging in case you want it addressed together.
    member actually sees on a failed attachment is `MessageList.tsx`'s inline
    "Processing failed" badge — a label, no button, no action. Re-attaching a
    fresh file is always available (no lockout tied to a prior failure), so
-   the guide's spoken suggestion to try a different format or describe it
-   verbally is a real, working path — but retrying the *same* failed upload
-   is not possible anywhere in the product right now. Don't write this block
-   (or plan the failed-item follow-up) assuming a fallback retry UI exists to
-   point the member toward — there isn't one yet.
+   the guide's suggestion to try a different format or describe it verbally
+   is a real, working path — but retrying the *same* failed upload is not
+   possible anywhere in the product right now. This block deliberately never
+   mentions a retry option for that reason.

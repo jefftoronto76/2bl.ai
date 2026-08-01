@@ -37,7 +37,7 @@ vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => ({ from: mockFrom }),
 }))
 
-import { resolveMediaContext, stripMediaMarkers } from './media-context'
+import { resolveMediaContext, sanitizeFailureReason, stripMediaMarkers } from './media-context'
 
 beforeEach(() => {
   queryResult = { data: [], error: null }
@@ -62,7 +62,14 @@ describe('resolveMediaContext', () => {
   it('regression: an item already ready by request time still surfaces ATTACHED MEDIA (existing path unchanged)', async () => {
     queryResult = {
       data: [
-        { id: 'id-1', original_filename: 'dog.jpg', type: 'image', derived_content: 'A photo of a dog.' },
+        {
+          id: 'id-1',
+          original_filename: 'dog.jpg',
+          type: 'image',
+          derived_content: 'A photo of a dog.',
+          status: 'ready',
+          error_message: null,
+        },
       ],
       error: null,
     }
@@ -84,7 +91,14 @@ describe('resolveMediaContext', () => {
     ]
     queryResult = {
       data: [
-        { id: 'id-1', original_filename: 'dog.jpg', type: 'image', derived_content: 'A photo of a dog.' },
+        {
+          id: 'id-1',
+          original_filename: 'dog.jpg',
+          type: 'image',
+          derived_content: 'A photo of a dog.',
+          status: 'ready',
+          error_message: null,
+        },
       ],
       error: null,
     }
@@ -113,6 +127,118 @@ describe('resolveMediaContext', () => {
     queryResult = { data: null, error: { message: 'boom' } }
     const result = await resolveMediaContext(singleItem, 'tenant-1', 'member-1')
     expect(result).toBe('')
+  })
+
+  it('a failed item surfaces ATTACHMENT FAILED with a sanitized reason, not ATTACHMENT IN PROGRESS', async () => {
+    queryResult = {
+      data: [
+        {
+          id: 'id-1',
+          original_filename: 'dog.jpg',
+          type: 'image',
+          derived_content: null,
+          status: 'failed',
+          error_message: 'Anthropic vision error: 400 {"type":"error"}',
+        },
+      ],
+      error: null,
+    }
+    const result = await resolveMediaContext(singleItem, 'tenant-1', 'member-1')
+    expect(result).toBe("ATTACHMENT FAILED:\n\n[dog.jpg (image)] the image couldn't be analyzed")
+    expect(result).not.toContain('IN PROGRESS')
+    expect(result).not.toContain('Anthropic')
+  })
+
+  it('one ready, one failed, one still pending — all three sections present together', async () => {
+    const multi: MediaAttachmentInput[] = [
+      { mediaItemId: 'id-1', type: 'image', filename: 'dog.jpg' },
+      { mediaItemId: 'id-2', type: 'audio', filename: 'memo.m4a' },
+      { mediaItemId: 'id-3', type: 'document', filename: 'letter.pdf' },
+    ]
+    queryResult = {
+      data: [
+        {
+          id: 'id-1',
+          original_filename: 'dog.jpg',
+          type: 'image',
+          derived_content: 'A photo of a dog.',
+          status: 'ready',
+          error_message: null,
+        },
+        {
+          id: 'id-2',
+          original_filename: 'memo.m4a',
+          type: 'audio',
+          derived_content: null,
+          status: 'failed',
+          error_message: 'Deepgram API error: 500 upstream timeout',
+        },
+      ],
+      error: null,
+    }
+    const result = await resolveMediaContext(multi, 'tenant-1', 'member-1')
+    expect(result).toBe(
+      'ATTACHED MEDIA:\n\n[dog.jpg (image)]\nA photo of a dog.\n\n' +
+        "ATTACHMENT FAILED:\n\n[memo.m4a (audio)] the audio transcription service couldn't process this file\n\n" +
+        'ATTACHMENT IN PROGRESS: letter.pdf (document), still processing',
+    )
+  })
+})
+
+describe('sanitizeFailureReason', () => {
+  it('maps the storage-race error to a plain reason with no path in it', () => {
+    const reason = sanitizeFailureReason(
+      'Storage object not available after 5 attempts: tenant-1/media/member-1/item-1/dog.jpg',
+    )
+    expect(reason).toBe("the file didn't finish uploading before we tried to process it")
+    expect(reason).not.toContain('tenant-1')
+    expect(reason).not.toContain('/media/')
+  })
+
+  it('maps a Deepgram error with no vendor name in the output', () => {
+    const reason = sanitizeFailureReason('Deepgram API error: 429 {"err_code":"RATE_LIMIT"}')
+    expect(reason).toBe("the audio transcription service couldn't process this file")
+    expect(reason).not.toContain('Deepgram')
+  })
+
+  it('maps an Anthropic vision error with no vendor name in the output', () => {
+    const reason = sanitizeFailureReason('Anthropic vision error: 400 {"type":"invalid_request"}')
+    expect(reason).toBe("the image couldn't be analyzed")
+    expect(reason).not.toContain('Anthropic')
+  })
+
+  it('maps the missing-text-block vision error to the same image-analysis reason', () => {
+    expect(sanitizeFailureReason('No text block returned from Anthropic vision')).toBe(
+      "the image couldn't be analyzed",
+    )
+  })
+
+  it('maps missing-config errors to a generic operational reason, no env var names', () => {
+    expect(sanitizeFailureReason('DEEPGRAM_API_KEY is not configured')).toBe(
+      "a processing service isn't available right now",
+    )
+    expect(sanitizeFailureReason('ANTHROPIC_API_KEY is not configured')).toBe(
+      "a processing service isn't available right now",
+    )
+  })
+
+  it('maps signed-url/download failures to a retrieval reason', () => {
+    expect(sanitizeFailureReason('Failed to create signed download URL: boom')).toBe(
+      "the file couldn't be retrieved for processing",
+    )
+    expect(sanitizeFailureReason('Failed to create long-lived signed URL: boom')).toBe(
+      "the file couldn't be retrieved for processing",
+    )
+    expect(sanitizeFailureReason('Failed to download file: 403')).toBe(
+      "the file couldn't be retrieved for processing",
+    )
+  })
+
+  it('falls back to a generic reason for an unrecognized or null error_message', () => {
+    expect(sanitizeFailureReason('some future error shape nobody wrote a category for')).toBe(
+      'something went wrong while processing this file',
+    )
+    expect(sanitizeFailureReason(null)).toBe('something went wrong while processing this file')
   })
 })
 
