@@ -47,6 +47,31 @@ export async function generateLongLivedSignedUrl(storagePath: string): Promise<s
 }
 
 /**
+ * Checks whether an object actually exists in Storage yet, via the list() API
+ * (not a HEAD request against a signed URL — list() is a documented, stable
+ * Storage API, whereas relying on HEAD semantics against a signed download
+ * URL is unverified and would be a worse foundation for a retry loop).
+ *
+ * Used to close the race between the media_items INSERT (which fires the
+ * processing webhook immediately) and the client's PUT of the file bytes
+ * (a separate, slightly-later request) — see waitForStorageObject in
+ * services/media/processor.ts.
+ */
+export async function objectExists(storagePath: string): Promise<boolean> {
+  const lastSlash = storagePath.lastIndexOf('/')
+  const folder = storagePath.slice(0, lastSlash)
+  const filename = storagePath.slice(lastSlash + 1)
+
+  const supabase = getAdminClient()
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .list(folder, { search: filename, limit: 1 })
+
+  if (error || !data) return false
+  return data.some(f => f.name === filename)
+}
+
+/**
  * Builds the storage path for a media upload.
  * Distinct from admin document paths ({tenant_id}/{content_id}/{filename}) — the
  * media/ segment ensures no collision with existing assets.

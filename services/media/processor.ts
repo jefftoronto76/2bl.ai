@@ -9,10 +9,35 @@ import {
   updateMediaItem,
   type MediaItem,
 } from './index'
-import { generateLongLivedSignedUrl, generateSignedDownloadUrl } from './storage'
+import { generateLongLivedSignedUrl, generateSignedDownloadUrl, objectExists } from './storage'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL = 'claude-sonnet-4-6'
+
+// ---------------------------------------------------------------------------
+// The Supabase Database Webhook fires the instant the media_items row is
+// INSERTed — which happens before the signed upload URL is even returned to
+// the client, let alone before the client's PUT of the file bytes (a
+// separate, later request) lands in Storage. Without this wait, processing
+// frequently starts against an object that doesn't exist yet, and the
+// downstream STT/vision/extraction call fails with a confusing fetch error
+// that looks like an upstream API problem rather than a timing one.
+//
+// Bounded retry, not a fixed sleep: most uploads land well within the first
+// attempt or two, and this keeps the common case fast while still covering
+// slower uploads. ~5.5s worst case before giving up.
+// ---------------------------------------------------------------------------
+export const STORAGE_WAIT_DELAYS_MS = [0, 300, 700, 1500, 3000]
+
+export async function waitForStorageObject(storagePath: string): Promise<void> {
+  for (const delay of STORAGE_WAIT_DELAYS_MS) {
+    if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay))
+    if (await objectExists(storagePath)) return
+  }
+  throw new Error(
+    `Storage object not available after ${STORAGE_WAIT_DELAYS_MS.length} attempts: ${storagePath}`,
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Audio transcription via Deepgram nova-3 batch API.
@@ -577,8 +602,10 @@ export async function processMediaItem(record: MediaItem): Promise<void> {
 
   await updateMediaItem(item.id, { status: 'processing' })
 
-  let pipeline_step = 'init'
+  let pipeline_step = 'await_storage_availability'
   try {
+    await waitForStorageObject(item.storage_path)
+
     switch (item.type) {
       case 'audio':
         pipeline_step = 'deepgram_transcription'
