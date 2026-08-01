@@ -219,16 +219,88 @@ Recommended order. Each step is independently shippable.
 
 *Second Brain Labs · 2bl.ai · Confidential*
 
+**Repo status:** this spec was never checked into `docs/` — confirmed absent Aug 1, 2026\. Existed only as an uploaded project-knowledge file until reconstructed here.
+
 ---
 
-## Status note (added Aug 1, 2026\)
+## Update — August 1, 2026
 
-This spec was never checked into the repo (`docs/`) — confirmed absent Aug 1, 2026 via direct search. It existed only as an uploaded project-knowledge file. Reconstructed here as a clean markdown copy for that reason.
+The June 2 spec above is unchanged and intact as the original design record. This section captures what today's discussion added, sharpened, or confirmed — not a rewrite.
 
-**Known deltas between this spec and what's actually built, as of Aug 1, 2026:**
+### Confirmed, not new: this was never meant to be a tool-call
 
-- Realtime push (step 7 of Job flow, the Realtime alert section) was never implemented. Current behavior is context-injection on the next message the guide receives, not an inline event pushed the instant processing completes.  
-- The upload acknowledgement and completion re-engagement guide-prompt blocks were never written for Heirloom — confirmed absent, actively being drafted as of this date.  
-- The Media section (nav item, gallery view) was never built.  
-- A real race condition exists between the background-job webhook trigger and the client's actual file upload completing (see Bug 1, Aug 1 investigation) — not anticipated in this spec.
+Revisited today whether media handling needs real model-triggered tool-calling infrastructure. Answer: no, and the original spec already agreed — "fires when a file upload event is detected in the conversation context" is context-injection, the same pattern used for `MEMBER CONTEXT` and the booking section. The reasoning that confirms it: the model never *decides* to start an upload or its processing — the visitor's tap and the background job both happen entirely outside the model's involvement. The model only ever narrates something that already happened, which is exactly what context-injection is for. No tool needed, now or later, unless a future feature requires the model itself to decide to trigger something (which uploading is not).
 
+### Confirmed, not new: this was always meant to be a shared, cross-product service
+
+The June schema (`tenant_id`, `member_id`, `chat_id`, no product-specific fields) was never Heirloom-only. Today's ask — "ideally, this is a service that all the chats can use" — is already what was designed; nothing needs to change architecturally to honor it.
+
+### New — a sharper bar for the member-facing messaging
+
+The original spec's Completion Alert and Failure Handling examples are good in tone but make no explicit commitment. Today's framing adds five real requirements on top of them:
+
+1. **Easy to understand** — fast, recognizable, consistent across file types.  
+2. **Easy to remember/recall** — the member shouldn't have to re-learn the pattern each time.  
+3. **Informative, not guessed at** — if the member asks what's happening, the answer is real, not invented.  
+4. **Contract-based** — the system states what it can and can't do upfront, effectively an SLA with the member, not just a vague "I'm working on it."  
+5. **Genuinely useful feedback, measured against that contract** — the completion/failure message closes the loop against what was actually promised, not just announces a generic status.
+
+**Real cost, flagged plainly, not glossed over:** point 4 only works if per-type processing time estimates are actually accurate. No real timing data exists yet for any of the three pipelines (audio/image/document). A promise that's wrong breaks trust worse than the original spec's vagueness would have. This needs real production timing data before an SLA-style message can honestly ship — not a blocker to designing around, but a real precondition to launching it.
+
+### New — three concrete bugs found, none anticipated by the original spec
+
+Investigated Aug 1 against a real production test conversation:
+
+1. **Race condition** — the background-job webhook fires on the `media_items` INSERT, which happens *before* the client's file upload actually completes to Storage. Processing can attempt to fetch a file that isn't there yet, fail, and mark the item `failed` — even though the upload itself succeeded. Zero retry/backoff logic exists anywhere in the processor.  
+2. **No prompt block exists for Heirloom specifically.** The plumbing (context injection) was built and merged July 31, but nobody wrote the actual guide instructions telling it what `ATTACHED MEDIA`/`ATTACHMENT IN PROGRESS` context means or how to react — matches this spec's "Upload acknowledgement block" and "Completion re-engagement block" sections, which were speced in June but never actually authored into Heirloom's compiled prompt.  
+3. **N+1 signed-URL refetch on reload.** Every historical image in a conversation does its own uncached, unbatched signed-URL fetch on every page load — not anticipated by this spec at all, a real inefficiency in the display layer, separate from the processing pipeline itself.
+
+### Still confirmed absent, matching the original spec's own build sequence
+
+Per the June build sequence, steps 4 (background function), 6 (guide prompt), and 7 (Media nav section) were never fully completed. Specifically: the Realtime alert mechanism (step 5\) was never implemented — current behavior is context-injection on the visitor's *next* message, not an inline event pushed the instant processing finishes. The Media nav section doesn't exist. The guide prompt blocks are being written now, as a direct result of today's bug investigation.
+
+---
+
+## Built / To-Do / Sequencing (Aug 1, 2026\)
+
+### Built
+
+| Item | State | Confidence |
+| :---- | :---- | :---- |
+| `media_items` table, storage bucket, signed-URL upload flow | Live, working | Confirmed — real upload succeeds, renders client-side |
+| Background webhook trigger on INSERT | Live, working | Confirmed — fires reliably, just fires too early (see Bug 1 below) |
+| Processing pipelines (Deepgram for audio, Claude vision for images, extraction for documents) | Live, working | Confirmed for images; audio/document not independently verified today |
+| `resolveMediaContext` — injects `ATTACHED MEDIA:` / `ATTACHMENT IN PROGRESS:` into system prompt | Live, working | Merged July 31 (PR \#241), tested |
+| `stripMediaMarkers` — empty-turn guard (never sends Anthropic a blank message on attachment-only turns) | Live, working | Merged July 31, tested |
+| Context-injection is the delivery mechanism, not a tool-call | Confirmed correct design | Matches June spec's own intent, re-validated Aug 1 |
+| Shared-service architecture (not Heirloom-specific) | Confirmed correct design | Schema was never product-scoped; no rework needed |
+
+### To-Do
+
+| Item | What it actually is | Priority |
+| :---- | :---- | :---- |
+| **Bug 1 — race condition** | Webhook fires on DB insert, before the client's file bytes finish uploading to Storage. Processing 404s, marks `failed`. Zero retry logic anywhere. **Fix in progress as of Aug 1\.** | High — real, live, user-visible failure |
+| **Bug 2 — no prompt block for Heirloom** | The context signal exists; nothing tells the guide what it means. Model falls back to a generic "can't see images yet" guardrail response. **Fix in progress as of Aug 1\.** | High — directly causes the reported bug |
+| **Bug 3 — N+1 image refetch on reload** | Every historical image does its own uncached signed-URL round trip on every page load. Real inefficiency, not perception. **Fix in progress as of Aug 1\.** | Medium — works, just slow/wasteful |
+| **Write the actual prompt blocks** | Upload acknowledgement \+ completion re-engagement, per June spec's language, adapted to Heirloom's actual voice and AND-chain trigger discipline | High — blocked on Bug 2 being scoped, otherwise ready now |
+| **Collect real processing-time data** | No timing data exists for any of the three pipelines today. Precondition for the SLA/contract messaging — can't promise something unmeasured. | Medium — needed before the contract framework can ship honestly |
+| **Contract/SLA messaging design** | The 5-point framework (understandable, recallable, informative, contract-based, useful feedback against the contract) — real design work, zero implementation | Medium — depends on timing data above |
+| **Realtime push** | Original spec called for inline completion events the instant processing finishes. Never built. Current fallback: context-injection on the visitor's next message — works, but not instant. | Low — real gap, but the fallback is functional |
+| **Media nav section** | Gallery view, grouped by story, "source material shelf" framing from the original spec. Never built at all. | Low — no functional dependency on anything above |
+| **Retry UX** | June spec flagged this as an open question — does retry re-trigger the same job or require re-upload? Never decided. | Low — matters more once Bug 1's real failure rate is known |
+
+### Sequencing
+
+**Phase 1 — fix the plumbing (in progress):**
+
+1. Bug 1 (race condition) — the actual data-integrity fix, do first since everything downstream assumes uploads process reliably.  
+2. Bug 3 (N+1 refetch) — independent of Bug 1, can happen in parallel.  
+3. Bug 2 (missing prompt block) — write it now; it doesn't need to wait on Bugs 1/3, but test it against a *working* pipeline once Bug 1's fixed, not before.
+
+**Phase 2 — earn the data (passive, runs alongside other work):** 4\. Once Bug 1's fixed and real uploads are flowing reliably, start capturing real processing-time data per type. This doesn't block anything else — it just needs the pipeline to be trustworthy first, and time to accumulate.
+
+**Phase 3 — build the real experience (needs Phase 2's data, real design time):** 5\. Contract/SLA messaging — write the actual acknowledgement/completion language against real timing numbers, not guesses. 6\. Decide Realtime vs. staying with context-injection, now informed by how the contract messaging is meant to feel (an SLA implies some responsiveness expectation — worth revisiting once the UX is actually designed).
+
+**Phase 4 — the parts with no urgency (whenever):** 7\. Media nav section. 8\. Retry UX decision.
+
+**What NOT to do:** don't build the contract/SLA messaging before Phase 2's timing data exists — that's the one sequencing rule worth holding firm on, since a wrong promise is worse than the current vague acknowledgement.  
