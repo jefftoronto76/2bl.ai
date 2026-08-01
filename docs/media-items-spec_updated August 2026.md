@@ -263,6 +263,27 @@ Confirmed today: media handling stays context-injection, not a formal tool call 
 - Concretely: a failure signal must carry the actual `error_message`, not a generic `failed` flag — the guide should simplify a true reason for the member, never manufacture a plausible-sounding one.  
 - This is a standing principle for the whole pipeline, not a one-off fix — every future signal added to this system (timing estimates, retry state, whatever comes out of the Media section) should be built to this same bar from the start.
 
+### Confirmed — live schema vs. spec (Aug 1, 2026\)
+
+All 15 originally-specced columns exist and are correctly typed. Confirmed via direct `information_schema.columns` query, not inferred from code.
+
+**Genuinely new since June, not in the original spec:**
+
+- `mime_type` (text, required) — a real MIME type, distinct from the coarse `audio/image/document` enum.  
+- `updated_at` (timestamptz, required) — standard housekeeping.  
+- `artifact_id` (uuid, nullable) — connects a media item to an `artifacts` row (a saved memory). See "How media relates to memories" below — the column exists, the link is not wired up anywhere in the app yet.
+
+**Two nullability quirks, unexplained, worth a follow-up:**
+
+- `chat_id` is nullable, though the spec's language implies it should always be set for anything uploaded through chat. Open question: is there a legitimate upload path with no chat context?  
+- `file_size_bytes` is nullable, though the spec says it's "stored at upload time." Open question: is there a real path where it's legitimately missing, or is this defensive schema that's never actually exercised?
+
+### How media relates to memories
+
+`media_items.artifact_id` is the connection — memories are stored as rows in the `artifacts` table (`type='memory'`), and this column is a foreign key to that table, meant to let a specific photo/audio/document attach to a specific saved memory.
+
+**Confirmed: this exists in schema, and is confirmed NOT wired up anywhere in the app.** Nothing sets this value on upload, and nothing reads it — the photo slots on memory cards (`MemoryCard.tsx`) are explicitly non-interactive placeholders by design in V1 ("a promise, not an upload," per the card's own header comment). No actual logic has been decided for *when* or *how* an uploaded item gets associated with a memory — e.g. does uploading a photo shortly before/after a `SAVE_MEMORY` trigger auto-link them, does the member choose manually, does it only happen once the Media section exists. This is a real, undecided design question, not just an unwired connection.
+
 ### Still confirmed absent, matching the original spec's own build sequence
 
 Per the June build sequence, steps 4 (background function), 6 (guide prompt), and 7 (Media nav section) were never fully completed. Specifically: the Realtime alert mechanism (step 5\) was never implemented — current behavior is context-injection on the visitor's *next* message, not an inline event pushed the instant processing finishes. The Media nav section doesn't exist. The guide prompt blocks are being written now, as a direct result of today's bug investigation.
@@ -295,6 +316,7 @@ Per the June build sequence, steps 4 (background function), 6 (guide prompt), an
 | **Contract/SLA messaging design** | The 5-point framework (understandable, recallable, informative, contract-based, useful feedback against the contract) — real design work, zero implementation | Medium — depends on timing data above |
 | **Realtime push** | Original spec called for inline completion events the instant processing finishes. Never built. Current fallback: context-injection on the visitor's next message — works, but not instant. | Low — real gap, but the fallback is functional |
 | **Media nav section** | Gallery view, grouped by story, "source material shelf" framing from the original spec. Never built at all. | Low — no functional dependency on anything above |
+| **Connect media to artifacts (`artifact_id`)** | Column exists, confirmed dead — nothing sets or reads it. Real design decision needed first, not just wiring: auto-link on upload near a `SAVE_MEMORY` trigger, member manually attaches, or deferred until the Media section exists and becomes the natural place this happens. | Medium — blocks memory cards from ever showing real photos, but needs a decision before it needs code |
 | **Retry UX** | June spec flagged this as an open question — does retry re-trigger the same job or require re-upload? Never decided. | Low — matters more once Bug 1's real failure rate is known |
 
 ### Sequencing
