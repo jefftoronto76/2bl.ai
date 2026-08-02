@@ -13,7 +13,7 @@ vi.mock('@/services/media/storage', () => ({
   generateSignedDownloadUrl: (...args: unknown[]) => mockGenerateSignedDownloadUrl(...args),
 }))
 
-import { withDisplayUrl } from './route'
+import { withDisplayUrl } from '@/services/media/display-url'
 
 function makeItem(overrides: Partial<MediaItem> = {}): MediaItem {
   return {

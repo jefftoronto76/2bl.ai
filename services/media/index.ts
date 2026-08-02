@@ -4,6 +4,7 @@ import { AuditAction } from '@/services/audit/types'
 import type { MediaItemStatus, MediaItemType, MediaItem } from './types'
 
 export type { MediaItemStatus, MediaItemType, MediaItem } from './types'
+export { withDisplayUrl, type MediaItemWithUrl } from './display-url'
 
 export interface CreateMediaItemInput {
   id: string

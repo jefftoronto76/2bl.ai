@@ -11,24 +11,7 @@
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { listByChat, listByMember, type MediaItem, type MediaItemStatus } from '@/services/media'
-import { generateSignedDownloadUrl } from '@/services/media/storage'
-
-export interface MediaItemWithUrl extends MediaItem {
-  /** Signed display URL, image items only — null for audio/document (no inline
-   *  preview) and null if signing failed (caller falls back to its own fetch). */
-  url: string | null
-}
-
-export async function withDisplayUrl(item: MediaItem): Promise<MediaItemWithUrl> {
-  if (item.type !== 'image') return { ...item, url: null }
-  try {
-    return { ...item, url: await generateSignedDownloadUrl(item.storage_path) }
-  } catch (err) {
-    console.error('[api/media] failed to sign display url', { mediaItemId: item.id, err })
-    return { ...item, url: null }
-  }
-}
+import { listByChat, listByMember, withDisplayUrl, type MediaItemStatus } from '@/services/media'
 
 export async function GET(req: Request) {
   const user = await getCurrentUser()
