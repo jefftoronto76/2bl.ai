@@ -7,11 +7,20 @@
  * inline, below the message it followed, not in its own transcript slot (see
  * CLAUDE.md's Memories architecture note).
  *
- * The card is READ-ONLY by design. Title and passage cannot be edited
- * inline; revision happens through the Rewrite conversation flow (see
- * MessageList.tsx). Do not add inline editing without a design conversation
- * — it changes the product's posture from "we shaped this for you" to "fill
- * in this form".
+ * The PASSAGE is READ-ONLY by design and, as of the archivist's removal, has
+ * no revision path at all — the "Rewrite" button below is unwired to a local
+ * stub (fires a toast, does nothing) pending a future redesign, since the
+ * model call that used to power it is gone. Today the only way to get a
+ * different passage is Discard + bookmark the message again. Do not add
+ * inline editing to the passage without a design conversation — it changes
+ * the product's posture from "we shaped this for you" to "fill in this form".
+ *
+ * The TITLE is the one deliberate exception (both here and on
+ * MemorySavedReceipt below): whether it came from a guide-emitted
+ * [MEMORY_TITLE: ...] marker or the deterministic fallback truncation
+ * (services/crm/memories.ts's deriveFallbackMemoryTitle), it's treated as an
+ * optimistic guess the member can directly correct — no conversation
+ * round-trip required, unlike the passage.
  *
  * Only real, confirmed Tailwind tokens are used here (tailwind.config.js):
  * text-primary / text-muted / border / surface / surface-2 / accent /
@@ -22,13 +31,11 @@
  * one thing, later).
  */
 
-import { useState } from 'react'
-import { Bookmark, Check, Feather, Image as ImageIcon, Video, Mic, FileText, ImagePlus } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Bookmark, Check, Feather, Image as ImageIcon, Video, Mic, FileText, ImagePlus, Pencil } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
-import type { MemoryErrorType } from '@/services/crm/memory-errors'
 import { memoryKindOf } from './memoryKinds'
-import { MEMORY_ERROR_COPY } from './memoryErrorCopy'
 
 const KIND_ICONS: Record<string, LucideIcon> = {
   feather: Feather,
@@ -60,34 +67,98 @@ export function MemoryRunningPill({ sourceKind }: { sourceKind: MemoryRow['sourc
 /**
  * Live failure signal (CLAUDE.md §4.2) — not persisted, not a card. Stays
  * until the visitor tries the bookmark again, rather than auto-dismissing.
+ * No model call exists anywhere in the memory system anymore, so there is
+ * exactly one failure shape (a write erroring) and exactly one message —
+ * kept as a literal string here rather than imported from a classification
+ * system with only one possible value.
  */
-export function MemoryErrorLine({ errorType }: { errorType: MemoryErrorType }) {
+export function MemoryErrorLine() {
   return (
     <div className="flex items-center gap-3" role="status">
       <span className={RAIL} />
-      <span className="font-mono text-[11px] tracking-[0.06em] text-text-muted">{MEMORY_ERROR_COPY[errorType]}</span>
+      <span className="font-mono text-[11px] tracking-[0.06em] text-text-muted">
+        Something went wrong gathering that memory — tap the bookmark to try again.
+      </span>
     </div>
   )
 }
 
+export interface MemorySavedReceiptProps {
+  memory: MemoryRow
+  onRetitle: (title: string) => void
+}
+
 /** `saved` state — collapses to a slim receipt. Whole row is a button (inert this pass — the story view doesn't exist yet). */
-export function MemorySavedReceipt({ memory }: { memory: MemoryRow }) {
+export function MemorySavedReceipt({ memory, onRetitle }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState(memory.title)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!isEditing) return
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [isEditing])
+
+  const save = () => {
+    const trimmed = draft.trim()
+    setIsEditing(false)
+    if (!trimmed || trimmed === memory.title) return
+    onRetitle(trimmed)
+  }
+
   return (
-    <div className="flex gap-3">
+    <div className="group flex gap-3">
       <span className={RAIL} />
       <div className="flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px]">
         <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
           <Check size={13} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={save}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  save()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setDraft(memory.title)
+                  setIsEditing(false)
+                }
+              }}
+              aria-label="Memory title"
+              className="block w-full truncate bg-transparent font-display text-[15.5px] leading-[1.25] text-text-primary outline-none"
+            />
+          ) : (
+            <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
+          )}
           <span className="mt-0.5 flex items-center gap-1 font-mono text-[10.5px] tracking-[0.06em] text-text-muted">
             <Icon size={10} aria-hidden />
             Kept
           </span>
         </span>
+        {!isEditing && (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(memory.title)
+              setIsEditing(true)
+            }}
+            aria-label="Edit title"
+            className="shrink-0 rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary [@media(hover:none)]:opacity-100"
+          >
+            <Pencil size={12} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -96,21 +167,39 @@ export function MemorySavedReceipt({ memory }: { memory: MemoryRow }) {
 export interface MemoryCardProps {
   memory: MemoryRow
   onKeep: () => void
-  onRewrite: () => void
   onDiscard: () => void
+  onRetitle: (title: string) => void
 }
 
 /** `draft` state — the full card. Order: header -> media (if any) -> title -> passage -> photo slots (if any) -> footer. */
-export function MemoryCard({ memory, onKeep, onRewrite, onDiscard }: MemoryCardProps) {
+export function MemoryCard({ memory, onKeep, onDiscard, onRetitle }: MemoryCardProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const [toast, setToast] = useState<string | null>(null)
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(memory.title)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
   // Type-specific actions are specified but not built this pass — they fire
   // this lightweight local toast rather than a real flow (see memoryKinds.ts).
+  // Rewrite (below, in the spine) is the same shape now: unwired to a stub
+  // pending a redesign, since the archivist that used to power it is gone.
   const fireExtra = (toastCopy: string) => {
     setToast(toastCopy)
     window.setTimeout(() => setToast(null), 2400)
+  }
+
+  useEffect(() => {
+    if (!isEditingTitle) return
+    titleInputRef.current?.focus()
+    titleInputRef.current?.select()
+  }, [isEditingTitle])
+
+  const saveTitle = () => {
+    const trimmed = titleDraft.trim()
+    setIsEditingTitle(false)
+    if (!trimmed || trimmed === memory.title) return
+    onRetitle(trimmed)
   }
 
   return (
@@ -134,9 +223,47 @@ export function MemoryCard({ memory, onKeep, onRewrite, onDiscard }: MemoryCardP
             </div>
           )}
 
-          <h4 className="m-0 text-pretty font-display text-[23px] font-medium leading-[1.16] tracking-[-0.01em] text-text-primary">
-            {memory.title}
-          </h4>
+          <div className="group flex items-start gap-2">
+            {isEditingTitle ? (
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={titleDraft}
+                onChange={e => setTitleDraft(e.target.value)}
+                onBlur={saveTitle}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    saveTitle()
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setTitleDraft(memory.title)
+                    setIsEditingTitle(false)
+                  }
+                }}
+                aria-label="Memory title"
+                className="m-0 min-w-0 flex-1 bg-transparent text-pretty font-display text-[23px] font-medium leading-[1.16] tracking-[-0.01em] text-text-primary outline-none"
+              />
+            ) : (
+              <>
+                <h4 className="m-0 min-w-0 flex-1 text-pretty font-display text-[23px] font-medium leading-[1.16] tracking-[-0.01em] text-text-primary">
+                  {memory.title}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(memory.title)
+                    setIsEditingTitle(true)
+                  }}
+                  aria-label="Edit title"
+                  className="mt-1 shrink-0 rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary [@media(hover:none)]:opacity-100"
+                >
+                  <Pencil size={13} aria-hidden />
+                </button>
+              </>
+            )}
+          </div>
           <p className="mb-0 mt-[11px] text-pretty font-body text-[14.5px] leading-[1.68] text-text-muted">
             {memory.body}
           </p>
@@ -190,7 +317,7 @@ export function MemoryCard({ memory, onKeep, onRewrite, onDiscard }: MemoryCardP
               </button>
               <button
                 type="button"
-                onClick={onRewrite}
+                onClick={() => fireExtra('Rewrite is being reworked — check back soon.')}
                 className="whitespace-nowrap rounded-[9px] border border-border px-[13px] py-2 font-body text-[12.5px] font-medium text-text-muted hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]"
               >
                 Rewrite

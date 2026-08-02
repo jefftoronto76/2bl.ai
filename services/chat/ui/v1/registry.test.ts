@@ -8,6 +8,7 @@ import {
   PHONE_MARKER,
   ACCOUNT_CREATE_MARKER,
   SAVE_MEMORY_MARKER,
+  MEMORY_TITLE_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -185,13 +186,39 @@ describe('SAVE_MEMORY_MARKER definition', () => {
   })
 })
 
+describe('MEMORY_TITLE_MARKER definition', () => {
+  it('is a single-field server-dispatch marker', () => {
+    expect(MEMORY_TITLE_MARKER.type).toBe('MEMORY_TITLE')
+    expect(MEMORY_TITLE_MARKER.fieldCount).toBe(1)
+    expect(MEMORY_TITLE_MARKER.dispatch).toBe('server')
+  })
+
+  it('extracts a [MEMORY_TITLE: x] marker and strips it from prose', () => {
+    const r = createMarkerRegistry()
+    r.register(MEMORY_TITLE_MARKER)
+    const { prose, markers } = r.parse('That sounds lovely. [MEMORY_TITLE: The Lake House]')
+    expect(prose).toBe('That sounds lovely.')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toEqual({ type: 'MEMORY_TITLE', fields: ['The Lake House'], raw: '[MEMORY_TITLE: The Lake House]' })
+  })
+
+  it('strips a trailing incomplete [MEMORY_TITLE: fragment mid-stream', () => {
+    const r = createMarkerRegistry()
+    r.register(MEMORY_TITLE_MARKER)
+    const { prose, markers } = r.parse('Got it.\n[MEMORY_TITLE: The Lake')
+    expect(markers).toHaveLength(0)
+    expect(prose).toBe('Got it.')
+  })
+})
+
 describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, and SAVE_MEMORY', () => {
+  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, SAVE_MEMORY, and MEMORY_TITLE', () => {
     const defs = createDefaultRegistry().getDefinitions()
     expect(defs.map(d => d.type).sort()).toEqual([
       'ACCOUNT_CREATE',
       'BOOKING',
       'EMAIL',
+      'MEMORY_TITLE',
       'NAME',
       'PHONE',
       'SAVE_MEMORY',

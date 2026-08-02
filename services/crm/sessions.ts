@@ -280,10 +280,10 @@ export async function updateSession(
 /**
  * Reads back a session's raw `messages` jsonb, tenant-scoped — the same
  * cross-tenant IDOR guard every other read/write in this file uses. Backs
- * the archivist call (services/chat/server/memory-archivist.ts), which needs
- * the transcript up to and including the anchor message to write the memory
- * from. Deliberately narrow (messages only) rather than reusing
- * ChatSessionSummary, which is shaped for the signed-in Recent list.
+ * createMemoryFromAnchor (services/crm/memories.ts), which needs to find the
+ * anchor message by id and read its own content verbatim. Deliberately
+ * narrow (messages only) rather than reusing ChatSessionSummary, which is
+ * shaped for the signed-in Recent list.
  */
 export async function getSessionMessages(
   tenantId: string,

@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth'
-import { publishMemory, discardMemory } from '@/services/crm/memories'
+import { publishMemory, discardMemory, renameMemory } from '@/services/crm/memories'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
 /**
- * PATCH /api/sessions/[id]/memories/[memoryId] — the two decisions available
- * on a draft card: { action: 'keep' } publishes it, { action: 'discard' }
- * soft-discards it. Tenant + session scoped, same anonymous-safe trust
- * posture as the sibling feedback/memories routes.
+ * PATCH /api/sessions/[id]/memories/[memoryId] — three actions on a memory:
+ * { action: 'keep' } publishes it, { action: 'discard' } soft-discards it,
+ * { action: 'retitle', title } corrects its title (the inline edit
+ * affordance on MemoryCard/MemorySavedReceipt — works regardless of
+ * draft/published status). Tenant + session scoped, same anonymous-safe
+ * trust posture as the sibling feedback/memories routes.
  */
 export async function PATCH(
   req: Request,
@@ -27,9 +29,18 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { action } = body as { action?: unknown }
-  if (action !== 'keep' && action !== 'discard') {
-    return NextResponse.json({ error: "action must be 'keep' or 'discard'" }, { status: 400 })
+  const { action, title } = body as { action?: unknown; title?: unknown }
+  if (action !== 'keep' && action !== 'discard' && action !== 'retitle') {
+    return NextResponse.json({ error: "action must be 'keep', 'discard', or 'retitle'" }, { status: 400 })
+  }
+
+  if (action === 'retitle') {
+    if (typeof title !== 'string' || !title.trim()) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 })
+    }
+    const result = await renameMemory(tenantId, id, memoryId, title.trim())
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ memory: result.data })
   }
 
   if (action === 'keep') {

@@ -95,6 +95,22 @@ export const SAVE_MEMORY_MARKER: MarkerDefinition = {
   dispatch: 'client',
 }
 
+/**
+ * The MEMORY_TITLE marker — `[MEMORY_TITLE: short title]`. Dispatch is
+ * 'server': resolved server-side at memory-create time (services/crm/memories.ts's
+ * createMemoryFromAnchor reads it directly off the anchor message's own stored
+ * content, the same way NAME/EMAIL/PHONE are read server-side rather than
+ * dispatched to a client handler), never rendered. Registered on the client
+ * render path anyway, like every other marker, so it is stripped from
+ * displayed prose rather than shown as raw text if the guide emits it.
+ */
+export const MEMORY_TITLE_MARKER: MarkerDefinition = {
+  type: 'MEMORY_TITLE',
+  pattern: /\[MEMORY_TITLE:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'server',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -169,5 +185,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(PHONE_MARKER)
   registry.register(ACCOUNT_CREATE_MARKER)
   registry.register(SAVE_MEMORY_MARKER)
+  registry.register(MEMORY_TITLE_MARKER)
   return registry
 }

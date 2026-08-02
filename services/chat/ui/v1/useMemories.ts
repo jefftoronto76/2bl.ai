@@ -11,16 +11,24 @@
 // CLAUDE.md's Memories section).
 //
 // There is no "running" status to fetch or reconcile on mount — a memory row
-// only ever exists once an archivist call actually succeeded (see
+// only ever exists once createMemoryFromAnchor actually succeeded (see
 // services/crm/memories.ts's module doc), so an in-flight call is pure local
 // UI state (pendingAnchors below), never persisted, never stuck on reload.
+//
+// No model call anywhere behind this hook — create() is a verbatim write, and
+// there is no rewrite() anymore (the archivist that used to power it is
+// gone; Rewrite is unwired to a local stub in MemoryCard.tsx). With no model
+// call, there's exactly one failure shape left system-wide (a write erroring),
+// so error state here is a plain boolean per anchor, not a classified type —
+// see components/shells/membership/memory/MemoryCard.tsx's MemoryErrorLine,
+// which sources its copy from components/chat/errorCopy.ts's shared
+// ChatErrorType vocabulary rather than a memory-specific one.
 //
 // Generic/session-scoped, like useMessageFeedback — it happens to only be
 // consumed by the Heirloom membership shell today (components/shells/membership/),
 // but nothing here is Heirloom-specific.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isValidMemoryErrorType, type MemoryErrorType } from '@/services/crm/memory-errors'
 
 export type MemorySourceKind = 'conversation' | 'photo' | 'video' | 'audio' | 'document'
 export type MemoryStatus = 'draft' | 'published'
@@ -40,16 +48,15 @@ export interface MemoryRow {
 export interface UseMemoriesReturn {
   memories: MemoryRow[]
   getByAnchor(anchorMessageId: string): MemoryRow | undefined
-  /** True while a create or rewrite call is actually in flight for this anchor — the running pill. */
+  /** True while a create call is actually in flight for this anchor — the running pill. */
   isPending(anchorMessageId: string): boolean
   /**
    * The source kind to show on the running pill while pending — known
-   * client-side even for a fresh create() with no row yet (a rewrite's
-   * pending kind is just its existing row's own kind). Null when not pending.
+   * client-side even before the row exists. Null when not pending.
    */
   getPendingKind(anchorMessageId: string): MemorySourceKind | null
-  /** The classified failure for this anchor's most recent call, if any — stays until the next attempt. */
-  getError(anchorMessageId: string): MemoryErrorType | null
+  /** True if this anchor's most recent create call failed — stays true until the next attempt. */
+  hasError(anchorMessageId: string): boolean
   /**
    * Whole-session suppression flag for the manual bookmark, per the handoff's
    * state rules: never nag, never go dead — suppressed only while a draft is
@@ -70,15 +77,16 @@ export interface UseMemoriesReturn {
    */
   isLoaded: boolean
   create(anchorMessageId: string, sourceKind: MemorySourceKind): Promise<void>
-  rewrite(memoryId: string, anchorMessageId: string, note: string): Promise<void>
   keep(memory: MemoryRow): Promise<void>
   discard(memory: MemoryRow): Promise<void>
+  /** Title-only correction — the inline edit affordance on MemoryCard/MemorySavedReceipt. */
+  rename(memoryId: string, title: string): Promise<void>
 }
 
 export function useMemories(sessionId: string | null): UseMemoriesReturn {
   const [memories, setMemories] = useState<MemoryRow[]>([])
   const [pendingAnchors, setPendingAnchors] = useState<Record<string, MemorySourceKind>>({})
-  const [errorsByAnchor, setErrorsByAnchor] = useState<Record<string, MemoryErrorType>>({})
+  const [erroredAnchors, setErroredAnchors] = useState<Record<string, true>>({})
   // No session yet -> nothing to load, so start "loaded" (there's nothing an
   // automatic trigger could race against). A real sessionId starts unloaded
   // until its fetch below settles.
@@ -114,38 +122,36 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     (anchorMessageId: string) => pendingAnchors[anchorMessageId] ?? null,
     [pendingAnchors],
   )
-  const getError = useCallback(
-    (anchorMessageId: string) => errorsByAnchor[anchorMessageId] ?? null,
-    [errorsByAnchor],
+  const hasError = useCallback(
+    (anchorMessageId: string) => erroredAnchors[anchorMessageId] === true,
+    [erroredAnchors],
   )
   const hasOpenDraft = memories.some(m => m.status === 'draft')
 
   const setPending = (anchorId: string, kind: MemorySourceKind | null) =>
     setPendingAnchors(prev => (kind ? { ...prev, [anchorId]: kind } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId))))
 
-  const setAnchorError = (anchorId: string, errorType: MemoryErrorType | null) =>
-    setErrorsByAnchor(prev =>
-      errorType
-        ? { ...prev, [anchorId]: errorType }
+  const setAnchorError = (anchorId: string, errored: boolean) =>
+    setErroredAnchors(prev =>
+      errored
+        ? { ...prev, [anchorId]: true }
         : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId)),
     )
 
-  /** Shared by create/rewrite — both are "run the archivist, land a draft" calls that differ only in body shape. */
-  const runArchivistCall = useCallback(async (anchorId: string, sourceKind: MemorySourceKind, body: Record<string, unknown>) => {
+  const create = useCallback(async (anchorMessageId: string, sourceKind: MemorySourceKind) => {
     const sid = sessionIdRef.current
     if (!sid) return
-    setAnchorError(anchorId, null)
-    setPending(anchorId, sourceKind)
+    setAnchorError(anchorMessageId, false)
+    setPending(anchorMessageId, sourceKind)
     try {
       const res = await fetch(`/api/sessions/${sid}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ anchor_message_id: anchorMessageId, source_kind: sourceKind }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.memory) {
-        const errorType = isValidMemoryErrorType(data?.error_type) ? data.error_type : 'unknown'
-        setAnchorError(anchorId, errorType)
+        setAnchorError(anchorMessageId, true)
         return
       }
       const memory = data.memory as MemoryRow
@@ -157,26 +163,12 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
         return next
       })
     } catch (err) {
-      console.error('[useMemories] archivist call failed:', err)
-      setAnchorError(anchorId, 'network')
+      console.error('[useMemories] create call failed:', err)
+      setAnchorError(anchorMessageId, true)
     } finally {
-      setPending(anchorId, null)
+      setPending(anchorMessageId, null)
     }
   }, [])
-
-  const create = useCallback(
-    (anchorMessageId: string, sourceKind: MemorySourceKind) =>
-      runArchivistCall(anchorMessageId, sourceKind, { mode: 'create', anchor_message_id: anchorMessageId, source_kind: sourceKind }),
-    [runArchivistCall],
-  )
-
-  const rewrite = useCallback(
-    (memoryId: string, anchorMessageId: string, note: string) => {
-      const sourceKind = memories.find(m => m.id === memoryId)?.source_kind ?? 'conversation'
-      return runArchivistCall(anchorMessageId, sourceKind, { mode: 'rewrite', memory_id: memoryId, rewrite_note: note })
-    },
-    [runArchivistCall, memories],
-  )
 
   const keep = useCallback(async (memory: MemoryRow) => {
     const sid = sessionIdRef.current
@@ -216,5 +208,24 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
-  return { memories, getByAnchor, isPending, getPendingKind, getError, hasOpenDraft, isLoaded, create, rewrite, keep, discard }
+  const rename = useCallback(async (memoryId: string, title: string) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch(`/api/sessions/${sid}/memories/${memoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retitle', title }),
+      })
+      if (!res.ok) {
+        console.error('[useMemories] rename failed:', res.status)
+        return
+      }
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, title } : m)))
+    } catch (err) {
+      console.error('[useMemories] rename threw:', err)
+    }
+  }, [])
+
+  return { memories, getByAnchor, isPending, getPendingKind, hasError, hasOpenDraft, isLoaded, create, keep, discard, rename }
 }

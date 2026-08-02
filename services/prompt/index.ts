@@ -41,6 +41,3 @@ export {
 export type { BlockType } from './block-types'
 export { isOrdered, orderPrefix } from './block-order'
 export { tokensFor, CHARS_PER_TOKEN } from './tokenize'
-
-// Memory archivist system prompt
-export { MEMORY_ARCHIVIST_SYSTEM, MEMORY_ARCHIVIST_MAX_TOKENS } from './memory-archivist-prompt'
