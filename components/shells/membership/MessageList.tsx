@@ -681,6 +681,22 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   // because the list simply hasn't loaded yet, not because nothing exists).
   // A manual click doesn't need this — a human is never that fast — but the
   // guard is the same function for both, so it's correct for both.
+  //
+  // Also gated on memories.hasOpenDraft — fixed 2026-08-02. The manual
+  // bookmark disables itself via keepDisabled = isLoading || hasOpenDraft
+  // (below), which is the only reason useMemories.ts's own "at most one
+  // draft open at a time" comment is true: as long as every *caller* of
+  // create() respects hasOpenDraft, "open" and "newest" coincide by
+  // construction. This effect used to skip straight from the marker check to
+  // the getByAnchor/isPending guard without ever consulting hasOpenDraft, so
+  // a SAVE_MEMORY marker on message B could open a second concurrent draft
+  // while a manual draft on message A was still open, breaking that
+  // invariant (and the "never nag, never go dead" single-draft rule the rest
+  // of the UI assumes holds). Deliberately checked BEFORE autoSavedRef is
+  // marked, and deliberately does not mark it: skipping here is a deferral,
+  // not a permanent no — once the open draft is kept/discarded,
+  // memories.hasOpenDraft flips, this effect re-runs (memories is already a
+  // dependency), and the same still-unmarked anchor fires then.
   const autoSavedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!memories.isLoaded) return;
@@ -690,6 +706,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       if (autoSavedRef.current.has(m.id)) return;
       const hasSaveMarker = markerRegistry.parse(m.content).markers.some((mk) => mk.type === 'SAVE_MEMORY');
       if (!hasSaveMarker) return;
+      if (memories.hasOpenDraft) return;
       autoSavedRef.current.add(m.id);
       if (memories.getByAnchor(m.id) || memories.isPending(m.id)) return;
       void memories.create(m.id, 'conversation');

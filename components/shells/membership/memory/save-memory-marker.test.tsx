@@ -169,6 +169,26 @@ describe('SAVE_MEMORY marker', () => {
     expect(postMemoryCalls.length).toBe(0);
   });
 
+  it('does not fire while a different anchor already has an open draft — matches the manual bookmark\'s own keepDisabled (hasOpenDraft) guard', async () => {
+    session = sessionWith('That sounds like a wonderful memory. [SAVE_MEMORY]');
+    // A draft open on a different anchor than m2 — getByAnchor('m2') is still
+    // undefined, so only the hasOpenDraft guard (not the getByAnchor guard)
+    // can be what stops this from firing.
+    existingMemories = [{ ...DRAFT_MEMORY, id: 'mem-other', anchor_message_id: 'earlier-msg' }];
+
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText(/That sounds like a wonderful memory\./).length).toBeGreaterThan(0));
+    // Give the marker-detection effect a tick to (not) fire.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(postMemoryCalls.length).toBe(0);
+  });
+
   it('clicking the bookmark on a message that already has a memory does not fire a second create() — the marker and the manual click share one guard', async () => {
     session = sessionWith('Just an ordinary reply, nothing to save here.');
     existingMemories = [DRAFT_MEMORY];
