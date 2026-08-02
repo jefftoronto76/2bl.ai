@@ -1508,6 +1508,23 @@ substantially from Core 2. The sign-up OTP methods are namespaced under
 `signUp.verifications.*`, not directly on `signUp`. The skills are the
 authoritative reference; do not infer API shapes from training data or autocomplete.
 
+**Next.js App Router `route.ts` files export ONLY HTTP method handlers**
+(`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `OPTIONS`, `HEAD`) plus the small
+set of reserved config exports (`dynamic`, `revalidate`, `runtime`,
+`maxDuration`, etc.). No other named export is allowed — Next's route-type
+validator rejects it at `next build` time with "`X` is not a valid Route
+export field," which fails the production build outright, not just a lint
+warning. `tsc --noEmit` alone does not catch this (it's a Next-specific
+build step beyond plain type-checking) — **run a real `next build` before
+trusting a route file is safe to ship**, not just `tsc`. Any helper function
+or type that a route handler needs internally belongs in a plain module
+(e.g. `services/<domain>/*.ts`), imported into the route file, never
+exported alongside the handler. (Incident: `bbb66e7` exported a helper,
+`withDisplayUrl`, directly from `app/api/media/route.ts` — this broke
+`next build` for every commit on `main` from PR #244 through PR #245,
+~24 hours, before being caught. Fixed by extracting the helper to
+`services/media/display-url.ts`.)
+
 ---
 
 ## Definition of Done
