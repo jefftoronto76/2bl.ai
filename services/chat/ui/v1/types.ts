@@ -112,7 +112,7 @@ export interface UIMessage {
 // ── Marker contract ───────────────────────────────────────────────────────
 
 /** Known structured markers the AI may emit in an assistant message. */
-export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'ACCOUNT_CREATE' | 'SAVE_MEMORY'
+export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'ACCOUNT_CREATE' | 'SAVE_MEMORY' | 'MEMORY_TITLE'
 
 /**
  * Parsed data for an ACCOUNT_CREATE marker — `[ACCOUNT_CREATE: reason]`.

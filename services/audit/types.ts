@@ -67,10 +67,17 @@ export const AuditAction = {
   // Conversations (Composer history)
   CONVERSATION_CREATE: 'conversation.create',
   CONVERSATION_UPDATE: 'conversation.update',
-  // Memories (Heirloom) — the durable per-call log half of the paired
-  // error-handling mechanism; see services/chat/server/memory-archivist.ts.
-  // One MEMORY_ARCHIVIST_RUN row per archivist call, success or failure.
+  // Memories (Heirloom) — MEMORY_ARCHIVIST_RUN is retired: the archivist
+  // (a second model call to write up/revise a memory passage) was removed
+  // entirely — both create and rewrite now do a verbatim, no-model-call
+  // write. Kept in this enum only because real historical audit_events rows
+  // already reference it (same precedent as PROMPT_SET_MASTER_SET above,
+  // never dropped for the same reason) — nothing writes under this action
+  // going forward.
   MEMORY_ARCHIVIST_RUN: 'memory.archivist_run',
+  // The one write path left — logged by services/crm/memories.ts's
+  // createMemoryFromAnchor, success or failure.
+  MEMORY_CREATED: 'memory.created',
   MEMORY_KEPT: 'memory.kept',
   MEMORY_DISCARDED: 'memory.discarded',
 } as const

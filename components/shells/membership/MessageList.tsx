@@ -91,8 +91,8 @@ function sourceKindForUserMessage(userMsg: ParsedUserMessage): MemorySourceKind 
 
 interface MemorySlotHandlers {
   onKeep: (memory: MemoryRow) => void;
-  onRewrite: (memory: MemoryRow) => void;
   onDiscard: (memory: MemoryRow) => void;
+  onRetitle: (memory: MemoryRow, title: string) => void;
 }
 
 /**
@@ -112,16 +112,15 @@ function renderMemorySlot(anchorId: string, memories: UseMemoriesReturn, handler
       <MemoryCard
         memory={memory}
         onKeep={() => handlers.onKeep(memory)}
-        onRewrite={() => handlers.onRewrite(memory)}
         onDiscard={() => handlers.onDiscard(memory)}
+        onRetitle={(title) => handlers.onRetitle(memory, title)}
       />
     );
   }
   if (memory?.status === 'published') {
-    return <MemorySavedReceipt memory={memory} />;
+    return <MemorySavedReceipt memory={memory} onRetitle={(title) => handlers.onRetitle(memory, title)} />;
   }
-  const error = memories.getError(anchorId);
-  if (error) return <MemoryErrorLine errorType={error} />;
+  if (memories.hasError(anchorId)) return <MemoryErrorLine />;
   return null;
 }
 
@@ -632,34 +631,12 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     setActiveVersion,
     editMessage,
     resendMessage,
-    dispatchSystemSignal,
     bumpMemoryCount,
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
   const memories = useMemories(state.sessionId);
   const { user } = useAuthUser();
-
-  // Rewrite is a conversation, not a form: clicking it unmounts the card (no
-  // running pill either — nothing renders for this anchor until the visitor's
-  // answer actually arrives), the guide asks what should change via a hidden
-  // system turn, and the visitor's very next message is treated as the answer
-  // and re-runs the archivist with the prior draft as context. Detected by
-  // watching for a new *user* message to land after the ref below was armed,
-  // rather than threading new state through chatStore.tsx. At most one memory
-  // can be mid-rewrite at a time (matches "at most one draft open" elsewhere).
-  const pendingRewriteRef = useRef<{ memoryId: string; anchorMessageId: string; sinceMessageId: string | null } | null>(null);
-  const [awaitingRewriteAnchor, setAwaitingRewriteAnchor] = useState<string | null>(null);
-  useEffect(() => {
-    const pending = pendingRewriteRef.current;
-    if (!pending) return;
-    const last = messages[messages.length - 1];
-    if (!last || last.id === pending.sinceMessageId) return;
-    if (last.role !== 'user' || last.status !== 'sent') return;
-    pendingRewriteRef.current = null;
-    setAwaitingRewriteAnchor(null);
-    void memories.rewrite(pending.memoryId, pending.anchorMessageId, last.content);
-  }, [messages, memories]);
 
   // SAVE_MEMORY: the guide's own inline signal ("enough has surfaced, write
   // this one up") rather than a manual click — but it triggers the exact same
@@ -722,25 +699,14 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       // count) is unaffected either way.
       bumpMemoryCount(memory.session_id, 1);
     },
-    onRewrite: (memory: MemoryRow) => {
-      pendingRewriteRef.current = {
-        memoryId: memory.id,
-        anchorMessageId: memory.anchor_message_id,
-        sinceMessageId: messages[messages.length - 1]?.id ?? null,
-      };
-      setAwaitingRewriteAnchor(memory.anchor_message_id);
-      dispatchSystemSignal(
-        `The visitor wants to revise the memory titled "${memory.title}". Ask them, briefly and warmly, what they'd like to change about it.`,
-      );
-    },
     // Discard is only ever reachable from the draft card (MemorySavedReceipt
     // has no Discard action) — a discarded memory never counted toward the
     // published total, so there's nothing to reconcile in recentSessions here.
     onDiscard: (memory: MemoryRow) => void memories.discard(memory),
+    onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
   };
 
-  const renderMemorySlotUnlessAwaiting = (anchorId: string) =>
-    awaitingRewriteAnchor === anchorId ? null : renderMemorySlot(anchorId, memories, memoryHandlers);
+  const renderMemorySlotFn = (anchorId: string) => renderMemorySlot(anchorId, memories, memoryHandlers);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
   // streaming or a draft is already open — nothing else may hide the bookmark.
@@ -818,7 +784,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             resendMessage,
             memories,
             keepDisabled,
-            renderMemorySlotUnlessAwaiting,
+            renderMemorySlotFn,
           )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -834,7 +800,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             feedback,
             memories,
             keepDisabled,
-            renderMemorySlotFn: renderMemorySlotUnlessAwaiting,
+            renderMemorySlotFn,
           })}
           renderError={renderError}
           renderStreamingIndicator={renderStreamingIndicator}

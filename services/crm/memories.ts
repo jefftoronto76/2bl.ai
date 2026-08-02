@@ -9,20 +9,31 @@
 // write/read scoped by BOTH tenant_id AND session_id — the same cross-tenant
 // IDOR guard every other CRM write in this codebase uses.
 //
-// Lifecycle (see CLAUDE.md's Memories section for the full design):
-//   1. The archivist call (services/chat/server/memory-archivist.ts) succeeds
-//      -> createDraftMemory() inserts one row, status: 'draft'. Nothing is
-//      written on a running/in-flight attempt or on failure — there is no
-//      "running" status to reconcile, because no row exists until there's a
-//      real draft.
-//   2. Rewrite succeeds -> updateDraftMemory() overwrites title/body on the
-//      SAME row (evolving one memory, not accumulating duplicates per rewrite).
-//   3. "Keep this" -> publishMemory() flips status to 'published'.
-//   4. "Discard" -> discardMemory() stamps discarded_at; the row is never
+// No model call anywhere in this file — the archivist (a second generateText
+// call that used to rewrite a passage and invent a title) has been removed
+// entirely, both for create and for what used to be Rewrite. See CLAUDE.md's
+// Memories section for the full design.
+//
+// Lifecycle:
+//   1. Create (manual bookmark or the [SAVE_MEMORY] marker) ->
+//      createMemoryFromAnchor() reads the anchor message's own stored content
+//      verbatim (title from a [MEMORY_TITLE: ...] marker on that message if
+//      present, else deriveFallbackMemoryTitle()'s truncation) and calls
+//      createDraftMemory() to insert one row, status: 'draft'. Nothing is
+//      written on failure — there is no "running" status to reconcile,
+//      because no row exists until there's a real draft.
+//   2. "Keep this" -> publishMemory() flips status to 'published'.
+//   3. "Discard" -> discardMemory() stamps discarded_at; the row is never
 //      hard-deleted this way (soft, same convention as members.revoked_at /
 //      users.deleted_at) — but IS hard-deleted by deleteMemoriesForAnchors()
 //      when the message it followed is truncated by an edit (mirrors
 //      deleteFeedbackFrom's hard-delete-on-truncate behavior exactly).
+//   4. Independently of the above, at any point: renameMemory() lets the
+//      member correct the title inline (draft or published) — an optimistic
+//      guess, not a conversation. The passage itself has no revision path
+//      anymore; the Rewrite button in MemoryCard.tsx is unwired to a stub
+//      (fires a toast, does nothing) pending a future redesign — the only
+//      way to get a different passage today is Discard + bookmark again.
 //
 // listMemories() unconditionally excludes discarded_at IS NOT NULL rows —
 // discarded memories never round-trip to the client at all, which is what
@@ -30,6 +41,10 @@
 // non-issue here rather than something the client has to enforce itself.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { getSessionMessages } from '@/services/crm/sessions'
+import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
+import { logEvent } from '@/services/audit'
+import { AuditAction } from '@/services/audit/types'
 
 export type MemoryResult<T> =
   | { ok: true; data: T }
@@ -140,25 +155,124 @@ export async function createDraftMemory(
   return { ok: true, data: toMemoryRow(data) }
 }
 
+const FALLBACK_TITLE_MAX_CHARS = 60
+
 /**
- * Overwrites title/body on an existing draft row for a successful Rewrite —
- * evolves the same memory rather than creating a new row per rewrite cycle.
- * Tenant + session scoped; 404s (rather than silently no-op'ing) if the id
- * doesn't resolve, so a stale/foreign memory_id surfaces as an error, not a
- * silent skip.
+ * Fallback title for a memory created from a message with no [MEMORY_TITLE]
+ * marker — the common case: the bookmark can fire on any message (plain
+ * interview questions, brief acknowledgments), most of which the guide never
+ * flagged as memory-worthy in the moment. Mirrors
+ * components/shells/membership/chatStore.tsx's deriveSessionTitle (the
+ * existing 60-char/ellipsis convention already used for conversation titles
+ * in this app), adapted to break at the last full word rather than
+ * mid-character.
  */
-export async function updateDraftMemory(
+export function deriveFallbackMemoryTitle(content: string): string {
+  const text = content.trim().replace(/\s+/g, ' ')
+  if (text.length <= FALLBACK_TITLE_MAX_CHARS) return text
+  const truncated = text.slice(0, FALLBACK_TITLE_MAX_CHARS)
+  const lastSpace = truncated.lastIndexOf(' ')
+  return `${lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated}…`
+}
+
+export interface CreateMemoryFromAnchorInput {
+  sessionId: string
+  anchorMessageId: string
+  memberId: string | null
+  sourceKind: MemorySourceKind
+}
+
+/**
+ * The only memory-creation path — no model call. The guide's own message
+ * already is the passage: this reads the anchor message's own stored content
+ * verbatim (every marker, including MEMORY_TITLE itself, stripped via the
+ * same default registry every other render path uses) rather than asking a
+ * model to rewrite it. Title comes from a [MEMORY_TITLE: ...] marker on that
+ * message if the guide emitted one, else deriveFallbackMemoryTitle().
+ *
+ * Returns the plain shared MemoryResult, same as every other function in
+ * this file — with no model call anywhere in the memory system, there is
+ * exactly one failure shape left (a Supabase write erroring), so there is no
+ * classification to carry on the result the way an archivist-call result
+ * once needed to.
+ */
+export async function createMemoryFromAnchor(
+  tenantId: string,
+  input: CreateMemoryFromAnchorInput,
+): Promise<MemoryResult<MemoryRow>> {
+  const { sessionId, anchorMessageId, memberId, sourceKind } = input
+
+  const sessionResult = await getSessionMessages(tenantId, sessionId)
+  if (!sessionResult.ok) return { ok: false, status: sessionResult.status, error: sessionResult.error }
+
+  const rawMessages = Array.isArray(sessionResult.data.messages) ? sessionResult.data.messages : []
+  const anchorIdx = (rawMessages as unknown[]).findIndex(
+    m => (m as { id?: unknown } | null)?.id === anchorMessageId,
+  )
+  if (anchorIdx === -1) {
+    return { ok: false, status: 400, error: 'anchor_message_id does not match a message in this session' }
+  }
+
+  const anchorContent = (rawMessages[anchorIdx] as { content?: unknown }).content
+  if (typeof anchorContent !== 'string') {
+    return { ok: false, status: 400, error: 'anchor message has no text content' }
+  }
+
+  const { prose, markers } = createDefaultRegistry().parse(anchorContent)
+  const body = prose.trim()
+  if (!body) {
+    return { ok: false, status: 400, error: 'anchor message has no content to save once markers are stripped' }
+  }
+
+  const markerTitle = markers.find(m => m.type === 'MEMORY_TITLE')?.fields[0]?.trim()
+  const title = markerTitle || deriveFallbackMemoryTitle(body)
+  const titleSource = markerTitle ? 'marker' : 'fallback'
+
+  const createResult = await createDraftMemory(tenantId, { sessionId, anchorMessageId, memberId, sourceKind, title, body })
+
+  if (!createResult.ok) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: createResult.error, title_source: titleSource },
+    })
+    return createResult
+  }
+
+  void logEvent({
+    action: AuditAction.MEMORY_CREATED,
+    tenant_id: tenantId,
+    actor_type: memberId ? 'user' : 'anonymous',
+    target_type: 'memory',
+    target_id: createResult.data.id,
+    outcome: 'success',
+    metadata: { title_source: titleSource },
+  })
+
+  return createResult
+}
+
+/**
+ * Title-only update — backs the inline title-edit affordance on MemoryCard
+ * and MemorySavedReceipt. Never touches body — title is an optimistic guess
+ * the member can correct directly; the passage has no equivalent revision
+ * path. No status check: a draft and a published memory are both editable
+ * through this same function.
+ */
+export async function renameMemory(
   tenantId: string,
   sessionId: string,
   memoryId: string,
   title: string,
-  body: string,
 ): Promise<MemoryResult<MemoryRow>> {
   const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('artifacts')
-    .update({ title, body, updated_at: new Date().toISOString() })
+    .update({ title, updated_at: new Date().toISOString() })
     .eq('id', memoryId)
     .eq('tenant_id', tenantId)
     .eq('session_id', sessionId)
@@ -167,7 +281,7 @@ export async function updateDraftMemory(
     .maybeSingle()
 
   if (error) {
-    console.error('[memories] update error:', JSON.stringify(error))
+    console.error('[memories] rename error:', JSON.stringify(error))
     return { ok: false, status: 500, error: error.message }
   }
   if (!data) {
@@ -175,12 +289,14 @@ export async function updateDraftMemory(
     return { ok: false, status: 404, error: 'Memory not found' }
   }
 
+  console.log('[memories] renamed:', memoryId)
   return { ok: true, data: toMemoryRow(data) }
 }
 
 /**
- * "Keep this" — flips a draft to published. Tenant + session scoped, same
- * 404-on-miss behavior as updateDraftMemory.
+ * "Keep this" — flips a draft to published. Tenant + session scoped; 404s
+ * (rather than silently no-op'ing) if the id doesn't resolve, so a stale/
+ * foreign memory_id surfaces as an error, not a silent skip.
  */
 export async function publishMemory(
   tenantId: string,
@@ -282,35 +398,4 @@ export async function deleteMemoriesForAnchors(
 
   console.log('[memories] cleared memories for truncated anchors:', { sessionId, count: anchorMessageIds.length })
   return { ok: true, data: null }
-}
-
-/**
- * Reads one memory's title/body/anchor — used by the Rewrite flow's
- * archivist call to pass the prior draft as context. Tenant + session scoped.
- */
-export async function getMemory(
-  tenantId: string,
-  sessionId: string,
-  memoryId: string,
-): Promise<MemoryResult<MemoryRow>> {
-  const supabase = getAdminClient()
-
-  const { data, error } = await supabase
-    .from('artifacts')
-    .select('id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at')
-    .eq('id', memoryId)
-    .eq('tenant_id', tenantId)
-    .eq('session_id', sessionId)
-    .eq('type', ARTIFACT_TYPE)
-    .maybeSingle()
-
-  if (error) {
-    console.error('[memories] get error:', JSON.stringify(error))
-    return { ok: false, status: 500, error: error.message }
-  }
-  if (!data) {
-    return { ok: false, status: 404, error: 'Memory not found' }
-  }
-
-  return { ok: true, data: toMemoryRow(data) }
 }

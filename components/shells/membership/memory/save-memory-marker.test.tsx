@@ -119,7 +119,6 @@ describe('SAVE_MEMORY marker', () => {
     await waitFor(() => expect(postMemoryCalls.length).toBeGreaterThan(0));
 
     expect(postMemoryCalls[0]).toEqual({
-      mode: 'create',
       anchor_message_id: 'm2',
       source_kind: 'conversation',
     });
