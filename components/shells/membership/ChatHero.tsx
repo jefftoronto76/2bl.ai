@@ -243,7 +243,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onClose={() => setPendingDelete(null)}
         onConfirm={() => {
           if (!pendingDelete) return;
-          void deleteSession(pendingDelete.id);
+          if (pendingDelete.target === 'story') {
+            // No stories backend yet (ephemeral client state — see the
+            // stories comment above) — remove locally, no network call.
+            setStories(prev => prev.filter(s => s.id !== pendingDelete.id));
+          } else {
+            void deleteSession(pendingDelete.id);
+          }
           showToast('Deleted');
           setPendingDelete(null);
         }}
