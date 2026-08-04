@@ -19,7 +19,7 @@ Prototype source: `admin-mantine/platform-settings-screen.js`, `admin-mantine/bl
 Verified by reading `jefftoronto76/2bl.ai@main` (tree `bf764b3c8645`). Facts, not assumptions.
 
 **`is_composer_prompt` already exists — but it is a POINTER, not a kind.**
-`prompt_sets.is_composer_prompt` (renamed from `is_master`, per `DB_CHANGELOG.md`) is constrained
+`prompt_sets.is_composer_prompt` (renamed from `is_master`, per `System Docs/DB_CHANGELOG.md`) is constrained
 so that **exactly one row across all tenants** may be true, backed by the partial unique index
 `prompt_sets_single_composer_idx`. `PUT /api/platform/settings/master-prompt` clears the prior row
 before setting the new one. It answers *"which single set is live as the Composer Prompt right

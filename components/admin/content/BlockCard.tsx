@@ -44,7 +44,7 @@ export interface BlockCardProps {
    * the regex machinery and renders plain text. Body is NOT
    * highlighted on mobile cards — there's no body preview surface
    * here (Step 11 dropped it). Mobile body-match visibility is
-   * tracked as a design decision in FRIDAY.md.
+   * tracked as a design decision in Backlog/FRIDAY.md.
    */
   highlight: string
   onToggleSelect: (blockId: string) => void

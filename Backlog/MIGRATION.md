@@ -58,8 +58,8 @@ values**, and **gaps** (security, performance, observability).
 | SBL design tokens | `app/globals.css` `[data-brand="sbl"]` block (≈ lines 615–641); Tailwind utilities in `tailwind.config.js` | Built, isolated from inkwell |
 | Domain routing | `middleware.ts` rewrites `2bl.ai` / `www.2bl.ai` → `/secondbrainlabs`, tags `x-sbl: 1` | Built |
 | Palette gating | `app/layout.tsx` reads `x-sbl` header, drops `data-palette="inkwell"` for SBL | Built |
-| SBL tenant seeded | `DB_CHANGELOG.md` 2026-05-20: tenant `slug=second-brain-labs`, `type=platform`, `domain=2bl.ai` | Seeded in Supabase (Studio) |
-| Multi-engine prompt column | `DB_CHANGELOG.md` 2026-05-20: `master_prompt.key` + unique `(tenant_id, key)` | Column added in DB |
+| SBL tenant seeded | `System Docs/DB_CHANGELOG.md` 2026-05-20: tenant `slug=second-brain-labs`, `type=platform`, `domain=2bl.ai` | Seeded in Supabase (Studio) |
+| Multi-engine prompt column | `System Docs/DB_CHANGELOG.md` 2026-05-20: `master_prompt.key` + unique `(tenant_id, key)` | Column added in DB |
 
 ## A.2 What is half-done (the dangerous middle)
 
@@ -241,9 +241,9 @@ See Appendix D.1 for the full table with file:line. Headlines:
 There is **zero schema-as-code and zero RLS-as-code** in the repo: no `.sql`
 files, no `migrations/`/`supabase/`/`db/` directory, no ORM. Schema and RLS are
 managed **manually by Jeff in Supabase Studio** (per CLAUDE.md), recorded in
-prose in `DB_CHANGELOG.md` and the CLAUDE.md schema tables. **Consequence for
+prose in `System Docs/DB_CHANGELOG.md` and the CLAUDE.md schema tables. **Consequence for
 this plan:** every schema/RLS change is flagged as a *Studio task for Jeff*, run
-**before** the dependent code phase, and logged in `DB_CHANGELOG.md`. CC writes
+**before** the dependent code phase, and logged in `System Docs/DB_CHANGELOG.md`. CC writes
 no migration files and runs no DDL.
 
 ---
@@ -397,7 +397,7 @@ depth.
 
 - **Change management:** every migration step is a reviewable PR with the
   mandatory three-section description (CLAUDE.md rule 4); schema changes logged
-  in `DB_CHANGELOG.md`. This plan *is* the change-management artifact for the
+  in `System Docs/DB_CHANGELOG.md`. This plan *is* the change-management artifact for the
   migration.
 - **Access-control documentation:** this section (B.3) is the written model.
 - **Monitoring/alerting:** close the observability gap (A.7) — error
@@ -926,4 +926,4 @@ Design these PHI-aware from creation (encryption, audit, retention, BAA path):
 - [ ] **CLAUDE.md updated** to reflect the change.
 - [ ] Branch pushed; PR description in the mandatory three-section format.
 - [ ] Required schema migrations flagged to Jeff and applied in Studio
-      **before** the dependent code merged; `DB_CHANGELOG.md` updated.
+      **before** the dependent code merged; `System Docs/DB_CHANGELOG.md` updated.

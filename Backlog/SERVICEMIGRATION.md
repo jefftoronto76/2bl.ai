@@ -1,7 +1,7 @@
 # SERVICEMIGRATION.md — Critical Path
 
 > Living document. Updated after every stage.
-> CC reads this at the start of every session.
+> Not auto-loaded — nothing in the codebase imports or reads this file at session start; consult it manually.
 
 ---
 
@@ -77,7 +77,7 @@ see "Chat service — UI half (fully extracted)" below).
 
 ### Stage 1 — Planning
 - MIGRATION.md written and approved (full 6-phase plan)
-- 2BL.md platform bible created
+- System Docs/2BL.md platform bible created
 - Architecture decisions locked
 
 ### Stage 2 — Isolate jefflougheed.ca
@@ -476,5 +476,5 @@ not add to tenant_model_config as plain text.
 | CLAUDE.md | Rules for CC — stack, principles, workflow |
 | MIGRATION.md | Full migration plan, phases 1-6 |
 | SERVICEMIGRATION.md | This document — critical path |
-| DB_CHANGELOG.md | Schema changes log |
-| 2BL.md | Platform bible |
+| System Docs/DB_CHANGELOG.md | Schema changes log |
+| System Docs/2BL.md | Platform bible |

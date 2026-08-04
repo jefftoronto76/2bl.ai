@@ -5,7 +5,7 @@
 -- Conventions matched to the existing schema (see `topics`, `blocks`):
 --   • uuid PK via gen_random_uuid()  • tenant_id scoping on every query
 --   • created_at / updated_at timestamptz  • snake_case columns
--- Log this change in DB_CHANGELOG.md after applying.
+-- Log this change in System Docs/DB_CHANGELOG.md after applying.
 
 create table if not exists public.prompt_conversations (
   id            uuid primary key default gen_random_uuid(),

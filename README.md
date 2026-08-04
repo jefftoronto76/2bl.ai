@@ -5,7 +5,7 @@ codebase. Each product has its own storefront; customers who sign up become
 tenants. Products, tenants, and resellers are **data, not code** — adding one
 is a database change plus config, not a rewrite.
 
-The authoritative platform overview is [`2BL.md`](./2BL.md). This README is the
+The authoritative platform overview is [`2BL.md`](./System%20Docs/2BL.md). This README is the
 practical entry point: what's here, how it's wired, and where things live.
 
 ---
@@ -49,7 +49,7 @@ format the response. This keeps Next.js replaceable and the services portable.
 - **`services/`** — platform business logic. `services/chat/server/` (the chat
   orchestration engine), `auth`, `prompt`, `crm`, `tenant`, and `content` are
   extracted and live; `payments` is still being carved out (see
-  `SERVICEMIGRATION.md`).
+  `Backlog/SERVICEMIGRATION.md`).
 - **`app/`** — routes split by brand/product, resolved at the edge by
   `middleware.ts` (host → route group / segment). Today: `(jefflougheed)` (Sage
   tenant site), `secondbrainlabs` (2bl.ai storefront), `heirloom`
@@ -58,7 +58,7 @@ format the response. This keeps Next.js replaceable and the services portable.
 - **Supabase** — multi-tenant Postgres. Every row is tenant-scoped; Row Level
   Security is the primary enforcement boundary.
 
-See `2BL.md` for the full architecture strategy and target directory structure.
+See `System Docs/2BL.md` for the full architecture strategy and target directory structure.
 
 ---
 
@@ -231,7 +231,7 @@ tables include `tenants`, `tenant_users`, `tenant_branding`, `users`,
 `chat_sessions`, `master_prompt` / `master_prompt_history`, `blocks`, `topics`,
 `content`, `sage_parameters`, `tenant_model_config`, `do_not_engage`. The
 authoritative schema lives in `CLAUDE.md`; schema changes are logged in
-`DB_CHANGELOG.md` and executed by Jeff in Supabase Studio.
+`System Docs/DB_CHANGELOG.md` and executed by Jeff in Supabase Studio.
 
 ---
 
@@ -265,8 +265,8 @@ DEFAULT_ADMIN_TENANT_ID=   # optional — fallback tenant for multi-membership a
 
 | Document | Purpose |
 |----------|---------|
-| `2BL.md` | Platform bible — what 2BL is, how it's built, and why |
+| `System Docs/2BL.md` | Platform bible — what 2BL is, how it's built, and why |
 | `CLAUDE.md` | Operating rules — stack, principles, schema, API map, workflow |
-| `MIGRATION.md` | Full 6-phase service-architecture migration plan |
-| `SERVICEMIGRATION.md` | Critical path — what's done, what's next, what's deferred |
-| `DB_CHANGELOG.md` | Schema + seed-data change log (Studio) |
+| `Backlog/MIGRATION.md` | Full 6-phase service-architecture migration plan |
+| `Backlog/SERVICEMIGRATION.md` | Critical path — what's done, what's next, what's deferred |
+| `System Docs/DB_CHANGELOG.md` | Schema + seed-data change log (Studio) |

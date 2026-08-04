@@ -10,7 +10,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 // If the set has never been compiled, returns empty content + null version (the
 // modal renders an empty-state placeholder).
 //
-// NOTE (open question, see prompt-schema-design.md): `master_prompt` is being
+// NOTE (open question, see Backlog/prompt-schema-design.md): `master_prompt` is being
 // migrated from one-row-per-tenant → one-row-per-prompt_set. This route assumes the
 // per-set shape (`prompt_set_id`). If your data is still per-tenant, drop the
 // `.eq('prompt_set_id', id)` filter and key on tenant only.

@@ -15,7 +15,7 @@ Two consumers still reference the old **`--hl-*`** names while the theme (`app/h
 - **`tailwind.config.js`** maps `background / text-primary / text-muted / accent-hover / border` → `--hl-*` (and `bg` → `--color-bg`, which isn't defined either — should be `--color-background`). Only `surface`/`accent` (→ `--color-*`) resolve — which is why the widget came through half-styled / wrong-palette.
 - **`app/heirloom/layout.tsx`** — when `use_db_branding` is on, injects `--hl-bg / --hl-text-primary / --hl-text-muted` (and omits the rest). `--hl-accent-hover` and `--hl-border` are defined **nowhere**, so `hover:bg-accent-hover` and `border-border` break regardless of that flag.
 
-**Fix = repoint BOTH `tailwind.config.js` and `layout.tsx` to the canonical `--color-*` names.** It is NOT a missing alias in `app/legacy/globals.css`; do not add `--hl-*`/`--lg-*` anywhere. Authority: `css-token-unification-spec.md` (repo root). Note: the spec cites a `scripts/lint-tokens.ts` build gate, **but that file is not present in the repo on this branch** — nothing enforces this automatically today, so verify by hand.
+**Fix = repoint BOTH `tailwind.config.js` and `layout.tsx` to the canonical `--color-*` names.** It is NOT a missing alias in `app/legacy/globals.css`; do not add `--hl-*`/`--lg-*` anywhere. Authority: `Backlog/css-token-unification-spec.md`. Note: the spec cites a `scripts/lint-tokens.ts` build gate, **but that file is not present in the repo on this branch** — nothing enforces this automatically today, so verify by hand.
 
 ---
 

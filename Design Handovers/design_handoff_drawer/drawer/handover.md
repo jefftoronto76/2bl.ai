@@ -131,7 +131,7 @@ turn that already streamed.
 
 ## 6. Ship order
 
-1. Apply the migration; log it in `DB_CHANGELOG.md`.
+1. Apply the migration; log it in `System Docs/DB_CHANGELOG.md`.
 2. Land `services/prompt/conversations.ts` + the two route files. Smoke-test with
    `curl`/Postman: list (empty `[]`), create, get, patch.
 3. Apply the three `page.tsx` wirings (`page-wiring.md`). The drawer goes live.

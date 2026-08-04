@@ -3,7 +3,7 @@
 Two files, both at their real repo paths. The **design is unchanged** (flat egg-shell
 base, terracotta accent, the formats hero / book centerpiece / SBL footer layouts).
 What changed is that everything now speaks the repo's **canonical token system**
-(`css-token-unification-spec.md`) instead of the invented `--lg-*` / `data-brand="legacy"`
+(`Backlog/css-token-unification-spec.md`) instead of the invented `--lg-*` / `data-brand="legacy"`
 names the earlier drop-in used — and the design's actual colour values are written into
 `globals.css` on those canonical tokens.
 

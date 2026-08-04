@@ -169,7 +169,7 @@ Cross-service calls go through published interfaces only.
 
 ## Security Model
 
-Security is priority #1. See MIGRATION.md Part B Section B.3 for the
+Security is priority #1. See Backlog/MIGRATION.md Part B Section B.3 for the
 full security model.
 
 Headlines:
@@ -217,7 +217,7 @@ Headlines:
 | Document | Purpose |
 |----------|---------|
 | CLAUDE.md | Rules for CC — stack, principles, workflow |
-| MIGRATION.md | Full migration plan, phases 1-6 |
-| SERVICEMIGRATION.md | Critical path — current state, what's moving, what's blocked |
+| Backlog/MIGRATION.md | Full migration plan, phases 1-6 |
+| Backlog/SERVICEMIGRATION.md | Critical path — current state, what's moving, what's blocked |
 | DB_CHANGELOG.md | Schema changes log |
 | 2BL.md | This document — platform bible |
