@@ -6,7 +6,7 @@
 // comparing it against this turn's own start time. req.signal stays wired as
 // a zero-cost bonus fast path. Either trigger writes
 // chat_sessions.server_abort_confirmed_at — the DB-checkable proof this
-// actually ran. See CLAUDE.md's "Stop / interrupted-turn protocol".
+// actually ran. See System Docs/Utilities/Chat UI.md's "Stop / interrupted-turn protocol".
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ModelConfig } from './types'

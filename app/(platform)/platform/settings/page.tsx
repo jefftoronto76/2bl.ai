@@ -7,7 +7,7 @@
 // no release note, and no real audit trail. The only way to make a composer
 // set live is Compile & Publish on the Blocks screen, reached via each row's
 // Edit pencil — the same one true activation path every ordinary tenant
-// prompt set already goes through. See CLAUDE.md Known Gaps.
+// prompt set already goes through. See System Docs/Known Gaps.md.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'

@@ -19,7 +19,7 @@
 // composer set clears any other live composer set as its own step,
 // regardless of which type slot either one is in. Composer sets are no
 // longer activated through a separate Platform Settings "Save" pointer — see
-// CLAUDE.md Known Gaps — Compile & Publish here is now the only path.
+// System Docs/Known Gaps.md — Compile & Publish here is now the only path.
 //
 // Atomic publish (July 2026): steps 4-7 below — resolve type/composer flag,
 // clear-then-set both tables, archive the outgoing row, write the new one,

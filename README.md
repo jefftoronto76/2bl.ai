@@ -230,7 +230,7 @@ All tables are multi-tenant; every access respects `tenant_id` and RLS. Core
 tables include `tenants`, `tenant_users`, `tenant_branding`, `users`,
 `chat_sessions`, `master_prompt` / `master_prompt_history`, `blocks`, `topics`,
 `content`, `sage_parameters`, `tenant_model_config`, `do_not_engage`. The
-authoritative schema lives in `CLAUDE.md`; schema changes are logged in
+authoritative schema lives in `System Docs/Database Schema.md`; schema changes are logged in
 `System Docs/DB_CHANGELOG.md` and executed by Jeff in Supabase Studio.
 
 ---
@@ -266,7 +266,11 @@ DEFAULT_ADMIN_TENANT_ID=   # optional — fallback tenant for multi-membership a
 | Document | Purpose |
 |----------|---------|
 | `System Docs/2BL.md` | Platform bible — what 2BL is, how it's built, and why |
-| `CLAUDE.md` | Operating rules — stack, principles, schema, API map, workflow |
+| `CLAUDE.md` | Operating rules — principles, stack, branch/workflow conventions, dependency rules (2026-08-04: schema/API/design/marker/etc. reference material split out to `System Docs/`, see CLAUDE.md's "Where the rest of this lives" table) |
+| `System Docs/Database Schema.md` | DB tables/columns (moved out of CLAUDE.md 2026-08-04) |
+| `System Docs/API Routes.md` | API route map (moved out of CLAUDE.md 2026-08-04) |
+| `System Docs/Known Gaps.md` | Known issues, orphaned code, deferred work (moved out of CLAUDE.md 2026-08-04) |
+| `System Docs/Utilities/` | Service internals, one file per service (moved out of CLAUDE.md 2026-08-04) |
 | `Backlog/MIGRATION.md` | Full 6-phase service-architecture migration plan |
 | `Backlog/SERVICEMIGRATION.md` | Critical path — what's done, what's next, what's deferred |
 | `System Docs/DB_CHANGELOG.md` | Schema + seed-data change log (Studio) |

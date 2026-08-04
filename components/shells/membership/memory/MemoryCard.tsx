@@ -5,7 +5,7 @@
  * handoff (Design Handovers/heirloom_chat_handoffV2_2026_July 28/memories/README.md §5).
  * Anchored into MessageList.tsx's per-message render functions — it sits
  * inline, below the message it followed, not in its own transcript slot (see
- * CLAUDE.md's Memories architecture note).
+ * the Memories entry in System Docs/Known Gaps.md).
  *
  * The PASSAGE is READ-ONLY by design and, as of the archivist's removal, has
  * no revision path at all — the "Rewrite" button below is unwired to a local
@@ -65,7 +65,8 @@ export function MemoryRunningPill({ sourceKind }: { sourceKind: MemoryRow['sourc
 }
 
 /**
- * Live failure signal (CLAUDE.md §4.2) — not persisted, not a card. Stays
+ * Live failure signal (see the Memories entry in System Docs/Known Gaps.md) —
+ * not persisted, not a card. Stays
  * until the visitor tries the bookmark again, rather than auto-dismissing.
  * No model call exists anywhere in the memory system anymore, so there is
  * exactly one failure shape (a write erroring) and exactly one message —

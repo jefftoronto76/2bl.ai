@@ -9,7 +9,7 @@
 // no release note, and no real audit trail. Compile & Publish on the Blocks
 // screen — reached via the pencil below — is now the only way to make a
 // composer set live, same as it already is for every ordinary tenant set.
-// See CLAUDE.md Known Gaps for the retired master-prompt PUT route.
+// See System Docs/Known Gaps.md for the retired master-prompt PUT route.
 //
 // No per-row "Composer Prompt" badge: every row in this list is already
 // composer-family by construction, so the status badge (Live/Draft/Retired)

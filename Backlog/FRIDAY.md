@@ -50,8 +50,8 @@ Each item is either polish, deferred refactor, or doc debt.
 
 - [ ] **`sage_parameters.value` legacy column.** Round-tripped on
       every PATCH to `/api/admin/sage-parameters` but never
-      surfaced in UI or set by users. CLAUDE.md notes it as
-      legacy. Either remove from schema and the round-trip
+      surfaced in UI or set by users. `System Docs/Database Schema.md`
+      notes it as legacy. Either remove from schema and the round-trip
       payload, or document its intended use. Decide which.
 
 ## Performance tracking
@@ -61,12 +61,12 @@ Each item is either polish, deferred refactor, or doc debt.
       step. If it exceeds 350 kB before Friday, escalate AppShell
       refactor priority.
 
-## CLAUDE.md updates (batch on Friday)
+## CLAUDE.md / System Docs updates (batch on Friday)
 
 - [ ] JSX text content with apostrophes uses `&apos;`
       (react/no-unescaped-entities lint rule)
-- [ ] New schema columns documented (already done in Step 2 — verify
-      still accurate after all 18 steps)
+- [ ] New schema columns documented in `System Docs/Database Schema.md`
+      (already done in Step 2 — verify still accurate after all 18 steps)
 - [ ] `updated_by` stamping pattern: PATCH and POST endpoints both
       stamp from `authCtx.owner_id` (Steps 3 and 7)
 - [ ] Any new patterns established by Steps 8–18

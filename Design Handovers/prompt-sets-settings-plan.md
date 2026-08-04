@@ -205,10 +205,12 @@ approval before the next (per CLAUDE.md push cadence / one-change-at-a-time).
 4. **Phase 3:** preview `/platform/settings` as a platform admin — promote a set,
    confirm prior master clears and the Tenant card's **Master** badge moves; verify
    non-admin is redirected/403.
-5. **Docs:** update CLAUDE.md (new panel under "Page-local components" + Settings
-   page row; new routes under "API Routes"; `prompt_sets` row in the schema table)
-   and `System Docs/DB_CHANGELOG.md` only if Jeff makes further schema changes — documentation
-   is a PR gate (CLAUDE.md).
+5. **Docs:** update `System Docs/Shared Primitives.md` (new panel under
+   "Page-local components" + `System Docs/Pages.md`'s Settings page row);
+   new routes under `System Docs/API Routes.md`; `prompt_sets` row in
+   `System Docs/Database Schema.md`) and `System Docs/DB_CHANGELOG.md` only
+   if Jeff makes further schema changes — documentation is a PR gate
+   (CLAUDE.md).
 
 ---
 

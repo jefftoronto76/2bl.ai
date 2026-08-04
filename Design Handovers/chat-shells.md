@@ -268,7 +268,7 @@ Add `app/<product>/globals.css` with `:root` token overrides for the product
 palette. Import it only from `app/<product>/layout.tsx` — the import boundary
 is what isolates the tokens so they do not bleed into other routes.
 
-See CLAUDE.md "Design System" for the token table, font scoping rules, and
+See `System Docs/Design System.md` for the token table, font scoping rules, and
 existing per-product files.
 
 ### Step 4 — API and tenant

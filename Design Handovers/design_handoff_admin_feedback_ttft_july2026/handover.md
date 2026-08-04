@@ -6,7 +6,7 @@ Two feature sets added to the Mantine admin preview:
 2. **Collapsible dashboard + sticky search/filter bar**, matching the existing pattern on the Blocks screen, added to both Inbound Chats and Platform Members.
 
 ## About the design files
-The files in this bundle are **design references built in HTML** (htm + Mantine web components via CDN, matching the `admin-mantine/` preview layer described in this project's CLAUDE.md). They are not production code to copy verbatim — recreate this behavior in `Rebuild_admin-tsx_HD/` (the real React/TypeScript + `@mantine/core` app) using its actual data-fetching and component patterns. The HTML here is a 1:1 visual/interaction spec; treat hex values, spacing, and copy as exact.
+The files in this bundle are **design references built in HTML** (htm + Mantine web components via CDN, matching the `admin-mantine/` preview layer described in this project's `System Docs/Design System.md`). They are not production code to copy verbatim — recreate this behavior in `Rebuild_admin-tsx_HD/` (the real React/TypeScript + `@mantine/core` app) using its actual data-fetching and component patterns. The HTML here is a 1:1 visual/interaction spec; treat hex values, spacing, and copy as exact.
 
 ## Fidelity
 High-fidelity. Colors, typography, spacing, and copy shown are final — implement pixel-for-pixel using the app's real `buildAdminTheme` tokens (cream `#FAF6EE`, terracotta `#C8542E`, Newsreader/Manrope/DM Mono) rather than the hardcoded hex fallbacks used for chip colors below.

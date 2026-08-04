@@ -54,7 +54,7 @@ export interface ChatStreamRequest {
    * (services/chat/ui/v1/useChatTurn.ts) — IF this deployment's request
    * pipeline propagates it, which isn't guaranteed (middleware reconstructs
    * this request via header-forwarding at the edge→function boundary; see
-   * CLAUDE.md's "Stop / interrupted-turn protocol"). Kept as a best-effort
+   * System Docs/Utilities/Chat UI.md's "Stop / interrupted-turn protocol"). Kept as a best-effort
    * fast path only: streamChat()'s stop_requested_at poll is the reliable
    * mechanism. Either path aborts the same controller, so streamText still
    * never calls onFinish (and therefore handleSessionFinish /

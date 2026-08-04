@@ -11,8 +11,8 @@
 //
 // No model call anywhere in this file — the archivist (a second generateText
 // call that used to rewrite a passage and invent a title) has been removed
-// entirely, both for create and for what used to be Rewrite. See CLAUDE.md's
-// Memories section for the full design.
+// entirely, both for create and for what used to be Rewrite. See the
+// Memories entry in System Docs/Known Gaps.md for the full design.
 //
 // Lifecycle:
 //   1. Create (manual bookmark or the [SAVE_MEMORY] marker) ->
@@ -369,8 +369,9 @@ export async function discardMemory(
  * forward from that point (services/chat/ui/v1/useChatTurn.ts
  * `truncateAndRedeliver`). Mirrors deleteFeedbackFrom's role for
  * message_feedback exactly, but keyed by message id rather than array
- * position (see CLAUDE.md — this is the whole reason memories are keyed by
- * id in the first place: no index-drift class of bug to guard against).
+ * position (see the Memories entry in System Docs/Known Gaps.md — this is
+ * the whole reason memories are keyed by id in the first place: no
+ * index-drift class of bug to guard against).
  * Hard delete, not discardMemory's soft stamp: truncated content is being
  * removed from history entirely, not declined by the visitor.
  */

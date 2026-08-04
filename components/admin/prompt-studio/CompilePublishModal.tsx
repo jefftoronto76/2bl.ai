@@ -508,7 +508,7 @@ export function CompilePublishModal({
             }}
           >
             <div style={{ maxHeight: '46vh', overflow: 'auto', padding: '16px 18px' }}>
-              {/* Raw <pre> per CLAUDE.md — <Text component="pre"> fails typecheck */}
+              {/* Raw <pre> per System Docs/Shared Primitives.md — <Text component="pre"> fails typecheck */}
               <pre
                 style={{
                   margin: 0,

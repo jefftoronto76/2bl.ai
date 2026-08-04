@@ -104,7 +104,7 @@ export function useAuthFlowAdapter(): {
   // verifyCode. Provider detail; deliberately not surfaced as UI state.
   const flowRef = useRef<'signin' | 'signup' | null>(null)
 
-  // Known limitation (see CLAUDE.md "Known limitations"): the no-op navigate
+  // Known limitation (see System Docs/Utilities/Auth.md "Auth Known Limitations"): the no-op navigate
   // skips session-task handling and Safari ITP decorateUrl. Fine while MFA and
   // session tasks are disabled in the provider dashboard; the warn below makes
   // it loud if a task ever appears.

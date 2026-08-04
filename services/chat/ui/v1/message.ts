@@ -202,7 +202,7 @@ function buildContinuationContext(partialReply: string, nextUserText: string): s
  * breaks the strict user/assistant alternation the Anthropic Messages API
  * requires. (An earlier version of this function did drop it; every send
  * following a stop-with-content would have sent malformed history. Fixed
- * 2026-07-28, see CLAUDE.md's Stop / interrupted-turn protocol section.)
+ * 2026-07-28, see System Docs/Utilities/Chat UI.md's Stop / interrupted-turn protocol section.)
  * Swapping in a neutral placeholder keeps the role slot — and therefore
  * alternation — intact without replaying the visitor's own words as if the
  * reply had finished.

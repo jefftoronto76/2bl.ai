@@ -2,7 +2,7 @@
 // machine stays provider-agnostic. Handles BOTH Core 3 error channels: the
 // documented `{ error: ClerkError | null }` return AND the undocumented
 // throw on HTTP 4xx (ClerkAPIResponseError — observed in production, PR #86;
-// see CLAUDE.md "Dual error channel"). Do not remove the thrown-path handling
+// see System Docs/Utilities/Auth.md "Dual error channel"). Do not remove the thrown-path handling
 // to match Clerk's docs.
 
 export function extractErrorMessage(err: unknown): string {

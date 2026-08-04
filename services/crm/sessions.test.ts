@@ -1,7 +1,8 @@
 // Verifies updateSession's stop_requested_at write — the reliable,
-// explicit-signal half of the server-side Stop fix (see CLAUDE.md's
-// "Stop / interrupted-turn protocol"). No prior test coverage existed for
-// this file; scoped to the new field plus enough of the existing "only
+// explicit-signal half of the server-side Stop fix (see
+// System Docs/Utilities/Chat UI.md's "Stop / interrupted-turn protocol").
+// No prior test coverage existed for this file; scoped to the new field
+// plus enough of the existing "only
 // write when supplied" behavior to guard against a regression there.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'

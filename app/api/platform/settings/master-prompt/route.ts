@@ -9,7 +9,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 // compile step, no release note, and no real audit trail beyond a bare flag
 // flip. Compile & Publish on the Blocks screen (services/prompt/compile.ts)
 // is now the one path that activates a composer set, same as it already is
-// for every ordinary tenant prompt set — see CLAUDE.md Known Gaps for the
+// for every ordinary tenant prompt set — see System Docs/Known Gaps.md for the
 // orphaned AuditAction.PROMPT_SET_MASTER_SET this leaves behind.
 
 async function requirePlatformAdmin() {

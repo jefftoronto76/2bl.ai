@@ -216,7 +216,11 @@ Headlines:
 
 | Document | Purpose |
 |----------|---------|
-| CLAUDE.md | Rules for CC — stack, principles, workflow |
+| CLAUDE.md | Rules for CC — principles, stack, workflow (2026-08-04: reference material split to System Docs/, see its "Where the rest of this lives" table) |
+| System Docs/Database Schema.md | DB tables/columns |
+| System Docs/API Routes.md | API route map |
+| System Docs/Known Gaps.md | Known issues, orphaned code, deferred work |
+| System Docs/Utilities/ | Service internals, one file per service |
 | Backlog/MIGRATION.md | Full migration plan, phases 1-6 |
 | Backlog/SERVICEMIGRATION.md | Critical path — current state, what's moving, what's blocked |
 | DB_CHANGELOG.md | Schema changes log |
