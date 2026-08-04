@@ -39,8 +39,29 @@ proceeding — do not silently skip it.
 
 ### Highest Data Security
 Security is a first-class requirement, not a layer added later. Data is
-encrypted at rest and in transit. Row Level Security enforced at the database
-layer. Access is least-privilege by default. No exceptions.
+encrypted at rest and in transit. Access is least-privilege by default.
+
+**Current state — application-layer enforcement, not yet database-layer.**
+Tenant isolation is enforced today via application code: every query is
+scoped by tenant_id resolved from the authenticated session
+(`getAuthContext()`), a pattern applied consistently across all 118 files
+using the service-role client. Row Level Security is enabled on all 32
+tables, but only 3 have real policies (confirmed via live query
+2026-08-04), and the service-role key used for nearly all server-side data
+access bypasses RLS by default (standard Postgres/Supabase behavior). This
+means RLS is not currently providing defense-in-depth — a single missed
+tenant_id filter in application code would not be caught by the database.
+RLS policies are Studio-managed and not tracked in git, so this figure
+should be periodically re-verified against a live query rather than
+assumed permanent.
+
+**Plan to close the gap:** add real RLS policies (scoped via JWT claims,
+same pattern already used on `audit_events`/`auth_events`) to tables
+carrying tenant-scoped PII or sensitive data — this is a quick, low-risk
+addition, but note it only protects against anon-key misuse, not the
+service-role client that carries almost all traffic. Closing that larger
+gap (routing routine tenant-scoped reads through a client that respects
+RLS) is a separate, unscheduled architectural project, not a quick fix.
 
 ### Privacy by Design
 Collect only what is needed. User data is not stored beyond its purpose.
@@ -1456,7 +1477,13 @@ Design decisions:
 ## Database Schema
 
 All tables are multi-tenant. Every data access must respect `tenant_id`.
-Row Level Security is enforced at the Supabase layer.
+Row Level Security is enabled on all 32 tables, but only 3 have real
+policies (confirmed via live query 2026-08-04) and the service-role client
+used for nearly all server-side data access bypasses RLS by default —
+actual tenant isolation is enforced in application code via `tenant_id`
+scoping (`getAuthContext()`), not by the database. See "Highest Data
+Security" above. RLS policies are Studio-managed and not tracked in git;
+re-verify this figure periodically rather than assuming it's permanent.
 
 | Table | Key Columns |
 |-------|-------------|
