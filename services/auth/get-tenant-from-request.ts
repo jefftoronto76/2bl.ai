@@ -58,7 +58,7 @@ function extractRootDomain(host: string | null): string | null {
  * Preview/dev tenant fallback. Vercel preview hosts (*.vercel.app) and local
  * dev hosts never match tenants.domain, which made every tenant-resolved
  * surface (session create, tenant-scoped chat) untestable on preview — the
- * §11/§12 blocker in docs/test-plans/auth-boundary-test-plan.md.
+ * §11/§12 blocker in Design Handovers/test-plans/auth-boundary-test-plan.md.
  *
  * Honored ONLY when both hold:
  *  - PREVIEW_TENANT_ID is set (configure it in Vercel's Preview environment

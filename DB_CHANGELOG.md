@@ -623,7 +623,7 @@ existing rows.
 unknown — Studio SQL Editor history unavailable)
 
 **SQL run:** Confirmed against Studio 2026-06-12 — matches the originally
-inferred SQL (from `docs/auth-service-rebuild.md` §7) exactly:
+inferred SQL (from `Design Handovers/auth-service-rebuild.md` §7) exactly:
 ```sql
 ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'member';
 UPDATE users SET role = 'platform_admin' WHERE clerk_id = '<admin_clerk_id>';

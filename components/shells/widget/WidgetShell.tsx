@@ -126,7 +126,7 @@ function makeRenderUserMessage(
         <p
           onClick={status === 'failed' ? retry : undefined}
           className={[
-            // Visitor bubble spec (docs/spec_visitor_bubble.md), converged with
+            // Visitor bubble spec (Design Handovers/spec_visitor_bubble.md), converged with
             // Heirloom's structure (shrink-to-fit, 18px radius + 5px tail,
             // border, 15.5/1.62 body-text ramp — was font-display/italic at
             // 18px, a real token violation: Playfair is the display font,

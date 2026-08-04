@@ -10,7 +10,7 @@
 //     client-only registry, so every binding with the same key shares one
 //     conversation. This is the jefflougheed Hero + Overlay invariant — both
 //     surfaces read from and write to the same session (see
-//     docs/chat-ui-v2-design.md §2).
+//     Design Handovers/chat-ui-v2-design.md §2).
 //   - ISOLATED (no instanceKey): a ref-local store, created once and dying with
 //     the consumer. This is the Heirloom pattern.
 //

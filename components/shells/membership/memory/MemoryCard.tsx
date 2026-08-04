@@ -2,7 +2,7 @@
 
 /**
  * MemoryCard — the four states of a memory in the transcript, per the design
- * handoff (docs/heirloom_chat_handoffV2_2026_July 28/memories/README.md §5).
+ * handoff (Design Handovers/heirloom_chat_handoffV2_2026_July 28/memories/README.md §5).
  * Anchored into MessageList.tsx's per-message render functions — it sits
  * inline, below the message it followed, not in its own transcript slot (see
  * CLAUDE.md's Memories architecture note).

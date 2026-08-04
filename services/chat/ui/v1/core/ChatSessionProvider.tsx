@@ -8,7 +8,7 @@
 // streaming, error, and retry are shared across every surface under the
 // provider (the confirmed shared-retry behavior).
 //
-// Canonical topology (docs/chat-ui-v2-design.md §2.1):
+// Canonical topology (Design Handovers/chat-ui-v2-design.md §2.1):
 //   - Singleton (jefflougheed Hero + Overlay): one provider with an instanceKey
 //     mounted at a common ancestor of both surfaces.
 //   - Isolated (Heirloom panel): one provider with no instanceKey around the

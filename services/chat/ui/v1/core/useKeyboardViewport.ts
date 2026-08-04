@@ -18,7 +18,7 @@
 // Why a hook (not per-surface inline code): the same `visualViewport` plumbing
 // (listener lifecycle, SSR guards, scroll-lock) was duplicated across surfaces.
 // Centralizing it means every shell behaves identically and the iOS handling is
-// fixed in one place (see docs/chat-shells.md).
+// fixed in one place (see Design Handovers/chat-shells.md).
 //
 // SSR-safe: every `window` / `document` / `visualViewport` access is guarded,
 // so the hook is inert during server render and on browsers without the

@@ -9,7 +9,7 @@
 
 import { TYPE_LABELS, type BlockType } from './block-types'
 
-// 72 is a design choice (docs/Prompt Publish Update July 2026/DIFF.md OQ-7),
+// 72 is a design choice (Design Handovers/Prompt Publish Update July 2026/DIFF.md OQ-7),
 // not a column-width constraint found elsewhere in the repo.
 export const SUMMARY_MAX = 72
 

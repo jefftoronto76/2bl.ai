@@ -1,6 +1,6 @@
 // services/auth — SERVER barrel.
 //
-// Golden Rule (docs/auth-service-rebuild.md): no file outside services/auth/
+// Golden Rule (Design Handovers/auth-service-rebuild.md): no file outside services/auth/
 // imports an auth provider directly. Product code imports from here (server),
 // @/services/auth/client ('use client' hooks), @/services/auth/ui (prebuilt
 // provider UI), or @/services/auth/middleware (edge).

@@ -5,7 +5,7 @@
 // Holds ONLY the conversation slice that every surface must share —
 // messages, sessionId, streaming flag, error flag, and request-affecting
 // mode. Shell/presentation state (isExpanded, composer focus ref, etc.) is
-// deliberately NOT here; that is a shell concern (see docs/chat-ui-v2-design.md
+// deliberately NOT here; that is a shell concern (see Design Handovers/chat-ui-v2-design.md
 // §6 Risk 4). The store is a pure, framework-agnostic value container — no
 // React — so it is unit-testable in isolation and SSR-neutral.
 //

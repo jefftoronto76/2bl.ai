@@ -9,7 +9,7 @@
  * cascade, so this one component renders correctly on both without any
  * per-brand branching.
  *
- * Per docs/spec_visitor_bubble.md's "editing" state: 15.5px/1.62 type ramp
+ * Per Design Handovers/spec_visitor_bubble.md's "editing" state: 15.5px/1.62 type ramp
  * (matches the read-state bubble so text doesn't reflow on the swap), 18px
  * radius with a 5px tail (same as read state), border-border-hover (the
  * spec's "border-border-strong" doesn't exist as a token in this repo — this
