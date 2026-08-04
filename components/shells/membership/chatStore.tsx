@@ -336,9 +336,16 @@ export function ChatProvider({
   // request so getMemberContext can look up the primer without user_id.
   const memberIdRef = useRef<string | null>(memberId ?? null);
 
-  // Ref mirror for mediaItems state — updated every render so the getMediaItems
-  // closure passed to useChatSession always reads the current array without
-  // needing to be recreated (same pattern as memberIdRef above).
+  // Source of truth for getMediaItems (passed to useChatSession), written
+  // synchronously by addMediaItem — not just mirrored from mediaItems state on
+  // render. A just-uploaded attachment is immediately followed by send() in
+  // the same synchronous call stack (ChatInput.handleSend), with no await in
+  // between once a session already exists (see useChatTurn.ts's send()) — so
+  // a render-only mirror would still be reading the PREVIOUS render's array
+  // when getMediaItems() is called, missing the attachment just added this
+  // turn. The mediaItems useState below still exists for rendering (UI needs
+  // to re-render on updates) and its own effects (catch-up fetch, Realtime,
+  // polling) still write it directly since those aren't on this hot path.
   const mediaItemsRef = useRef<ClientMediaItem[]>([]);
 
   // Tracks the sessionId this component last observed, so the recentSessions-
@@ -783,20 +790,24 @@ export function ChatProvider({
 
   // ── Media items — Realtime subscription + catch-up hydration ──────────────
   const [mediaItems, setMediaItems] = useState<ClientMediaItem[]>([]);
-  // Keep the ref current so getMediaItems (passed to useChatSession above) always
-  // reads the latest value without the closure needing to be recreated each render.
+  // Backstop mirror for the other writers below (catch-up fetch, Realtime,
+  // polling) — none of them are followed synchronously by a send(), so
+  // picking up their result on the next render is fine. addMediaItem itself
+  // does NOT rely on this — it writes mediaItemsRef.current directly, below.
   mediaItemsRef.current = mediaItems;
 
   const addMediaItem = useCallback((item: ClientMediaItem) => {
-    setMediaItems(prev => {
-      const idx = prev.findIndex(m => m.id === item.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = mergeMediaItem(prev[idx], item);
-        return next;
-      }
-      return [...prev, mergeMediaItem(undefined, item)];
-    });
+    // Computed off mediaItemsRef.current (not React state) and written back
+    // to it synchronously, before setMediaItems ever runs — see the ref's
+    // declaration comment for why this can't wait for a render.
+    const prev = mediaItemsRef.current;
+    const idx = prev.findIndex(m => m.id === item.id);
+    const next =
+      idx >= 0
+        ? prev.map((m, i) => (i === idx ? mergeMediaItem(m, item) : m))
+        : [...prev, mergeMediaItem(undefined, item)];
+    mediaItemsRef.current = next;
+    setMediaItems(next);
   }, []);
 
   // Catch-up: on session load, fetch any items whose Realtime completion event
