@@ -185,6 +185,15 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     resolveMediaContext(req.mediaItems, tenantId, memberId),
   ])
 
+  // Temporary diagnostic logging — see PR description for context/removal plan.
+  console.log('[chat] mediaContext resolved:', {
+    clientSentItems: req.mediaItems?.length ?? 0,
+    contextLength: mediaContext.length,
+    hasAttached: mediaContext.includes('ATTACHED MEDIA'),
+    hasFailed: mediaContext.includes('ATTACHMENT FAILED'),
+    hasInProgress: mediaContext.includes('ATTACHMENT IN PROGRESS'),
+  })
+
   console.log('[chat] memberContext', memberContext !== null
     ? `found (${memberContext.length} chars, isFirstTurn=${isFirstTurn})`
     : 'null — not injected'

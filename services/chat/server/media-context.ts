@@ -127,9 +127,20 @@ export async function resolveMediaContext(
           .join('\n')
       : ''
 
-  return [readySection, failedSection, inProgressSection]
+  const context = [readySection, failedSection, inProgressSection]
     .filter(section => section.length > 0)
     .join('\n\n')
+
+  // Temporary diagnostic logging — see PR description for context/removal plan.
+  console.log('[chat/media-context] resolveMediaContext resolved:', {
+    clientSentItems: mediaItems.length,
+    readyCount: readyRows.length,
+    failedCount: failedRows.length,
+    inProgressCount: inProgressItems.length,
+    contextLength: context.length,
+  })
+
+  return context
 }
 
 /**
