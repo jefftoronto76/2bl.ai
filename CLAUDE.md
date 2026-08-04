@@ -210,6 +210,17 @@ session start.
    operations, GitHub UI operations, or deployment management. CC drives
    the workflow end to end with Jeff's approval gates.
 
+6. **LOGGING CONVENTION**: Use `audit_events` (via the `AuditAction` enum in
+   `services/audit/types.ts`) for anything worth persisting or debugging
+   later — not `console.log`. `console.log` output is ephemeral (Vercel's
+   log retention is limited) and unqueryable; `audit_events` is permanent,
+   structured, and consistent with how every other event in this system is
+   already recorded. Add a new `AuditAction` value following the existing
+   naming convention (dot-separated, lowercase) rather than reusing an
+   unrelated one. Never log raw PII or extracted file content in metadata —
+   category/length/presence only, following the pattern in
+   `resolveMediaContext`'s `sanitizeFailureReason`.
+
 ---
 
 ## Dependency & API Rules
