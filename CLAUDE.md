@@ -575,7 +575,7 @@ transport via the shared `readDataStream` (`services/chat/server/stream-utils.ts
 | `ChatInput` | `components/shells/membership/ChatInput.tsx` | Auto-growing textarea, Enter-to-send (Shift+Enter newline), `ArrowUp` send button (disabled when empty or loading). Calls `sendMessage`. No AI disclaimer. |
 | `MessageList` | `components/shells/membership/MessageList.tsx` | Renders messages (assistant = `Bot`-icon avatar + left bubble, user = right bubble, no avatar) and a bouncing-dots typing indicator while `isLoading`; auto-scrolls to bottom. **Visitor bubble shape (per `docs/spec_visitor_bubble.md`, 2026-07-28; widened + alignment-fixed same day):** `w-fit max-w-[90%]` shrink-to-fit measure (was `max-w-[75%]` with no `w-fit` — the bug that made short messages wrap early / long ones fail to respect the measure — then `76%` per the spec, then widened to `90%` after the 76% measure read as cramped next to the assistant's full-width response), `rounded-[18px] rounded-br-[5px]` (18px radius, 5px tail — was `rounded-2xl`/`rounded-br-sm`, 16px/2px), `border border-border` now applied unconditionally (previously only on the `failed` state — the sent-state bubble had no border at all), text at 15.5px/1.62 (was `text-base`/`leading-relaxed`, 16px/1.625), failed state is `bg-red-400/10 border-red-400/45` (was border-color-only, no background wash), inter-message gap `gap-5` (20px, was `gap-6`/24px), bubble→action-row gap `gap-1.5` (6px, was `gap-1`/4px). `bg-surface`/`border-border` are left as the plain existing tokens (not overridden to the spec's literal `#FFFDF9`/`#E8E0D2` hex) — the delta from the current `#FFFFFF`/alpha-hairline values is negligible, and `border-border`'s own code comment ("matches production weight") signals its alpha was already deliberately calibrated. **Bubble/action-row alignment:** `MessageBubble`'s user-message return is `group flex flex-col items-end gap-1.5` — Flexbox `align-items: flex-end` right-aligns each child (bubble, `DeliveryStatus`, `UserMessageActions`) to the container's own edge independently of its own width, so the action row's right edge always lands under the bubble's. A same-day CSS Grid attempt at this (`group grid justify-end gap-1.5`, with `DeliveryStatus`/`UserMessageActions` wrapped in `w-full min-w-0` divs) was reverted: CSS Grid's default `justify-self: stretch` stretches every item to a single shared column, and that column is sized to the WIDEST row's max-content — usually the actions row, not the bubble — so the bubble's own `max-w-[90%]` resolved against the actions row's width instead of the real container. Measured via a Playwright/Chromium harness reproducing the exact DOM+CSS: for a short message the two rows' right edges were ~136px apart under the grid version (vs. 0px under this flex version), and the bubble's *effective* max-width was bottlenecked to the actions row's own ~185px natural width rather than 90% of the container — explaining why the widen-to-90% change looked like it wasn't taking effect. (The assistant-message branch is early-returned dead code, per the file's own note above, and keeps the older `flex flex-col items-start` shape untouched.) **Assistant action-row alignment (found in production 2026-07-28):** `makeRenderAssistantMessage`'s `MessageActions` row sits below `AssistantMarkdownBubble` in a `ml-[60px]` wrapper — was `ml-11` (44px), which only accounted for the avatar (`w-8` = 32px) + `gap-3` (12px) and ignored the text bubble's own `px-4` (16px) left padding, so the action icons sat visibly left of where the actual prose text started (confirmed against a production screenshot, and measured via a Playwright harness: 16px delta with `ml-11`, 0px with `ml-[60px]`). jefflougheed's equivalent (`WidgetShell.tsx`'s `makeRenderAssistantMessage`) has no avatar to offset for — `SageReply`'s prose and its `MessageActions` row both use a single shared `pl-4`, so they align by construction and never had this bug. The `debugMarkers` wrapper below (admin-only) uses the same `ml-[60px]` for the same reason. Assistant prose runs through the marker registry (`createDefaultRegistry()`), so `[BOOKING:]` / `[NAME:]` / `[EMAIL:]` markers are stripped rather than shown as raw text (Heirloom has no booking-card UI, so BOOKING cards are dropped — only prose shows). Empty assistant bubbles (marker-only or cleared on error) are skipped, and the engine's `errorType` renders an on-brand error bubble (copy per type from `components/chat/errorCopy.ts`) with a real Retry button wired to `retry()`. **Admin debug view**: when `useAuthUser().user.isPlatformAdmin` is true (the client-side boundary signal, mapped from Clerk publicMetadata — display-only gating), all parsed markers extracted by the registry (`result.markers`) render as `DebugPill` components below each assistant message — dark `bg-black/60` monospace pill with a `debug` eyebrow label and the raw bracket text. Display-only: zero changes to the parser, registry, or store. `[SYSTEM: ...]` user-message detection is also wired but won't fire in practice since `sendHidden` never adds hidden turns to the store. Non-admin members: zero behavioral or visual change. **Visitor message actions (added 2026-07-27):** each user message renders `components/chat/UserMessageActions.tsx` (Edit/Copy/Send again — mutually exclusive with `DeliveryStatus`, and only shown once `status` is `'sent'`) below its bubble; tapping Edit swaps the bubble in place for `components/chat/EditableUserBubble.tsx` (an auto-growing textarea, Enter saves/Shift+Enter newline/Esc cancels) via local `editingId` state. Save calls `editMessage(id, text)`, Send again calls `resendMessage(id)` — both from `useChatStore()` (see `chatStore.tsx` above), which truncate the transcript forward from that message and re-deliver (see `useChatTurn.ts`'s `truncateAndRedeliver`). |
 | `Sidebar` (v1 — **superseded, unmounted**) | `components/shells/membership/Sidebar.tsx` | The pre-V2 sidebar, replaced by `SidebarV2` in ChatHero. Kept on disk pending preview verification of the V2 pass; delete in the cleanup commit. |
-| `SidebarV2` | `components/shells/membership/v2/SidebarV2.tsx` | V2 sidebar (collapsible `w-12` ↔ `w-64` via a **local** `expanded` state, default `true`). Fixed 2026-07-30: this used to be driven by the shared shell reducer's `state.isSidebarExpanded` — the same flag ChatHero uses to decide whether the *mobile* overlay renders at all (initial value `false`). On desktop, where SidebarV2 always renders, that meant the sidebar started in the collapsed icon rail with the entire Memories/Conversations list hidden — clicking "a conversation" appeared to do nothing because no row was rendered to click. The local state decouples "does this instance show full labels/lists" from "is the mobile overlay open," and starts expanded so Recent conversations are visible and clickable immediately on both mobile and desktop. Top → bottom: collapse toggle · threshold-gated Search (faint until `recentSessions.length >= searchThreshold` (8); fires `onSearch` per keystroke — **stubbed at mount**, no filtering) · New Chat (store `newChat()`) · Uploads · Share Heirloom (both stub props) · collapsible Conversations (store `recentSessions` + `loadSession`, active session highlighted, "No conversations yet" empty state) · **anonymous sign-in nudge** (v1 parity, `state.isMember` gate) · Stories (Create / Invite actions — disabled when `storiesDisabled` **or** their handler is absent; story rows with hover tooltip from `description`, optional per-row chat icon + kebab) · Writing Prompts. Per-row kebab `RowMenu` **portals to `document.body`** with fixed positioning captured from the kebab rect (the `overflow-hidden` aside clipped in-tree menus), flips above when out of room below, closes on outside click / scroll / resize / capture-phase Escape; renders only when `onRowAction` is provided (not provided at mount — no menus in pass 1). |
+| `SidebarV2` | `components/shells/membership/v2/SidebarV2.tsx` | V2 sidebar (collapsible `w-12` ↔ `w-64` via a **local** `expanded` state, default `true`). Fixed 2026-07-30: this used to be driven by the shared shell reducer's `state.isSidebarExpanded` — the same flag ChatHero uses to decide whether the *mobile* overlay renders at all (initial value `false`). On desktop, where SidebarV2 always renders, that meant the sidebar started in the collapsed icon rail with the entire Memories/Conversations list hidden — clicking "a conversation" appeared to do nothing because no row was rendered to click. The local state decouples "does this instance show full labels/lists" from "is the mobile overlay open," and starts expanded so Recent conversations are visible and clickable immediately on both mobile and desktop. Top → bottom: collapse toggle · threshold-gated Search (faint until `recentSessions.length >= searchThreshold` (8); fires `onSearch` per keystroke — **stubbed at mount**, no filtering) · New Chat (store `newChat()`) · Uploads · Share Heirloom (both stub props) · collapsible Conversations (store `recentSessions` + `loadSession`, active session highlighted, "No conversations yet" empty state) · **anonymous sign-in nudge** (v1 parity, `state.isMember` gate) · Stories (Create / Invite actions — disabled when `storiesDisabled` **or** their handler is absent; story rows with hover tooltip from `description`, optional per-row chat icon + kebab) · Writing Prompts. Per-row kebab `RowMenu` **portals to `document.body`** with fixed positioning captured from the kebab rect (the `overflow-hidden` aside clipped in-tree menus), flips above when out of room below, closes on outside click / scroll / resize / capture-phase Escape; renders only when `onRowAction` is provided — **as of 2026-08-03 (PR #247), `ChatHero.tsx` passes `onRowAction` on both desktop and mobile, so menus render for both row types**; conversation `star`/`rename`/`delete` call real endpoints, story rows and `moveToChapter`/`removeFromChapter`/`invite` remain no-ops (see Known Gaps). |
 | `ChatDrawerV2` | `components/shells/membership/v2/ChatDrawerV2.tsx` | Right-anchored drawer wrapper: fixed, `z-50`, slide-in via translate-x, two width states (`defaultWidthClassName` ↔ `w-screen` when `isFullScreen`). `inert` + `aria-hidden` + `pointer-events-none` while closed (off-screen content leaves the tab order). Optional built-in minimal header (`showHeader`, default true) — Heirloom passes `false` and keeps `ChatHeader`. Body is `position: relative`, the containing block for the V2 modals' `absolute inset-0` overlays. |
 | `BeginStoryModal` | `components/shells/membership/v2/BeginStoryModal.tsx` | "Begin a new story" modal (props only: `open` / `onClose` / `onCreate(name, description)`). Name required (Enter submits), description optional (becomes the story row tooltip). Mounted by ChatHero; `onCreate` appends to the ephemeral stories state. Uses `useModalA11y`. |
 | `InviteCollaboratorsModal` / `ShareHeirloomModal` | `components/shells/membership/v2/` | **Landed but not mounted** (deferred / stubbed by decision — no member-facing invite API, no share backend). Props-only; both use `useModalA11y`. ShareHeirloomModal's default `shareUrl` (`heirloom.life`) is a placeholder — pass the real URL when mounting. |
@@ -608,10 +608,12 @@ namespace memoized so repeated calls don't reopen the database). Unit-tested
 in `services/chat/ui/v1/persistence.test.ts`. **This is IndexedDB only — the
 session create/PATCH API and the DB write path are unchanged.**
 
-Tenant note: `/api/sage` resolves the tenant from the host. Until a Heirloom
-tenant + `compiled_prompts` is configured, Heirloom chat falls back to Sage's
-`DEFAULT_SYSTEM_PROMPT` (it streams, but answers as Sage). Wiring a Heirloom
-tenant/prompt is a follow-up.
+Tenant note: `/api/sage` resolves the tenant from the host. **Resolved
+2026-08-04** — Heirloom's tenant (`20767f1d-1148-4e43-ab73-f6da88f0ac56`) now
+has its own live `compiled_prompts` row (`status='live'`, id
+`7743fd18-37df-46b2-9036-6d0ef5dbf7ca`), confirmed via direct SQL. Heirloom
+chat runs its own compiled prompt, not the shared `DEFAULT_SYSTEM_PROMPT`
+fallback.
 
 ---
 
@@ -1469,15 +1471,12 @@ Row Level Security is enforced at the Supabase layer.
 | `pills` | id (uuid, PK), tenant_id (uuid NOT NULL, FK → tenants), label (text NOT NULL — display text on the pill/chip), scope (text NOT NULL CHECK ('composer' \| 'runtime') — `composer` = action pill in Prompt Studio, `runtime` = suggestion chip in member chat), trigger_type (text NOT NULL CHECK ('message' \| 'tool' \| 'card') — what firing the pill does: sends a message, invokes a tool, or renders a card), payload (jsonb NOT NULL default '{}' — carries message text / tool definition / card config depending on `trigger_type`), prompt_type_key (text, nullable — null = applies to all prompt types, non-null = scoped to that type), block_id (uuid, nullable, FK → blocks — optionally links a composer pill to a specific block), is_default (boolean NOT NULL default false), sort_order (integer, nullable), created_at (timestamptz NOT NULL), updated_at (timestamptz NOT NULL). Index: `pills_tenant_id_idx`. Added 2026-06-18. Three platform default composer pills seeded: "Summarize my prompt", "Identify opportunities to improve", "Create a new block". |
 | `session_tokens` | id (uuid, PK), tenant_id (uuid NOT NULL, FK → tenants), created_by (uuid NOT NULL, FK → users), token (text NOT NULL UNIQUE — the URL token), context_injection (text, nullable — invisible system-prompt addition injected for the life of the session), prompt_type_key (text, nullable — prompt type to load for the session), chip_preload (jsonb NOT NULL default '[]' — array of chip definitions to surface at session open), expires_at (timestamptz, nullable — null = never expires), used_count (integer NOT NULL default 0 — sessions initiated with this token; informational only), created_at (timestamptz NOT NULL), updated_at (timestamptz NOT NULL). Indexes: `session_tokens_tenant_id_idx`, `session_tokens_token_idx`. Added 2026-06-18. Used for custom deep-link URLs, QR codes, and referral links that pre-configure a session. **Currently unpopulated** — no application code reads or writes this table yet; table created ahead of the feature build. |
 
-**Deployment note — tenant_id backfill required**: `compiled_prompts` and
-`compiled_prompts_history` rows must have `tenant_id` populated before
-tenant-scoped reads return data. Routes that scope by `tenant_id`
-(notably `/api/sage/route.ts`, `/api/admin/prompt/save/route.ts`, and
-`/api/admin/prompt/compile/route.ts`) will silently fall back to
-`DEFAULT_SYSTEM_PROMPT` (Sage public chat) or treat the tenant as
-having no existing prompt (admin save/compile) if existing rows were
-inserted before the column was enforced. Backfill existing rows on
-deploy.
+**Deployment note — tenant_id backfill: resolved 2026-08-04.** `compiled_prompts`
+and `compiled_prompts_history` previously risked rows with a null `tenant_id`,
+which would silently break tenant-scoped reads (`/api/sage/route.ts`,
+`/api/admin/prompt/save/route.ts`, `/api/admin/prompt/compile/route.ts`).
+Confirmed via direct SQL: zero rows with null `tenant_id` in either table. No
+outstanding backfill.
 
 ### Block Types
 
@@ -1614,12 +1613,20 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   admin-created access gate, not this); conversation search (the sidebar field
   is a visible stub); Uploads; Share Heirloom (sidebar item + ChatHeader icon
   are inert; `ShareHeirloomModal` is landed but unmounted — pass the real
-  `heirloom.2bl.ai` URL when mounting, its default is a placeholder); per-row
-  kebab actions (star/rename/move/delete need session endpoints that don't
-  exist; `onRowAction` is not passed, so menus don't render); Writing Prompts
-  copy review (the 4 static prompts in ChatHero are placeholder-grade). The
-  v1 `Sidebar.tsx` is superseded and unmounted — delete after preview
+  `heirloom.2bl.ai` URL when mounting, its default is a placeholder); Writing
+  Prompts copy review (the 4 static prompts in ChatHero are placeholder-grade).
+  The v1 `Sidebar.tsx` is superseded and unmounted — delete after preview
   verification.
+
+  **Per-row kebab actions — resolved for conversations 2026-08-03 (PR #247).**
+  `ChatHero.tsx` now passes `onRowAction` to `SidebarV2` on both desktop and
+  mobile, so kebab menus render for both conversation and story rows.
+  Conversation `star` / `rename` / `delete` are fully wired to real endpoints
+  (`PATCH` / `DELETE /api/sessions/[id]`) with optimistic updates and
+  revert-on-failure. Still not built: story rows remain backend-less (delete
+  only mutates the ephemeral local `stories` state — no network call, since
+  there's still no `stories` table), and `moveToChapter` / `removeFromChapter`
+  / `invite` remain deliberate no-ops for both row types.
 
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
@@ -1658,37 +1665,41 @@ Tracked, not yet addressed. See `ARCHITECTURE_OVERVIEW.md` and
   `app/(jefflougheed)/components/` (importing `ShareModal` via relative
   `./ShareModal`), which clears the last `src→app` boundary warning and empties
   `src/components/` (directory removed; `src/` holds only `calendly.d.ts`).
-  `boundaries/element-types` is now at **0 warnings**; the rule stays at `warn`
-  until Step G flips it to `error`.
+  `boundaries/element-types` is now at **0 warnings**; the rule has since been
+  flipped to `error` (Step G, confirmed in `.eslintrc.json`) — no longer pending.
 - **eslint `components` element-type registered (centralization Step D).** Root
   `components/**` (the Mantine admin UI) is now a first-class boundary element:
   `app → components` and `components → services` are legal; `components` may not
   reach into `app` or `src` internals. This is the same allowance the
   `components/shells/` widget + membership shells will consume in Steps E/F. The
-  rule stays at `warn` until the shells land and Step G flips it to `error`.
-- **Memories (Heirloom) — Manual path shipped 2026-07-29; Offered and Auto are
-  not, and Offered is explicitly blocked, not just deferred.** The memory
-  bookmark, card (running/draft/saved/error states), and Keep/Rewrite/Discard
-  all ship in this pass — see `services/chat/ui/v1/useMemories.ts`,
-  `components/shells/membership/memory/`, and the bookmark on
-  `components/chat/MessageActions.tsx` / `UserMessageActions.tsx` (behind
-  `onKeep`, which the jefflougheed widget shell doesn't pass — memories are
-  Heirloom-only). Two of the design's three creation paths are **not** built:
+  rule has since been flipped to `error` (Step G, confirmed in `.eslintrc.json`)
+  — no longer pending.
+- **Memories (Heirloom) — Manual path shipped 2026-07-29; Auto shipped
+  2026-07-31 via marker, not a real tool call; Offered still not built.** The
+  memory bookmark, card (running/draft/saved/error states), and
+  Keep/Rewrite/Discard all ship in the manual pass — see
+  `services/chat/ui/v1/useMemories.ts`, `components/shells/membership/memory/`,
+  and the bookmark on `components/chat/MessageActions.tsx` /
+  `UserMessageActions.tsx` (behind `onKeep`, which the jefflougheed widget
+  shell doesn't pass — memories are Heirloom-only).
+  - **Auto** (PR #242, "07-31-26_save-memory-marker") is live: a bare
+    `[SAVE_MEMORY]` marker (`services/chat/ui/v1/registry.ts`) lets the guide
+    auto-save a memory mid-conversation, dispatched client-side to the same
+    `memories.create()` the manual bookmark calls — functionally the "guide
+    invokes a save mid-conversation" behavior the original design called
+    Auto, just implemented as a marker rather than a real tool call.
+    `services/chat/server/stream.ts`'s `streamText()` still passes no `tools`
+    param — there is still no generic tool-use wiring in this codebase — but
+    that no longer means auto-save doesn't exist; the marker path covers it.
   - **Offered** (the guide asks inline via "Write it up" / "Not yet" chips)
-    needs the guide to know memories exist at all — a new marker plus prompt
-    instructions telling it when to emit one. Heirloom has no compiled system
-    prompt of its own yet; it falls back to jefflougheed's shared
-    `DEFAULT_SYSTEM_PROMPT` (see the Heirloom storefront chat section's
-    "Tenant note" above). Editing that shared prompt to teach the guide about
-    memories would leak Heirloom-only behavior into jefflougheed's Sage chat.
-    **Do not work around this by touching the shared default prompt** — it
-    stays blocked until Heirloom has its own compiled prompt (already a
-    separate, pre-existing follow-up item), not something to route around.
-  - **Auto** (the guide invokes a save tool itself, mid-conversation) needs
-    real tool-calling infrastructure — `services/chat/server/stream.ts`'s
-    `streamText()` call passes no `tools` today; there is no tool-use wiring
-    anywhere in this codebase. Deferred to a later phase once that capability
-    exists.
+    is still **not built** — no chip-based confirmation flow exists yet. The
+    blocker cited previously (Heirloom has no compiled prompt of its own) no
+    longer applies: Heirloom's tenant now has its own live `compiled_prompts`
+    row (see the Heirloom storefront chat section's "Tenant note," resolved
+    2026-08-04), which is also what makes the `[SAVE_MEMORY]` marker possible
+    without touching jefflougheed's shared `DEFAULT_SYSTEM_PROMPT`. Building
+    Offered is now a prompt-instructions + chip-UI task on Heirloom's own
+    compiled prompt, not a blocked one.
   Also not in this pass: the story-linking concept entirely — a memory does
   not require a story to be saved (there is no `stories` table), and when
   story-linking is eventually built it should be many-to-many (a memory
