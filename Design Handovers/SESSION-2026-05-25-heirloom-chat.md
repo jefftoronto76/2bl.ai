@@ -31,11 +31,11 @@ Ported the full chat surface from the legacy Vite repo (`LJ_Legacy26`) into
 ### 2. Documentation sync (one commit per file)
 - **CLAUDE.md** — Heirloom routing, `x-heirloom` middleware signal, design
   tokens, chat components.
-- **SERVICEMIGRATION.md** — marked Heirloom landing + chat complete; next step
+- **Backlog/SERVICEMIGRATION.md** — marked Heirloom landing + chat complete; next step
   is the memory-creation flow.
 - **README.md** — Heirloom route, `x-heirloom` brand signal, chat section.
-- **2BL.md** — Heirloom product status updated.
-- **MIGRATION.md** — corrected the stale "Heirloom — nothing exists" line.
+- **System Docs/2BL.md** — Heirloom product status updated.
+- **Backlog/MIGRATION.md** — corrected the stale "Heirloom — nothing exists" line.
 
 ### 3. PR #28 — merged to `main`
 Bundled the full `heirloom-migration` branch (10 commits, 34 files) with a
@@ -47,7 +47,7 @@ three-section description, merged to `main`.
 through on the original host — mirrors the SBL block's `/api/platform`
 exclusion. `tsc` + build verified. Clean hotfix branch → PR → merged.
 
-### 5. BACKLOG.md — "Prompt Contradiction Detection"
+### 5. Backlog/BACKLOG.md — "Prompt Contradiction Detection"
 Added a backlog entry: cross-block semantic contradiction detection during the
 save-time safety check (passes the full compiled prompt to Claude to flag
 conflicting instruction pairs). Feeds the existing `safety_check_result` jsonb

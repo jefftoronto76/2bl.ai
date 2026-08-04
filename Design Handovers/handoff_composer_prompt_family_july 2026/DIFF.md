@@ -248,5 +248,5 @@ OTHER rows should be backfilled is a product question, not a mechanical one** �
 composer prompt historically has no marker today (though `compiled_prompts_history` and the
 `PROMPT_SET_MASTER_SET` audit entries may be able to reconstruct it — I have verified neither).
 
-Worth an entry in `DB_CHANGELOG.md` alongside the `is_master` → `is_composer_prompt` rename,
+Worth an entry in `System Docs/DB_CHANGELOG.md` alongside the `is_master` → `is_composer_prompt` rename,
 since the two will otherwise read as duplicates of each other.

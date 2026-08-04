@@ -33,7 +33,7 @@ import {
     can never get stuck at opacity:0 if the observer doesn't fire.
   • Restored the richer differentiator / "What Is" copy + vote count (247).
 
-  Token notes: uses ONLY the canonical platform tokens (css-token-unification-spec.md)
+  Token notes: uses ONLY the canonical platform tokens (Backlog/css-token-unification-spec.md)
   through their Tailwind classes — bg-background (--color-background), bg-surface
   (--color-surface), text-text-primary (--color-text-primary), text-text-muted
   (--color-text-muted), bg-accent/text-accent (--color-accent), hover:bg-accent-hover

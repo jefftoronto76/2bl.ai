@@ -14,7 +14,7 @@
 
 -- ── Compiled-prompt source ──────────────────────────────────────────────────────
 -- The compiled output currently lives in `master_prompt` (being renamed to
--- `compiled_prompts` — see prompt-schema-design.md "Cleanup Needed"). This view
+-- `compiled_prompts` — see Backlog/prompt-schema-design.md "Cleanup Needed"). This view
 -- joins on `prompt_set_id`, which is the TARGET shape (one compiled row per set).
 --
 --   ⚠ OPEN QUESTION: if `master_prompt` is still ONE ROW PER TENANT in your env

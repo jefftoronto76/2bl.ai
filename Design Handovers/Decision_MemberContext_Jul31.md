@@ -8,7 +8,7 @@ Heirloom's compiled prompt has instructed the model, for a while, to treat a "ME
 
 It didn't. The actual implementation (`getMemberPrimer`, `services/chat/server/member-context.ts`) fires **once per member, ever** — gated by `primer_used_at`, which self-locks after first use. Every returning member, from their second session onward, silently gets nothing — the prompt's "skip asking, they're known" instruction never actually fires for them.
 
-This went unnoticed because `member-context.ts`, `primer`, and `auto_open` were completely undocumented — absent from both `CLAUDE.md` and `DB_CHANGELOG.md`.
+This went unnoticed because `member-context.ts`, `primer`, and `auto_open` were completely undocumented — absent from both `CLAUDE.md` and `System Docs/DB_CHANGELOG.md`.
 
 ## Two options considered
 

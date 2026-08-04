@@ -32,7 +32,7 @@ managed `prompt_types` list, never free text.
 
 | # | Handoff assumption | Live reality | Resolution |
 |---|--------------------|--------------|------------|
-| 1 | `prompt_sets` is a **new** table to create via `migrations/0001_prompt_sets.sql`. | Table **already exists**. `DB_CHANGELOG.md` (June 25 2026) shows `prompt_type_id`, `prompt_sets_single_master_idx`, and the `touch_updated_at` trigger already added; `is_master` added earlier. `usage_type` exists nowhere. | **No migration needed.** Schema work is already done by Jeff and already matches the `prompt_type_id` substitution. Per workflow rule #3, CC writes no migration. The handoff `.sql` is reference only. |
+| 1 | `prompt_sets` is a **new** table to create via `migrations/0001_prompt_sets.sql`. | Table **already exists**. `System Docs/DB_CHANGELOG.md` (June 25 2026) shows `prompt_type_id`, `prompt_sets_single_master_idx`, and the `touch_updated_at` trigger already added; `is_master` added earlier. `usage_type` exists nowhere. | **No migration needed.** Schema work is already done by Jeff and already matches the `prompt_type_id` substitution. Per workflow rule #3, CC writes no migration. The handoff `.sql` is reference only. |
 | 2 | `GET /api/admin/prompt-sets` is new, returns unwrapped `PromptSet[]` with full fields. | Route **exists** (`app/api/admin/prompt-sets/route.ts`), is **read-only**, returns wrapped narrow `{ promptSets: [{id,label,description,status,version}] }`, and feeds the Composer picker (`app/admin/prompt-builder/page.tsx:130`). | **Decision: expand GET + update Composer** (single source of truth). GET returns unwrapped full rows; the one Composer consumer is updated to the new shape. Add PATCH + DELETE. |
 | 3 | Type selector mints free-text usage slugs (`base`/`member` + "＋ New type…"). | `prompt_types` is a managed per-tenant table with seeded platform defaults; **no `GET /api/admin/prompt-types` route exists**. | New routes `GET /api/admin/prompt-types` and `POST /api/admin/prompt-types`. The GET feeds the type selector. The POST handles the inline "＋ New type…" affordance — creates a new `prompt_types` row with `tenant_id` from session, `name` from user input, `key` slugified from name, returns the new row. The selector in `PromptSets.tsx` keeps the inline mint affordance, wired to `POST /api/admin/prompt-types`. |
 | 4 | Platform screen lives at `app/platform/settings/page.tsx`; components at `@/components/admin/platform-settings/*`. | Platform routes live under the **`app/(platform)/platform/*`** route group; nav is centralised in `components/admin/shell/nav-config.ts`; gating is in `app/(platform)/layout.tsx`. | Page goes at `app/(platform)/platform/settings/page.tsx`. Co-locate its components under that folder (or `components/admin/platform-settings/`); add nav + page-title + padded-route entries to `nav-config.ts`. |
@@ -207,7 +207,7 @@ approval before the next (per CLAUDE.md push cadence / one-change-at-a-time).
    non-admin is redirected/403.
 5. **Docs:** update CLAUDE.md (new panel under "Page-local components" + Settings
    page row; new routes under "API Routes"; `prompt_sets` row in the schema table)
-   and `DB_CHANGELOG.md` only if Jeff makes further schema changes — documentation
+   and `System Docs/DB_CHANGELOG.md` only if Jeff makes further schema changes — documentation
    is a PR gate (CLAUDE.md).
 
 ---

@@ -21,7 +21,7 @@ export default {
         'accent-soft': 'var(--color-accent-soft)',
         pos: 'var(--color-pos)',
         // Heirloom/Legacy storefront tokens — mapped to canonical --color-* names
-        // (css-token-unification-spec.md). Values are defined in each route's
+        // (Backlog/css-token-unification-spec.md). Values are defined in each route's
         // globals.css; these are inert on routes that don't define the vars.
         background:     'rgb(var(--color-background) / <alpha-value>)',
         'text-primary': 'rgb(var(--color-text-primary) / <alpha-value>)',

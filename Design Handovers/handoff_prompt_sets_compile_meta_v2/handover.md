@@ -106,7 +106,7 @@ is_default, prompt_type_id (FK → prompt_types), version, created_at, updated_a
   the real FK + the existing "＋ New type…" mint flow, so no terminology drift.
 - **`version`** auto-increments on compile; read-only in the UI. Unchanged.
 - **Compiled output** lives in `master_prompt` (mid-rename to `compiled_prompts`,
-  per `prompt-schema-design.md`). We read `content / version / updated_at` from it —
+  per `Backlog/prompt-schema-design.md`). We read `content / version / updated_at` from it —
   the same source `PromptPreview.tsx` already uses.
 
 ---

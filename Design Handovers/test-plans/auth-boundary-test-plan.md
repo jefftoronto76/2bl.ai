@@ -64,7 +64,7 @@ the check on the path-equivalent (e.g. `/heirloom` instead of
     `SELECT id, email, role FROM users WHERE email = 'lougheedjeff@gmail.com';`
     must show `role = 'platform_admin'`. If not:
     `UPDATE users SET role = 'platform_admin' WHERE email = 'lougheedjeff@gmail.com';`
-  - If it returns nothing, run (and log to DB_CHANGELOG.md):
+  - If it returns nothing, run (and log to System Docs/DB_CHANGELOG.md):
     `ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'member';`
     then the UPDATE above.
   - The code ships with a **loud fallback**: if the `users.role` lookup fails,
@@ -409,7 +409,7 @@ Adapted from the spec's §6 checklist. One uninterrupted pass on the preview:
 ## §16 — tenant_id on every auth/audit log write
 
 Change (Jeff directive, 2026-06-11; requires the `auth_events.tenant_id`
-column Jeff added in Studio — log it to DB_CHANGELOG.md per convention):
+column Jeff added in Studio — log it to System Docs/DB_CHANGELOG.md per convention):
 every `logAuthEvent` write now stamps `tenant_id` — `/api/auth/log` and the
 Clerk webhook via `getTenantFromRequest(req)`, the `get-auth-context`
 admin_access_failed path via the same host resolution — and the platform
