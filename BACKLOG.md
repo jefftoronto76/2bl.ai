@@ -1,4 +1,15 @@
+## Branding system — known issues (found during CLAUDE.md audit, Aug 4 2026)
 
+- custom_css only injects on Heirloom's layout; jefflougheed/SBL admins can save
+  custom CSS via the shared Appearance UI and it silently does nothing
+- defaults_synced_at / branding_warnings sync only runs for jefflougheed
+  (scripts/sync-branding.ts TENANT_FILE_MAP has one entry) — SBL/Heirloom deferred,
+  never revisited
+- accent_rgb, brand_name, logo_url, favicon_folder are dead columns — written/fetched,
+  never read or rendered anywhere
+- border column has no edit UI (Studio-only)
+- app/admin/layout.tsx reads favicon_base_path unconditionally, bypassing the
+  use_db_branding flag every other field respects
 
 ##Tracking & Conversion Work: July 28, 2026
 
