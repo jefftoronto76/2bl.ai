@@ -16,7 +16,7 @@ export {
 export { handleSessionFinish } from './session'
 
 // Anonymous visitor session writes
-export { createSession, updateSession } from './sessions'
+export { createSession, updateSession, claimSession } from './sessions'
 export type { SessionResult, SessionUpdateInput } from './sessions'
 
 // Message feedback (thumbs + reason chips + note)
@@ -28,5 +28,8 @@ export { recordConversionEvents, overwriteConversionEventsFrom } from './convers
 export type { ConversionEventType } from './conversion-events'
 
 // Inbound chat triage
-export { getInboundChats } from './inbound'
-export type { ChatSession } from './inbound'
+export { getInboundChats, getTtftTrend } from './inbound'
+export type { ChatSession, FeedbackCountsSummary, TtftTrendPoint } from './inbound'
+
+// Token/cost formatting (Inbound Chats admin surfaces)
+export { formatTokens, formatCost, INPUT_COST_PER_MILLION, OUTPUT_COST_PER_MILLION } from './formatting'
