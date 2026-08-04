@@ -15,6 +15,8 @@ import { getMemberContext } from './member-context'
 import { resolveMediaContext, stripMediaMarkers } from './media-context'
 import { handleSessionFinish } from '@/services/crm/session'
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { logEvent } from '@/services/audit'
+import { AuditAction } from '@/services/audit/types'
 import type { ChatMessage, ChatStreamRequest } from './types'
 
 export type {
@@ -185,13 +187,20 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     resolveMediaContext(req.mediaItems, tenantId, memberId),
   ])
 
-  // Temporary diagnostic logging — see PR description for context/removal plan.
-  console.log('[chat] mediaContext resolved:', {
-    clientSentItems: req.mediaItems?.length ?? 0,
-    contextLength: mediaContext.length,
-    hasAttached: mediaContext.includes('ATTACHED MEDIA'),
-    hasFailed: mediaContext.includes('ATTACHMENT FAILED'),
-    hasInProgress: mediaContext.includes('ATTACHMENT IN PROGRESS'),
+  void logEvent({
+    action: AuditAction.CHAT_MEDIA_CONTEXT_RESOLVED,
+    tenant_id: tenantId,
+    actor_type: memberId ? 'user' : 'anonymous',
+    target_type: 'chat_session',
+    target_id: sessionId,
+    outcome: 'success',
+    metadata: {
+      clientSentItems: req.mediaItems?.length ?? 0,
+      contextLength: mediaContext.length,
+      hasAttached: mediaContext.includes('ATTACHED MEDIA'),
+      hasFailed: mediaContext.includes('ATTACHMENT FAILED'),
+      hasInProgress: mediaContext.includes('ATTACHMENT IN PROGRESS'),
+    },
   })
 
   console.log('[chat] memberContext', memberContext !== null

@@ -1,4 +1,6 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { logEvent } from '@/services/audit'
+import { AuditAction } from '@/services/audit/types'
 import type { ChatMessage } from './types'
 import type { MediaAttachmentInput } from './types'
 
@@ -131,13 +133,18 @@ export async function resolveMediaContext(
     .filter(section => section.length > 0)
     .join('\n\n')
 
-  // Temporary diagnostic logging — see PR description for context/removal plan.
-  console.log('[chat/media-context] resolveMediaContext resolved:', {
-    clientSentItems: mediaItems.length,
-    readyCount: readyRows.length,
-    failedCount: failedRows.length,
-    inProgressCount: inProgressItems.length,
-    contextLength: context.length,
+  void logEvent({
+    action: AuditAction.CHAT_MEDIA_CONTEXT_RESOLVED,
+    tenant_id: tenantId,
+    actor_type: memberId ? 'user' : 'anonymous',
+    outcome: 'success',
+    metadata: {
+      clientSentItems: mediaItems.length,
+      readyCount: readyRows.length,
+      failedCount: failedRows.length,
+      inProgressCount: inProgressItems.length,
+      contextLength: context.length,
+    },
   })
 
   return context
