@@ -100,7 +100,7 @@ export interface SessionUpdateInput {
    * explicit, ordinary HTTP request rather than a connection-level abort
    * signal, since the latter isn't reliably propagated across this app's
    * request path (see the Stop / interrupted-turn protocol note in
-   * CLAUDE.md). Written server-side using this server's own clock (never a
+   * System Docs/Utilities/Chat UI.md). Written server-side using this server's own clock (never a
    * client-supplied timestamp, to avoid clock-skew between the client and
    * whichever server instance later polls it) into
    * chat_sessions.stop_requested_at, which streamChat()'s poll compares

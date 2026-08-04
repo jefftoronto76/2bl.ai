@@ -120,9 +120,9 @@ Foundation → page chrome → meter → toolbar → row restructuring → dupli
 
 ---
 
-#### Step 2 — Update CLAUDE.md schema row
+#### Step 2 — Update Database Schema.md schema row (moved from CLAUDE.md, 2026-08-04)
 
-**Files:** `CLAUDE.md` (modified, ~3-line delta on the blocks row).
+**Files:** `System Docs/Database Schema.md` (modified, ~3-line delta on the blocks row).
 
 **Build:** Update the blocks schema cell to include `updated_at (timestamptz default now(), auto-set on update)` and `updated_by (uuid references users(id), nullable for legacy rows)`. Mention the trigger.
 
@@ -485,7 +485,7 @@ Step 1 (migration) ──┬── Step 3 (PATCH route)
                      ├── Step 14 (Updated by line — BLOCKS)
                      └── Step 16 (Duplicate sets updated_by)
 
-Step 2 (CLAUDE.md) ── independent
+Step 2 (Database Schema.md) ── independent
 
 Step 4 ── Step 5 (interface extends)
 

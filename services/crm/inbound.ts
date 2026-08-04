@@ -167,7 +167,7 @@ export interface TtftTrendPoint {
  * bucket therefore averages "the latest known ttft_ms among sessions whose
  * updated_at falls on that day," not a true intra-day average across every
  * turn that occurred that day. Real query, real numbers, but not a full
- * per-turn history. See CLAUDE.md's chat_sessions.ttft_ms entry.
+ * per-turn history. See System Docs/Database Schema.md's chat_sessions.ttft_ms entry.
  */
 export async function getTtftTrend(tenantId: string): Promise<TtftTrendPoint[]> {
   const supabase = getAdminClient()

@@ -205,7 +205,7 @@ revoked_at timestamptz  -- non-null = link is dead (410 at the redirect route,
 **Notes:**
 - All four are nullable; null = not yet reached / no expiry / not revoked.
 - `expires_at` is read at the redirect route but expiry is not enforced yet
-  (deferred — see CLAUDE.md).
+  (deferred — see `System Docs/Database Schema.md`).
 - No new table — the invite lifecycle lives directly on the existing `members`
   row (one membership = one invite), per the Option B design decision.
 

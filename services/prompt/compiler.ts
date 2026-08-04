@@ -9,7 +9,7 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // DEFAULT_SYSTEM_PROMPT stays defined in src/lib/sage-prompt.ts for now
-// (referenced there per CLAUDE.md's discovery-call note and the legacy admin
+// (referenced there per System Docs/Public Site.md's discovery-call note and the legacy admin
 // prompt page); the prompt service re-exports it as its canonical fallback.
 // Physical consolidation happens in a later cleanup commit, once nothing
 // imports it directly from src/lib.

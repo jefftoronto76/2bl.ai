@@ -78,7 +78,7 @@ These are the items most likely to cause problems if left mid-state. Each is a
    entirely. The multi-engine-per-tenant capability is provisioned in the
    schema but not wired in code.
 3. **Tenant hierarchy is modeled but not traversed.** `tenants.parent_id`
-   exists (CLAUDE.md schema) and the SBL tenant is `type=platform`, but
+   exists (`System Docs/Database Schema.md`) and the SBL tenant is `type=platform`, but
    `get-auth-context.ts` maps a Clerk user to **exactly one** `tenant_users`
    row via `.single()` (lines 32–40) — there is no concept of product admin,
    reseller, member, or ancestry. The cascading access model does not exist in
@@ -130,8 +130,8 @@ These are the items most likely to cause problems if left mid-state. Each is a
   `Nav, Hero, Problem, SectionOutcomes, SectionWhy, SectionCareer,
   SectionTestimonials, SectionProcess, Chat, Footer`). ⚠ **Verify each against
   `app/(jefflougheed)/page.tsx` import list immediately before deletion** —
-  `Work.tsx`/`Session.tsx` are referenced in CLAUDE.md as carrying the
-  discovery-call link, so confirm live-wiring before removing. Anything in the
+  `Work.tsx`/`Session.tsx` are referenced in `System Docs/Public Site.md` as
+  carrying the discovery-call link, so confirm live-wiring before removing. Anything in the
   `(jefflougheed)` tree that *is* imported stays untouched.
 - Empty root files `natural-resource@2.0.0` and `tsc` (0 bytes). Delete.
 
@@ -241,7 +241,7 @@ See Appendix D.1 for the full table with file:line. Headlines:
 There is **zero schema-as-code and zero RLS-as-code** in the repo: no `.sql`
 files, no `migrations/`/`supabase/`/`db/` directory, no ORM. Schema and RLS are
 managed **manually by Jeff in Supabase Studio** (per CLAUDE.md), recorded in
-prose in `System Docs/DB_CHANGELOG.md` and the CLAUDE.md schema tables. **Consequence for
+prose in `System Docs/DB_CHANGELOG.md` and the `System Docs/Database Schema.md` tables. **Consequence for
 this plan:** every schema/RLS change is flagged as a *Studio task for Jeff*, run
 **before** the dependent code phase, and logged in `System Docs/DB_CHANGELOG.md`. CC writes
 no migration files and runs no DDL.

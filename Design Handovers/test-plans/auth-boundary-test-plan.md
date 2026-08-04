@@ -324,8 +324,8 @@ import site in the codebase.
 ## §14 — Lint flip to error + docs [static-only]
 
 Change: the Golden Rule is now an ESLint **error**; the override narrowed to
-`services/auth/providers/clerk/**`. CLAUDE.md documents the boundary (Stack
-entry + Auth service section).
+`services/auth/providers/clerk/**`. CLAUDE.md's Stack entry and
+`System Docs/Utilities/Auth.md` document the boundary.
 
 1. `npm run lint` → zero `no-restricted-imports` findings.
 2. Sanity: add `import { auth } from '@clerk/nextjs/server'` to any app file
@@ -355,8 +355,8 @@ verification in the Blocking Items section at the top of this file FIRST.**
    (`UPDATE users SET role = 'member' WHERE clerk_id = '<test id>';`).
 5. **Client display gates** (admin debug pills in chat, prompt-builder
    greeting) still key off Clerk publicMetadata — unchanged. Known
-   limitation, documented in CLAUDE.md: they are display-only; privileged
-   actions are all server-gated.
+   limitation, documented in `System Docs/Utilities/Auth.md`: they are
+   display-only; privileged actions are all server-gated.
 6. **Member routes unaffected:** one fresh sign-up → members/claim flow
    still completes (these routes call getCurrentUser, which now does one
    extra single-row DB read; no behavioral change expected).

@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     // guaranteed (middleware reconstructs this request via header-forwarding
     // at the edge→function boundary). The reliable mechanism is
     // streamChat()'s stop_requested_at poll — see services/chat/server/index.ts
-    // and CLAUDE.md's "Stop / interrupted-turn protocol".
+    // and System Docs/Utilities/Chat UI.md's "Stop / interrupted-turn protocol".
     signal: req.signal,
   })
 }

@@ -1,7 +1,7 @@
 // Verifies runChatStream forwards abortSignal to streamText (and, via
 // streamText, into the provider's doStream call) so the client disconnecting
 // (Stop) actually cancels the upstream Anthropic call instead of letting it
-// run to completion. See CLAUDE.md's "Stop / interrupted-turn protocol".
+// run to completion. See System Docs/Utilities/Chat UI.md's "Stop / interrupted-turn protocol".
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ModelConfig } from './types'

@@ -6,7 +6,7 @@
 // (app/heirloom/page.tsx) picks the query param up unchanged.
 //
 // 404 — token doesn't exist. 410 — invite was revoked. expires_at is read
-// but NOT enforced yet (deferred — see CLAUDE.md).
+// but NOT enforced yet (deferred — see System Docs/Database Schema.md).
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'

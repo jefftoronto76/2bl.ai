@@ -22,7 +22,7 @@
  * already-captured NAME/EMAIL/PHONE with no undo. Both surfaces get the full
  * row again once `conversion_events` (services/crm/conversion-events.ts)
  * started tracking that discard instead of silently losing it — see the
- * WidgetShellChat entry in CLAUDE.md. Kept as a live escape hatch in case a
+ * WidgetShellChat entry in System Docs/Public Site.md. Kept as a live escape hatch in case a
  * future surface needs the same reduction.
  */
 

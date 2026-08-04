@@ -7,8 +7,8 @@
 // local state on write. The key difference from useMessageFeedback is
 // deliberate — this is keyed by the anchor message's stable UIMessage.id, not
 // its array position, specifically to avoid the index-drift class of bug
-// message_feedback has to guard against on every edit/truncate (see
-// CLAUDE.md's Memories section).
+// message_feedback has to guard against on every edit/truncate (see the
+// Memories entry in System Docs/Known Gaps.md).
 //
 // There is no "running" status to fetch or reconcile on mount — a memory row
 // only ever exists once createMemoryFromAnchor actually succeeded (see

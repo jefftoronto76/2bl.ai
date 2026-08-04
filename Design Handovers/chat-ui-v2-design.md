@@ -322,8 +322,8 @@ services/chat/ui/v1/
 - `useChatTurn` stays the engine; `useChatSession` is the store-aware wrapper
   that constructs accessors and owns store resolution.
 - The barrel (`index.ts`) keeps **not** re-exporting client hooks, so the
-  server-safe registry import path is preserved (per CLAUDE.md note on the
-  client/server split). `ChatSessionProvider`/`useChatSession` are imported
+  server-safe registry import path is preserved (per the note on the
+  client/server split in `System Docs/Utilities/Chat UI.md`). `ChatSessionProvider`/`useChatSession` are imported
   directly from their modules, like `useChatTurn` is today.
 - Capability hooks (booking, session history, persistence, keyboard, arrival)
   layer **on top** of `ChatSession` in later phases; they are out of scope here

@@ -15,7 +15,7 @@ visual values flow through Mantine's theme system.
 
 **Location:** `/components/admin/theme/mantine-theme.ts`
 
-Maps CLAUDE.md design tokens to Mantine's `createTheme()`:
+Maps `System Docs/Design System.md` design tokens to Mantine's `createTheme()`:
 - Primary color: `#2d6a4f` (10-shade green scale)
 - Background: `#f9f8f5`
 - Body font: DM Sans

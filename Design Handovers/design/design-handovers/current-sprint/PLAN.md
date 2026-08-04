@@ -21,7 +21,7 @@
 
 1. **Mantine docs fetch failed.** `https://mantine.dev/llms.txt` returned 403 during the planning read. Proceeding on Phase 1 working knowledge of Mantine v7 (SegmentedControl, TextInput, Chip.Group, Drawer compound API, ActionIcon, Progress, useMatches, TouchSensor, etc.). If any specific Mantine API detail is unclear during implementation, I'll stop and ask rather than guess.
 
-2. **PR 3 has a schema gate.** INTEGRATION §5 requires `blocks.updated_at` and a `blocks.updated_by → users(id)` fkey. Neither is documented in `CLAUDE.md`'s blocks schema row. If the fkey doesn't exist, the user instruction is "stop and ask" — that gate lives inside PR 3, not here.
+2. **PR 3 has a schema gate.** INTEGRATION §5 requires `blocks.updated_at` and a `blocks.updated_by → users(id)` fkey. Neither is documented in `System Docs/Database Schema.md`'s blocks row. If the fkey doesn't exist, the user instruction is "stop and ask" — that gate lives inside PR 3, not here.
 
 3. **PR 4 has a product-decision gate.** README §Phase 2 scope item 20 flags a mental-model change for mobile (tap card → read-only detail sheet → Edit button → edit sheet, instead of today's tap card → edit sheet). This adds a tap for every edit. Will confirm with product before building PR 4.
 

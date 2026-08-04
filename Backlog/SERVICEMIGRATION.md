@@ -473,7 +473,11 @@ not add to tenant_model_config as plain text.
 
 | Document | Purpose |
 |----------|---------|
-| CLAUDE.md | Rules for CC — stack, principles, workflow |
+| CLAUDE.md | Rules for CC — principles, stack, workflow (2026-08-04: reference material split to System Docs/, see its "Where the rest of this lives" table) |
+| System Docs/Database Schema.md | DB tables/columns |
+| System Docs/API Routes.md | API route map |
+| System Docs/Known Gaps.md | Known issues, orphaned code, deferred work |
+| System Docs/Utilities/ | Service internals, one file per service |
 | MIGRATION.md | Full migration plan, phases 1-6 |
 | SERVICEMIGRATION.md | This document — critical path |
 | System Docs/DB_CHANGELOG.md | Schema changes log |

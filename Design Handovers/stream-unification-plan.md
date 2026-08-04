@@ -381,7 +381,7 @@ Each step is independently deployable without breaking existing consumers. Steps
 
 **Files changed:** `services/prompt/compile.ts`
 
-**Precondition:** The `scope` column exists and has default `'runtime'` (documented in CLAUDE.md — schema already in Supabase). All pre-existing blocks have `scope = 'runtime'` by default. No backfill needed.
+**Precondition:** The `scope` column exists and has default `'runtime'` (documented in `System Docs/Database Schema.md` — schema already in Supabase). All pre-existing blocks have `scope = 'runtime'` by default. No backfill needed.
 
 **Existing consumers that must keep working:** `/api/admin/prompt/compile` — behavior unchanged for any tenant that has no `scope = 'composer'` blocks. If a tenant has composer-scoped blocks set to `active`, those are currently incorrectly included in compiled prompts; this step fixes that.
 

@@ -9,7 +9,7 @@ import { ALL_FONTS } from '@/services/branding/font-registry';
  * Mantine theme bridge for the Natural Resource admin interface.
  *
  * Sources:
- *   - CLAUDE.md design token table (authoritative values)
+ *   - System Docs/Design System.md design token table (authoritative values)
  *   - /components/admin/theme/tokens.ts (spacing, radius primitives)
  *
  * buildAdminTheme returns { theme, resolver } — the resolver is passed to
@@ -132,7 +132,7 @@ export function buildAdminTheme(branding?: BrandingForTheme | null, tenantId?: s
     fontSizes: {
       xs: '0.75rem',    // 12px
       sm: '0.875rem',   // 14px
-      md: '1rem',       // 16px (CLAUDE.md min font size)
+      md: '1rem',       // 16px (System Docs/Design System.md min font size)
       lg: '1.125rem',   // 18px
       xl: '1.25rem',    // 20px
     },
