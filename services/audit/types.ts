@@ -80,6 +80,8 @@ export const AuditAction = {
   MEMORY_CREATED: 'memory.created',
   MEMORY_KEPT: 'memory.kept',
   MEMORY_DISCARDED: 'memory.discarded',
+  // Chat — media context resolution (services/chat/server)
+  CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

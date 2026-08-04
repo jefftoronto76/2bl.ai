@@ -1,4 +1,6 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { logEvent } from '@/services/audit'
+import { AuditAction } from '@/services/audit/types'
 import type { ChatMessage } from './types'
 import type { MediaAttachmentInput } from './types'
 
@@ -127,9 +129,25 @@ export async function resolveMediaContext(
           .join('\n')
       : ''
 
-  return [readySection, failedSection, inProgressSection]
+  const context = [readySection, failedSection, inProgressSection]
     .filter(section => section.length > 0)
     .join('\n\n')
+
+  void logEvent({
+    action: AuditAction.CHAT_MEDIA_CONTEXT_RESOLVED,
+    tenant_id: tenantId,
+    actor_type: memberId ? 'user' : 'anonymous',
+    outcome: 'success',
+    metadata: {
+      clientSentItems: mediaItems.length,
+      readyCount: readyRows.length,
+      failedCount: failedRows.length,
+      inProgressCount: inProgressItems.length,
+      contextLength: context.length,
+    },
+  })
+
+  return context
 }
 
 /**
