@@ -9,7 +9,7 @@
 // its order, or its position — that's built directly into MemoryCard, not
 // driven from this table. Type-specific actions go on their own row above it.
 //
-// Carried over from the design handoff (docs/heirloom_chat_handoffV2_2026_July 28/memories/MemoryKinds.ts)
+// Carried over from the design handoff (Design Handovers/heirloom_chat_handoffV2_2026_July 28/memories/MemoryKinds.ts)
 // with one change: no `slots` distinction removal — kept as specced. Type-
 // specific actions are specified but not built this pass (they fire a
 // lightweight local toast) — see MemoryCard.tsx.

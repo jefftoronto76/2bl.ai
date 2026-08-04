@@ -45,7 +45,7 @@
         "patterns": [
           {
             "group": ["@clerk/*", "@clerk/*/*"],
-            "message": "Golden Rule (docs/auth-service-rebuild.md): no product code imports an auth provider directly. Import via @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), or @/services/auth/middleware (edge)."
+            "message": "Golden Rule (Design Handovers/auth-service-rebuild.md): no product code imports an auth provider directly. Import via @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), or @/services/auth/middleware (edge)."
           },
           {
             "group": [
@@ -65,7 +65,7 @@
               "@/services/auth/providers",
               "@/services/auth/providers/**"
             ],
-            "message": "Auth barrel rule: import from @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), @/services/auth/middleware (edge). Blessed exceptions: supabase-admin, admin-user-context, useAuthFlow, log-auth-step. See docs/auth-service-rebuild.md."
+            "message": "Auth barrel rule: import from @/services/auth (server), @/services/auth/client (hooks), @/services/auth/ui (prebuilt UI), @/services/auth/middleware (edge). Blessed exceptions: supabase-admin, admin-user-context, useAuthFlow, log-auth-step. See Design Handovers/auth-service-rebuild.md."
           }
         ]
       }

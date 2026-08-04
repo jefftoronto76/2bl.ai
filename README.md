@@ -166,7 +166,7 @@ the conversation.
 4. Add the domain to `tenants.domain` in Supabase Studio. The chat falls back to
    `DEFAULT_SYSTEM_PROMPT` until a `master_prompt` row exists for the tenant.
 
-See `docs/chat-shells.md` for the full decision guide, keyboard hook wiring,
+See `Design Handovers/chat-shells.md` for the full decision guide, keyboard hook wiring,
 and new-product step-by-step.
 
 ---

@@ -1,6 +1,6 @@
 // Provider-agnostic auth contracts — the only shapes product code may know.
 //
-// Golden Rule (docs/auth-service-rebuild.md): no file outside services/auth/
+// Golden Rule (Design Handovers/auth-service-rebuild.md): no file outside services/auth/
 // imports an auth provider directly. Product code consumes these types via
 // @/services/auth (server), @/services/auth/client (client hooks), or
 // @/services/auth/ui (prebuilt UI re-exports).

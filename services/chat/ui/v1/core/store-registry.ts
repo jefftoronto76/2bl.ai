@@ -4,7 +4,7 @@
 // (Phase 1). This is the mechanism that lets multiple UI surfaces share ONE
 // conversation: every binding that resolves the same key gets the same store —
 // the jefflougheed Hero + Overlay shared-conversation invariant (see
-// docs/chat-ui-v2-design.md §2).
+// Design Handovers/chat-ui-v2-design.md §2).
 //
 // CLIENT-ONLY by contract. On the server, module scope is per-process and
 // shared across every request, so storing per-visitor conversation state here

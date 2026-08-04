@@ -308,7 +308,7 @@ function MessageBubble({
       <div
         onClick={deliveryStatus === 'failed' ? onRetry : undefined}
         className={[
-          // Visitor bubble spec (docs/spec_visitor_bubble.md): shrink-to-fit
+          // Visitor bubble spec (Design Handovers/spec_visitor_bubble.md): shrink-to-fit
           // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
           // type ramp. Widened past the spec's original 76% (2026-07-28) —
           // it read as cramped next to the assistant's much wider reply.
