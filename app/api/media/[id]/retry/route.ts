@@ -10,8 +10,9 @@
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getMediaItem, updateMediaItem } from '@/services/media'
+import { getMediaItem, updateMediaItem, isMediaAuditEnabled, logMediaEvent } from '@/services/media'
 import { processMediaItem } from '@/services/media/processor'
+import { AuditAction } from '@/services/audit/types'
 
 export async function POST(
   req: Request,
@@ -61,17 +62,44 @@ export async function POST(
     processed_at: null,
   })
 
+  const correlationId = crypto.randomUUID()
+
+  if (isMediaAuditEnabled()) {
+    await logMediaEvent({
+      tenant_id: tenantId,
+      member_id: memberRow.id,
+      media_item_id: id,
+      action: AuditAction.MEDIA_RETRY_REQUESTED,
+      outcome: 'success',
+      correlation_id: correlationId,
+      metadata: {
+        original_filename: item.original_filename,
+        mime_type: item.mime_type,
+        type: item.type,
+        previous_error_message: item.error_message,
+        timestamp: new Date().toISOString(),
+      },
+    })
+  }
+
   // Fire-and-forget, matching app/api/webhooks/media-process/route.ts's own
   // pattern — respond to the client immediately, let processing run in the
   // background. `item` already carries the id/tenant_id processMediaItem
   // needs; it re-fetches a fresh copy itself before doing anything.
-  void processMediaItem(item).catch((err) => {
-    console.error('[media/retry] processMediaItem threw unexpectedly', {
-      mediaItemId: id,
-      error: err instanceof Error ? err.message : String(err),
-    })
+  void processMediaItem(item).catch(async (err) => {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: tenantId,
+        member_id: memberRow.id,
+        media_item_id: id,
+        action: AuditAction.MEDIA_RETRY_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: { error_message: errorMessage, timestamp: new Date().toISOString() },
+      })
+    }
   })
 
-  console.log('[media/retry] reset to pending, reprocessing', { mediaItemId: id, memberId: memberRow.id })
   return Response.json({ ok: true })
 }
