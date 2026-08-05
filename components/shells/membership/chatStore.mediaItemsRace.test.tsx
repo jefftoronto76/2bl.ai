@@ -189,6 +189,9 @@ function TestConsumer() {
       <button onClick={() => addMediaItem(mkItem({ id: 'media-1', status: 'ready' }))}>
         resolve A to ready
       </button>
+      <button onClick={() => addMediaItem(mkItem({ id: 'media-1', status: 'failed' }))}>
+        resolve A to failed
+      </button>
       <button onClick={() => addMediaItem(mkItem({ id: 'media-2', status: 'failed', original_filename: 'b.jpg' }))}>
         resolve B to failed
       </button>
@@ -419,6 +422,94 @@ describe('delivered marking happens on confirmed success, not on read/build', ()
     });
     expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
 
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items).toBeNull();
+  });
+});
+
+// Coverage for the stale-delivered-status fix: deliveredTerminalIdsRef used to
+// track only WHETHER an id had been delivered while terminal, not the status
+// it had at that moment. So once an item was delivered as 'failed', a later
+// retry that genuinely flipped it to 'ready' in the DB was silently never
+// resurfaced — getMediaItems() kept excluding it forever, even though its
+// current status no longer matched what was actually delivered. Fixed by
+// keying deliveredTerminalIdsRef on (id -> status-at-delivery) instead of just
+// id, so a status change after delivery makes the item due again.
+describe('resurfacing after a status change post-delivery (e.g. retry success)', () => {
+  it('an item delivered as failed resurfaces once a retry flips it to ready', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1: media-1 fails, gets delivered to the guide as a failure.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to failed'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // A retry succeeds — the real processing pipeline (untouched by this fix)
+    // flips the item's status to ready; simulated here via the same
+    // addMediaItem path Realtime/catch-up use to apply a status update.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+    });
+
+    // Turn 2: a plain follow-up. media-1's current status (ready) no longer
+    // matches what was delivered (failed), so it must resurface fresh.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+  });
+
+  it('is symmetric: an item delivered as ready also resurfaces if it later flips to failed', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to failed'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+  });
+
+  it('regression: an item delivered once stays excluded as long as its status never changes again', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // No status change between turns — media-1 stays excluded (the #270 fix).
     await act(async () => {
       fireEvent.click(screen.getByText('send follow-up'));
       await waitFor(() => expect(sageRequestBodies.length).toBe(2));
