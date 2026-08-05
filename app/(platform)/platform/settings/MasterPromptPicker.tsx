@@ -49,9 +49,9 @@ export function MasterPromptPicker({ options, onEdit }: MasterPromptPickerProps)
               {o.label}
             </Text>
             <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
-              {o.version != null && (
+              {o.compiled_version != null && (
                 <Text size="xs" c="dimmed" ff="monospace" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  v{o.version}
+                  v{o.compiled_version}
                 </Text>
               )}
               <RowStatusBadge status={o.status} />

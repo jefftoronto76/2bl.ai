@@ -100,7 +100,7 @@ export function PromptSetMetaStrip({
           label="Version"
           value={
             <Group gap={6} wrap="wrap" align="baseline">
-              {mono(`v${set?.version ?? 1}`)}
+              {mono(set?.compiled_version != null ? `v${set.compiled_version}` : '—')}
               {dim('· auto-increments on compile')}
             </Group>
           }
@@ -187,7 +187,7 @@ export function PromptSetViewCard({
               variant="muted"
               style={{ fontSize: 'var(--mantine-font-size-xs)', fontFamily: 'var(--mantine-font-family-monospace)' }}
             >
-              v{set.version}
+              {set.compiled_version != null ? `v${set.compiled_version}` : '—'}
             </Text>
             <PromptSetBadges set={set} typeName={typeName} />
           </Group>

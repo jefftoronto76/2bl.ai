@@ -20,7 +20,7 @@ import { Text } from '@/components/admin/primitives/Text'
 import { type CompiledPrompt, type PromptSet, formatDate, isStale } from '@/lib/promptSet'
 
 interface CompiledPromptModalProps {
-  set: Pick<PromptSet, 'id' | 'label' | 'version' | 'updated_at' | 'last_compiled_at'>
+  set: Pick<PromptSet, 'id' | 'label' | 'compiled_version' | 'updated_at' | 'last_compiled_at'>
   compiledUrl: string
   opened: boolean
   onClose: () => void
@@ -74,6 +74,10 @@ export function CompiledPromptModal({ set, compiledUrl, opened, onClose }: Compi
 
   const stale = isStale(set)
   const content = compiled?.content ?? ''
+  // compiled?.version (fetched, authoritative) with set.compiled_version (already
+  // known from the list, pre-fetch) as fallback — both are compiled_prompts.version,
+  // never prompt_sets.version, which is dead after row creation (see lib/promptSet.ts).
+  const version = compiled?.version ?? set.compiled_version
 
   return (
     <Modal opened={opened} onClose={onClose} title="Compiled prompt" centered size="lg">
@@ -86,7 +90,7 @@ export function CompiledPromptModal({ set, compiledUrl, opened, onClose }: Compi
             variant="muted"
             style={{ fontFamily: 'var(--mantine-font-family-monospace)', fontSize: 'var(--mantine-font-size-xs)' }}
           >
-            compiled v{compiled?.version ?? set.version} · {formatTimestamp(compiled?.updated_at ?? set.last_compiled_at)}
+            compiled {version != null ? `v${version}` : '—'} · {formatTimestamp(compiled?.updated_at ?? set.last_compiled_at)}
           </Text>
         </Group>
 
