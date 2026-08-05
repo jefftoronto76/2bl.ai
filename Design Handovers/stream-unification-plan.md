@@ -121,8 +121,8 @@ The media service (`services/media/`) is a fully built async processing pipeline
 **Connection to chat today:**
 - `ChatInput.tsx` sends `[MEDIA_UPLOAD: filename | mediaItemId | type]` markers in the **user message** when attachments are included
 - `chatStore.tsx` tracks `mediaItems` in React state via Realtime subscription + polling; used by `MediaGallery.tsx` to display `derived_content` to the user
-- **`streamChat` ignores `[MEDIA_UPLOAD:]` markers entirely** — it never reads `media_items` rows and never injects `derived_content` into the system prompt or messages
-- There is no server-side resolution of `derived_content` on any chat turn; the AI sees the raw `[MEDIA_UPLOAD: filename | id | type]` marker string and nothing more
+- **Update (2026-08-05): this section is stale.** `streamChat` (`services/chat/server/index.ts`) now calls `resolveMediaContext` (`services/chat/server/media-context.ts`), which reads the `media_items` rows referenced by a turn's markers and injects `derived_content` into the system prompt as `ATTACHED MEDIA:` / `ATTACHMENT IN PROGRESS:` sections; `stripMediaMarkers` then removes the raw `[MEDIA_UPLOAD:]` bracket syntax before the message reaches the model. Merged July 31 (PR #241) — this predates today's sweep but this doc was never updated to reflect it. Gap 1 below, which restates the "ignores markers" premise in more detail, is correspondingly resolved — see the note added there.
+- Server-side resolution of `derived_content` on a chat turn is real and tested; the AI no longer sees the raw `[MEDIA_UPLOAD: filename | id | type]` marker string on its own.
 
 ---
 
@@ -130,11 +130,13 @@ The media service (`services/media/`) is a fully built async processing pipeline
 
 ### Gap 1 — `derived_content` is never injected into the model context
 
-**What exists:** The processor writes high-quality `derived_content` (transcript, image caption, document text) to `media_items`. The client sends `[MEDIA_UPLOAD: filename | id | type]` in the user message.
+**Resolved (2026-08-05 note — left below for historical record, since this doc predates the fix and this file itself wasn't updated when it shipped):** this gap was closed by `resolveMediaContext` (`services/chat/server/media-context.ts`), merged July 31 (PR #241) and confirmed live/tested. `streamChat` now does exactly what "What the target requires" below describes — parses markers, fetches `derived_content`, injects an `ATTACHED MEDIA:` / `ATTACHMENT IN PROGRESS:` section into the system prompt, and `stripMediaMarkers` removes the raw bracket syntax before the model sees the turn. The design questions this section originally raised (system-prompt section vs. prefixed user turn) were resolved in favor of the system-prompt section.
 
-**What's missing:** `streamChat` does not look up `derived_content` from `media_items` rows referenced in the user message. The model receives a marker string but not the actual content it refers to. The AI cannot use uploaded media as context.
+**What existed before the fix:** The processor writes high-quality `derived_content` (transcript, image caption, document text) to `media_items`. The client sends `[MEDIA_UPLOAD: filename | id | type]` in the user message.
 
-**What the target requires:** When the incoming user message contains one or more `[MEDIA_UPLOAD: …]` markers and the referenced items are `status=ready`, `streamChat` should:
+**What was missing:** `streamChat` did not look up `derived_content` from `media_items` rows referenced in the user message. The model received a marker string but not the actual content it referred to. The AI could not use uploaded media as context.
+
+**What the target required:** When the incoming user message contains one or more `[MEDIA_UPLOAD: …]` markers and the referenced items are `status=ready`, `streamChat` should:
 1. Parse the markers from the latest user message
 2. Fetch `derived_content` from `media_items` for each `id` (service-role, tenant-scoped)
 3. Inject them as a `MEDIA CONTEXT` section into the system prompt (or as a prefixed user message turn — to be decided)

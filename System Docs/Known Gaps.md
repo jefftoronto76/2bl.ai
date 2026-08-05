@@ -166,6 +166,70 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   regression tests for these fixes) was also found and fixed in the same
   window (PR #273) — that one is test infrastructure, not a product bug.
 
+- **Media pipeline broader sweep — six items found and fixed 2026-08-05
+  (PRs #275–#280).** Follow-up investigation after the #269–#272 saga
+  above, scoped to the rest of the media pipeline (upload, processing,
+  retry, dedup) rather than just `chatStore.tsx`'s delivery tracking.
+  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`.
+  Six distinct fixes, all merged:
+  1. **#275 — stale delivered-status tracking blocking retry resurfacing.**
+     `deliveredTerminalIdsRef` (the #270/#271 fix above) tracked only
+     *whether* an item had been delivered while terminal, not *what status
+     it was* at that moment — so an item delivered to the guide as `failed`
+     never resurfaced even after a later retry genuinely flipped it to
+     `ready` in the DB. Fixed by keying the ref on `id -> status-at-delivery`
+     instead of just `id`; symmetric in both directions, not special-cased.
+  2. **#276 — PDF documents 32-50MB failing to process.**
+     `extractTextFromPdf` sent the whole file inline as base64, hitting
+     Anthropic's documented 32MB-per-request payload limit well below this
+     app's own 50MB upload cap — any document in that gap failed outright in
+     production. Migrated to Anthropic's Files API (upload once, reference
+     by `file_id`, delete after extraction), per Anthropic's own documented
+     recommendation for this exact scenario. **Introduces a new dependency
+     on a beta Anthropic endpoint** (`anthropic-beta: files-api-2025-04-14`
+     header) — flagging as an ongoing watch item, since beta endpoints can
+     change shape without notice; re-check this if PDF processing starts
+     failing unexpectedly. A separate, previously unflagged page-count limit
+     (100/600 pages) is not addressed by this fix — no page-counting guard
+     exists in this stack.
+  3. **#277 — retry never actually re-triggering processing.** The retry
+     route reset a failed item to `status=pending` and hoped the Supabase
+     Database Webhook (INSERT-only) would pick up the resulting UPDATE — it
+     never could, regardless of how the webhook trigger is configured in
+     Studio. Fixed by calling `processMediaItem` directly (its own
+     idempotency guard makes this safe under concurrent retries); no
+     Supabase Studio changes needed.
+  4. **#278 — composer state leaking across conversation switches.**
+     `ChatInput.tsx` is mounted once, unkeyed, and survives `newChat()`/
+     `loadSession()` calls — nothing reset its local `attachments`/
+     draft-text/recording state, so switching conversations mid-draft
+     silently carried it into the wrong conversation. Same bug class as
+     #272, different location (the composer's own state, not
+     `chatStore.tsx`'s media-item tracking).
+  5. **#279 — test coverage for previously-untested surfaces.** Pure
+     test-debt paydown for `upload-url`/`[id]/url` routes,
+     `useMediaUpload.ts`, and `processor.ts`'s `processAudio`/`processImage`/
+     `processDocument` pipeline bodies (previously covered only via the
+     shared `waitForStorageObject` helper) — no behavior change.
+  6. **#280 — media upload dedup.** Duplicate uploads (the same file
+     uploaded twice in one conversation) previously created independent
+     `media_items` rows. Required a new **`content_hash` column** (`text`,
+     nullable) — added by Jeff in Studio first, per the investigation in
+     `Backlog/media-upload-dedup-schema-request.md` — since file bytes never
+     pass through the Next.js server (client PUTs directly to Supabase
+     Storage) and a content hash can only be computed client-side. A match
+     on a `ready`/`pending`/`processing` row is reused silently; a match on
+     a `failed` row is reset to `pending` and reprocessed directly (reuses
+     #277's pattern). A weaker, no-schema-change fallback (filename+size+
+     mime+member matching) was investigated and explicitly rejected —
+     see the schema-request doc for why.
+
+  Plus **#281** — #276 and #277 initially shipped with `console.log`/
+  `console.error` instead of this repo's `audit_events` convention; brought
+  into compliance immediately after merging, ahead of live production
+  testing against both. New `AuditAction` values documented in
+  `System Docs/Utilities/Audit.md`.
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
