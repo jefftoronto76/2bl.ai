@@ -1,0 +1,1858 @@
+/* ────────────────────────────────────────────────────────────────────────
+   Legacy — "Start Your Story" chat drawer.
+
+   A self-mounting recreation of the production Heirloom chat widget
+   (ChatDrawerV2 + ChatHero): right-anchored drawer, docked sidebar, the
+   "What's a story worth keeping?" empty state, writing prompts, a rich
+   composer, and a live conversation. Opens when any CTA dispatches the
+   'legacy-open-chat' window event.
+
+   Live responses come from window.claude.complete; when that isn't available
+   (or errors) a scripted biographer fallback keeps the demo flowing offline.
+
+   Styled with the lander's --hl-* tokens + inline styles (the lander has no
+   Tailwind). Loaded AFTER React via <script type="text/babel" src>.
+   ──────────────────────────────────────────────────────────────────────── */
+(function () {
+  const { useState, useEffect, useRef, useCallback } = React;
+
+  /* ── Icons (lucide subset) ─────────────────────────────────────────── */
+  const P = {
+    feather: ['M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z', 'M16 8 2 22', 'M17.5 15H9'],
+    x: ['M18 6 6 18', 'm6 6 12 12'],
+    max: ['M15 3h6v6', 'M9 21H3v-6', 'M21 3l-7 7', 'M3 21l7-7'],
+    min: ['M8 3v4a1 1 0 0 1-1 1H3', 'M21 8h-4a1 1 0 0 1-1-1V3', 'M3 16h4a1 1 0 0 1 1 1v4', 'M16 21v-4a1 1 0 0 1 1-1h4'],
+    menu: ['M3 6h18', 'M3 12h18', 'M3 18h18'],
+    chevron: ['m6 9 6 6 6-6'],
+    search: ['M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z', 'm20 20-3.4-3.4'],
+    pen: ['M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', 'M18.4 2.6a2.1 2.1 0 0 1 3 3l-9 9-4 1 1-4z'],
+    share: ['M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'm8.6 13.5 6.8 4', 'm15.4 6.5-6.8 4'],
+    book: ['M12 7v14', 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'],
+    plus: ['M5 12h14', 'M12 5v14'],
+    spark: ['M9.94 14.66A2 2 0 0 0 8.5 13.2l-5.2-1.34a.4.4 0 0 1 0-.78L8.5 9.74A2 2 0 0 0 9.94 8.3l1.35-5.2a.4.4 0 0 1 .77 0l1.35 5.2A2 2 0 0 0 15.2 9.74l5.2 1.34a.4.4 0 0 1 0 .78L15.2 13.2a2 2 0 0 0-1.44 1.46l-1.35 5.2a.4.4 0 0 1-.77 0z', 'M20 3v4', 'M22 5h-4'],
+    arrowUp: ['m5 12 7-7 7 7', 'M12 19V5'],
+    mic: ['M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z', 'M19 10v2a7 7 0 0 1-14 0v-2', 'M12 19v3'],
+    user: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z', 'M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M6.2 18.8A4 4 0 0 1 10 16h4a4 4 0 0 1 3.8 2.8'],
+    camera: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z', 'M12 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
+    image: ['M18 3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3Z', 'M8.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z', 'm21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21'],
+    file: ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8'],
+    folder: ['M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'],
+    bookmark: ['m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z'],
+    check: ['M20 6 9 17l-5-5'],
+    pencil: ['M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497Z', 'm15 5 4 4'],
+    imagePlus: ['M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7', 'M16 5h6', 'M19 2v6', 'm21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21', 'M9 10a1 1 0 1 1-2 0 1 1 0 0 1 2 0z'],
+    trash: ['M3 6h18', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'],
+    star: ['M11.5 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .29-.9l5.17-.76a2.12 2.12 0 0 0 1.6-1.16z'],
+    userPlus: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M19 8v6', 'M22 11h-6'],
+    folderMinus: ['M4 20a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2Z', 'M9 13h6'],
+    link: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
+    copy: ['M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'],
+    clock: ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z', 'M12 6v6l4 2'],
+    refresh: ['M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8', 'M21 3v5h-5', 'M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16', 'M3 21v-5h5'],
+    shield: ['M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'],
+    bookOpen: ['M12 7v14', 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'],
+    heart: ['M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z'],
+    mail: ['M22 6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2z', 'm22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'],
+    thumbsUp: ['M7 10v12', 'M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z'],
+    thumbsDown: ['M17 14V2', 'M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22h0a3.13 3.13 0 0 1-3-3.88Z'],
+    alertTriangle: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z', 'M12 9v4', 'M12 17h.01'],
+    chevronLeft: ['m15 18-6-6 6-6'],
+    chevronRight: ['m9 18 6-6-6-6'],
+    stop: ['M5 5h14v14H5z'],
+    play: ['m6 3 14 9-14 9z'],
+    users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
+    video: ['m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.94a.5.5 0 0 0-.78-.42L16 11', 'M2 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z'],
+    scan: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M7 12h10'],
+    crop: ['M6 2v14a2 2 0 0 0 2 2h14', 'M18 22V8a2 2 0 0 0-2-2H2'],
+  };
+  function Icon({ n, name, s, size, sw = 1.75, fill = 'none', style }) {
+    const key = n || name; const sz = size || s || 18;
+    return (
+      <svg width={sz} height={sz} viewBox="0 0 24 24" fill={fill} stroke="currentColor"
+        strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={style} aria-hidden="true">
+        {(P[key] || []).map((d, i) => <path key={i} d={d} />)}
+      </svg>
+    );
+  }
+
+  /* ── Content ────────────────────────────────────────────────────────── */
+  const PROMPTS = [
+    'What’s a smell that takes you straight back to childhood?',
+    'Tell me about a meal you’ll never forget.',
+    'What did your first home look like?',
+    'Who taught you something you still carry?',
+  ];
+  const SEED = [
+    { id: 's-seed-1', title: 'The summer we drove to the coast', starred: true },
+    { id: 's-seed-2', title: 'Grandpa’s workshop', starred: false },
+  ];
+  const SEED_MEMORIES = [
+    { id: 'k-seed-1', title: 'The morning we left', sessionId: 's-seed-1', storyId: 'st-life', kind: 'conversation', date: 'March 4', version: 1,
+      passage: 'We left before the light came up, the car still cold, everything we thought we needed piled in the back. My father had the route written on the back of an envelope and would not look at it in front of us. I sat behind him with my coat over my knees and watched the streetlights go out one at a time as we came up out of the valley.' },
+    { id: 'k-seed-2', title: 'Salt air, before the water', sessionId: 's-seed-1', storyId: 'st-life', kind: 'conversation', date: 'March 4', version: 1,
+      passage: 'You smell it a long while before you see it. Somewhere past the last of the farms the air changed and my mother rolled her window down without saying anything about it. That was the moment the trip turned into a holiday. The water itself was another hour and by then we had all stopped asking how much longer.' },
+    { id: 'k-seed-3', title: 'The smell of cedar shavings', sessionId: 's-seed-2', storyId: 'st-bell', kind: 'photo', date: 'March 11', version: 1,
+      passage: 'His workshop was half the garage and entirely his. Cedar shavings on the floor deep enough to walk through, and a coffee tin of screws he would not let anybody sort. He is in this one with his back to the camera, which is the only way anybody ever got a picture of him.' },
+    { id: 'k-seed-4', title: 'Nana at the piano', sessionId: 's-seed-2', storyId: 'st-bell', kind: 'audio', date: 'March 18', version: 1,
+      passage: 'Two minutes of a hymn she had played since she was a girl, recorded on a phone propped against the sugar bowl. She stops twice to correct herself and carries on both times without comment. You can hear the kettle going in the background.' },
+  ];
+  const SYSTEM = [
+    'You are the story guide inside Legacy, a warm, private memory-keeping app.',
+    'You interview the person like a patient, gifted biographer helping them capture a memory worth keeping forever.',
+    'Ask exactly ONE thoughtful, specific follow-up question at a time. Draw out sensory and emotional detail — who was there, what it felt like, the smells and sounds, the small moment that mattered most.',
+    'Be warm, curious, and unhurried. Never lecture, never use lists or markdown. Keep replies to 2–4 short sentences and always end with a single gentle question.',
+  ].join(' ');
+  const FALLBACKS = [
+    'That’s a beautiful place to begin. Who was there with you — and what were they doing when you picture that moment?',
+    'I can almost see it. What’s one small detail you’ve never forgotten — a smell, a sound, something someone said?',
+    'That stays with a person. How did it feel right then — and what do you think that moment taught you?',
+    'Tell me more about that. What was happening just before — how did the day lead you there?',
+    'There’s a whole story in this. If you could keep one single line from this memory forever, what would it say?',
+    'Thank you for trusting me with that. What happened next — where does this memory go from here?',
+  ];
+
+  async function askGuide(messages, turn) {
+    try {
+      if (window.claude && typeof window.claude.complete === 'function') {
+        const text = await window.claude.complete({
+          system: SYSTEM,
+          max_tokens: 400,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        });
+        if (text && text.trim()) return text.trim();
+      }
+    } catch (e) { /* fall through to scripted */ }
+    await new Promise((r) => setTimeout(r, 700));
+    return FALLBACKS[Math.min(turn, FALLBACKS.length - 1)];
+  }
+
+  /* Memory kinds — the card adapts to what the memory is being saved around. */
+  const MEMORY_KINDS = {
+    conversation: { icon: 'feather', eyebrow: 'A memory, written up', running: 'Gathering this memory…', media: null, slots: true, extra: [] },
+    photo: { icon: 'image', eyebrow: 'A photograph, remembered', running: 'Looking at this photograph…', media: 'still', slots: false, extra: [['users', 'Who’s in this?'], ['imagePlus', 'Add another']] },
+    video: { icon: 'video', eyebrow: 'A moment on film', running: 'Watching this back…', media: 'video', slots: false, extra: [['crop', 'Choose a still']] },
+    audio: { icon: 'mic', eyebrow: 'In your own voice', running: 'Listening to this…', media: 'audio', slots: true, extra: [['mic', 'Keep the recording']] },
+    document: { icon: 'file', eyebrow: 'From your papers', running: 'Reading this over…', media: 'page', slots: true, extra: [['scan', 'Check the transcription']] },
+  };
+  const kindOf = (m) => MEMORY_KINDS[m && m.kindKey] || MEMORY_KINDS.conversation;
+  const REWRITE_OPTIONS = ['Make it shorter', 'Add more detail', 'Change the tone', 'Start somewhere else'];
+
+  /* Sample drafts — used by the Tweaks demo hook so each card type can be
+     inspected without waiting on the model. */
+  const SAMPLE_DRAFTS = {
+    conversation: { title: 'The summer we drove to the coast', passage: 'We left before the light came up, the car still cold, everything we thought we needed piled in the back. I remember the road going quiet the further out we got, and the way the air changed before we ever saw the water — that salt smell arriving first, like it had come out to meet us. Nobody said much. When we came over the last rise and the whole grey shine of it opened up, my mother put her hand flat against the window and left it there. I think about that hand more than I think about the sea.' },
+    photo: { title: 'Marty on the back step', passage: 'He always sat on that step, never the grass — something about the warmth coming up through the concrete in the late afternoon. You can see the gap in the fence behind him that he never once used, though he could have. Fourteen years and he never left the yard. I took this the summer before he started slowing down, and I didn’t know at the time that it would be the one I kept.' },
+    video: { title: 'Dad singing in the kitchen', passage: 'Forty seconds of him not knowing the camera was on, still in his work shirt, doing the harmony part badly and not caring. You can hear the extractor fan going and my mother laughing somewhere off to the left. This is the only recording I have of his voice. I have watched it more times than I would admit to anyone.' },
+    audio: { title: 'Nan’s recipe, in her words', passage: 'She never wrote any of it down, so I sat her at the table with the phone recording and asked her to talk me through it. Four minutes. She keeps saying “a bit of” and “until it looks right,” which used to frustrate me and now seems like the whole point. Near the end you can hear her get distracted by something out the window and lose her place.' },
+    document: { title: 'The letter he never sent', passage: 'Found folded inside the back of his address book, dated March 1968, addressed to his brother and never posted. Two pages in that careful hand he used for anything official. He apologises for something he doesn’t name, then spends the rest of it talking about the weather and a car he was thinking of buying. I have read it a dozen times trying to work out what it was about.' },
+  };
+
+  const MEMORY_SYSTEM = [
+    'You are the archivist inside Legacy, a private memory-keeping app.',
+    'Read the conversation and write up the single memory it holds as a finished passage for the person\'s book.',
+    'Write in FIRST PERSON, in their own voice, using only details they actually gave. Never invent facts, names, or places.',
+    'Warm, plain, unhurried prose. 90-150 words. No markdown, no lists, no headings.',
+    'Respond with STRICT JSON only, no prose around it: {"title": "...", "passage": "..."}',
+    'The title is 2-6 words, evocative and plain — like a chapter name, not a headline.',
+  ].join(' ');
+
+  const MEMORY_FALLBACK = {
+    title: 'The summer we drove to the coast',
+    passage: 'We left before the light came up, the car still cold, everything we thought we needed piled in the back. I remember the road going quiet the further out we got, and the way the air changed before we ever saw the water — that salt smell arriving first, like it had come out to meet us. Nobody said much. There was a song on that none of us liked enough to change. When we finally came over the last rise and the whole grey shine of it opened up, my mother put her hand flat against the window and left it there. I think about that hand more than I think about the sea.',
+  };
+
+  async function writeMemory(messages, note, prior) {
+    const transcript = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+    try {
+      if (window.claude && typeof window.claude.complete === 'function') {
+        const body = transcript.map((m) => (m.role === 'user' ? 'THEM: ' : 'GUIDE: ') + m.content).join('\n\n');
+        const ask = note
+          ? body + '\n\nHere is the version you wrote before:\n\nTITLE: ' + (prior ? prior.title : '') + '\n\n' + (prior ? prior.passage : '') + '\n\nRewrite it, following this instruction from them: ' + note
+          : body + '\n\nWrite up this memory now.';
+        const text = await window.claude.complete({ system: MEMORY_SYSTEM, max_tokens: 700, messages: [{ role: 'user', content: ask }] });
+        const match = text && text.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (parsed && parsed.title && parsed.passage) return { title: String(parsed.title).trim(), passage: String(parsed.passage).trim() };
+        }
+      }
+    } catch (e) { /* fall through */ }
+    await new Promise((r) => setTimeout(r, 1400));
+    const firstUser = transcript.find((m) => m.role === 'user');
+    if (!firstUser) return MEMORY_FALLBACK;
+    const said = transcript.filter((m) => m.role === 'user').map((m) => m.content.trim()).join(' ');
+    const words = firstUser.content.trim().replace(/[.,;:!?—-]+$/, '').split(/\s+/).slice(0, 6).join(' ');
+    return {
+      title: words.charAt(0).toUpperCase() + words.slice(1),
+      passage: said.length > 260 ? said : said + ' ' + MEMORY_FALLBACK.passage.slice(0, 300) + '…',
+    };
+  }
+
+  /* ── Stories / collaborators / share (from the production widget) ────── */
+  const STORIES_SEED = [
+    { id: 'st-life', name: 'A Life in Full', tagline: 'The long arc — childhood to now.' },
+    { id: 'st-bell', name: 'The Bell Family', tagline: 'Where we came from, and how.' },
+    { id: 'st-letters', name: 'Letters to the Grandchildren', tagline: 'The things I want them to keep.' },
+  ];
+  const SEED_COLLABS = [
+    { name: 'Eleanor Hayes', rel: 'Daughter', status: 'joined' },
+    { name: 'Marcus Bell', rel: 'Brother', status: 'pending' },
+    { name: 'Sofia Russo', rel: 'Granddaughter', status: 'pending' },
+  ];
+  const initials = (n) => n.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+  const LINK_BASE = 'heirloom.life/join/';
+  const makeToken = () => {
+    const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const g = (k) => Array.from({ length: k }, () => a[Math.floor(Math.random() * a.length)]).join('');
+    return g(4) + '-' + g(4) + '-' + g(4);
+  };
+  const SHARE_URL = 'https://heirloom.life';
+  const SHARE_MSG = 'Every life deserves to be told. I’m using Heirloom to turn memories into a real, lasting book — you have to see this.';
+  const SHARE_CHANNELS = [
+    { key: 'x', label: 'X', glyph: 'X', href: (u, m) => 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(m) + '&url=' + encodeURIComponent(u) },
+    { key: 'fb', label: 'Facebook', glyph: 'f', href: (u) => 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(u) },
+    { key: 'li', label: 'LinkedIn', glyph: 'in', href: (u) => 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(u) },
+    { key: 'mail', label: 'Email', icon: 'mail', href: (u, m) => 'mailto:?subject=' + encodeURIComponent('A story worth keeping') + '&body=' + encodeURIComponent(m + '\n\n' + u) },
+  ];
+
+  const LS = 'legacy.story.canvas.v1';
+  const REASON_UP = ['Felt personal', 'Great question', 'Nice pacing', 'Other'];
+  const REASON_DOWN = ['Too generic', 'Off tone', 'Repetitive', 'Missed the point', 'Other'];
+  const loadState = () => {
+    try {
+      const r = JSON.parse(localStorage.getItem(LS) || '{}');
+      if (Array.isArray(r.messages)) {
+        r.messages = r.messages.map((m) => {
+          if (m.role === 'tool') {
+            // running AND draft are both stale on reload — an unreconciled draft
+            // persists forever and (via keepDisabled/hasMemory) kills every path
+            // to making a new memory.
+            return (m.state === 'running' || m.state === 'draft') ? { ...m, state: 'discarded' } : m;
+          }
+          if (m.streaming) return { ...m, streaming: false, stopped: !m.content ? m.stopped : true };
+          if (m.status === 'sending') return { ...m, status: 'failed' };
+          return m;
+        }).filter((m) => !(m.role === 'assistant' && !m.content))
+          // Drop reconciled cards entirely rather than leaving a stack of
+          // "Memory discarded" lines in a restored transcript.
+          .filter((m) => !(m.role === 'tool' && m.state === 'discarded'));
+      }
+      return r;
+    } catch (e) { return {}; }
+  };
+
+  /* ── Small styled primitives ──────────────────────────────────────────── */
+  const iconBtn = { display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 9, background: 'transparent', border: 'none', color: 'var(--hl-muted)', cursor: 'pointer', transition: 'background .15s,color .15s' };
+  function IconBtn({ n, s = 18, label, onClick, style }) {
+    return (
+      <button type="button" aria-label={label} title={label} onClick={onClick} style={{ ...iconBtn, ...style }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+        <Icon n={n} s={s} />
+      </button>
+    );
+  }
+
+  /* ── Sidebar ──────────────────────────────────────────────────────────── */
+  function Sidebar({ sessions, activeId, onNew, onSelect, onPrompt, onRowAction, onCreateStory, onInviteAll, onOpenStory, stories, memories, onClose, query, setQuery, width }) {
+    const [convOpen, setConvOpen] = useState(true);
+    const [menuId, setMenuId] = useState(null);
+    const showSearch = sessions.length >= 6;
+    const filtered = query ? sessions.filter((s) => s.title.toLowerCase().includes(query.toLowerCase())) : sessions;
+    const mems = memories || [];
+    const memCount = (sessionId) => mems.filter((k) => k.sessionId === sessionId).length;
+    const storyCount = (storyId) => mems.filter((k) => k.storyId === storyId).length;
+    const sectionLabel = { fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
+    const navRow = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', borderRadius: 10, background: 'transparent', border: 'none', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 500, cursor: 'pointer', textAlign: 'left', transition: 'background .15s' };
+    const hov = (e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 6%, transparent)');
+    const unhov = (e) => (e.currentTarget.style.background = 'transparent');
+    if (width && width <= 60) {
+      return (
+        <aside style={{ width, minWidth: width, maxWidth: width, flex: '0 0 auto', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'var(--hl-surface-2)', padding: '14px 0' }}>
+          <button aria-label="New chat" title="New chat" onClick={onNew} style={{ ...iconBtn, color: 'var(--hl-accent)' }}><Icon n="pen" s={17} /></button>
+          <div style={{ width: 22, height: 1, background: 'var(--hl-border)', margin: '8px 0' }} />
+          <div className="lg-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: '100%' }}>
+            {stories.map((st) => {
+              const n = storyCount(st.id);
+              return (
+                <button key={st.id} title={st.name + (n ? ' \u2014 ' + n + (n === 1 ? ' memory' : ' memories') : '')} onClick={() => onOpenStory(st.id)}
+                  style={{ position: 'relative', width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 6%, transparent)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                  <Icon n="bookOpen" s={16} />
+                  {n > 0 && <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 14, height: 14, padding: '0 3px', borderRadius: 7, background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-mono)', fontSize: 9, lineHeight: '14px', textAlign: 'center' }}>{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+      );
+    }
+    return (
+      <aside style={{ width: width || 264, minWidth: width || 264, maxWidth: width || 264, flex: '0 0 auto', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--hl-surface-2)', borderRight: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 10px', minHeight: 28 }}>
+          {onClose && <button aria-label="Close menu" onClick={onClose} style={{ ...iconBtn, marginLeft: 'auto' }}><Icon n="x" s={18} /></button>}
+        </div>
+
+        <div style={{ padding: '4px 12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <button style={navRow} onClick={onNew} onMouseEnter={hov} onMouseLeave={unhov}><Icon n="pen" s={17} style={{ color: 'var(--hl-accent)' }} /> New chat</button>
+          {showSearch && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 10, border: '1px solid var(--hl-border)', background: 'var(--hl-surface)' }}>
+              <Icon n="search" s={15} style={{ color: 'var(--hl-faint)' }} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 13.5, color: 'var(--hl-text)' }} />
+            </div>
+          )}
+        </div>
+
+        <div className="lg-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 12px 16px' }}>
+          <button onClick={() => setConvOpen((v) => !v)} style={{ ...sectionLabel, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '10px 6px 8px', width: '100%' }}>
+            <Icon n="chevron" s={12} style={{ transform: convOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .2s', color: 'var(--hl-faint)' }} /> Conversations
+          </button>
+          {convOpen && filtered.map((s) => {
+            const n = memCount(s.id);
+            return (
+            <div key={s.id} style={{ position: 'relative' }}>
+              <button onClick={() => onSelect(s.id)} onMouseEnter={hov} onMouseLeave={unhov}
+                style={{ ...navRow, fontWeight: s.id === activeId ? 600 : 400, background: s.id === activeId ? 'color-mix(in srgb, var(--hl-accent) 12%, transparent)' : 'transparent', paddingRight: n ? 58 : 34 }}>
+                {s.starred && <Icon n="star" s={12} fill="var(--hl-accent)" style={{ color: 'var(--hl-accent)', flexShrink: 0 }} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+              </button>
+              {n > 0 && (
+                <span title={n + (n === 1 ? ' memory kept' : ' memories kept')} style={{ position: 'absolute', right: 32, top: '50%', transform: 'translateY(-50%)', display: 'inline-flex', alignItems: 'center', gap: 3, pointerEvents: 'none', color: 'var(--hl-accent)' }}>
+                  <Icon n="bookmark" s={11} />
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1 }}>{n}</span>
+                </span>
+              )}
+              <button aria-label="More" onClick={() => setMenuId(menuId === s.id ? null : s.id)} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--hl-faint)', cursor: 'pointer' }}>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><i style={dot} /><i style={dot} /><i style={dot} /></span>
+              </button>
+              {menuId === s.id && (
+                <div style={{ position: 'absolute', right: 6, top: '100%', zIndex: 5, marginTop: 2, width: 210, background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', borderRadius: 12, boxShadow: '0 18px 44px -18px var(--hl-shadow)', padding: 6 }}>
+                  {[['star', s.starred ? 'Unstar' : 'Star', 'star'], ['pen', 'Rename', 'rename'], ['userPlus', 'Invite collaborators', 'invite'], ['folder', 'Move to story', 'move'], ['folderMinus', 'Remove from story', 'remove']].map(([ic, lbl, act]) => (
+                    <button key={act} onClick={() => { setMenuId(null); onRowAction(s.id, act); }} style={{ ...menuItem, whiteSpace: 'nowrap' }} onMouseEnter={hov} onMouseLeave={unhov}>
+                      <Icon n={ic} s={15} style={{ color: 'var(--hl-muted)', flexShrink: 0 }} /> {lbl}
+                    </button>
+                  ))}
+                  <div style={{ height: 1, background: 'var(--hl-border)', margin: '6px 8px' }} />
+                  <button onClick={() => { setMenuId(null); onRowAction(s.id, 'delete'); }} style={{ ...menuItem, whiteSpace: 'nowrap', color: 'var(--hl-danger, #B0432F)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-danger, #B0432F) 14%, transparent)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                    <Icon n="trash" s={15} style={{ color: 'var(--hl-danger, #B0432F)', flexShrink: 0 }} /> Delete
+                  </button>
+                </div>
+              )}
+            </div>
+            );
+          })}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '18px 6px 10px' }}>
+            <Icon n="bookOpen" s={13} style={{ color: 'var(--hl-faint)' }} />
+            <span style={sectionLabel}>Stories</span>
+            {stories.length > 0 && (
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+                <button aria-label="Create a new story" title="Create a new story" onClick={onCreateStory}
+                  style={{ ...iconBtn, width: 24, height: 24, color: 'var(--hl-accent)' }}><Icon n="plus" s={14} /></button>
+                <button aria-label="Invite collaborators" title="Invite collaborators" onClick={onInviteAll}
+                  style={{ ...iconBtn, width: 24, height: 24 }}><Icon n="userPlus" s={13} /></button>
+              </span>
+            )}
+          </div>
+          {stories.length === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--hl-border)' }}>
+              <button onClick={onCreateStory} title="Create a new story"
+                style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', padding: '8px 9px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--hl-accent)', cursor: 'pointer', transition: 'background .15s' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hl-accent-soft)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                <Icon n="plus" s={15} style={{ flexShrink: 0 }} /><span style={{ fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600 }}>Create</span>
+              </button>
+              <button onClick={onInviteAll} title="Invite collaborators"
+                style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', padding: '8px 9px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer', transition: 'background .15s, color .15s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 6%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+                <Icon n="userPlus" s={15} style={{ flexShrink: 0 }} /><span style={{ fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 500 }}>Invite</span>
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {stories.map((st) => (
+              <button key={st.id} title={st.tagline || st.name} onClick={() => onOpenStory(st.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '8px 8px 8px 10px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer', transition: 'background .18s, color .18s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 5%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+                <span style={{ flexShrink: 0, width: 5, height: 5, borderRadius: '50%', background: 'var(--hl-accent)', opacity: 0.55 }} />
+                <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 15.5, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{st.name}</span>
+                {storyCount(st.id) > 0 && (
+                  <span title={storyCount(st.id) + (storyCount(st.id) === 1 ? ' memory' : ' memories')} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--hl-accent)' }}>
+                    <Icon n="bookmark" s={11} />
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1 }}>{storyCount(st.id)}</span>
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {memories && memories.length > 0 && (
+            <React.Fragment>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '18px 6px 10px' }}>
+                <Icon n="bookmark" s={12} style={{ color: 'var(--hl-faint)' }} />
+                <span style={sectionLabel}>Memories</span>
+                <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--hl-accent)' }}>{memories.length}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {memories.map((k) => {
+                  const st = stories.find((s) => s.id === k.storyId);
+                  return (
+                    <div key={k.id} title={st ? 'In ' + st.name : ''} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '7px 9px', borderRadius: 9, animation: 'hl-modal-in .3s ease' }}>
+                      <Icon n="check" s={13} style={{ color: 'var(--hl-accent)', flexShrink: 0, marginTop: 3 }} />
+                      <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 14.5, lineHeight: 1.3, color: 'var(--hl-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.title}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </React.Fragment>
+          )}
+
+          <div style={{ padding: '18px 6px 8px' }}><span style={sectionLabel}>Writing prompts</span></div>          {PROMPTS.map((p, i) => (
+            <button key={i} onClick={() => onPrompt(p)} onMouseEnter={hov} onMouseLeave={unhov}
+              style={{ ...navRow, alignItems: 'flex-start', fontSize: 13.5, lineHeight: 1.45, color: 'var(--hl-muted)' }}>
+              <Icon n="spark" s={14} style={{ color: 'var(--hl-accent)', flexShrink: 0, marginTop: 2 }} /><span>{p}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+    );
+  }
+  const dot = { width: 3, height: 3, borderRadius: 9, background: 'currentColor', display: 'block' };
+  const menuItem = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', borderRadius: 8, background: 'transparent', border: 'none', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 13.5, cursor: 'pointer', textAlign: 'left' };
+
+  /* ── Messages ─────────────────────────────────────────────────────────── */
+  function Avatar() {
+    return <span style={{ flexShrink: 0, width: 32, height: 32, borderRadius: 99, background: 'var(--hl-accent)', display: 'grid', placeItems: 'center', color: 'var(--hl-on-accent)', marginTop: 2 }}><Icon n="feather" s={17} /></span>;
+  }
+
+  function ActBtn({ label, icon, onClick, active, disabled, tone }) {
+    const activeColor = tone === 'danger' ? 'var(--hl-danger, #B0432F)' : 'var(--hl-accent)';
+    const activeBg = tone === 'danger' ? 'color-mix(in srgb, var(--hl-danger, #B0432F) 14%, transparent)' : 'var(--hl-accent-soft)';
+    return (
+      <button onClick={onClick} disabled={disabled} aria-label={label} title={label} aria-pressed={!!active} style={{
+        width: 28, height: 28, flexShrink: 0, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: 'none', background: active ? activeBg : 'transparent', color: active ? activeColor : 'var(--hl-muted)',
+        opacity: disabled ? 0.35 : 1, cursor: disabled ? 'default' : 'pointer', transition: 'background .15s, color .15s',
+        animation: active ? 'hl-pop .28s ease' : 'none',
+      }}
+        onMouseEnter={(e) => { if (!disabled && !active) { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; } }}
+        onMouseLeave={(e) => { if (!disabled && !active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; } }}>
+        <Icon n={icon} s={14} />
+      </button>
+    );
+  }
+
+  function Bubble({ message, onResend, onRegenerate, onVersion, onRate, onCopy, onFeedback, onEdit, onRetry, onKeep, keepDisabled }) {
+    const [hover, setHover] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(message.content);
+    const editRef = useRef(null);
+    useEffect(() => {
+      if (!editing) return;
+      const el = editRef.current;
+      if (!el) return;
+      el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px';
+      el.focus(); el.setSelectionRange(el.value.length, el.value.length);
+    }, [editing]);
+    const startEdit = () => { setDraft(message.content); setEditing(true); };
+    const cancelEdit = () => setEditing(false);
+    const saveEdit = () => { const t = draft.trim(); setEditing(false); if (t && t !== message.content) onEdit(t); };
+    const [popover, setPopover] = useState(null); // null | 'up' | 'down'
+    const [reasons, setReasons] = useState([]);
+    const [note, setNote] = useState('');
+    const popRef = useRef(null);
+
+    useEffect(() => {
+      if (!popover) return;
+      const onDoc = (e) => { if (popRef.current && !popRef.current.contains(e.target)) closePopover(); };
+      const onKey = (e) => { if (e.key === 'Escape') closePopover(); };
+      window.addEventListener('mousedown', onDoc);
+      window.addEventListener('keydown', onKey);
+      const raf = requestAnimationFrame(() => {
+        const el = popRef.current;
+        if (!el) return;
+        let node = el.parentElement;
+        let container = null;
+        while (node) { if (node.scrollHeight > node.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(node).overflowY)) { container = node; break; } node = node.parentElement; }
+        if (!container) return;
+        const elRect = el.getBoundingClientRect();
+        const contRect = container.getBoundingClientRect();
+        if (elRect.bottom > contRect.bottom) container.scrollTop += (elRect.bottom - contRect.bottom) + 16;
+        else if (elRect.top < contRect.top) container.scrollTop -= (contRect.top - elRect.top) + 16;
+      });
+      return () => { window.removeEventListener('mousedown', onDoc); window.removeEventListener('keydown', onKey); cancelAnimationFrame(raf); };
+    }, [popover]);
+
+    const closePopover = () => { setPopover(null); setReasons([]); setNote(''); };
+    const toggleReason = (r) => setReasons((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]);
+    const clickThumb = (val) => {
+      if (message.rating === val) { onRate(val); closePopover(); return; }
+      onRate(val);
+      setReasons([]); setNote('');
+      setPopover(val);
+    };
+    const submitFeedback = () => { onFeedback && onFeedback(reasons, note); closePopover(); };
+    const isUser = message.role === 'user';
+    const failed = isUser && message.status === 'failed';
+    const sending = isUser && message.status === 'sending';
+    const hasVersions = !isUser && message.versions && message.versions.length > 1;
+    const showActions = !isUser && !message.streaming && message.content;
+    const showUserActions = isUser && !editing && message.status !== 'sending' && message.status !== 'failed';
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: isUser ? 'flex-end' : 'flex-start', gap: 5 }}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+        <div style={{ display: 'flex', gap: 12, justifyContent: isUser ? 'flex-end' : 'flex-start', width: '100%' }}>
+          {!isUser && <Avatar />}
+          {isUser && editing ? (
+            <div style={{ width: '100%', maxWidth: '86%', display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 18, borderBottomRightRadius: 5, padding: 12 }}>
+              <textarea ref={editRef} value={draft}
+                onChange={(e) => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); } if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); } }}
+                rows={1}
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', overflow: 'hidden', border: 'none', background: 'transparent', outline: 'none', padding: 0, fontFamily: 'var(--font-body)', fontSize: 15.5, lineHeight: 1.62, color: 'var(--hl-text)' }} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={cancelEdit} style={{ padding: '7px 13px', borderRadius: 9, border: '1px solid var(--hl-border)', background: 'transparent', color: 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}>Cancel</button>
+                <button onClick={saveEdit} disabled={!draft.trim()} style={{ padding: '7px 15px', borderRadius: 9, border: 'none', background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: draft.trim() ? 'pointer' : 'not-allowed', opacity: draft.trim() ? 1 : 0.5 }}>Send</button>
+              </div>
+            </div>
+          ) : (
+          <div onClick={failed ? onResend : undefined} role={failed ? 'button' : undefined} tabIndex={failed ? 0 : undefined}
+            style={{
+              maxWidth: '76%', borderRadius: 18, padding: isUser ? '12px 16px' : '2px 0',
+              fontFamily: 'var(--font-body)', fontSize: 15.5, lineHeight: 1.62, color: 'var(--hl-text)', whiteSpace: 'pre-wrap',
+              background: isUser ? (failed ? 'color-mix(in srgb, var(--hl-danger, #B0432F) 10%, var(--hl-surface))' : 'var(--hl-surface)') : 'transparent',
+              border: isUser ? (failed ? '1px solid color-mix(in srgb, var(--hl-danger, #B0432F) 45%, transparent)' : '1px solid var(--hl-border)') : 'none',
+              borderBottomRightRadius: isUser ? 5 : 18,
+              borderBottomLeftRadius: isUser ? 18 : 5,
+              opacity: sending ? 0.55 : 1,
+              cursor: failed ? 'pointer' : 'default',
+              transition: 'opacity .2s',
+              animation: failed ? 'hl-shake .32s ease' : 'none',
+            }}>
+            {message.content}
+            {!isUser && message.streaming && (
+              <span style={{ display: 'inline-block', width: 2, height: 15, marginLeft: 3, verticalAlign: '-2px', background: 'var(--hl-accent)', animation: 'hl-blink 1s step-start infinite' }} />
+            )}
+          </div>
+          )}
+        </div>
+
+        {showUserActions && (
+          <div className="hl-acts" style={{ display: 'flex', alignItems: 'center', gap: 1, paddingRight: 2, opacity: hover ? 1 : 0, transition: 'opacity .15s' }}>
+            {message.edited && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.06em', color: 'var(--hl-faint)', marginRight: 5 }}>Edited</span>}
+            {onKeep && !keepDisabled && <ActBtn label="Keep this as a memory" icon="bookmark" active={message.suggestKeep} onClick={onKeep} />}
+            <ActBtn label="Edit message" icon="pencil" onClick={startEdit} />
+            <ActBtn label="Copy" icon="copy" onClick={onCopy} />
+            <ActBtn label="Send again" icon="refresh" onClick={onRetry} />
+          </div>
+        )}
+
+        {isUser && (sending || failed) && (
+          <div onClick={failed ? onResend : undefined} style={{
+            display: 'flex', alignItems: 'center', gap: 5, paddingRight: 4, fontFamily: 'var(--font-mono)', fontSize: 11,
+            letterSpacing: '.03em', color: failed ? 'var(--hl-danger, #B0432F)' : 'var(--hl-faint)', cursor: failed ? 'pointer' : 'default',
+          }}>
+            {sending
+              ? <React.Fragment><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--hl-faint)', animation: 'lgBounce 1s ease-in-out infinite' }} />Sending…</React.Fragment>
+              : <React.Fragment><Icon n="alertTriangle" s={12} />Not delivered · Tap to retry</React.Fragment>}
+          </div>
+        )}
+
+        {showActions && (
+          <div className="hl-acts" style={{ display: 'flex', alignItems: 'center', gap: 1, paddingLeft: 44, opacity: (hover || message.rating || (message.suggestKeep && !keepDisabled)) ? 1 : 0.5, transition: 'opacity .15s' }}>
+            {message.stopped && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.06em', color: 'var(--hl-faint)', marginRight: 5 }}>Stopped</span>}
+            {onKeep && !keepDisabled && <ActBtn label="Keep this as a memory" icon="bookmark" active={message.suggestKeep} onClick={onKeep} />}
+            <ActBtn label="Copy" icon="copy" onClick={onCopy} />
+            <ActBtn label="Regenerate response" icon="refresh" onClick={onRegenerate} />
+            {hasVersions && (
+              <React.Fragment>
+                <ActBtn label="Previous version" icon="chevronLeft" onClick={() => onVersion(-1)} disabled={message.versionIdx === 0} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--hl-faint)', minWidth: 30, textAlign: 'center' }}>{message.versionIdx + 1}/{message.versions.length}</span>
+                <ActBtn label="Next version" icon="chevronRight" onClick={() => onVersion(1)} disabled={message.versionIdx === message.versions.length - 1} />
+              </React.Fragment>
+            )}
+            <span style={{ width: 1, height: 14, background: 'var(--hl-border)', margin: '0 5px' }} />
+            <ActBtn label="Good response" icon="thumbsUp" active={message.rating === 'up'} onClick={() => clickThumb('up')} />
+            <ActBtn label="Bad response" icon="thumbsDown" tone="danger" active={message.rating === 'down'} onClick={() => clickThumb('down')} />
+          </div>
+        )}
+
+        {popover && (
+          <div ref={popRef} style={{ width: '100%', maxWidth: 340, paddingLeft: 44, animation: 'hl-modal-in .18s cubic-bezier(.22,1,.36,1)' }}>
+            <div style={{ position: 'relative', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 14, padding: 12, boxShadow: '0 18px 44px -18px var(--hl-shadow)', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <button onClick={closePopover} aria-label="Close" style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+                <Icon n="x" s={14} />
+              </button>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--hl-faint)', paddingRight: 20 }}>{popover === 'up' ? 'What worked?' : 'What went wrong?'}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {(popover === 'up' ? REASON_UP : REASON_DOWN).map((r) => {
+                  const on = reasons.includes(r);
+                  return (
+                    <button key={r} onClick={() => toggleReason(r)} style={{
+                      padding: '6px 11px', borderRadius: 99, fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
+                      border: '1px solid', borderColor: on ? 'var(--hl-accent)' : 'var(--hl-border)',
+                      background: on ? 'var(--hl-accent-soft)' : 'transparent', color: on ? 'var(--hl-accent)' : 'var(--hl-muted)',
+                    }}>{r}</button>
+                  );
+                })}
+              </div>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add detail (optional)" rows={2}
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: '8px 10px', borderRadius: 10, border: '1px solid var(--hl-border)', background: 'var(--hl-surface-2)', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 13, outline: 'none' }} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={closePopover} style={{ padding: '7px 13px', borderRadius: 9, border: '1px solid var(--hl-border)', background: 'transparent', color: 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}>Skip</button>
+                <button onClick={submitFeedback} style={{ padding: '7px 15px', borderRadius: 9, border: 'none', background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Send feedback</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── Memory tool ──────────────────────────────────────────────────────── */
+  function MemoryCard({ message, stories, onSave, onRewrite, onDiscard, onOpen, onExtra }) {
+    const [storyId, setStoryId] = useState(message.storyId || (stories[0] && stories[0].id) || '');
+    const st = message.state;
+    const K = kindOf(message);
+    const [editingTitle, setEditingTitle] = useState(false);
+    const [titleDraft, setTitleDraft] = useState(message.title);
+    useEffect(() => { setTitleDraft(message.title); }, [message.title]);
+    const commitTitle = () => {
+      const trimmed = titleDraft.trim();
+      setEditingTitle(false);
+      if (trimmed && trimmed !== message.title) onRetitle(trimmed);
+      else setTitleDraft(message.title);
+    };
+    const label = { fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
+    const ghost = { padding: '8px 13px', borderRadius: 9, border: '1px solid var(--hl-border)', background: 'transparent', color: 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', transition: 'color .15s, border-color .15s' };
+
+    if (st === 'running') {
+      return (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Avatar />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9, padding: '10px 15px', borderRadius: 99, border: '1px solid var(--hl-border)', background: 'var(--hl-surface)' }}>
+            <span style={{ display: 'flex', color: 'var(--hl-accent)', animation: 'hl-pulse 1.5s ease-in-out infinite' }}><Icon n={K.icon} s={14} /></span>
+            <span style={{ fontFamily: 'var(--font-body)', fontSize: 13.5, color: 'var(--hl-muted)' }}>{K.running}</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (st === 'discarded') {
+      return (
+        <div style={{ paddingLeft: 44, fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.06em', color: 'var(--hl-faint)' }}>Memory discarded</div>
+      );
+    }
+
+    if (st === 'saved') {
+      const story = stories.find((s) => s.id === message.storyId);
+      return (
+        <div style={{ display: 'flex', gap: 12 }}>
+          <span style={{ width: 32, flexShrink: 0 }} />
+          <button onClick={onOpen} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 11, textAlign: 'left', padding: '11px 14px', borderRadius: 13, border: '1px solid var(--hl-border)', background: 'var(--hl-surface)', cursor: 'pointer', transition: 'border-color .18s' }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--hl-border-strong)')}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--hl-border)')}>
+            <span style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 22, height: 22, borderRadius: 99, background: 'var(--hl-accent-soft)', color: 'var(--hl-accent)' }}><Icon n={K.icon} s={12} /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: 15.5, lineHeight: 1.25, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{message.title}</span>
+              <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.06em', color: 'var(--hl-faint)', marginTop: 2 }}>Kept in {story ? story.name : 'your book'}</span>
+            </span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ display: 'flex', gap: 12 }}>
+        <span style={{ width: 32, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0, maxWidth: 520, border: '1px solid var(--hl-border-strong)', borderRadius: 16, background: 'var(--hl-surface)', boxShadow: '0 18px 44px -26px var(--hl-shadow)', overflow: 'hidden', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderBottom: '1px solid var(--hl-border)' }}>
+            <Icon n={K.icon} s={12} style={{ color: 'var(--hl-accent)' }} />
+            <span style={label}>{K.eyebrow}</span>
+          </div>
+          {K.media && <MemoryMedia kind={K.media} />}
+          <div style={{ padding: '16px 18px 18px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+              {editingTitle ? (
+                <input autoFocus value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} onBlur={commitTitle}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitTitle(); } if (e.key === 'Escape') { e.preventDefault(); setTitleDraft(message.title); setEditingTitle(false); } }}
+                  aria-label="Memory title"
+                  style={{ margin: 0, flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 23, lineHeight: 1.16, letterSpacing: '-.01em', color: 'var(--hl-text)' }} />
+              ) : (
+                <React.Fragment>
+                  <h4 style={{ margin: 0, flex: 1, minWidth: 0, fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 23, lineHeight: 1.16, letterSpacing: '-.01em', color: 'var(--hl-text)', textWrap: 'pretty' }}>{message.title}</h4>
+                  <button onClick={() => { setTitleDraft(message.title); setEditingTitle(true); }} aria-label="Edit title"
+                    style={{ flexShrink: 0, marginTop: 4, border: 'none', background: 'transparent', color: 'var(--hl-faint)', cursor: 'pointer', padding: 2, display: 'grid', placeItems: 'center' }}><Icon n="pencil" s={13} /></button>
+                </React.Fragment>
+              )}
+            </div>
+            <p style={{ margin: '11px 0 0', fontFamily: 'var(--font-body)', fontSize: 14.5, lineHeight: 1.68, color: 'var(--hl-muted)', textWrap: 'pretty' }}>{message.passage}</p>
+
+            {(K.slots || K.media) && (
+              <React.Fragment>
+                <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={label}>{K.media ? 'Media' : 'Photos'}</span>
+                  <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, color: 'var(--hl-faint)' }}>— add more whenever you find them</span>
+                </div>
+                <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
+                  {K.media && (
+                    <span title="The media you shared" style={{ width: 52, height: 52, borderRadius: 10, border: '1px solid var(--hl-border-strong)', display: 'grid', placeItems: 'center', color: 'var(--hl-accent)', background: 'var(--hl-accent-soft)' }}><Icon n={K.icon} s={17} /></span>
+                  )}
+                  {Array.from({ length: K.media ? 2 : 3 }).map((_, i) => (
+                    <span key={i} style={{ width: 52, height: 52, borderRadius: 10, border: '1px dashed var(--hl-border-strong)', display: 'grid', placeItems: 'center', color: 'var(--hl-faint)', background: 'var(--hl-surface-2)' }}><Icon n="imagePlus" s={15} /></span>
+                  ))}
+                </div>
+              </React.Fragment>
+            )}
+
+            <div style={{ marginTop: 18 }}><span style={label}>Keep it in</span></div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {stories.map((s) => {
+                const on = s.id === storyId;
+                return (
+                  <button key={s.id} onClick={() => setStoryId(s.id)} style={{
+                    padding: '6px 12px', borderRadius: 99, fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
+                    border: '1px solid', borderColor: on ? 'var(--hl-accent)' : 'var(--hl-border)',
+                    background: on ? 'var(--hl-accent-soft)' : 'transparent', color: on ? 'var(--hl-accent)' : 'var(--hl-muted)',
+                  }}>{s.name}</button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginTop: 18, paddingTop: 15, borderTop: '1px solid var(--hl-border)' }}>
+              {K.extra.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {K.extra.map(([ic, lbl]) => (
+                    <button key={lbl} onClick={onExtra} style={{ ...ghost, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 11px', fontSize: 12 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-text)'; e.currentTarget.style.borderColor = 'var(--hl-border-strong)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.borderColor = 'var(--hl-border)'; }}>
+                      <Icon n={ic} s={13} />{lbl}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => onSave(storyId)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hl-accent-hover)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--hl-accent)')}>
+                  <Icon n="bookmark" s={13} />Keep this
+                </button>
+                <button onClick={onRewrite} style={{ ...ghost, whiteSpace: 'nowrap' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-text)'; e.currentTarget.style.borderColor = 'var(--hl-border-strong)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.borderColor = 'var(--hl-border)'; }}>Rewrite</button>
+                <button onClick={onDiscard} style={{ ...ghost, border: 'none', marginLeft: 'auto', color: 'var(--hl-faint)', whiteSpace: 'nowrap' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--hl-danger, #B0432F)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--hl-faint)')}>Discard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function MemoryMedia({ kind }) {
+    const frame = { position: 'relative', display: 'grid', placeItems: 'center', background: 'var(--hl-surface-2)', borderBottom: '1px solid var(--hl-border)', color: 'var(--hl-faint)' };
+    const badge = { position: 'absolute', bottom: 9, right: 10, padding: '3px 7px', borderRadius: 6, background: 'color-mix(in srgb, var(--hl-text) 62%, transparent)', color: 'var(--hl-bg)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.04em' };
+    if (kind === 'audio') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 18px', borderBottom: '1px solid var(--hl-border)', background: 'var(--hl-surface-2)' }}>
+          <span style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 99, background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', paddingLeft: 2 }}><Icon n="play" s={13} fill="currentColor" /></span>
+          <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 3, height: 26 }}>
+            {[9, 16, 22, 13, 25, 18, 11, 24, 15, 20, 8, 17, 23, 12, 19, 26, 14, 10, 21, 16, 9, 18, 13, 22].map((h, i) => (
+              <i key={i} style={{ flex: 1, height: h, borderRadius: 2, background: 'var(--hl-accent)', opacity: i < 9 ? 0.75 : 0.24 }} />
+            ))}
+          </span>
+          <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--hl-faint)' }}>4:12</span>
+        </div>
+      );
+    }
+    if (kind === 'video') {
+      return (
+        <div style={{ ...frame, aspectRatio: '16 / 9' }}>
+          <span style={{ display: 'grid', placeItems: 'center', width: 46, height: 46, borderRadius: 99, background: 'color-mix(in srgb, var(--hl-text) 70%, transparent)', color: 'var(--hl-bg)', paddingLeft: 3 }}><Icon n="play" s={17} fill="currentColor" /></span>
+          <span style={badge}>1:38</span>
+        </div>
+      );
+    }
+    if (kind === 'page') {
+      return (
+        <div style={{ ...frame, aspectRatio: '16 / 7', background: 'color-mix(in srgb, #C8A96A 9%, var(--hl-surface-2))' }}>
+          <Icon n="file" s={26} style={{ opacity: 0.5 }} />
+          <span style={badge}>2 pages</span>
+        </div>
+      );
+    }
+    return (
+      <div style={{ ...frame, aspectRatio: '16 / 10' }}>
+        <Icon n="image" s={26} style={{ opacity: 0.45 }} />
+      </div>
+    );
+  }
+
+  function MemoryOffer({ onAccept, onDecline }) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 44, animation: 'hl-modal-in .2s ease' }}>
+        <button onClick={onAccept} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 99, border: '1px solid var(--hl-accent)', background: 'var(--hl-accent-soft)', color: 'var(--hl-accent)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+          <Icon n="bookmark" s={13} />Write it up
+        </button>
+        <button onClick={onDecline} style={{ padding: '7px 12px', borderRadius: 99, border: 'none', background: 'transparent', color: 'var(--hl-faint)', fontFamily: 'var(--font-body)', fontSize: 12.5, cursor: 'pointer' }}>Not yet</button>
+      </div>
+    );
+  }
+
+  /* Pills offered after a memory action — rewrite direction, or the
+     start-a-story nudge after a first save. Free text always still works;
+     these are shortcuts, not the only path. */
+  function MemoryFollowup({ options, skipLabel, onPick, onSkip }) {
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 44, animation: 'hl-modal-in .2s ease' }}>
+        {options.map((opt) => (
+          <button key={opt} onClick={() => onPick(opt)} style={{ padding: '7px 14px', borderRadius: 99, border: '1px solid var(--hl-accent-line)', background: 'var(--hl-accent-soft)', color: 'var(--hl-accent)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>{opt}</button>
+        ))}
+        {onSkip && <button onClick={onSkip} style={{ padding: '7px 12px', borderRadius: 99, border: 'none', background: 'transparent', color: 'var(--hl-faint)', fontFamily: 'var(--font-body)', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>{skipLabel}</button>}
+      </div>
+    );
+  }
+
+  function Messages({ messages, loading, stories, keepDisabled, onKeep, onResend, onRegenerate, onVersion, onRate, onCopy, onFeedback, onEdit, onRetry, onMemSave, onMemRewrite, onMemDiscard, onMemOpen, onMemRetitle, onOffer, onRewriteOption, onStoryPrompt }) {
+    const scrollRef = useRef(null);
+    useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, loading]);
+    return (
+      <div ref={scrollRef} className="lg-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '26px 16px' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {messages.map((m) => (
+            m.role === 'tool' ? (
+              <MemoryCard key={m.id} message={m} stories={stories}
+                onSave={(storyId) => onMemSave(m.id, storyId)}
+                onRewrite={() => onMemRewrite(m.id)}
+                onDiscard={() => onMemDiscard(m.id)}
+                onOpen={() => onMemOpen(m.id)}
+                onExtra={() => onMemOpen(m.id)}
+                onRetitle={(title) => onMemRetitle(m.id, title)} />
+            ) : (
+            <React.Fragment key={m.id}>
+            <Bubble message={m}
+              onResend={() => onResend(m.id)}
+              onRegenerate={() => onRegenerate(m.id)}
+              onVersion={(dir) => onVersion(m.id, dir)}
+              onRate={(v) => onRate(m.id, v)}
+              onCopy={() => onCopy(m.content)}
+              onEdit={(text) => onEdit(m.id, text)}
+              onRetry={() => onRetry(m.id)}
+              onKeep={() => onKeep(m.id)}
+              keepDisabled={keepDisabled}
+              onFeedback={(reasons, note) => onFeedback(m.id, reasons, note)}
+            />
+            {m.offer && !m.streaming && <MemoryOffer onAccept={() => onOffer(m.id, true)} onDecline={() => onOffer(m.id, false)} />}
+            {m.rewriteOptions && !m.streaming && <MemoryFollowup options={REWRITE_OPTIONS} skipLabel="I’ll just type" onPick={(t) => onRewriteOption(m.id, t)} onSkip={() => onRewriteOption(m.id, null)} />}
+            {m.storyPrompt && !m.streaming && <MemoryFollowup options={['Start a story with this']} skipLabel="Not now" onPick={() => onStoryPrompt(m.id, true)} onSkip={() => onStoryPrompt(m.id, false)} />}
+            </React.Fragment>
+            )
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Avatar />
+              <div style={{ background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', borderRadius: 18, borderBottomLeftRadius: 5, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {[0, 1, 2].map((i) => <span key={i} style={{ width: 6, height: 6, borderRadius: 9, background: 'var(--hl-faint)', animation: `lgBounce 1.1s ${i * 0.15}s infinite ease-in-out` }} />)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Composer ─────────────────────────────────────────────────────────── */
+  const SOURCES = [['camera', 'Take a photo', 'photo'], ['image', 'Photo library', 'photo'], ['video', 'Record a video', 'video'], ['file', 'Scan a document', 'document'], ['mic', 'Record audio', 'audio'], ['folder', 'Browse files', 'document']];
+  function Composer({ onSend, disabled, showStop, onStop, onAttach }) {
+    const [text, setText] = useState('');
+    const [srcOpen, setSrcOpen] = useState(false);
+    const taRef = useRef(null);
+    const grow = () => { const el = taRef.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; };
+    const submit = () => { const t = text.trim(); if (!t || disabled) return; onSend(t); setText(''); requestAnimationFrame(() => { if (taRef.current) taRef.current.style.height = 'auto'; }); };
+    return (
+      <div style={{ boxSizing: 'border-box', maxWidth: 680, margin: '0 auto', width: '100%', padding: '0 16px' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: 8, background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', borderRadius: 22, padding: '8px 8px 8px 8px', boxShadow: '0 8px 24px -16px var(--hl-shadow)' }}>
+          <div style={{ position: 'relative' }}>
+            <button aria-label="Add to your story" onClick={() => setSrcOpen((v) => !v)} style={{ ...iconBtn, width: 38, height: 38, color: srcOpen ? 'var(--hl-accent)' : 'var(--hl-muted)' }}><Icon n="plus" s={20} /></button>
+            {srcOpen && (
+              <>
+                <div onClick={() => setSrcOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1 }} />
+                <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', left: 0, zIndex: 2, width: 232, background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', borderRadius: 16, boxShadow: '0 22px 60px -18px var(--hl-shadow)', padding: 6 }}>
+                  {SOURCES.map(([ic, lbl, kindKey]) => (
+                    <button key={lbl} onClick={() => { setSrcOpen(false); if (onAttach) onAttach(kindKey); }} style={menuItem} onMouseEnter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 7%, transparent)')} onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
+                      <Icon n={ic} s={18} style={{ color: 'var(--hl-accent)' }} /> {lbl}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <textarea ref={taRef} rows={1} value={text} placeholder="Share a memory…"
+            onChange={(e) => { setText(e.target.value); grow(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            style={{ flex: 1, minWidth: 0, resize: 'none', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 15.5, lineHeight: 1.5, color: 'var(--hl-text)', padding: '9px 2px', maxHeight: 160 }} />
+          <button aria-label="Record voice" style={{ ...iconBtn, width: 38, height: 38 }}><Icon n="mic" s={19} /></button>
+          {showStop ? (
+            <button aria-label="Stop generating" title="Stop generating" onClick={onStop}
+              style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 99, border: 'none', display: 'grid', placeItems: 'center', background: 'var(--hl-text)', color: 'var(--hl-bg)', cursor: 'pointer' }}>
+              <Icon n="stop" s={14} />
+            </button>
+          ) : (
+            <button aria-label="Send" onClick={submit} disabled={!text.trim() || disabled}
+              style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 99, border: 'none', display: 'grid', placeItems: 'center', background: (text.trim() && !disabled) ? 'var(--hl-accent)' : 'color-mix(in srgb, var(--hl-accent) 30%, transparent)', color: 'var(--hl-on-accent)', cursor: (text.trim() && !disabled) ? 'pointer' : 'default', transition: 'background .2s' }}>
+              <Icon n="arrowUp" s={19} sw={2.2} />
+            </button>
+          )}
+        </div>
+        <p style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.04em', color: 'var(--hl-faint)', margin: '10px 0 0' }}>Legacy keeps your stories private. Press Enter to send.</p>
+      </div>
+    );
+  }
+
+  /* ── Save-chat bar (appears after a few exchanges) ────────────────────── */
+  function SaveBar({ onSave }) {
+    return (
+      <div style={{ boxSizing: 'border-box', maxWidth: 680, margin: '14px auto 0', padding: '0 16px', width: '100%' }}>
+        <button onClick={onSave} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 11, border: 'none', background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hl-accent-hover)')} onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--hl-accent)')}>
+          <Icon n="bookmark" s={15} /> Save this chat
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Modals (Begin story / Save) ──────────────────────────────────────── */
+  function Modal({ children, onClose, label }) {
+    useEffect(() => { const k = (e) => e.key === 'Escape' && onClose(); document.addEventListener('keydown', k, true); return () => document.removeEventListener('keydown', k, true); }, [onClose]);
+    return (
+      <div role="dialog" aria-modal="true" aria-label={label} style={{ position: 'absolute', inset: 0, zIndex: 30, display: 'grid', placeItems: 'center', padding: 20 }}>
+        <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(26,21,15,0.42)', backdropFilter: 'blur(3px)' }} />
+        <div style={{ position: 'relative', width: '100%', maxWidth: 400, background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', borderRadius: 20, padding: 26, boxShadow: '0 30px 80px -30px var(--hl-shadow)' }}>{children}</div>
+      </div>
+    );
+  }
+  const field = { width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--hl-border)', background: 'var(--hl-bg)', fontFamily: 'var(--font-body)', fontSize: 14.5, color: 'var(--hl-text)', outline: 'none', marginTop: 8 };
+  const btnPrimary = { padding: '11px 20px', borderRadius: 11, border: 'none', background: 'var(--hl-accent)', color: 'var(--hl-on-accent)', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' };
+  const btnGhost = { padding: '11px 20px', borderRadius: 11, border: '1px solid var(--hl-border)', background: 'transparent', color: 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 500, cursor: 'pointer' };
+
+  function BeginStory({ onClose, onCreate }) {
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    return (
+      <Modal onClose={onClose} label="Begin a story">
+        <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, margin: '0 0 4px', color: 'var(--hl-text)' }}>Begin a story</h3>
+        <p style={{ fontSize: 13.5, color: 'var(--hl-muted)', margin: '0 0 14px', lineHeight: 1.5 }}>A story gathers related memories into one book you can share and publish.</p>
+        <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--hl-faint)' }}>Name</label>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && name.trim() && onCreate(name.trim(), desc.trim())} placeholder="e.g. Dad’s life in his own words" style={field} />
+        <label style={{ display: 'block', marginTop: 16, fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--hl-faint)' }}>Description <span style={{ textTransform: 'none', letterSpacing: 0 }}>(shown on hover)</span></label>
+        <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" style={field} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+          <button style={btnGhost} onClick={onClose}>Cancel</button>
+          <button style={{ ...btnPrimary, opacity: name.trim() ? 1 : 0.5, cursor: name.trim() ? 'pointer' : 'default' }} disabled={!name.trim()} onClick={() => onCreate(name.trim(), desc.trim())}>Create story</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  function SaveModal({ onClose }) {
+    const [done, setDone] = useState(false);
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    return (
+      <Modal onClose={onClose} label="Save your story">
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '10px 0' }}>
+            <span style={{ display: 'inline-grid', placeItems: 'center', width: 48, height: 48, borderRadius: 99, background: 'var(--hl-accent-soft)', color: 'var(--hl-accent)', marginBottom: 12 }}><Icon n="check" s={24} sw={2.4} /></span>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 23, margin: '0 0 6px', color: 'var(--hl-text)' }}>Your story is saved.</h3>
+            <p style={{ fontSize: 14, color: 'var(--hl-muted)', margin: '0 0 20px', lineHeight: 1.55 }}>We’ll email you a link to pick up right where you left off.</p>
+            <button style={btnPrimary} onClick={onClose}>Back to your story</button>
+          </div>
+        ) : (
+          <>
+            <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 24, margin: '0 0 4px', color: 'var(--hl-text)' }}>Save your story</h3>
+            <p style={{ fontSize: 13.5, color: 'var(--hl-muted)', margin: '0 0 14px', lineHeight: 1.5 }}>Create a free account to keep this conversation and pick up any time.</p>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" style={field} />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" type="email" style={field} />
+            <button style={{ ...btnPrimary, width: '100%', marginTop: 18, opacity: (name.trim() && email.trim()) ? 1 : 0.5 }} disabled={!(name.trim() && email.trim())} onClick={() => setDone(true)}>Save my story</button>
+          </>
+        )}
+      </Modal>
+    );
+  }
+
+  /* ── Share Heirloom modal ─────────────────────────────────────────────── */
+  function ShareModal({ onClose }) {
+    const [copied, setCopied] = useState(false);
+    const [native, setNative] = useState(false);
+    const copyTimer = useRef(0);
+    useEffect(() => {
+      setNative(typeof navigator !== 'undefined' && !!navigator.share);
+      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', onKey);
+      return () => { window.removeEventListener('keydown', onKey); clearTimeout(copyTimer.current); };
+    }, [onClose]);
+    const openIntent = (ch) => { try { window.open(ch.href(SHARE_URL, SHARE_MSG), '_blank', 'noopener,noreferrer'); } catch (e) {} };
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(SHARE_URL); } catch (e) {}
+      setCopied(true); clearTimeout(copyTimer.current); copyTimer.current = setTimeout(() => setCopied(false), 1900);
+    };
+    const shareNative = async () => { try { await navigator.share({ title: 'Heirloom', text: SHARE_MSG, url: SHARE_URL }); } catch (e) {} };
+    const sectionLabel = { fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.18em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
+    const cleanUrl = SHARE_URL.replace(/^https?:\/\//, '');
+    return (
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(3px)', animation: 'hl-fade .2s ease' }}>
+        <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Share Heirloom" style={{ position: 'relative', width: 'min(440px, 100%)', maxHeight: '92%', overflowY: 'auto', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', padding: '28px 28px 24px', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)', textAlign: 'center' }}>
+          <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+            <Icon name="x" size={18} />
+          </button>
+          <div style={{ width: 50, height: 50, margin: '0 auto 16px', borderRadius: '50%', background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--hl-accent)' }}>
+            <Icon name="share" size={22} />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 27, lineHeight: 1.1, letterSpacing: '-.01em', color: 'var(--hl-text)', margin: 0 }}>Share Heirloom</h2>
+          <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--hl-muted)', margin: '9px auto 0', maxWidth: 340, textWrap: 'pretty' }}>Know someone with a story worth keeping? Pass it on. Every share helps another life become a book.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 24 }}>
+            {SHARE_CHANNELS.map((ch) => (
+              <button key={ch.key} onClick={() => openIntent(ch)} aria-label={'Share on ' + ch.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 4px 11px', borderRadius: 14, background: 'var(--hl-surface-2)', border: '1px solid var(--hl-border)', cursor: 'pointer', transition: 'all .2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--hl-accent-line)'; e.currentTarget.style.background = 'var(--hl-accent-soft)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--hl-border)'; e.currentTarget.style.background = 'var(--hl-surface-2)'; e.currentTarget.style.transform = 'none'; }}>
+                <span style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--hl-text)' }}>
+                  {ch.icon ? <Icon name={ch.icon} size={19} /> : <span style={{ fontFamily: ch.key === 'x' ? 'var(--font-body)' : 'var(--font-display)', fontWeight: 700, fontSize: ch.key === 'li' ? 16 : 20, lineHeight: 1 }}>{ch.glyph}</span>}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--hl-muted)', fontWeight: 500 }}>{ch.label}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 20, textAlign: 'left' }}>
+            <div style={sectionLabel}>Or copy the link</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, padding: '6px 6px 6px 13px', background: 'var(--hl-surface-2)', border: '1px solid var(--hl-border)', borderRadius: 13 }}>
+              <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-accent)' }}><Icon name="link" size={16} /></span>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cleanUrl}</span>
+              <button onClick={copy} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 15px', borderRadius: 9, border: 'none', fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', background: copied ? 'var(--hl-accent-soft)' : 'var(--hl-accent)', color: copied ? 'var(--hl-accent)' : 'var(--hl-on-accent)', transition: 'all .2s' }}
+                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent-hover)'; }}
+                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent)'; }}>
+                <Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          {native && (
+            <button onClick={shareNative} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', marginTop: 12, padding: '12px', borderRadius: 12, border: '1px solid var(--hl-border-strong)', background: 'transparent', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14.5, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--hl-accent-line)'; e.currentTarget.style.background = 'var(--hl-accent-soft)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--hl-border-strong)'; e.currentTarget.style.background = 'transparent'; }}>
+              <Icon name="share" size={16} /> More ways to share…
+            </button>
+          )}
+          <p style={{ display: 'inline-flex', alignItems: 'center', gap: 7, margin: '22px 0 0', fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--hl-faint)' }}>
+            <span style={{ display: 'flex', color: 'var(--hl-accent)' }}><Icon name="heart" size={12} /></span> Made to be passed down
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Invite collaborators modal ───────────────────────────────────────── */
+  function InviteModal({ onClose, link, expiry, onRegenerate, collaborators, context }) {
+    const [copied, setCopied] = useState(false);
+    const [flashOn, setFlashOn] = useState(false);
+    const copyTimer = useRef(0);
+    const flashTimer = useRef(0);
+    useEffect(() => {
+      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+    useEffect(() => () => { clearTimeout(copyTimer.current); clearTimeout(flashTimer.current); }, []);
+    const copy = async () => {
+      try { await navigator.clipboard.writeText('https://' + link); } catch (e) {}
+      setCopied(true); clearTimeout(copyTimer.current); copyTimer.current = setTimeout(() => setCopied(false), 1900);
+    };
+    const regen = () => { onRegenerate(); setCopied(false); setFlashOn(true); clearTimeout(flashTimer.current); flashTimer.current = setTimeout(() => setFlashOn(false), 1500); };
+    const expDate = new Date(expiry);
+    const expLabel = 'Expires in 7 days · ' + expDate.toLocaleString('en-US', { month: 'short' }) + ' ' + expDate.getDate();
+    const joinedCount = collaborators.filter((c) => c.status === 'joined').length;
+    const sectionLabel = { fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.18em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
+    return (
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(3px)', animation: 'hl-fade .2s ease' }}>
+        <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Invite collaborators" style={{ position: 'relative', width: 'min(462px, 100%)', maxHeight: '92%', overflowY: 'auto', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', padding: '28px 28px 24px', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)' }}>
+          <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+            <Icon name="x" size={18} />
+          </button>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--hl-accent)', marginBottom: 16 }}>
+            <Icon name="userPlus" size={21} />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 27, lineHeight: 1.1, letterSpacing: '-.01em', color: 'var(--hl-text)', margin: 0 }}>Invite collaborators</h2>
+          <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--hl-muted)', margin: '9px 0 0', textWrap: 'pretty' }}>
+            {context
+              ? <React.Fragment>Bring the people who shared <span style={{ color: 'var(--hl-text)', fontStyle: 'italic', fontFamily: 'var(--font-display)', fontSize: 16 }}>"{context}"</span> into the book. Anyone with this private link can join and add their memories in their own voice.</React.Fragment>
+              : 'Bring the people who lived these stories alongside you. Anyone with this private link can join your book and add their memories in their own voice.'}
+          </p>
+          <div style={{ marginTop: 22 }}>
+            <div style={sectionLabel}>Magic link</div>
+            <div key={link} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, padding: '6px 6px 6px 13px', background: 'var(--hl-surface-2)', border: '1px solid', borderColor: flashOn ? 'var(--hl-accent-line)' : 'var(--hl-border)', borderRadius: 13, transition: 'border-color .3s', animation: flashOn ? 'hl-fade .35s ease' : 'none' }}>
+              <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-accent)' }}><Icon name="link" size={16} /></span>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '.01em' }}>{link}</span>
+              <button onClick={copy} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 15px', borderRadius: 9, border: 'none', fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', background: copied ? 'var(--hl-accent-soft)' : 'var(--hl-accent)', color: copied ? 'var(--hl-accent)' : 'var(--hl-on-accent)', transition: 'all .2s' }}
+                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent-hover)'; }}
+                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent)'; }}>
+                <Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 11 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--hl-faint)', letterSpacing: '.02em' }}>
+                <Icon name="clock" size={12} /> {expLabel}
+              </span>
+              <button onClick={regen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, border: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, color: 'var(--hl-muted)', cursor: 'pointer', transition: 'all .2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-accent)'; e.currentTarget.style.background = 'var(--hl-accent-soft)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.background = 'transparent'; }}>
+                <Icon name="refresh" size={13} /> Reset link
+              </button>
+            </div>
+          </div>
+          <div style={{ height: 1, background: 'var(--hl-border)', margin: '20px 0' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 }}>
+            <span style={sectionLabel}>Already invited</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--hl-faint)' }}>{joinedCount} joined · {collaborators.length - joinedCount} pending</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            {collaborators.map((c, i) => {
+              const joined = c.status === 'joined';
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ flexShrink: 0, width: 34, height: 34, borderRadius: '50%', background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--hl-accent)' }}>{initials(c.name)}</span>
+                  <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+                    <span style={{ fontSize: 14.5, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
+                    <span style={{ fontSize: 12, color: 'var(--hl-faint)' }}>{c.rel}</span>
+                  </span>
+                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 99, fontFamily: 'var(--font-mono)', fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase', background: joined ? 'var(--hl-accent-soft)' : 'color-mix(in srgb, var(--hl-text) 7%, transparent)', color: joined ? 'var(--hl-accent)' : 'var(--hl-muted)', border: '1px solid', borderColor: joined ? 'var(--hl-accent-line)' : 'transparent' }}>
+                    {joined && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--hl-accent)' }} />}{c.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--hl-border)' }}>
+            <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-faint)', marginTop: 1 }}><Icon name="shield" size={13} /></span>
+            <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--hl-faint)', textWrap: 'pretty' }}>You stay the author. Collaborators can read and add their own memories — they can never edit or overwrite yours.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Create story modal ───────────────────────────────────────────────── */
+  function CreateStoryModal({ onClose, onCreate }) {
+    const [name, setName] = useState('');
+    const [desc, setDesc] = useState('');
+    useEffect(() => {
+      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+    const canCreate = name.trim().length > 0;
+    const submit = () => { if (canCreate) onCreate(name.trim(), desc.trim()); };
+    const sectionLabel = { fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.18em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
+    const field = { width: '100%', boxSizing: 'border-box', marginTop: 9, padding: '11px 13px', background: 'var(--hl-surface-2)', border: '1px solid var(--hl-border)', borderRadius: 12, color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14.5, outline: 'none', transition: 'border-color .2s' };
+    return (
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(3px)', animation: 'hl-fade .2s ease' }}>
+        <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Create a story" style={{ position: 'relative', width: 'min(462px, 100%)', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', padding: '28px 28px 24px', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)' }}>
+          <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
+            <Icon name="x" size={18} />
+          </button>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--hl-accent)', marginBottom: 16 }}>
+            <Icon name="bookOpen" size={21} />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 27, lineHeight: 1.1, letterSpacing: '-.01em', color: 'var(--hl-text)', margin: 0 }}>Begin a new story</h2>
+          <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--hl-muted)', margin: '9px 0 0', textWrap: 'pretty' }}>Give it a name and a line about what it holds. The description appears when you hover the story later.</p>
+          <div style={{ marginTop: 22 }}>
+            <div style={sectionLabel}>Name</div>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="e.g. A Life in Full" style={field}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--hl-accent-line)')} onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--hl-border)')} />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <div style={sectionLabel}>Description <span style={{ textTransform: 'none', letterSpacing: 0, fontFamily: 'var(--font-body)', color: 'var(--hl-faint)' }}>&middot; optional, shown on hover</span></div>
+            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} placeholder="The long arc &mdash; childhood to now." style={{ ...field, resize: 'none', lineHeight: 1.5 }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--hl-accent-line)')} onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--hl-border)')} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+            <button onClick={onClose} style={{ padding: '11px 18px', borderRadius: 11, border: '1px solid var(--hl-border-strong)', background: 'transparent', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 6%, transparent)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>Cancel</button>
+            <button onClick={submit} disabled={!canCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 11, border: '1px solid', borderColor: canCreate ? 'var(--hl-accent)' : 'var(--hl-border)', background: canCreate ? 'var(--hl-accent)' : 'color-mix(in srgb, var(--hl-text) 8%, transparent)', color: canCreate ? 'var(--hl-on-accent)' : 'var(--hl-faint)', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, cursor: canCreate ? 'pointer' : 'not-allowed', transition: 'all .2s' }}
+              onMouseEnter={(e) => { if (canCreate) e.currentTarget.style.background = 'var(--hl-accent-hover)'; }} onMouseLeave={(e) => { if (canCreate) e.currentTarget.style.background = 'var(--hl-accent)'; }}>
+              <Icon name="plus" size={15} /> Create story
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Delete confirmation ──────────────────────────────────────────────── */
+  function ConfirmDeleteModal({ item, onClose, onConfirm }) {
+    useEffect(() => {
+      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+    const danger = 'var(--hl-danger, #B0432F)';
+    const dangerSoft = 'color-mix(in srgb, var(--hl-danger, #B0432F) 14%, transparent)';
+    const dangerLine = 'color-mix(in srgb, var(--hl-danger, #B0432F) 34%, transparent)';
+    return (
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(3px)', animation: 'hl-fade .2s ease' }}>
+        <div onClick={(e) => e.stopPropagation()} role="alertdialog" aria-label="Delete chat" style={{ position: 'relative', width: 'min(418px, 100%)', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', padding: '28px 28px 24px', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 13, background: dangerSoft, border: '1px solid ' + dangerLine, display: 'flex', alignItems: 'center', justifyContent: 'center', color: danger, marginBottom: 16 }}>
+            <Icon name="trash" size={20} />
+          </div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 500, fontSize: 25, lineHeight: 1.12, letterSpacing: '-.01em', color: 'var(--hl-text)', margin: 0 }}>Delete this chat?</h2>
+          <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--hl-muted)', margin: '9px 0 0', textWrap: 'pretty' }}>
+            <span style={{ color: 'var(--hl-text)', fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 16 }}>&ldquo;{item.title}&rdquo;</span> and every memory it holds will be permanently removed. This can&rsquo;t be undone.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+            <button autoFocus onClick={onClose} style={{ padding: '11px 18px', borderRadius: 11, border: '1px solid var(--hl-border-strong)', background: 'transparent', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 6%, transparent)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>Cancel</button>
+            <button onClick={onConfirm} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 11, border: '1px solid ' + danger, background: danger, color: '#fff', fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(0.92)'; }} onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}>
+              <Icon name="trash" size={15} /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Root ─────────────────────────────────────────────────────────────── */
+  function StoryChat() {
+    const saved = loadState();
+    const [open, setOpen] = useState(true);
+    const [full, setFull] = useState(true);
+    const [mobileNav, setMobileNav] = useState(false);
+    const [messages, setMessages] = useState(saved.messages || []);
+    const [loading, setLoading] = useState(false);
+    const [sessions, setSessions] = useState(saved.sessions || SEED);
+    const [activeId, setActiveId] = useState(saved.activeId || null);
+    const [stories, setStories] = useState(STORIES_SEED);
+    // NOTE: [] is truthy — must check length, or a session that persists an empty
+    // list permanently suppresses the seeded memories and the sidebar section.
+    const [memories, setMemories] = useState(
+      Array.isArray(saved.memories) && saved.memories.length ? saved.memories : SEED_MEMORIES
+    );
+    const memoryDeclinedRef = useRef(false);
+    const rewritePendingRef = useRef(null);
+    const pendingStoryAttachRef = useRef(null);
+    const [query, setQuery] = useState('');
+    const [beginOpen, setBeginOpen] = useState(false);
+    const [saveOpen, setSaveOpen] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
+    const [invite, setInvite] = useState(null);            // null | { context }
+    const [confirmDel, setConfirmDel] = useState(null);    // session pending deletion
+    const [inviteLink, setInviteLink] = useState(() => LINK_BASE + makeToken());
+    const [inviteExpiry, setInviteExpiry] = useState(() => Date.now() + 7 * 864e5);
+    const [toast, setToast] = useState(null);
+    const [isMobile, setIsMobile] = useState(false);
+    const streamTimerRef = useRef(null);
+    const failCountRef = useRef(0);
+    const cancelledRef = useRef(false);
+    const [streamingId, setStreamingId] = useState(null);
+    const messagesRef = useRef([]);
+    useEffect(() => { messagesRef.current = messages; }, [messages]);
+    const activeIdRef = useRef(null);
+    useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+    const memoriesRef = useRef([]);
+    useEffect(() => { memoriesRef.current = memories; }, [memories]);
+    const pendingMemRef = useRef(null);
+    const [canvas, setCanvas] = useState({ open: false, storyId: null, memId: null, menu: false });
+    const [sideW, setSideW] = useState(() => { try { return Number(localStorage.getItem('hl.sideW')) || 264; } catch (e) { return 264; } });
+    const [storySideW, setStorySideW] = useState(53);
+    const bodyRef = useRef(null);
+    const [bodyW, setBodyW] = useState(1280);
+    useEffect(() => {
+      const el = bodyRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
+      const ro = new ResizeObserver(() => setBodyW(el.clientWidth));
+      ro.observe(el); setBodyW(el.clientWidth);
+      return () => ro.disconnect();
+    }, []);
+    useEffect(() => { try { localStorage.setItem('hl.sideW', String(sideW)); } catch (e) {} }, [sideW]);
+    /* Both curtains clamp against the live body width so the transcript can never
+       be squeezed below a readable column. */
+    const paneMax = (other) => {
+      const total = bodyRef.current ? bodyRef.current.clientWidth : window.innerWidth;
+      return Math.max(240, total - other - 380);
+    };
+    const [pinnedMemId, setPinnedMemId] = useState(null);
+
+    useEffect(() => {
+      const mq = window.matchMedia('(max-width: 768px)');
+      const on = () => setIsMobile(mq.matches); on();
+      mq.addEventListener('change', on); return () => mq.removeEventListener('change', on);
+    }, []);
+
+    // Persist transcript + sessions
+    useEffect(() => {
+      try { localStorage.setItem(LS, JSON.stringify({ messages, sessions, activeId, memories })); } catch (e) {}
+    }, [messages, sessions, activeId, memories]);
+
+    // Open on CTA event
+    useEffect(() => {
+      const openIt = () => setOpen(true);
+      window.addEventListener('legacy-open-chat', openIt);
+      const openStoryIt = () => openStoryMenu();
+      window.addEventListener('legacy-open-story', openStoryIt);
+      return () => { window.removeEventListener('legacy-open-chat', openIt); window.removeEventListener('legacy-open-story', openStoryIt); };
+    }, []);
+
+    /* Tweaks demo hook — retypes the newest open card if there is one, so the
+       tweak reads as "show this memory as a photo / video / audio / document".
+       Falls back to spawning a sample card when the transcript has none. */
+    useEffect(() => {
+      window.__hlMemoryDemo = (kindKey, state) => {
+        setOpen(true);
+        const s = SAMPLE_DRAFTS[kindKey] || SAMPLE_DRAFTS.conversation;
+        setMessages((m) => {
+          const openIdx = [...m].reverse().findIndex((x) => x.role === 'tool' && x.state !== 'discarded');
+          if (openIdx !== -1 && !state) {
+            const i = m.length - 1 - openIdx;
+            const cur = m[i];
+            const next = m.slice();
+            // Retype in place. Keep author-written copy unless it came from a sample.
+            const wasSample = Object.values(SAMPLE_DRAFTS).some((d) => d.passage === cur.passage);
+            next[i] = { ...cur, kindKey, title: wasSample ? s.title : cur.title, passage: wasSample ? s.passage : cur.passage };
+            return next;
+          }
+          const base = m.length ? m : [
+            { id: 'u-demo', role: 'user', content: 'I want to keep something before I forget it.', status: 'sent' },
+            { id: 'a-demo', role: 'assistant', content: 'Then let’s put it somewhere safe. Tell me what it is, and start wherever feels natural.', turn: 0, streaming: false, versions: [], versionIdx: 0, rating: null },
+          ];
+          return [...base.filter((x) => !x.demo), {
+            id: 'mem-demo-' + Date.now(), role: 'tool', kind: 'memory', demo: true,
+            kindKey, state: state || 'draft', title: s.title, passage: s.passage,
+            storyId: state === 'saved' ? (stories[0] && stories[0].id) : undefined,
+          }];
+        });
+      };
+      return () => { delete window.__hlMemoryDemo; };
+    }, [stories]);
+
+    // Esc closes (drawer level; modals register their own capture handlers first)
+    useEffect(() => {
+      const k = (e) => {
+        if (e.key !== 'Escape' || !open) return;
+        if (beginOpen || saveOpen || shareOpen || invite || confirmDel) return;
+        if (isMobile && mobileNav) { setMobileNav(false); return; }
+        setOpen(false);
+      };
+      window.addEventListener('keydown', k);
+      return () => window.removeEventListener('keydown', k);
+    }, [open, beginOpen, saveOpen, shareOpen, invite, confirmDel, isMobile, mobileNav]);
+
+    const flash = useCallback((m) => { setToast({ m, k: Date.now() }); }, []);
+    useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2000); return () => clearTimeout(t); }, [toast]);
+
+    const streamText = useCallback((id, full, onDone) => {
+      const words = full.split(' ');
+      let i = 0;
+      clearInterval(streamTimerRef.current);
+      setStreamingId(id);
+      streamTimerRef.current = setInterval(() => {
+        i += 1;
+        const chunk = words.slice(0, i).join(' ');
+        setMessages((m) => m.map((x) => x.id === id ? { ...x, content: chunk } : x));
+        if (i >= words.length) {
+          clearInterval(streamTimerRef.current);
+          setStreamingId(null);
+          setMessages((m) => m.map((x) => x.id === id ? { ...x, streaming: false } : x));
+          if (onDone) onDone();
+        }
+      }, 32);
+    }, []);
+
+    const runMemory = useCallback((existingId, note, prior, kindKey) => {
+      const seed = messagesRef.current;
+      let id = existingId;
+      if (id) {
+        setMessages((m) => m.map((x) => x.id === id ? { ...x, state: 'running' } : x));
+      } else {
+        id = 'mem' + Date.now();
+        setMessages((m) => [...m, { id, role: 'tool', kind: 'memory', kindKey: kindKey || 'conversation', state: 'running' }]);
+      }
+      writeMemory(seed, note, prior).then((mem) => {
+        setMessages((m) => m.map((x) => x.id === id ? { ...x, state: 'draft', title: mem.title, passage: mem.passage } : x));
+      });
+    }, []);
+
+    const memSave = useCallback((id, storyId) => {
+      const msg = messagesRef.current.find((x) => x.id === id);
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, state: 'saved', storyId } : x));
+      if (!msg) return;
+      const target = pendingMemRef.current;
+      if (target) {
+        // Rewrite of a memory already on the canvas — update the page, don't add one.
+        pendingMemRef.current = null;
+        setMemories((p) => p.map((k) => k.id === target
+          ? { ...k, title: msg.title, passage: msg.passage, msgId: id, version: (k.version || 1) + 1 }
+          : k));
+        setPinnedMemId(null);
+        flash('Page rewritten');
+      } else {
+        const isFirstEver = memoriesRef.current.length === 0;
+        const newMemId = 'k' + Date.now();
+        setMemories((p) => [...p, { id: newMemId, msgId: id, title: msg.title, passage: msg.passage,
+          kind: msg.kindKey || 'conversation', date: 'Just now', version: 1, storyId, sessionId: activeIdRef.current || 'live' }]);
+        flash('Kept forever');
+        if (isFirstEver) {
+          const aid = 'a' + Date.now();
+          const ask = 'That\u2019s kept. Would you like to start a story to hold it in?';
+          setMessages((m) => [...m, { id: aid, role: 'assistant', content: '', full: ask, turn: 0, streaming: true, stopped: false, versions: [ask], versionIdx: 0, rating: null, storyPrompt: true, storyPromptMemId: newMemId }]);
+          streamText(aid, ask);
+        }
+      }
+    }, [flash, streamText]);
+
+    const memRewrite = useCallback((id) => {
+      const prior = messagesRef.current.find((x) => x.id === id);
+      if (!prior) return;
+      rewritePendingRef.current = { title: prior.title, passage: prior.passage, kindKey: prior.kindKey };
+      const aid = 'a' + Date.now();
+      const ask = 'Of course — it\u2019s yours, not mine. Tell me what you\u2019d like changed: where it should begin, what to leave out, or anything that doesn\u2019t sound like you.';
+      setMessages((m) => [...m.filter((x) => x.id !== id), { id: aid, role: 'assistant', content: '', full: ask, turn: 0, streaming: true, stopped: false, versions: [ask], versionIdx: 0, rating: null, rewriteOptions: true }]);
+      streamText(aid, ask);
+    }, [streamText]);
+    const memRetitle = useCallback((id, title) => { setMessages((m) => m.map((x) => x.id === id ? { ...x, title } : x)); }, []);
+    const memDiscard = useCallback((id) => { memoryDeclinedRef.current = true; setMessages((m) => m.map((x) => x.id === id ? { ...x, state: 'discarded' } : x)); }, []);
+    const memOpen = useCallback((id) => {
+      const k = memoriesRef.current.find((x) => x.msgId === id);
+      if (k) openCanvas(k.storyId, k.id);
+      else flash('This one isn\u2019t in a story yet');
+    }, [flash]);
+    const handleOffer = useCallback((id, accept) => {
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, offer: false } : x));
+      if (accept) runMemory(null, '');
+      else memoryDeclinedRef.current = true;
+    }, [runMemory]);
+
+    const beginAssistantReply = useCallback(() => {
+      setLoading(true);
+      cancelledRef.current = false;
+      const seed = messagesRef.current;
+      const chat = seed.filter((m) => m.role === 'user' || m.role === 'assistant');
+      const turn = chat.filter((m) => m.role === 'assistant').length;
+      const userTurns = chat.filter((m) => m.role === 'user').length;
+      // Ignore discarded cards — a decline must not disarm the tool forever.
+      const hasMemory = seed.some((m) => m.role === 'tool' && m.state !== 'discarded');
+      // >= not === so a RESTORED conversation still arms; declinedRef keeps it to once.
+      const offer = !hasMemory && !memoryDeclinedRef.current && userTurns >= 3;
+      const auto = !hasMemory && !memoryDeclinedRef.current && userTurns >= 5;
+      askGuide(chat, turn).then((reply) => {
+        setLoading(false);
+        if (cancelledRef.current) { cancelledRef.current = false; return; }
+        const aid = 'a' + Date.now();
+        setMessages((m2) => [...m2, { id: aid, role: 'assistant', content: '', full: reply, turn, streaming: true, stopped: false, offer, suggestKeep: userTurns >= 3, versions: [reply], versionIdx: 0, rating: null }]);
+        streamText(aid, reply, auto ? () => setTimeout(() => runMemory(null, ''), 500) : null);
+      });
+    }, [streamText, runMemory]);
+
+    const attemptDeliver = useCallback((id, text, isRetry) => {
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, status: 'sending' } : x));
+      setTimeout(() => {
+        const fail = !isRetry && (failCountRef.current++ % 4 === 3);
+        setMessages((m) => m.map((x) => x.id === id ? { ...x, status: fail ? 'failed' : 'sent' } : x));
+        if (fail) return;
+        const prior = rewritePendingRef.current;
+        if (prior) { rewritePendingRef.current = null; runMemory(null, text, prior, prior.kindKey); return; }
+        beginAssistantReply();
+      }, 500 + Math.random() * 250);
+    }, [beginAssistantReply, runMemory]);
+
+    const send = useCallback((text) => {
+      const id = 'u' + Date.now() + Math.random().toString(36).slice(2, 6);
+      setMessages((prev) => [...prev, { id, role: 'user', content: text, status: 'sending' }]);
+      setMobileNav(false);
+      attemptDeliver(id, text, false);
+    }, [attemptDeliver]);
+
+    const resendMessage = useCallback((id) => {
+      const msg = messagesRef.current.find((x) => x.id === id);
+      if (msg) attemptDeliver(id, msg.content, true);
+    }, [attemptDeliver]);
+
+    const editMessage = useCallback((id, text) => {
+      clearInterval(streamTimerRef.current);
+      setStreamingId(null);
+      cancelledRef.current = true;
+      setMessages((m) => {
+        const idx = m.findIndex((x) => x.id === id);
+        if (idx === -1) return m;
+        const next = m.slice(0, idx + 1);
+        next[idx] = { ...next[idx], content: text, status: 'sending', edited: true };
+        return next;
+      });
+      setTimeout(() => attemptDeliver(id, text, true), 0);
+    }, [attemptDeliver]);
+
+    const retryMessage = useCallback((id) => {
+      clearInterval(streamTimerRef.current);
+      setStreamingId(null);
+      cancelledRef.current = true;
+      const msg = messagesRef.current.find((x) => x.id === id);
+      if (!msg) return;
+      setMessages((m) => {
+        const idx = m.findIndex((x) => x.id === id);
+        return idx === -1 ? m : m.slice(0, idx + 1);
+      });
+      setTimeout(() => attemptDeliver(id, msg.content, true), 0);
+    }, [attemptDeliver]);
+
+    const stopGeneration = useCallback(() => {
+      if (streamingId) {
+        clearInterval(streamTimerRef.current);
+        setMessages((m) => m.map((x) => x.id === streamingId ? { ...x, streaming: false, stopped: true } : x));
+        setStreamingId(null);
+      } else if (loading) {
+        cancelledRef.current = true;
+        setLoading(false);
+      }
+    }, [streamingId, loading]);
+
+    const regenerate = useCallback((id) => {
+      const cur = messagesRef.current;
+      const idx = cur.findIndex((x) => x.id === id);
+      const msg = cur[idx];
+      if (!msg || msg.streaming) return;
+      const context = cur.slice(0, idx).filter((x) => x.role === 'user' || x.role === 'assistant');
+      askGuide(context, msg.turn || 0).then((reply) => {
+        setMessages((m2) => m2.map((x) => {
+          if (x.id !== id) return x;
+          const versions = [...x.versions, reply];
+          return { ...x, versions, versionIdx: versions.length - 1, content: '', streaming: true, stopped: false, rating: null };
+        }));
+        streamText(id, reply);
+      });
+    }, [streamText]);
+
+    const showVersion = useCallback((id, dir) => {
+      setMessages((m) => m.map((x) => {
+        if (x.id !== id) return x;
+        const next = Math.max(0, Math.min(x.versions.length - 1, x.versionIdx + dir));
+        return { ...x, versionIdx: next, content: x.versions[next] };
+      }));
+    }, []);
+
+    const rateMessage = useCallback((id, val) => {
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, rating: x.rating === val ? null : val } : x));
+    }, []);
+
+    const submitFeedback = useCallback((id, reasons, note) => {
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, feedbackReasons: reasons, feedbackNote: note } : x));
+      flash('Thanks for the feedback');
+    }, [flash]);
+
+    const copyMessage = useCallback((text) => {
+      const done = () => flash('Copied');
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
+      else done();
+    }, [flash]);
+
+    const newChat = () => {
+      if (messages.length) {
+        const title = messages[0].content.slice(0, 42) + (messages[0].content.length > 42 ? '…' : '');
+        const id = 'sess' + Date.now();
+        setSessions((prev) => [{ id, title, starred: false }, ...prev]);
+        setMemories((p) => p.map((k) => k.sessionId === 'live' ? { ...k, sessionId: id } : k));
+      }
+      setMessages([]); setActiveId(null); setMobileNav(false); memoryDeclinedRef.current = false;
+    };
+    const rowAction = (id, act) => {
+      const s = sessions.find((x) => x.id === id);
+      if (act === 'delete') { setConfirmDel(s || { id, title: 'this chat' }); }
+      else if (act === 'star') { setSessions((p) => p.map((x) => x.id === id ? { ...x, starred: !x.starred } : x)); flash(s && s.starred ? 'Star removed' : 'Starred'); }
+      else if (act === 'rename') { flash('Rename coming soon'); }
+      else if (act === 'invite') { setInvite({ context: s ? s.title : null }); }
+      else if (act === 'move') { flash('Moved to story'); }
+      else if (act === 'remove') { flash('Removed from story'); }
+    };
+    const regenerateLink = () => { setInviteLink(LINK_BASE + makeToken()); setInviteExpiry(Date.now() + 7 * 864e5); };
+    const doDelete = () => { const s = confirmDel; if (!s) return; setSessions((p) => p.filter((x) => x.id !== s.id)); if (activeId === s.id) setActiveId(null); setConfirmDel(null); flash('Chat deleted'); };
+    const createStory = (name, description) => {
+      const id = 'st' + Date.now();
+      setStories((p) => [...p, { id, name, tagline: description }]);
+      const attachId = pendingStoryAttachRef.current;
+      if (attachId) { setMemories((p) => p.map((k) => k.id === attachId ? { ...k, storyId: id } : k)); pendingStoryAttachRef.current = null; }
+      setBeginOpen(false);
+      flash('Story created');
+    };
+    const handleRewriteOption = useCallback((id, text) => {
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, rewriteOptions: false } : x));
+      if (text) send(text);
+    }, [send]);
+    const handleStoryPrompt = useCallback((id, start) => {
+      const memId = messagesRef.current.find((x) => x.id === id)?.storyPromptMemId;
+      setMessages((m) => m.map((x) => x.id === id ? { ...x, storyPrompt: false } : x));
+      if (start && memId) { pendingStoryAttachRef.current = memId; setBeginOpen(true); }
+    }, []);
+
+    /* ── Story canvas ──────────────────────────────────────────────────────
+       The canvas is a panel inside this drawer, never a separate surface.
+       Reordering, direct edit, fork and remove all act on `memories`; a
+       conversational rewrite reuses the existing rewrite machinery, so the
+       transcript stays the place where the guide does its work. */
+    const activeStoryId = canvas.storyId || (stories[0] && stories[0].id);
+    const canvasStory = stories.find((s) => s.id === activeStoryId) || stories[0];
+    const deck = memories.filter((k) => k.storyId === activeStoryId)
+      .map((k) => ({ ...k, kind: k.kind || 'conversation', version: k.version || 1, date: k.date || 'Kept earlier', passage: k.passage || 'This one was kept before the canvas existed — open it and tell me what it should say.' }));
+    const deckIndex = canvas.memId ? deck.findIndex((k) => k.id === canvas.memId) : -1;
+    const storyMemCount = (id) => memories.filter((k) => k.storyId === id).length;
+    const pinnedMem = pinnedMemId ? memories.find((k) => k.id === pinnedMemId) : null;
+
+    const openCanvas = (storyId, memId) => {
+      setCanvas({ open: true, storyId: storyId || activeStoryId, memId: memId || null, menu: false });
+      setMobileNav(false);
+    };
+    const openStoryMenu = () => { setCanvas({ open: true, storyId: null, memId: null, menu: true }); setMobileNav(false); };
+    const closeCanvas = () => setCanvas((c) => ({ ...c, open: false, memId: null, menu: false }));
+    const backToChat = () => { closeCanvas(); setOpen(true); };
+    const patchMemory = (id, p) => setMemories((prev) => prev.map((k) => k.id === id ? { ...k, ...p } : k));
+    const removeMemory = (id) => {
+      setMemories((prev) => prev.filter((k) => k.id !== id));
+      setCanvas((c) => ({ ...c, memId: null }));
+      if (pinnedMemId === id) setPinnedMemId(null);
+      flash('Removed from the story');
+    };
+    const reorderDeck = (from, to) => setMemories((prev) => {
+      const idxs = []; prev.forEach((k, i) => { if (k.storyId === activeStoryId) idxs.push(i); });
+      const picked = idxs.map((i) => prev[i]);
+      const [x] = picked.splice(from, 1); picked.splice(to, 0, x);
+      const next = prev.slice(); idxs.forEach((i, n) => { next[i] = picked[n]; });
+      return next;
+    });
+    const guideAsk = (text) => {
+      const aid = 'a' + Date.now();
+      setMessages((m) => [...m, { id: aid, role: 'assistant', content: '', full: text, turn: 0, streaming: true, stopped: false, versions: [text], versionIdx: 0, rating: null }]);
+      streamText(aid, text);
+    };
+    const talkAbout = (id) => {
+      const k = memories.find((x) => x.id === id); if (!k) return;
+      pendingMemRef.current = id;
+      rewritePendingRef.current = { title: k.title, passage: k.passage, kindKey: k.kind || 'conversation' };
+      setPinnedMemId(id);
+      if (isMobile) closeCanvas();
+      guideAsk('I\u2019m reading \u201c' + k.title + '.\u201d Tell me what should change \u2014 a detail I got wrong, something missing, or a different place to start it from.');
+    };
+    const forkMemory = (id) => {
+      const parent = memories.find((x) => x.id === id); if (!parent) return;
+      const nid = 'k' + Date.now();
+      setMemories((prev) => {
+        const i = prev.findIndex((x) => x.id === id);
+        const next = prev.slice();
+        next.splice(i + 1, 0, { id: nid, title: 'Untitled memory', kind: 'conversation', date: 'Just now', version: 1,
+          passage: 'Nothing written yet \u2014 tell me what this one should be about and I\u2019ll write it up from what you say.',
+          storyId: parent.storyId, parentId: parent.id, sessionId: activeIdRef.current || 'live' });
+        return next;
+      });
+      pendingMemRef.current = nid;
+      rewritePendingRef.current = { title: parent.title, passage: parent.passage, kindKey: 'conversation' };
+      setPinnedMemId(nid);
+      setCanvas({ open: !isMobile, storyId: parent.storyId, memId: nid });
+      guideAsk('New page, started from \u201c' + parent.title + '.\u201d That one stays exactly as it is. What part of it do you want to open up?');
+    };
+
+    const canvasEl = canvas.menu
+      ? <StoryMenu stories={stories} memories={memories} onOpen={(id) => setCanvas({ open: true, storyId: id, memId: null, menu: false })} />
+      : deckIndex >= 0
+      ? <CardView mem={deck[deckIndex]} index={deckIndex} total={deck.length}
+          parent={deck[deckIndex].parentId ? deck.find((p) => p.id === deck[deckIndex].parentId) : null}
+          onBack={() => setCanvas((c) => ({ ...c, memId: null }))}
+          onPage={(d) => { const t = deckIndex + d; if (t >= 0 && t < deck.length) setCanvas((c) => ({ ...c, memId: deck[t].id })); }}
+          onEdit={(p) => patchMemory(deck[deckIndex].id, p)}
+          onTalk={() => talkAbout(deck[deckIndex].id)}
+          onFork={() => forkMemory(deck[deckIndex].id)}
+          onDelete={() => removeMemory(deck[deckIndex].id)} />
+      : <Deck memories={deck} story={canvasStory ? canvasStory.name : 'Your story'}
+          onOpen={(id) => setCanvas((c) => ({ ...c, memId: id }))} onReorder={reorderDeck}
+          onEditStub={() => flash('Editing from the deck is coming soon \u2014 open the memory to edit it for now.')}
+          onAllStories={stories.length > 1 ? openStoryMenu : undefined}
+          compact onClose={closeCanvas} />;
+
+    const hasStarted = messages.length > 0;
+    const drawerW = full ? '100vw' : 'min(760px, 100vw)';
+
+    const sidebarEl = (
+      <Sidebar width={isMobile ? 264 : sideW} sessions={sessions} activeId={activeId} onNew={newChat} memories={memories}
+        onSelect={(id) => { setActiveId(id); setMobileNav(false); flash('Demo: conversations are illustrative'); }}
+        onPrompt={(p) => { setMobileNav(false); send(p); }} onRowAction={rowAction}
+        onCreateStory={() => { setMobileNav(false); setBeginOpen(true); }} stories={stories}
+        onInviteAll={() => { setMobileNav(false); setInvite({ context: null }); }}
+        onOpenStory={(id) => openCanvas(id)}
+        onClose={isMobile ? () => setMobileNav(false) : undefined} query={query} setQuery={setQuery} />
+    );
+
+    return (
+      <>
+        {/* Backdrop */}
+        <div onClick={() => setOpen(false)} aria-hidden="true"
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(26,21,15,0.5)', backdropFilter: 'blur(4px)', opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none', transition: 'opacity .4s ease' }} />
+
+        {/* Drawer */}
+        <div role="dialog" aria-modal="true" aria-label="Start your story" inert={!open ? '' : undefined}
+          style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 51, width: drawerW, display: 'flex', flexDirection: 'column', background: 'var(--hl-bg)', fontFamily: 'var(--font-body)', boxShadow: '-30px 0 80px -30px rgba(26,21,15,0.6)', transform: open ? 'translateX(0)' : 'translateX(100%)', transition: 'transform .5s cubic-bezier(.22,1,.36,1), width .4s ease', pointerEvents: open ? 'auto' : 'none' }}>
+
+          {/* Header */}
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', height: 52, borderBottom: '1px solid var(--hl-border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {isMobile && <IconBtn n="menu" label="Menu" onClick={() => setMobileNav(true)} />}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px' }}>
+                <span style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'grid', placeItems: 'center', color: 'var(--hl-accent)' }}><Icon n="feather" s={14} /></span>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--hl-text)' }}>Legacy</span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => (canvas.open ? closeCanvas() : openCanvas(activeStoryId))}
+                title={canvasStory ? 'Open ' + canvasStory.name : 'Open your story'}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, maxWidth: 240, padding: '7px 12px', marginRight: 4, borderRadius: 9, cursor: 'pointer',
+                  border: '1px solid', borderColor: canvas.open ? 'var(--hl-accent)' : 'var(--hl-border)',
+                  background: canvas.open ? 'var(--hl-accent-soft)' : 'transparent',
+                  color: canvas.open ? 'var(--hl-accent)' : 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 500 }}>
+                <Icon n="bookOpen" s={14} />
+                {!isMobile && <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{canvasStory ? canvasStory.name : 'Your story'}</span>}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--hl-accent)' }}>{storyMemCount(activeStoryId)}</span>
+              </button>
+              <IconBtn n="share" s={16} label="Share Heirloom" onClick={() => setShareOpen(true)} />
+              {!isMobile && <IconBtn n={full ? 'min' : 'max'} s={16} label={full ? 'Exit full screen' : 'Full screen'} onClick={() => setFull((v) => !v)} />}
+              <IconBtn n="user" s={18} label="Account" />
+              <IconBtn n="x" s={18} label="Close" onClick={() => setOpen(false)} />
+            </div>
+          </header>
+
+          {/* Body */}
+          <div ref={bodyRef} style={{ position: 'relative', display: 'flex', flex: 1, minHeight: 0 }}>
+            {!isMobile && sidebarEl}
+            {!isMobile && (
+              <SCCurtain label="Resize the menu" onStart={() => sideW} onReset={() => setSideW(264)}
+                onMove={(b, d) => { const v = b + d; setSideW(v < 150 ? 53 : scClamp(v, 190, paneMax(0))); }} />
+            )}
+            {isMobile && mobileNav && (
+              <>
+                <div onClick={() => setMobileNav(false)} style={{ position: 'absolute', inset: 0, zIndex: 18, background: 'rgba(26,21,15,0.4)' }} />
+                <div style={{ position: 'absolute', insetBlock: 0, left: 0, zIndex: 19, borderRight: '1px solid var(--hl-border)' }}>{sidebarEl}</div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
+              {hasStarted ? <Messages messages={messages} loading={loading} stories={stories} keepDisabled={!!streamingId || loading || (() => { const t = messages.filter((m) => m.role === 'tool'); const last = t[t.length - 1]; return !!last && (last.state === 'running' || last.state === 'draft'); })()} onKeep={() => runMemory(null, '')} onResend={resendMessage} onRegenerate={regenerate} onVersion={showVersion} onRate={rateMessage} onCopy={copyMessage} onEdit={editMessage} onRetry={retryMessage} onMemSave={memSave} onMemRewrite={memRewrite} onMemDiscard={memDiscard} onMemOpen={memOpen} onMemRetitle={memRetitle} onOffer={handleOffer} onRewriteOption={handleRewriteOption} onStoryPrompt={handleStoryPrompt} onFeedback={submitFeedback} /> : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', textAlign: 'center' }}>
+                  <span style={{ color: 'var(--hl-accent)', marginBottom: 20 }}><Icon n="feather" s={30} /></span>
+                  <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 300, fontSize: 'clamp(30px,4vw,42px)', letterSpacing: '-.01em', color: 'var(--hl-text)', margin: '0 0 10px' }}>What’s a story worth keeping?</h1>
+                  <p style={{ fontSize: 16, color: 'var(--hl-muted)', margin: 0, maxWidth: 400, lineHeight: 1.6 }}>Start anywhere — a moment, a person, a place. I’ll ask the questions that draw the rest out.</p>
+                </div>
+              )}
+              <div style={{ paddingBottom: 16, flexShrink: 0 }}>
+                {pinnedMem && (
+                  <div style={{ boxSizing: 'border-box', maxWidth: 680, margin: '0 auto 8px', padding: '0 16px', width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 11, border: '1px solid var(--hl-accent-line)', background: 'var(--hl-accent-soft)' }}>
+                      <Icon n="bookmark" s={13} style={{ color: 'var(--hl-accent)' }} />
+                      <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ color: 'var(--hl-muted)' }}>Working on </span>{pinnedMem.title}
+                      </span>
+                      <button onClick={() => { setPinnedMemId(null); pendingMemRef.current = null; rewritePendingRef.current = null; }}
+                        aria-label="Stop working on this page"
+                        style={{ border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 2 }}><Icon n="x" s={14} /></button>
+                    </div>
+                  </div>
+                )}
+                <Composer onSend={send} disabled={loading || !!streamingId} showStop={loading || !!streamingId} onStop={stopGeneration} onAttach={(k) => runMemory(null, '', null, k)} />
+                {messages.length >= 4 && <SaveBar onSave={() => setSaveOpen(true)} />}
+              </div>
+            </div>
+
+            {beginOpen && <CreateStoryModal onClose={() => setBeginOpen(false)} onCreate={createStory} />}
+            {saveOpen && <SaveModal onClose={() => setSaveOpen(false)} />}
+            {shareOpen && <ShareModal onClose={() => setShareOpen(false)} />}
+            {invite && <InviteModal onClose={() => setInvite(null)} link={inviteLink} expiry={inviteExpiry} onRegenerate={regenerateLink} collaborators={SEED_COLLABS} context={invite.context} />}
+            {confirmDel && <ConfirmDeleteModal item={confirmDel} onClose={() => setConfirmDel(null)} onConfirm={doDelete} />}
+          </div>
+
+          {toast && (
+            <div key={toast.k} style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', zIndex: 40, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 99, background: 'var(--hl-surface)', border: '1px solid var(--hl-border)', boxShadow: '0 14px 34px -12px var(--hl-shadow)', pointerEvents: 'none' }}>
+              <Icon n="check" s={13} style={{ color: 'var(--hl-accent)' }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--hl-text)' }}>{toast.m}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Story page — independent of the chat drawer; opens from the sidebar,
+            a saved receipt, or the global Stories entry, with or without chat open. */}
+        <div onClick={closeCanvas} aria-hidden="true"
+          style={{ position: 'fixed', inset: 0, zIndex: 55, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(4px)', opacity: canvas.open ? 1 : 0, pointerEvents: canvas.open ? 'auto' : 'none', transition: 'opacity .35s ease' }} />
+        <div role="dialog" aria-modal="true" aria-label="Your story" inert={!canvas.open ? '' : undefined}
+          style={{ position: 'fixed', inset: 0, zIndex: 56, display: 'flex', flexDirection: 'column', background: 'var(--hl-bg)', fontFamily: 'var(--font-body)', transform: canvas.open ? 'translateY(0)' : 'translateY(24px)', opacity: canvas.open ? 1 : 0, transition: 'transform .4s cubic-bezier(.22,1,.36,1), opacity .3s ease', pointerEvents: canvas.open ? 'auto' : 'none' }}
+          onClick={(e) => e.stopPropagation()}>
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', height: 56, borderBottom: '1px solid var(--hl-border)', flexShrink: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--hl-accent-soft)', border: '1px solid var(--hl-accent-line)', display: 'grid', placeItems: 'center', color: 'var(--hl-accent)' }}><Icon n="feather" s={14} /></span>
+              <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16, color: 'var(--hl-text)' }}>Legacy</span>
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={backToChat}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 99, border: '1px solid var(--hl-border)', background: 'transparent', color: 'var(--hl-muted)', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-text)'; e.currentTarget.style.borderColor = 'var(--hl-border-strong)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.borderColor = 'var(--hl-border)'; }}>
+                <Icon n="pen" s={13} />Continue the conversation
+              </button>
+              <IconBtn n="x" s={18} label="Close" onClick={closeCanvas} />
+            </div>
+          </header>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <Sidebar sessions={sessions} activeId={activeId} onNew={() => { newChat(); backToChat(); }} onSelect={(id) => { setActiveId(id); backToChat(); }}
+              onPrompt={(t) => { newChat(); backToChat(); setTimeout(() => send(t), 30); }} onRowAction={rowAction}
+              onCreateStory={() => setBeginOpen(true)} stories={stories} onInviteAll={() => setInvite({ context: null })}
+              onOpenStory={(id) => setCanvas({ open: true, storyId: id, memId: null, menu: false })}
+              memories={memories} query={query} setQuery={setQuery} width={storySideW} />
+            <SCCurtain label="Resize the menu" onStart={() => storySideW} onReset={() => setStorySideW(264)}
+              onMove={(b, d) => { const v = b + d; setStorySideW(v < 150 ? 53 : scClamp(v, 190, 420)); }} />
+            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: '100%', maxWidth: 780, height: '100%', minHeight: 0 }}>{canvasEl}</div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  /* ── Mount + styles ───────────────────────────────────────────────────── */
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes lgBounce { 0%,80%,100%{ transform: translateY(0); opacity:.5 } 40%{ transform: translateY(-5px); opacity:1 } }
+    @keyframes hl-fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes hl-modal-in { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
+    @keyframes hl-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+    @keyframes hl-blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+    @keyframes hl-pop { 0% { transform: scale(1); } 40% { transform: scale(1.28); } 100% { transform: scale(1); } }
+    @keyframes hl-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.9); } }
+    @media (hover: none) { .hl-acts { opacity: 1 !important; } .hl-acts button { width: 34px !important; height: 34px !important; } }
+    .lg-scroll::-webkit-scrollbar { width: 9px; }
+    .lg-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--hl-text) 16%, transparent); border-radius: 9px; border: 3px solid transparent; background-clip: padding-box; }
+    .lg-scroll::-webkit-scrollbar-track { background: transparent; }
+    #legacy-story-root textarea::placeholder { color: var(--hl-faint); }
+    #legacy-story-root input::placeholder { color: var(--hl-faint); }
+    @media (prefers-reduced-motion: reduce) { #legacy-story-root [style*="lgBounce"] { animation: none !important; } }
+  `;
+  document.head.appendChild(style);
+  const root = document.createElement('div');
+  root.id = 'legacy-story-root';  // same id: the shared CSS above targets it
+  document.body.appendChild(root);
+  ReactDOM.createRoot(root).render(<StoryChat />);
+})();
