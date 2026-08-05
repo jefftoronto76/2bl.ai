@@ -17,6 +17,28 @@ function classifyFile(file: File): MediaUploadType {
 }
 
 /**
+ * SHA-256 of the file's bytes, hex-encoded. Computed client-side because file
+ * bytes never pass through the Next.js server (the client PUTs directly to
+ * Supabase Storage) — this is the only place a content hash can be produced.
+ * Sent to /api/media/upload-url so the server can detect a duplicate upload
+ * (same member, same chat, identical content) before creating a new row.
+ * Best-effort: returns null if the Web Crypto API is unavailable (e.g. a
+ * non-secure context) rather than blocking the upload over a missing hash.
+ */
+async function sha256Hex(file: File): Promise<string | null> {
+  try {
+    const buffer = await file.arrayBuffer()
+    const digest = await crypto.subtle.digest('SHA-256', buffer)
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  } catch (err) {
+    console.error('[media/useMediaUpload] content hash failed, proceeding without dedup:', err)
+    return null
+  }
+}
+
+/**
  * Reusable hook for uploading a file through the signed-URL media pipeline.
  * The hook is upload-only — it does not send guide turns or inject messages.
  * The caller (ChatInput) handles acknowledgement and chat flow.
@@ -39,6 +61,8 @@ export function useMediaUpload(
     let mediaItemId: string | null = null
 
     try {
+      const contentHash = await sha256Hex(file)
+
       // Step 1: get a signed upload URL + create the media_items record server-side
       const urlRes = await fetch('/api/media/upload-url', {
         method: 'POST',
@@ -49,6 +73,7 @@ export function useMediaUpload(
           fileSize: file.size,
           chatId: sessionId,
           memberId,
+          contentHash,
         }),
       })
 
@@ -59,6 +84,20 @@ export function useMediaUpload(
 
       const result = await urlRes.json()
       mediaItemId = result.mediaItemId
+
+      // The server found an identical-content item already uploaded by this
+      // member in this chat — it reuses that row (resetting + reprocessing it
+      // directly if the match had previously failed) rather than creating an
+      // independent one. Nothing left to upload; skip the Storage PUT entirely.
+      if (result.duplicate) {
+        if (!mediaItemId) throw new Error('mediaItemId unexpectedly null on a duplicate response')
+        return {
+          mediaItemId,
+          type: classifyFile(file),
+          filename: file.name,
+        }
+      }
+
       const { signedUrl } = result
 
       // Fire upload_started after the media_items record exists so the event
