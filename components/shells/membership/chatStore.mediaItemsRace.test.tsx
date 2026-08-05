@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { ChatProvider, useChatStore } from './chatStore';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
+import { __resetPersistenceForTests } from '@/services/chat/ui/v1/persistence';
 
 // Regression test for the stale mediaItemsRef bug: a media item attached and
 // then sent in the same turn could be missing from the outgoing /api/sage
@@ -79,11 +80,24 @@ const sageRequestBodies: Array<{
 // Retry or a successful brand-new message.
 let sageShouldFail = false;
 
+// Overridable per test — the recentSessions list GET /api/sessions returns on
+// mount. Defaults to empty so the cross-device auto-recovery effect (which
+// would otherwise auto-hydrate into whichever session it returns) is a no-op
+// for tests that don't care about it.
+let recentSessionsResponse: Array<{
+  id: string;
+  messages: unknown[];
+  updated_at: string;
+  visitor_name: string | null;
+  title: string;
+  starred: boolean;
+}> = [];
+
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
   const method = init?.method ?? 'GET';
 
-  if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: [] });
+  if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: recentSessionsResponse });
   if (url === '/api/sessions' && method === 'POST') return jsonResponse({ id: 'sess-1' });
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
   if (url === '/api/sage' && method === 'POST') {
@@ -94,9 +108,17 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   return jsonResponse({ ok: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // ChatProvider opts into IndexedDB persistence (persistNamespace: 'heirloom')
+  // and fake-indexeddb (vitest.setup.ts) is a real, stateful implementation
+  // that otherwise survives across tests in this file — without this, a
+  // later test's mount-time rehydration effect picks up an earlier test's
+  // buffered thread/session id before that test's own setup runs, which is
+  // pure test-isolation noise, unrelated to the code under test.
+  await __resetPersistenceForTests('heirloom');
   sageRequestBodies.length = 0;
   sageShouldFail = false;
+  recentSessionsResponse = [];
   fetchMock.mockClear();
   __clearSingletonRegistry();
   vi.stubGlobal('fetch', fetchMock);
@@ -137,7 +159,7 @@ function mkItem(overrides: {
 }
 
 function TestConsumer() {
-  const { sendMessage, addMediaItem, retry } = useChatStore();
+  const { sendMessage, addMediaItem, retry, newChat, loadSession } = useChatStore();
 
   const sendFirst = () => {
     void sendMessage('first message, no attachment');
@@ -174,6 +196,9 @@ function TestConsumer() {
         send follow-up
       </button>
       <button onClick={() => void retry()}>retry</button>
+      <button onClick={newChat}>new chat</button>
+      <button onClick={() => loadSession('sess-B')}>load session B</button>
+      <button onClick={() => loadSession('sess-1')}>reload session A (same session)</button>
     </div>
   );
 }
@@ -399,5 +424,124 @@ describe('delivered marking happens on confirmed success, not on read/build', ()
       await waitFor(() => expect(sageRequestBodies.length).toBe(2));
     });
     expect(sageRequestBodies[1].media_items).toBeNull();
+  });
+});
+
+// Regression coverage for the cross-conversation leak: neither newChat() nor
+// loadSession()/hydrateConversation() used to reset mediaItemsRef /
+// deliveredTerminalIdsRef / mediaItems, so switching to a different
+// conversation without a full page reload left a prior conversation's
+// attached media items in the ref — getMediaItems() would then resend them on
+// the new conversation's next turn, and resolveMediaContext() would inject
+// that unrelated conversation's attachment content into the wrong system
+// prompt. This is a privacy-relevant bug (personal photos/documents), not
+// just wasted tokens like the resend-scoping fix above.
+describe('media items reset on conversation switch', () => {
+  it('newChat(): a fresh conversation does not inherit the outgoing conversation\'s attachment', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Conversation A: attach + send.
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Switch to a brand-new conversation.
+    await act(async () => {
+      fireEvent.click(screen.getByText('new chat'));
+    });
+
+    // First message in the new conversation, no attachment of its own.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items).toBeNull();
+  });
+
+  it('loadSession(): switching to a different existing conversation does not inherit the prior one\'s attachment', async () => {
+    // Session B pre-exists (e.g. an earlier conversation in the Recent
+    // sidebar) with no messages of its own — enough for loadSession to find
+    // it, without triggering the separate cross-device auto-recovery effect
+    // (which only auto-hydrates when the returned session has messages).
+    recentSessionsResponse = [
+      {
+        id: 'sess-B',
+        messages: [],
+        updated_at: '2000-01-01T00:00:00.000Z',
+        visitor_name: null,
+        title: 'Session B',
+        starred: false,
+      },
+    ];
+
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Conversation A (sess-1, from the mock): attach + send.
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Switch to the different, pre-existing session B.
+    await act(async () => {
+      fireEvent.click(screen.getByText('load session B'));
+    });
+
+    // A follow-up in session B, no attachment of its own — session B already
+    // has an id, so this reuses it rather than creating a new session.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items).toBeNull();
+  });
+
+  it('does NOT reset media items when hydrateConversation targets the SAME session (injectAssistantMessage-style call)', async () => {
+    // Guards the other direction: hydrateConversation is also used to append
+    // a message to the CURRENT session without a network round trip
+    // (injectAssistantMessage passes the unchanged sessionId) — that must
+    // NOT wipe the active conversation's own still-relevant media items.
+    // loadSession('sess-1') while sess-1 is already the active session drives
+    // the exact same hydrateConversation code path with an unchanged id.
+    recentSessionsResponse = [
+      { id: 'sess-1', messages: [], updated_at: '2000-01-01T00:00:00.000Z', visitor_name: null, title: 'A', starred: false },
+    ];
+
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('reload session A (same session)'));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    // media-1 is still pending (never resolved) and this was a same-session
+    // hydrate — it must still be resent, not wiped.
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
   });
 });
