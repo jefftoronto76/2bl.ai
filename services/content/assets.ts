@@ -20,65 +20,127 @@ export const ACCEPTED_TYPES: Record<string, string> = {
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const base64 = buffer.toString('base64')
-  console.log('[assets/upload] PDF base64 length:', base64.length)
+// Files API (beta) is used instead of inlining the PDF as base64 — inline
+// base64 hits Anthropic's documented 32MB per-request payload limit well
+// before this app's own 50MB upload cap (app/api/media/upload-url/route.ts),
+// so any document in that gap failed outright. Uploading once and
+// referencing by file_id keeps the request payload small regardless of file
+// size. See platform.claude.com/docs/en/build-with-claude/pdf-support.
+const ANTHROPIC_FILES_BETA_HEADER = 'files-api-2025-04-14'
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
+async function uploadFileToAnthropic(buffer: Buffer, apiKey: string): Promise<string> {
+  const form = new FormData()
+  form.append('file', new Blob([Uint8Array.from(buffer)], { type: 'application/pdf' }), 'document.pdf')
 
-  const requestBody = {
-    model: 'claude-sonnet-4-6',
-    max_tokens: 16000,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64,
-            },
-          },
-          {
-            type: 'text',
-            text: 'Extract all text from this document exactly as written. Return only the extracted text with no commentary.',
-          },
-        ],
-      },
-    ],
-  }
-
-  console.log('[assets/upload] sending to Anthropic API, content types:', requestBody.messages[0].content.map(c => c.type))
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.anthropic.com/v1/files', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
+      'anthropic-beta': ANTHROPIC_FILES_BETA_HEADER,
     },
-    body: JSON.stringify(requestBody),
+    body: form,
   })
 
   if (!res.ok) {
     const errorBody = await res.text()
-    console.error('[assets/upload] Anthropic API error:', { status: res.status, body: errorBody })
-    throw new Error(`Anthropic API error: ${res.status} ${errorBody}`)
+    console.error('[assets/upload] Anthropic file upload error:', { status: res.status, body: errorBody })
+    throw new Error(`Anthropic file upload error: ${res.status} ${errorBody}`)
   }
 
-  const data = await res.json()
-  console.log('[assets/upload] Anthropic response stop_reason:', data.stop_reason, 'content blocks:', data.content?.length)
+  const data = (await res.json()) as { id: string }
+  console.log('[assets/upload] uploaded PDF to Anthropic Files API:', { fileId: data.id, byteLength: buffer.length })
+  return data.id
+}
 
-  const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
-  if (!textBlock?.text) {
-    console.error('[assets/upload] no text in Anthropic response:', JSON.stringify(data.content))
-    throw new Error('No text returned from Anthropic')
+/**
+ * Best-effort cleanup — the PDF's original binary is already durably stored
+ * in Supabase Storage, so the Anthropic-side copy is purely transient for
+ * this one extraction call. Never let a failed delete mask the real
+ * extraction result; a missed delete here is a wasted-storage concern, not a
+ * correctness one, since Anthropic-side files also auto-expire.
+ */
+async function deleteAnthropicFile(fileId: string, apiKey: string): Promise<void> {
+  try {
+    const res = await fetch(`https://api.anthropic.com/v1/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': ANTHROPIC_FILES_BETA_HEADER,
+      },
+    })
+    if (!res.ok) {
+      console.error('[assets/upload] Anthropic file cleanup failed (non-fatal):', { fileId, status: res.status })
+    }
+  } catch (err) {
+    console.error('[assets/upload] Anthropic file cleanup threw (non-fatal):', {
+      fileId,
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
+}
 
-  return textBlock.text
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
+
+  const fileId = await uploadFileToAnthropic(buffer, apiKey)
+
+  try {
+    const requestBody = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 16000,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'file',
+                file_id: fileId,
+              },
+            },
+            {
+              type: 'text',
+              text: 'Extract all text from this document exactly as written. Return only the extracted text with no commentary.',
+            },
+          ],
+        },
+      ],
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': ANTHROPIC_FILES_BETA_HEADER,
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!res.ok) {
+      const errorBody = await res.text()
+      console.error('[assets/upload] Anthropic API error:', { status: res.status, body: errorBody })
+      throw new Error(`Anthropic API error: ${res.status} ${errorBody}`)
+    }
+
+    const data = await res.json()
+    console.log('[assets/upload] Anthropic response stop_reason:', data.stop_reason, 'content blocks:', data.content?.length)
+
+    const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
+    if (!textBlock?.text) {
+      console.error('[assets/upload] no text in Anthropic response:', JSON.stringify(data.content))
+      throw new Error('No text returned from Anthropic')
+    }
+
+    return textBlock.text
+  } finally {
+    await deleteAnthropicFile(fileId, apiKey)
+  }
 }
 
 /** Extract raw text from an uploaded document buffer. Throws on failure. */
