@@ -49,7 +49,7 @@ import {
 import { ORDERED_TYPES, TYPE_COLORS } from '@/services/prompt/block-types'
 import type { BlockType } from '@/services/prompt/block-types'
 import { notify } from '@/components/admin/lib/primitives'
-import { tokensFor } from '@/components/admin/lib/types'
+import { tokensFor } from '@/services/prompt/tokenize'
 import {
   SUMMARY_MAX,
   changedSince,

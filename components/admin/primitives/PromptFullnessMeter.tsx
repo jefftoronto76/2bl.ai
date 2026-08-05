@@ -2,10 +2,7 @@
 
 import { Progress, Stack } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
-import { tokensFor } from '@/services/prompt/tokenize'
-
-const TOKEN_LIMIT = 8000
-const YELLOW_THRESHOLD = 5000
+import { tokensFor, TOKEN_LIMIT, YELLOW_THRESHOLD } from '@/services/prompt/tokenize'
 
 export interface PromptFullnessMeterProps {
   bodies: string[]

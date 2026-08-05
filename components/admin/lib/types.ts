@@ -181,9 +181,6 @@ export interface SelectOption {
    Helpers
    ══════════════════════════════════════════════════════════════════════════ */
 
-/** services/prompt/tokenize.ts — ceil(chars / 4). */
-export const tokensFor = (text: string): number => Math.ceil((text || '').length / 4)
-
 export const statusLabel = (status: string): string => {
   switch (status.toLowerCase()) {
     case 'live': return 'Live'
