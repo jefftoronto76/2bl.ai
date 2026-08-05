@@ -213,6 +213,12 @@ describe('sanitizeFailureReason', () => {
     )
   })
 
+  it('maps an Anthropic file upload error (Files API) with no vendor name in the output', () => {
+    const reason = sanitizeFailureReason('Anthropic file upload error: 413 {"type":"payload_too_large"}')
+    expect(reason).toBe("the file couldn't be uploaded for processing")
+    expect(reason).not.toContain('Anthropic')
+  })
+
   it('maps missing-config errors to a generic operational reason, no env var names', () => {
     expect(sanitizeFailureReason('DEEPGRAM_API_KEY is not configured')).toBe(
       "a processing service isn't available right now",
