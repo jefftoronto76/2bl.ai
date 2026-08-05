@@ -25,6 +25,16 @@ export function useModalA11y(
   dialogRef: RefObject<HTMLElement | null>,
   onClose: () => void,
   initialFocusRef?: RefObject<HTMLElement | null>,
+  /**
+   * Explicit focus-restoration target, overriding the default of "whatever
+   * had focus when the modal opened." Needed when the opener itself doesn't
+   * survive to close time — e.g. a mobile nav button whose containing
+   * overlay unmounts in the same render that opens the modal, in which case
+   * `document.activeElement` has already reverted to `body` by the time this
+   * effect runs (removing a focused element from the DOM moves focus away
+   * from it synchronously, before passive effects fire).
+   */
+  restoreFocusRef?: RefObject<HTMLElement | null>,
 ) {
   // Ref-mirror onClose so an unstable callback identity never re-runs the
   // effect mid-open (which would restore focus early and re-register listeners).
@@ -34,7 +44,7 @@ export function useModalA11y(
   useEffect(() => {
     if (!open) return;
 
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previouslyFocused = restoreFocusRef?.current ?? (document.activeElement as HTMLElement | null);
     const target = initialFocusRef?.current ?? dialogRef.current;
     const raf = requestAnimationFrame(() => target?.focus());
 
@@ -75,6 +85,6 @@ export function useModalA11y(
       window.removeEventListener('keydown', onKeyDown, true);
       previouslyFocused?.focus?.();
     };
-    // dialogRef / initialFocusRef are stable ref objects.
-  }, [open, dialogRef, initialFocusRef]);
+    // dialogRef / initialFocusRef / restoreFocusRef are stable ref objects.
+  }, [open, dialogRef, initialFocusRef, restoreFocusRef]);
 }

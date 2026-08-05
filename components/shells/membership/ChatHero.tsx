@@ -78,6 +78,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const overlayHost = useChatOverlayHost();
   const mediaGalleryRef = useRef<HTMLDivElement>(null);
   const closeMediaGallery = useCallback(() => setMediaGalleryOpen(false), []);
+  // Persistent focus-restoration target for the mobile path — see the
+  // comment on useModalA11y's restoreFocusRef. The mobile SidebarV2 (whose
+  // Media button triggered the open) unmounts the instant it opens, so
+  // restoring focus to "whatever was focused" would land on body instead;
+  // ChatHeader's hamburger button survives the whole mobile session.
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   // Kebab action state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -188,8 +194,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, dispatch]);
 
   // Escape (capture-phase, stopPropagation), initial focus, Tab trap, focus
-  // restore — same a11y contract as the V2 modals (BeginStoryModal etc).
-  useModalA11y(mediaGalleryOpen, mediaGalleryRef, closeMediaGallery);
+  // restore — same a11y contract as the V2 modals (BeginStoryModal etc). On
+  // mobile, restore focus to the hamburger (see menuButtonRef above) instead
+  // of the default "whatever was focused," since the real opener is gone by
+  // the time this runs.
+  useModalA11y(
+    mediaGalleryOpen,
+    mediaGalleryRef,
+    closeMediaGallery,
+    undefined,
+    isMobile ? menuButtonRef : undefined,
+  );
 
   return (
     <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
@@ -238,6 +253,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           isFullScreen={isFullScreen}
           onToggleFullScreen={onToggleFullScreen}
           onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
+          menuButtonRef={menuButtonRef}
         />
 
         <div className="flex flex-col flex-1 min-h-0">

@@ -165,4 +165,26 @@ describe('Media nav at 390px (mobile overlay sidebar)', () => {
     // should be gone — same dismissal behavior as selecting a conversation.
     expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
   });
+
+  // Regression: the mobile "Media" button lives in the overlay sidebar, which
+  // unmounts in the same state update that opens the gallery (see previous
+  // test). document.activeElement reverts to <body> the instant that happens
+  // — before useModalA11y's effect ever runs — so restoring focus to
+  // "whatever was focused" would strand it nowhere. ChatHero passes the
+  // persistent hamburger button as an explicit restoreFocusRef instead.
+  it('restores focus to the hamburger button on close, not the vanished Media button', async () => {
+    renderHeirloomChat();
+
+    const hamburger = screen.getByRole('button', { name: 'Open navigation' });
+    fireEvent.click(hamburger);
+    const mediaButton = await screen.findByRole('button', { name: 'Media' });
+
+    mediaButton.focus();
+    fireEvent.click(mediaButton);
+    await screen.findByRole('heading', { name: 'Media' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Media' })).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
+    await waitFor(() => expect(document.activeElement).toBe(hamburger));
+  });
 });

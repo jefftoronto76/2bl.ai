@@ -331,6 +331,6 @@ Per the June build sequence, steps 4 (background function), 6 (guide prompt), an
 
 **Phase 3 — build the real experience (needs Phase 2's data, real design time):** 5\. Contract/SLA messaging — write the actual acknowledgement/completion language against real timing numbers, not guesses. 6\. Decide Realtime vs. staying with context-injection, now informed by how the contract messaging is meant to feel (an SLA implies some responsiveness expectation — worth revisiting once the UX is actually designed).
 
-**Phase 4 — the parts with no urgency (whenever):** 7\. Media nav section. 8\. Retry UX decision.
+**Phase 4 — the parts with no urgency (whenever):** 7\. Media nav section finish-to-spec work (story grouping, "source material shelf" framing — the nav connection itself shipped 2026-08-05; see `Backlog/media-gallery-finish-to-spec.md`). 8\. Retry UX decision.
 
 **What NOT to do:** don't build the contract/SLA messaging before Phase 2's timing data exists — that's the one sequencing rule worth holding firm on, since a wrong promise is worse than the current vague acknowledgement.  
