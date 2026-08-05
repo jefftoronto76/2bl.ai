@@ -1,15 +1,19 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
+import { useChatOverlayHost } from './v2/ChatOverlayHost';
+import { useModalA11y } from './v2/useModalA11y';
 import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
+import { MediaGallery } from './MediaGallery';
 import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
@@ -64,6 +68,16 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // integration decisions.
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
+
+  // Media gallery — full-bleed overlay (same pattern as VoiceImmersive:
+  // portaled into ChatDrawerV2's relative body, absolute inset-0). Opened
+  // from SidebarV2's "Media" nav item, which already had an onMedia prop
+  // but nothing passed it — MediaGallery.tsx itself was already real and
+  // functional, just unreachable from navigation.
+  const [mediaGalleryOpen, setMediaGalleryOpen] = useState(false);
+  const overlayHost = useChatOverlayHost();
+  const mediaGalleryRef = useRef<HTMLDivElement>(null);
+  const closeMediaGallery = useCallback(() => setMediaGalleryOpen(false), []);
 
   // Kebab action state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -164,6 +178,19 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     return () => document.removeEventListener('keydown', onKey, true);
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
+  // Same behavior as SidebarV2's own "New Chat" row: on mobile, dismiss the
+  // sidebar overlay once the destination is chosen. SidebarV2 doesn't chain
+  // this itself for Media (no onClose call in its onMedia button), so it
+  // lives here instead.
+  const handleOpenMedia = useCallback(() => {
+    setMediaGalleryOpen(true);
+    if (isMobile) dispatch({ type: 'TOGGLE_SIDEBAR' });
+  }, [isMobile, dispatch]);
+
+  // Escape (capture-phase, stopPropagation), initial focus, Tab trap, focus
+  // restore — same a11y contract as the V2 modals (BeginStoryModal etc).
+  useModalA11y(mediaGalleryOpen, mediaGalleryRef, closeMediaGallery);
+
   return (
     <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
       {/* Desktop: docked sidebar */}
@@ -172,6 +199,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           stories={stories}
           writingPrompts={WRITING_PROMPTS}
           onCreateStory={() => setBeginStoryOpen(true)}
+          onMedia={handleOpenMedia}
           onSelectPrompt={handleSelectPrompt}
           onRowAction={handleRowAction}
           starredConversationIds={starredIds}
@@ -193,6 +221,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               stories={stories}
               writingPrompts={WRITING_PROMPTS}
               onCreateStory={() => setBeginStoryOpen(true)}
+              onMedia={handleOpenMedia}
               onSelectPrompt={handleSelectPrompt}
               onRowAction={handleRowAction}
               starredConversationIds={starredIds}
@@ -254,6 +283,29 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           setPendingDelete(null);
         }}
       />
+
+      {/* Media gallery — full-bleed overlay, same portal pattern as
+          VoiceImmersive (ChatInput.tsx): portaled into ChatDrawerV2's
+          relative body so `absolute inset-0` covers the whole drawer,
+          transform-safely, rather than being clipped by this static
+          section. z-[72] sits above VoiceImmersive (z-70) and below the
+          BeginStory/ConfirmDelete modals (z-80/85) — the three are never
+          open simultaneously today, but this keeps the stacking order
+          sane if that changes. */}
+      {mediaGalleryOpen && overlayHost &&
+        createPortal(
+          <div
+            ref={mediaGalleryRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Media"
+            className="absolute inset-0 z-[72] hl-animate-fade focus:outline-none"
+          >
+            <MediaGallery onClose={closeMediaGallery} />
+          </div>,
+          overlayHost,
+        )}
 
       {/* Kebab action confirmation toast — fixed bottom-center, auto-dismiss 2.2s */}
       {toast && (
