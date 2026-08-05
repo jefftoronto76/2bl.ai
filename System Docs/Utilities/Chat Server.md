@@ -1,5 +1,28 @@
 # Chat Server — MEMBER CONTEXT
 
+### Chat server — Anthropic prompt caching (`services/chat/server/index.ts` + `stream.ts`)
+
+As of 2026-08-06, `streamChat()` no longer joins the whole system prompt into
+one string. It splits into `cachedSystem` (basePrompt + bookingSection — both
+keyed only by `tenantId`, identical on every turn for that tenant) and
+`system` (memberContext + mediaContext + question-mode context — genuinely
+per-visitor/per-turn, must never be cached). `runChatStream()`
+(`stream.ts`) sends each as its own leading `role: 'system'` message —
+`cachedSystem` carries `experimental_providerMetadata.anthropic.cacheControl`
+(`{ type: 'ephemeral' }`), `system` carries none — rather than via
+streamText's `system:` string shorthand, which silently drops
+providerMetadata at the installed `ai@3.4.33`. `getModelInstance()` sets
+`cacheControl: true` on the Anthropic model, required for the beta header and
+cache-usage response fields; this is inert (no behavior change) for the two
+admin-chat callers of this module (`app/api/admin/prompt-chat/route.ts`,
+`app/api/admin/blocks/chat/route.ts`), which pass only `system` and never
+`cachedSystem`.
+
+Cache usage (`cacheCreationInputTokens`/`cacheReadInputTokens`, read off
+streamText's `onFinish` event) is logged via `AuditAction.CHAT_PROMPT_CACHE_USAGE`
+whenever a session/tenant are present and the turn reports it — see
+`System Docs/Utilities/Audit.md`.
+
 ### Chat server — MEMBER CONTEXT (`services/chat/server/member-context.ts`)
 
 Undocumented until 2026-07-31 — the gap that let a real bug ship silently for
