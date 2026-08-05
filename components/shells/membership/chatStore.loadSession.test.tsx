@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
+import { __resetPersistenceForTests } from '@/services/chat/ui/v1/persistence';
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -80,7 +81,14 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   return jsonResponse({ ok: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // ChatProvider opts into IndexedDB persistence (persistNamespace: 'heirloom')
+  // and fake-indexeddb (vitest.setup.ts) is a real, stateful implementation
+  // that otherwise survives across tests in this file — without this, a
+  // later test's mount-time rehydration effect picks up an earlier test's
+  // buffered thread/session id before that test's own setup runs, which is
+  // pure test-isolation noise, unrelated to the code under test.
+  await __resetPersistenceForTests('heirloom');
   fetchMock.mockClear();
   __clearSingletonRegistry();
   vi.stubGlobal('fetch', fetchMock);
