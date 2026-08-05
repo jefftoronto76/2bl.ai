@@ -10,7 +10,24 @@
 
 import mammoth from 'mammoth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { isMediaAuditEnabled, logAiMediaEvent } from '@/services/media'
+import { AuditAction } from '@/services/audit/types'
 import type { AuthScope, ContentResult } from './types'
+
+/**
+ * Attributes the PDF Files API events below (upload/extraction/cleanup) to a
+ * real media_items row. Optional because extractText/extractTextFromPdf are
+ * also called from the unrelated admin document-upload flow
+ * (app/api/admin/assets/upload/route.ts), which has no media_items row at
+ * all — that caller omits this context and simply gets no audit logging for
+ * these steps, unchanged from its existing behavior.
+ */
+export interface MediaAuditContext {
+  tenant_id: string
+  member_id: string
+  media_item_id: string
+  correlation_id: string
+}
 
 export const ACCEPTED_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -28,7 +45,7 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 // size. See platform.claude.com/docs/en/build-with-claude/pdf-support.
 const ANTHROPIC_FILES_BETA_HEADER = 'files-api-2025-04-14'
 
-async function uploadFileToAnthropic(buffer: Buffer, apiKey: string): Promise<string> {
+async function uploadFileToAnthropic(buffer: Buffer, apiKey: string, ctx?: MediaAuditContext): Promise<string> {
   const form = new FormData()
   form.append('file', new Blob([Uint8Array.from(buffer)], { type: 'application/pdf' }), 'document.pdf')
 
@@ -44,12 +61,33 @@ async function uploadFileToAnthropic(buffer: Buffer, apiKey: string): Promise<st
 
   if (!res.ok) {
     const errorBody = await res.text()
-    console.error('[assets/upload] Anthropic file upload error:', { status: res.status, body: errorBody })
-    throw new Error(`Anthropic file upload error: ${res.status} ${errorBody}`)
+    const errorMessage = `Anthropic file upload error: ${res.status} ${errorBody}`
+    if (ctx && isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: ctx.tenant_id,
+        member_id: ctx.member_id,
+        media_item_id: ctx.media_item_id,
+        action: AuditAction.MEDIA_FILE_UPLOAD_FAILED,
+        outcome: 'failure',
+        correlation_id: ctx.correlation_id,
+        metadata: { status: res.status, error_message: errorMessage, timestamp: new Date().toISOString() },
+      })
+    }
+    throw new Error(errorMessage)
   }
 
   const data = (await res.json()) as { id: string }
-  console.log('[assets/upload] uploaded PDF to Anthropic Files API:', { fileId: data.id, byteLength: buffer.length })
+  if (ctx && isMediaAuditEnabled()) {
+    await logAiMediaEvent({
+      tenant_id: ctx.tenant_id,
+      member_id: ctx.member_id,
+      media_item_id: ctx.media_item_id,
+      action: AuditAction.MEDIA_FILE_UPLOAD_RECEIVED,
+      outcome: 'success',
+      correlation_id: ctx.correlation_id,
+      metadata: { file_id: data.id, byte_length: buffer.length, timestamp: new Date().toISOString() },
+    })
+  }
   return data.id
 }
 
@@ -60,7 +98,7 @@ async function uploadFileToAnthropic(buffer: Buffer, apiKey: string): Promise<st
  * extraction result; a missed delete here is a wasted-storage concern, not a
  * correctness one, since Anthropic-side files also auto-expire.
  */
-async function deleteAnthropicFile(fileId: string, apiKey: string): Promise<void> {
+async function deleteAnthropicFile(fileId: string, apiKey: string, ctx?: MediaAuditContext): Promise<void> {
   try {
     const res = await fetch(`https://api.anthropic.com/v1/files/${fileId}`, {
       method: 'DELETE',
@@ -70,22 +108,41 @@ async function deleteAnthropicFile(fileId: string, apiKey: string): Promise<void
         'anthropic-beta': ANTHROPIC_FILES_BETA_HEADER,
       },
     })
-    if (!res.ok) {
-      console.error('[assets/upload] Anthropic file cleanup failed (non-fatal):', { fileId, status: res.status })
+    if (!res.ok && ctx && isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: ctx.tenant_id,
+        member_id: ctx.member_id,
+        media_item_id: ctx.media_item_id,
+        action: AuditAction.MEDIA_FILE_CLEANUP_FAILED,
+        outcome: 'failure',
+        correlation_id: ctx.correlation_id,
+        metadata: { file_id: fileId, status: res.status, timestamp: new Date().toISOString() },
+      })
     }
   } catch (err) {
-    console.error('[assets/upload] Anthropic file cleanup threw (non-fatal):', {
-      fileId,
-      error: err instanceof Error ? err.message : String(err),
-    })
+    if (ctx && isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: ctx.tenant_id,
+        member_id: ctx.member_id,
+        media_item_id: ctx.media_item_id,
+        action: AuditAction.MEDIA_FILE_CLEANUP_FAILED,
+        outcome: 'failure',
+        correlation_id: ctx.correlation_id,
+        metadata: {
+          file_id: fileId,
+          error_message: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
   }
 }
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+async function extractTextFromPdf(buffer: Buffer, ctx?: MediaAuditContext): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
 
-  const fileId = await uploadFileToAnthropic(buffer, apiKey)
+  const fileId = await uploadFileToAnthropic(buffer, apiKey, ctx)
 
   try {
     const requestBody = {
@@ -124,32 +181,74 @@ async function extractTextFromPdf(buffer: Buffer): Promise<string> {
 
     if (!res.ok) {
       const errorBody = await res.text()
-      console.error('[assets/upload] Anthropic API error:', { status: res.status, body: errorBody })
-      throw new Error(`Anthropic API error: ${res.status} ${errorBody}`)
+      const errorMessage = `Anthropic API error: ${res.status} ${errorBody}`
+      if (ctx && isMediaAuditEnabled()) {
+        await logAiMediaEvent({
+          tenant_id: ctx.tenant_id,
+          member_id: ctx.member_id,
+          media_item_id: ctx.media_item_id,
+          action: AuditAction.MEDIA_PDF_EXTRACTION_FAILED,
+          outcome: 'failure',
+          correlation_id: ctx.correlation_id,
+          metadata: { status: res.status, error_message: errorMessage, timestamp: new Date().toISOString() },
+        })
+      }
+      throw new Error(errorMessage)
     }
 
     const data = await res.json()
-    console.log('[assets/upload] Anthropic response stop_reason:', data.stop_reason, 'content blocks:', data.content?.length)
-
     const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
+
     if (!textBlock?.text) {
-      console.error('[assets/upload] no text in Anthropic response:', JSON.stringify(data.content))
+      if (ctx && isMediaAuditEnabled()) {
+        await logAiMediaEvent({
+          tenant_id: ctx.tenant_id,
+          member_id: ctx.member_id,
+          media_item_id: ctx.media_item_id,
+          action: AuditAction.MEDIA_PDF_EXTRACTION_FAILED,
+          outcome: 'failure',
+          correlation_id: ctx.correlation_id,
+          metadata: {
+            error_message: 'No text returned from Anthropic',
+            stop_reason: data.stop_reason ?? null,
+            content_block_count: data.content?.length ?? 0,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      }
       throw new Error('No text returned from Anthropic')
+    }
+
+    if (ctx && isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: ctx.tenant_id,
+        member_id: ctx.member_id,
+        media_item_id: ctx.media_item_id,
+        action: AuditAction.MEDIA_PDF_EXTRACTION_RECEIVED,
+        outcome: 'success',
+        correlation_id: ctx.correlation_id,
+        metadata: {
+          stop_reason: data.stop_reason ?? null,
+          content_block_count: data.content?.length ?? 0,
+          extracted_text_length: textBlock.text.length,
+          timestamp: new Date().toISOString(),
+        },
+      })
     }
 
     return textBlock.text
   } finally {
-    await deleteAnthropicFile(fileId, apiKey)
+    await deleteAnthropicFile(fileId, apiKey, ctx)
   }
 }
 
 /** Extract raw text from an uploaded document buffer. Throws on failure. */
-export async function extractText(buffer: Buffer, mimeType: string): Promise<string> {
+export async function extractText(buffer: Buffer, mimeType: string, ctx?: MediaAuditContext): Promise<string> {
   const fileType = ACCEPTED_TYPES[mimeType]
 
   switch (fileType) {
     case 'pdf': {
-      return extractTextFromPdf(buffer)
+      return extractTextFromPdf(buffer, ctx)
     }
     case 'docx': {
       const result = await mammoth.extractRawText({ buffer })

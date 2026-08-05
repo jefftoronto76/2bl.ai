@@ -1,5 +1,5 @@
 import { AuditAction } from '@/services/audit/types'
-import { extractText } from '@/services/content/assets'
+import { extractText, type MediaAuditContext } from '@/services/content/assets'
 import {
   getMediaItem,
   isMediaAuditEnabled,
@@ -405,9 +405,16 @@ async function processDocument(
     })
   }
 
+  const auditContext: MediaAuditContext = {
+    tenant_id: item.tenant_id,
+    member_id: item.member_id,
+    media_item_id: item.id,
+    correlation_id: correlationId,
+  }
+
   let rawText: string
   try {
-    rawText = await extractText(buffer, item.mime_type)
+    rawText = await extractText(buffer, item.mime_type, auditContext)
   } catch (err) {
     if (isPdf && isMediaAuditEnabled()) {
       await logAiMediaEvent({

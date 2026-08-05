@@ -3,9 +3,23 @@
 // app's own 50MB upload cap, so any document in that gap failed outright.
 // These tests confirm the upload -> reference-by-file_id -> cleanup flow,
 // including that cleanup runs even when extraction itself fails.
+//
+// Also covers the audit-logging pass: uploadFileToAnthropic/deleteAnthropicFile/
+// extractTextFromPdf now emit logAiMediaEvent calls when a MediaAuditContext is
+// supplied (the media pipeline's call, via processor.ts) and stay silent when
+// it isn't (the unrelated admin document-upload route's call, unaffected).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { extractText } from './assets'
+import { extractText, type MediaAuditContext } from './assets'
+import { AuditAction } from '@/services/audit/types'
+
+const mockIsMediaAuditEnabled = vi.fn()
+const mockLogAiMediaEvent = vi.fn()
+
+vi.mock('@/services/media', () => ({
+  isMediaAuditEnabled: (...args: unknown[]) => mockIsMediaAuditEnabled(...args),
+  logAiMediaEvent: (...args: unknown[]) => mockLogAiMediaEvent(...args),
+}))
 
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString()
@@ -31,10 +45,19 @@ function textResponse(body: string, status: number): Response {
   } as Response
 }
 
+const CTX: MediaAuditContext = {
+  tenant_id: 'tenant-1',
+  member_id: 'member-1',
+  media_item_id: 'item-1',
+  correlation_id: 'corr-1',
+}
+
 beforeEach(() => {
   fetchMock.mockClear()
   vi.stubGlobal('fetch', fetchMock)
   process.env.ANTHROPIC_API_KEY = 'test-key'
+  mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
+  mockLogAiMediaEvent.mockReset().mockResolvedValue(undefined)
 })
 
 afterEach(() => {
@@ -76,6 +99,9 @@ describe('extractText — pdf via Anthropic Files API', () => {
       'https://api.anthropic.com/v1/files/file_abc123',
       expect.objectContaining({ method: 'DELETE' }),
     )
+    // No context supplied (this is how the unrelated admin upload route calls
+    // it) — no audit logging attempted at all.
+    expect(mockLogAiMediaEvent).not.toHaveBeenCalled()
   })
 
   it('throws and never attempts extraction when the file upload itself fails', async () => {
@@ -154,5 +180,160 @@ describe('extractText — non-pdf types are unaffected by the Files API change',
 
     expect(result).toBe('hello world')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('extractText — audit logging, when a MediaAuditContext is supplied (the media pipeline call)', () => {
+  it('logs MEDIA_FILE_UPLOAD_RECEIVED and MEDIA_PDF_EXTRACTION_RECEIVED on a full success', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+
+      if (url === 'https://api.anthropic.com/v1/files' && method === 'POST') return jsonResponse({ id: 'file_abc123' })
+      if (url === 'https://api.anthropic.com/v1/messages' && method === 'POST') {
+        return jsonResponse({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Extracted PDF text.' }] })
+      }
+      if (url === 'https://api.anthropic.com/v1/files/file_abc123' && method === 'DELETE') return jsonResponse({})
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await extractText(Buffer.from('pdf'), 'application/pdf', CTX)
+
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-1',
+        member_id: 'member-1',
+        media_item_id: 'item-1',
+        correlation_id: 'corr-1',
+        action: AuditAction.MEDIA_FILE_UPLOAD_RECEIVED,
+        outcome: 'success',
+        metadata: expect.objectContaining({ file_id: 'file_abc123' }),
+      }),
+    )
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_PDF_EXTRACTION_RECEIVED,
+        outcome: 'success',
+        metadata: expect.objectContaining({ extracted_text_length: 'Extracted PDF text.'.length }),
+      }),
+    )
+    // Cleanup succeeded — no failure event for it.
+    expect(mockLogAiMediaEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_FILE_CLEANUP_FAILED }),
+    )
+  })
+
+  it('logs MEDIA_FILE_UPLOAD_FAILED (not extraction) when the upload step fails', async () => {
+    fetchMock.mockImplementation(async () => textResponse('too large', 413))
+
+    await expect(extractText(Buffer.from('pdf'), 'application/pdf', CTX)).rejects.toThrow()
+
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_FILE_UPLOAD_FAILED, outcome: 'failure' }),
+    )
+    expect(mockLogAiMediaEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_PDF_EXTRACTION_FAILED }),
+    )
+  })
+
+  it('logs MEDIA_PDF_EXTRACTION_FAILED when the extraction HTTP call fails', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === 'https://api.anthropic.com/v1/files') return jsonResponse({ id: 'file_1' })
+      if (url === 'https://api.anthropic.com/v1/messages') return textResponse('bad request', 400)
+      if (method === 'DELETE') return jsonResponse({})
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await expect(extractText(Buffer.from('pdf'), 'application/pdf', CTX)).rejects.toThrow()
+
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_PDF_EXTRACTION_FAILED, outcome: 'failure' }),
+    )
+  })
+
+  it('logs MEDIA_PDF_EXTRACTION_FAILED when no text block is returned, without leaking raw response content into metadata', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === 'https://api.anthropic.com/v1/files') return jsonResponse({ id: 'file_1' })
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return jsonResponse({ stop_reason: 'end_turn', content: [{ type: 'image', secret: 'raw vendor content' }] })
+      }
+      if (method === 'DELETE') return jsonResponse({})
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await expect(extractText(Buffer.from('pdf'), 'application/pdf', CTX)).rejects.toThrow(
+      'No text returned from Anthropic',
+    )
+
+    const call = mockLogAiMediaEvent.mock.calls.find(
+      ([arg]) => arg.action === AuditAction.MEDIA_PDF_EXTRACTION_FAILED,
+    )
+    expect(call).toBeDefined()
+    expect(JSON.stringify(call![0].metadata)).not.toContain('raw vendor content')
+    expect(call![0].metadata.content_block_count).toBe(1)
+  })
+
+  it('logs MEDIA_FILE_CLEANUP_FAILED when the delete call returns a non-ok response', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === 'https://api.anthropic.com/v1/files') return jsonResponse({ id: 'file_1' })
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return jsonResponse({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] })
+      }
+      if (method === 'DELETE') return textResponse('not found', 404)
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await extractText(Buffer.from('pdf'), 'application/pdf', CTX)
+
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_FILE_CLEANUP_FAILED, outcome: 'failure' }),
+    )
+  })
+
+  it('logs MEDIA_FILE_CLEANUP_FAILED when the delete call throws', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === 'https://api.anthropic.com/v1/files') return jsonResponse({ id: 'file_1' })
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return jsonResponse({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] })
+      }
+      if (method === 'DELETE') throw new TypeError('network error')
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await extractText(Buffer.from('pdf'), 'application/pdf', CTX)
+
+    expect(mockLogAiMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_FILE_CLEANUP_FAILED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_message: 'network error' }),
+      }),
+    )
+  })
+
+  it('skips all audit logging when isMediaAuditEnabled() returns false, even with a context supplied', async () => {
+    mockIsMediaAuditEnabled.mockReturnValue(false)
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+      if (url === 'https://api.anthropic.com/v1/files') return jsonResponse({ id: 'file_1' })
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return jsonResponse({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] })
+      }
+      if (method === 'DELETE') return jsonResponse({})
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    await extractText(Buffer.from('pdf'), 'application/pdf', CTX)
+
+    expect(mockLogAiMediaEvent).not.toHaveBeenCalled()
   })
 })

@@ -42,10 +42,22 @@ export const AuditAction = {
   MEDIA_PROCESS_COMPLETED: 'media.process_completed',
   MEDIA_PROCESS_FAILED: 'media.process_failed',
   MEDIA_URL_FAILED: 'media.url_failed',
+  // Member-triggered retry of a failed media item (services/media/[id]/retry)
+  MEDIA_RETRY_REQUESTED: 'media.retry_requested',
+  MEDIA_RETRY_FAILED: 'media.retry_failed',
   // Anthropic AI calls within media processing
   AI_MEDIA_REQUEST_SENT: 'ai.media_request_sent',
   AI_MEDIA_RESPONSE_RECEIVED: 'ai.media_response_received',
   AI_MEDIA_REQUEST_FAILED: 'ai.media_request_failed',
+  // Anthropic Files API — PDF text-extraction pipeline (services/content/assets.ts).
+  // Distinct from the AI_MEDIA_* actions above: those bracket the whole PDF
+  // extraction attempt (logged by services/media/processor.ts); these pinpoint
+  // which specific internal step (upload, extraction, cleanup) succeeded or failed.
+  MEDIA_FILE_UPLOAD_RECEIVED: 'media.file_upload_received',
+  MEDIA_FILE_UPLOAD_FAILED: 'media.file_upload_failed',
+  MEDIA_PDF_EXTRACTION_RECEIVED: 'media.pdf_extraction_received',
+  MEDIA_PDF_EXTRACTION_FAILED: 'media.pdf_extraction_failed',
+  MEDIA_FILE_CLEANUP_FAILED: 'media.file_cleanup_failed',
   // Deepgram STT calls within media processing
   STT_REQUEST_SENT: 'stt.request_sent',
   STT_RESPONSE_RECEIVED: 'stt.response_received',
