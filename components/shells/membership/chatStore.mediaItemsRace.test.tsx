@@ -69,7 +69,9 @@ function streamResponse(text: string): Response {
 
 // Captures every /api/sage request body sent, in order, so the test can
 // inspect exactly what the second turn (the one with the attachment) sent.
-const sageRequestBodies: Array<{ media_items: unknown }> = [];
+const sageRequestBodies: Array<{
+  media_items: { mediaItemId: string; type: string; filename: string }[] | null;
+}> = [];
 
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
@@ -100,6 +102,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function mkItem(overrides: {
+  id: string;
+  status: 'pending' | 'processing' | 'ready' | 'failed';
+  original_filename?: string;
+}) {
+  return {
+    id: overrides.id,
+    tenant_id: 't1',
+    member_id: 'm1',
+    chat_id: 'sess-1',
+    story_id: null,
+    type: 'image' as const,
+    original_filename: overrides.original_filename ?? 'photo.jpg',
+    storage_path: '',
+    file_size_bytes: 100,
+    mime_type: 'image/jpeg',
+    status: overrides.status,
+    derived_content: overrides.status === 'ready' ? 'a description' : null,
+    classification: null,
+    error_message: overrides.status === 'failed' ? 'boom' : null,
+    processed_at: null,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  };
+}
+
 function TestConsumer() {
   const { sendMessage, addMediaItem } = useChatStore();
 
@@ -112,25 +140,7 @@ function TestConsumer() {
   // Promise.all settling instead — this uses zero gap, the strictest case).
   const attachThenSend = () => {
     void (async () => {
-      addMediaItem({
-        id: 'media-1',
-        tenant_id: 't1',
-        member_id: 'm1',
-        chat_id: 'sess-1',
-        story_id: null,
-        type: 'image',
-        original_filename: 'photo.jpg',
-        storage_path: '',
-        file_size_bytes: 100,
-        mime_type: 'image/jpeg',
-        status: 'pending',
-        derived_content: null,
-        classification: null,
-        error_message: null,
-        processed_at: null,
-        created_at: new Date(0).toISOString(),
-        updated_at: new Date(0).toISOString(),
-      });
+      addMediaItem(mkItem({ id: 'media-1', status: 'pending' }));
       // Zero gap — call synchronously back to back, no await at all.
       void sendMessage('second message, with a photo attached');
     })();
@@ -140,6 +150,21 @@ function TestConsumer() {
     <div>
       <button onClick={sendFirst}>send first</button>
       <button onClick={attachThenSend}>attach then send</button>
+      <button onClick={() => addMediaItem(mkItem({ id: 'media-1', status: 'pending' }))}>
+        attach pending A
+      </button>
+      <button onClick={() => addMediaItem(mkItem({ id: 'media-2', status: 'pending', original_filename: 'b.jpg' }))}>
+        attach pending B
+      </button>
+      <button onClick={() => addMediaItem(mkItem({ id: 'media-1', status: 'ready' }))}>
+        resolve A to ready
+      </button>
+      <button onClick={() => addMediaItem(mkItem({ id: 'media-2', status: 'failed', original_filename: 'b.jpg' }))}>
+        resolve B to failed
+      </button>
+      <button onClick={() => void sendMessage('plain follow-up, no new attachment')}>
+        send follow-up
+      </button>
     </div>
   );
 }
@@ -185,6 +210,94 @@ describe('addMediaItem + send() race (regression)', () => {
     await waitFor(() => expect(sageRequestBodies.length).toBe(2));
     expect(sageRequestBodies[1].media_items).toEqual([
       { mediaItemId: 'media-1', type: 'image', filename: 'photo.jpg' },
+    ]);
+  });
+});
+
+// Regression coverage for the unbounded-resend bug: getMediaItems() used to
+// map mediaItemsRef.current in full on every call, so every attachment ever
+// made in the session — regardless of how long ago it resolved — got
+// re-sent (and re-injected into the system prompt via resolveMediaContext)
+// on every subsequent turn. Fixed by tracking which ids have already had
+// their ready/failed state included in a request once (deliveredTerminalIdsRef
+// in chatStore.tsx) and excluding those from later calls, while anything
+// still pending/processing keeps being resent every turn until it resolves.
+describe('getMediaItems() resend scoping', () => {
+  it('stops resending an item once its ready state has been sent once, but keeps resending a still-pending one', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1: attach two files, both still pending/processing at send time.
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('attach pending B'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId).sort()).toEqual([
+      'media-1',
+      'media-2',
+    ]);
+
+    // Between turns: A finishes processing (ready), B is still processing.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+    });
+
+    // Turn 2: a plain follow-up, no new attachment. A's ready state has never
+    // been sent before, so it must be included this once (the guide needs to
+    // learn it's ready). B is still non-terminal, so it's included too.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId).sort()).toEqual([
+      'media-1',
+      'media-2',
+    ]);
+
+    // Between turns: B fails.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve B to failed'));
+    });
+
+    // Turn 3: A's ready state was already delivered on turn 2 — excluded now.
+    // B's failed state has never been sent before — included this once.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(3));
+    });
+    expect(sageRequestBodies[2].media_items?.map((m) => m.mediaItemId).sort()).toEqual(['media-2']);
+
+    // Turn 4: nothing changed since turn 3 — both terminal states already
+    // delivered once, so media_items is empty (sent as null on the wire).
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(4));
+    });
+    expect(sageRequestBodies[3].media_items).toBeNull();
+  });
+
+  it('still includes every item when 2-3 files are attached and sent in the same turn (no regression from the resend-scoping change)', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('attach pending B'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId).sort()).toEqual([
+      'media-1',
+      'media-2',
     ]);
   });
 });
