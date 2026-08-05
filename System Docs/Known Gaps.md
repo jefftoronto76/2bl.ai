@@ -104,6 +104,25 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   reads the 2026-06-26 entry at face value and assumes the old hard-singleton
   behavior still holds.
 
+- **`PromptSetCard.tsx` shows the same version number in two separate rows —
+  cosmetic duplication left over from the compile-publish version-drift fix
+  (2026-08-05, PR #283, branch `08-05-26_fix-compile-publish-discrepancies`).**
+  `PromptSetMetaStrip` (in `components/admin/settings/PromptSetCard.tsx`,
+  shared by tenant Settings → Prompt Sets and Platform Settings → Tenant
+  Prompts) renders both a "Version" row and a "Compiled version" row. Before
+  PR #283, "Version" read `prompt_sets.version` — a column that never
+  increments after row creation and silently drifts from reality (same dead
+  field documented on the `compiled_prompts`/`prompt_sets` rows in
+  `System Docs/Database Schema.md`) — labeled, misleadingly,
+  "· auto-increments on compile." PR #283 fixed the value to source from
+  `compiled_version` instead, so the label is now accurate, but it didn't
+  remove the row. Both rows now render the identical number: "Version" and
+  "Compiled version" show the same `compiled_version`, with "Compiled
+  version" the more complete implementation (it also renders a "· out of
+  date" staleness note the "Version" row lacks). **Cleanup:** drop the top
+  "Version" row entirely and keep "Compiled version." Not urgent — cosmetic
+  duplication only, no functional bug.
+
 - **Heirloom chat-widget V2 is UI-first; its backends do not exist yet.**
   The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped the
   presentation layer only. Outstanding, in dependency order: a `stories`
