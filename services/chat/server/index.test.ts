@@ -61,22 +61,38 @@ vi.mock('@/services/crm/session', () => ({
   handleSessionFinish: vi.fn(async () => undefined),
 }))
 
+const mockLogEvent = vi.fn(async (_input: unknown) => undefined)
+vi.mock('@/services/audit', () => ({
+  logEvent: (input: unknown) => mockLogEvent(input),
+}))
+
+type CacheUsage = { cacheCreationInputTokens: number | null; cacheReadInputTokens: number | null }
+
 // A stand-in for streamText/runChatStream that behaves like the real thing
 // with respect to abortSignal: rejects with an AbortError the instant the
 // signal fires, and otherwise stays pending until the test resolves it via
 // resolveRunChatStream (simulating an in-progress generation) or never
 // resolves at all for tests that only care about the abort path.
 let resolveRunChatStream: ((value: Response) => void) | null = null
-let runChatStreamOnFinish: ((args: { text: string; usage: null }) => Promise<void>) | null = null
-const mockRunChatStream = vi.fn((opts: { abortSignal?: AbortSignal; onFinish?: typeof runChatStreamOnFinish }) => {
-  runChatStreamOnFinish = opts.onFinish ?? null
-  return new Promise<Response>((resolve, reject) => {
-    resolveRunChatStream = resolve
-    opts.abortSignal?.addEventListener('abort', () => {
-      reject(new DOMException('The operation was aborted.', 'AbortError'))
+let runChatStreamOnFinish:
+  | ((args: { text: string; usage: null; cacheUsage?: CacheUsage | null }) => Promise<void>)
+  | null = null
+const mockRunChatStream = vi.fn(
+  (opts: {
+    cachedSystem?: string
+    system: string
+    abortSignal?: AbortSignal
+    onFinish?: typeof runChatStreamOnFinish
+  }) => {
+    runChatStreamOnFinish = opts.onFinish ?? null
+    return new Promise<Response>((resolve, reject) => {
+      resolveRunChatStream = resolve
+      opts.abortSignal?.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
+      })
     })
-  })
-})
+  },
+)
 vi.mock('./stream', () => ({
   runChatStream: (opts: Parameters<typeof mockRunChatStream>[0]) => mockRunChatStream(opts),
   resolveModelConfig: vi.fn(async () => ({
@@ -104,6 +120,7 @@ beforeEach(() => {
   mockMaybeSingle.mockResolvedValue({ data: null })
   mockRunChatStream.mockClear()
   mockGetMemberContext.mockClear()
+  mockLogEvent.mockClear()
   resolveRunChatStream = null
   runChatStreamOnFinish = null
 })
@@ -262,5 +279,130 @@ describe('streamChat — isFirstTurn computation for MEMBER CONTEXT', () => {
     await responsePromise
 
     expect(mockGetMemberContext).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
+  })
+})
+
+// Verifies streamChat splits the system prompt into a tenant-static,
+// cacheable prefix (basePrompt + bookingSection) and per-turn content that
+// must not be cached (memberContext/mediaContext/questionMode) — the
+// restructure prompt caching depends on. A regression here (e.g. folding
+// dynamic content back into cachedSystem) would silently defeat caching for
+// every visitor with member context or attached media, with no error.
+describe('streamChat — cachedSystem / system split for prompt caching', () => {
+  it('sends only the base prompt as cachedSystem, and an empty system, when there is no booking/member/media content', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockRunChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({ cachedSystem: 'system prompt', system: '' }),
+    )
+  })
+
+  it('keeps memberContext out of cachedSystem, in system instead', async () => {
+    mockGetMemberContext.mockResolvedValueOnce('visitor has booked before')
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockRunChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cachedSystem: 'system prompt',
+        system: 'MEMBER CONTEXT:\nvisitor has booked before',
+      }),
+    )
+  })
+
+  it('keeps question-mode context out of cachedSystem, in system instead', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      mode: 'question',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    expect(mockRunChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({ cachedSystem: 'system prompt', system: 'question mode context' }),
+    )
+  })
+})
+
+describe('streamChat — cache-usage audit logging', () => {
+  it('logs CHAT_PROMPT_CACHE_USAGE with the reported token counts when cacheUsage is present', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+    await runChatStreamOnFinish?.({
+      text: 'a complete reply',
+      usage: null,
+      cacheUsage: { cacheCreationInputTokens: 8000, cacheReadInputTokens: 0 },
+    })
+
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'chat.prompt_cache_usage',
+        tenant_id: 'tenant-1',
+        target_id: 'session-1',
+        metadata: expect.objectContaining({
+          cacheCreationInputTokens: 8000,
+          cacheReadInputTokens: 0,
+        }),
+      }),
+    )
+  })
+
+  it('does not log CHAT_PROMPT_CACHE_USAGE when cacheUsage is null (e.g. mocked/no provider metadata)', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+    await runChatStreamOnFinish?.({ text: 'a complete reply', usage: null, cacheUsage: null })
+
+    expect(mockLogEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'chat.prompt_cache_usage' }),
+    )
+  })
+
+  it('does not log CHAT_PROMPT_CACHE_USAGE when there is no session to attribute it to', async () => {
+    const responsePromise = streamChat({
+      messages: [],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: null,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+    await runChatStreamOnFinish?.({
+      text: 'a complete reply',
+      usage: null,
+      cacheUsage: { cacheCreationInputTokens: 8000, cacheReadInputTokens: 0 },
+    })
+
+    expect(mockLogEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'chat.prompt_cache_usage' }),
+    )
   })
 })

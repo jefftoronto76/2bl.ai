@@ -208,9 +208,19 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     : 'null — not injected'
   )
 
-  const systemPrompt = [
-    basePrompt,
-    bookingSection,
+  // Split into a tenant-static, cacheable prefix (basePrompt + bookingSection
+  // — both keyed only by tenantId, identical on every turn for this tenant)
+  // and per-turn content that must NOT be cached (memberContext/mediaContext
+  // are personalized; questionMode varies by request). Sending these as
+  // separate leading system messages (runChatStream) lets Anthropic's
+  // cache_control apply only to the genuinely-static block — folding
+  // everything into one string, as before, would mean a cache hit only for
+  // visitors with no member context and no attached media, silently missing
+  // the rest with no error signal.
+  const cachedSystem = [basePrompt, bookingSection]
+    .filter(segment => segment.length > 0)
+    .join('\n\n')
+  const dynamicSystem = [
     memberContext ? `MEMBER CONTEXT:\n${memberContext}` : '',
     mediaContext,
     questionMode ? QUESTION_MODE_CONTEXT : '',
@@ -223,13 +233,29 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   try {
     return await runChatStream({
       config,
-      system: systemPrompt,
+      cachedSystem,
+      system: dynamicSystem,
       messages: messagesForModel,
       abortSignal,
-      onFinish: async ({ text, usage }) => {
+      onFinish: async ({ text, usage, cacheUsage }) => {
         // Normal completion — the poll never had anything to catch, so it's
         // still running and needs to be told to stop.
         stopPolling()
+        if (sessionId && tenantId && cacheUsage) {
+          void logEvent({
+            action: AuditAction.CHAT_PROMPT_CACHE_USAGE,
+            tenant_id: tenantId,
+            actor_type: memberId ? 'user' : 'anonymous',
+            target_type: 'chat_session',
+            target_id: sessionId,
+            outcome: 'success',
+            metadata: {
+              cacheCreationInputTokens: cacheUsage.cacheCreationInputTokens,
+              cacheReadInputTokens: cacheUsage.cacheReadInputTokens,
+              cachedSystemLength: cachedSystem.length,
+            },
+          })
+        }
         if (!tenantId) return
         await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText, memberId })
       },

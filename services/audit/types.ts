@@ -95,6 +95,8 @@ export const AuditAction = {
   MEMORY_DISCARDED: 'memory.discarded',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
+  // Chat — Anthropic prompt-cache usage per turn (services/chat/server/index.ts)
+  CHAT_PROMPT_CACHE_USAGE: 'chat.prompt_cache_usage',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

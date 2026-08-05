@@ -6,9 +6,16 @@
 // client code.
 
 import { streamText } from 'ai'
+import type { CoreMessage } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import type { ChatMessage, ModelConfig, ModelProvider, TokenUsage } from './types'
+
+/** Anthropic prompt-cache usage reported on a turn, when cacheControl is enabled. */
+export interface CacheUsage {
+  cacheCreationInputTokens: number | null
+  cacheReadInputTokens: number | null
+}
 
 // Fallback model defaults. These are the ONLY hardcoded model IDs in the
 // service, and they live here in the config resolver — call sites read the
@@ -88,25 +95,53 @@ export async function resolveModelConfig(tenantId: string | null): Promise<Model
  * switch is the injection point for additional providers. OpenAI is NOT yet
  * wired (no @ai-sdk/openai dependency, no OPENAI_API_KEY) — requesting it
  * throws rather than silently misbehaving.
+ *
+ * `cacheControl: true` is always set on the Anthropic model: it adds the
+ * `prompt-caching-2024-07-31` beta header and unlocks the cache-usage fields
+ * on the response. It's inert unless a message actually carries
+ * `providerMetadata.anthropic.cacheControl` (see runChatStream below) — the
+ * admin-chat callers of this module, which never set that metadata, are
+ * unaffected.
  */
 export function getModelInstance(provider: ModelProvider, modelId: string) {
   switch (provider) {
     case 'anthropic':
-      return anthropic(modelId)
+      return anthropic(modelId, { cacheControl: true })
     case 'openai':
       // Injection point: add @ai-sdk/openai + OPENAI_API_KEY, then return the
       // openai(modelId) instance here.
       throw new Error('[chat/stream] OpenAI provider requested but not yet wired')
     default:
-      return anthropic(modelId)
+      return anthropic(modelId, { cacheControl: true })
   }
 }
 
 export interface RunChatStreamParams {
   config: ModelConfig
+  /**
+   * Tenant-static system content, safe to cache across calls (e.g. the
+   * compiled base prompt + booking section — both keyed only by tenantId,
+   * identical on every turn for that tenant). When present, sent as its own
+   * leading system message marked `cache_control: { type: 'ephemeral' }`.
+   * Omit when there's nothing safe to cache (e.g. the admin prompt/blocks
+   * chat routes, which pass their whole prompt via `system` instead).
+   */
+  cachedSystem?: string
+  /**
+   * Additional system content that must NOT be cached — either genuinely
+   * per-turn content (member context, attached media) or, for callers with
+   * no `cachedSystem`, the entire system prompt. Sent as its own leading
+   * system message with no cache_control, after `cachedSystem`. Omitted
+   * entirely (no message emitted) when empty, to avoid sending an empty
+   * Anthropic content block.
+   */
   system: string
   messages: ChatMessage[]
-  onFinish?: (args: { text: string; usage: TokenUsage | null }) => Promise<void> | void
+  onFinish?: (args: {
+    text: string
+    usage: TokenUsage | null
+    cacheUsage: CacheUsage | null
+  }) => Promise<void> | void
   /**
    * Cancels the underlying Anthropic call when it fires — built by
    * streamChat()'s createServerAbortController (services/chat/server/index.ts),
@@ -125,21 +160,51 @@ export interface RunChatStreamParams {
  * Run one streamed chat turn and return the Vercel AI SDK data-stream
  * Response (the frozen /api/sage wire format). `onFinish` fires after the
  * stream completes; its argument normalizes the SDK usage shape to TokenUsage.
+ *
+ * System content is sent as leading `role: 'system'` entries in `messages`,
+ * NOT via streamText's `system:` string shorthand. This is deliberate, not
+ * stylistic: ai@3.4.33's standardizePrompt()/convertToLanguageModelPrompt()
+ * silently strips any providerMetadata from the `system:` shorthand — a
+ * message-array entry is the only path that actually reaches the Anthropic
+ * provider's cache_control handling. Multiple contiguous leading system
+ * messages are supported by the provider (each becomes its own Anthropic
+ * system content-block, independently cacheable).
  */
 export async function runChatStream(params: RunChatStreamParams): Promise<Response> {
-  const { config, system, messages, onFinish, abortSignal } = params
+  const { config, cachedSystem, system, messages, onFinish, abortSignal } = params
+
+  const leadingSystemMessages: CoreMessage[] = []
+  if (cachedSystem) {
+    leadingSystemMessages.push({
+      role: 'system',
+      content: cachedSystem,
+      experimental_providerMetadata: { anthropic: { cacheControl: { type: 'ephemeral' } } },
+    })
+  }
+  if (system) {
+    leadingSystemMessages.push({ role: 'system', content: system })
+  }
+
   const result = await streamText({
     model: getModelInstance(config.provider, config.chatModel),
-    system,
-    messages,
+    messages: [...leadingSystemMessages, ...messages],
     maxTokens: config.maxTokens,
     abortSignal,
     onFinish: onFinish
-      ? async ({ text, usage }) => {
+      ? async ({ text, usage, experimental_providerMetadata }) => {
           const normalized: TokenUsage | null = usage
             ? { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens }
             : null
-          await onFinish({ text, usage: normalized })
+          const anthropicMeta = experimental_providerMetadata?.anthropic as
+            | { cacheCreationInputTokens?: number | null; cacheReadInputTokens?: number | null }
+            | undefined
+          const cacheUsage: CacheUsage | null = anthropicMeta
+            ? {
+                cacheCreationInputTokens: anthropicMeta.cacheCreationInputTokens ?? null,
+                cacheReadInputTokens: anthropicMeta.cacheReadInputTokens ?? null,
+              }
+            : null
+          await onFinish({ text, usage: normalized, cacheUsage })
         }
       : undefined,
   })
