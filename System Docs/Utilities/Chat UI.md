@@ -25,6 +25,66 @@ can import the registry without pulling a client module.
 | `useBufferedMarkdown.ts` | `useBufferedMarkdown` | Thin `'use client'` `useMemo` wrapper over `bufferMarkdown` — `(content, active) => string`. Returns `content` unchanged once `active` is false (the message is no longer the one being streamed into). Consumed by `ChatThread.tsx`'s internal `BufferedMarkdown` component, not called directly by either chat surface. |
 | `index.ts` | barrel | Re-exports the type contracts + the registry runtime (`createMarkerRegistry`, `createDefaultRegistry`, `BOOKING_MARKER`, `NAME_MARKER`, `EMAIL_MARKER`, `PHONE_MARKER`, `ACCOUNT_CREATE_MARKER`). `useChatTurn` and `useBufferedMarkdown` are imported directly from their modules, not the surface. |
 
+#### Media-item delivery tracking (`chatStore.tsx`, 2026-08-04/05)
+
+`getMediaItems` / `markMediaItemsDelivered` (`ChatEngineAccessors`, both
+optional) are the accessors `useChatTurn.ts` calls to build and confirm the
+`media_items` sent to `/api/sage` on each turn. Only Heirloom's
+`ChatProvider` (`components/shells/membership/chatStore.tsx`) implements
+them — jefflougheed passes neither, so its sessions never carry media
+context. The concrete state lives in two refs on `ChatProvider`; four real
+bugs found and fixed across PRs #269–#272 (2026-08-04/05) shaped the current
+shape — see `System Docs/Known Gaps.md`'s resolved entry for the full
+incident.
+
+- **`mediaItemsRef`** (`ClientMediaItem[]`) is the actual source of truth
+  `getMediaItems()` reads — not the `mediaItems` `useState` (which exists
+  only so the UI re-renders on updates). `addMediaItem()` writes both the
+  ref and the state synchronously in the same call, computed off the ref's
+  current value rather than a `setState` functional updater (#269 fix): a
+  just-uploaded attachment is followed by `send()` in the same synchronous
+  call stack with no `await` in between once a session already exists, so a
+  render-only mirror would still read the *previous* render's array —
+  silently dropping the attachment from that turn's request.
+- **`deliveredTerminalIdsRef`** (`Set<string>`) tracks which ids have
+  already had their `ready`/`failed` state included in a *genuinely
+  successful* request. `getMediaItems()` filters `mediaItemsRef.current` to
+  items still pending/processing (always included, every turn, until they
+  resolve, so the guide can pick up a completion no matter how many turns
+  processing takes) plus ready/failed items not yet in this set. Without
+  it, every attachment ever made in a session gets resent forever, and
+  `resolveMediaContext()` re-resolves and re-injects its `derived_content`
+  into the system prompt on every later turn — unbounded growth as a
+  conversation accumulates attachments (#270 fix).
+- **`getMediaItems()` is a pure read — it does not mutate
+  `deliveredTerminalIdsRef` itself.** Marking happens only in
+  `markMediaItemsDelivered(mediaItemIds)`, called by `useChatTurn.ts` from
+  exactly four points, all on the true-success path only (never on abort or
+  a classified failure): `send()`, `retry()`, `regenerate()`, and
+  `truncateAndRedeliver()` (the shared implementation behind both
+  `editMessage()` and `resendMessage()`). Before this split (#271 fix),
+  marking happened at request-*build* time inside `getMediaItems()` itself
+  — a request that then failed outright (network error, no `Retry`) still
+  left the item marked delivered, so if the member sent a brand-new message
+  instead of retrying, the guide never actually saw the terminal state and
+  it was never offered again.
+- **Both refs reset on a genuine conversation switch, not on every
+  hydrate.** `hydrateConversation()` — the single choke point `loadSession()`
+  and the cross-device DB-recovery effect both go through — clears
+  `mediaItemsRef` / `deliveredTerminalIdsRef` / `mediaItems` only when the
+  incoming `sessionId` differs from `prevSessionIdRef`'s prior value;
+  `newChat()` (which calls the core's `reset()` directly, bypassing
+  `hydrateConversation`) carries the identical reset inline. The conditional
+  check matters: `hydrateConversation` is also used by
+  `injectAssistantMessage()` to append a message to the *current* session
+  with an *unchanged* `sessionId`, and resetting unconditionally would wipe
+  a still-active conversation's own media items every time that fires.
+  Without this reset at all (#272 fix), switching conversations without a
+  full page reload left a prior conversation's attachment ids in the ref,
+  which `getMediaItems()` would then resend on the new conversation's next
+  turn — a real cross-conversation data leak (personal photos/documents
+  resolved into the wrong system prompt), not just wasted tokens.
+
 #### Stop / interrupted-turn protocol (2026-07-28)
 
 When the visitor hits Stop, whatever text had already streamed in — including
