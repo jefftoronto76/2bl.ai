@@ -36,6 +36,7 @@ export const AuditAction = {
   MEDIA_UPLOAD_STARTED: 'media.upload_started',
   MEDIA_UPLOAD_COMPLETED: 'media.upload_completed',
   MEDIA_UPLOAD_FAILED: 'media.upload_failed',
+  MEDIA_UPLOAD_DEDUPED: 'media.upload_deduped',
   // Media processing pipeline
   MEDIA_PROCESS_STARTED: 'media.process_started',
   MEDIA_PROCESS_COMPLETED: 'media.process_completed',
