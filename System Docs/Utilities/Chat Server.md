@@ -10,6 +10,43 @@ referenced elsewhere in `System Docs/Marker Syntax.md` and
 `System Docs/API Routes.md`; this entry
 covers only `member-context.ts`, the one that was missing entirely.
 
+### Chat server — media context (`services/chat/server/media-context.ts`)
+
+`resolveMediaContext(mediaItems, tenantId, memberId)` fetches
+`status`/`derived_content`/`error_message` from `media_items` for the
+media the client says is attached to this turn, and returns a formatted
+section for injection into the system prompt (`streamChat()` in
+`index.ts` joins it in alongside the booking section and MEMBER CONTEXT).
+Short-circuits to `''` when there are no media items, no tenant, or no
+member — and on a DB error, matching prior behavior rather than guessing.
+
+Output is up to three sections, joined with blank lines, present only when
+non-empty:
+- **ATTACHED MEDIA** — `status === 'ready'` rows with `derived_content`, one
+  block per file with the real derived content.
+- **ATTACHMENT FAILED** — `status === 'failed'` rows, with the failure
+  reason run through `sanitizeFailureReason()` — never the raw
+  `error_message`.
+- **ATTACHMENT IN PROGRESS** — everything else: pending/processing rows, or
+  an item the query returned no row for at all (the common case for
+  something attached this same turn, since processing is async and rarely
+  finishes before this request builds its prompt). Built straight from the
+  client-supplied filename/type on `mediaItems`, no second DB lookup.
+
+`sanitizeFailureReason(raw)` maps a raw internal `error_message` to one of a
+fixed set of pre-written safe phrases — a category classifier, not string
+scrubbing, so no vendor name or storage path can leak through an error
+shape the mapping didn't anticipate. Categories: upload not finished
+("Storage object not available after"), Deepgram transcription failure,
+Anthropic vision failure, a missing `DEEPGRAM_API_KEY`/`ANTHROPIC_API_KEY`,
+signed-URL/download failures, and a generic fallback for anything else.
+
+As of 2026-08-04, `resolveMediaContext()` also fires the
+`CHAT_MEDIA_CONTEXT_RESOLVED` audit event (via `logEvent`) on the path that
+reaches its DB query, with item counts and section presence only — never
+`derived_content`. See `System Docs/Utilities/Audit.md` for the full
+metadata shape and the second write site in `index.ts`.
+
 `getMemberContext(sessionId, tenantId, memberId, isFirstTurn)` resolves the
 authenticated (or pre-auth invite-holding) Heirloom member for the current
 turn and returns the MEMBER CONTEXT text `streamChat()` (`services/chat/server/index.ts`)
