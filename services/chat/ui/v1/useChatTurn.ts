@@ -39,6 +39,15 @@ function classifyError(err: unknown): ChatErrorType {
   return err instanceof ChatTurnError ? err.errorType : 'unknown'
 }
 
+// Called only from a request's true-success completion (never on abort or a
+// classified failure) — see ChatEngineAccessors.markMediaItemsDelivered.
+function markDelivered(
+  accessors: { markMediaItemsDelivered?(ids: string[]): void },
+  mediaItems: MediaAttachmentInput[] | null | undefined,
+): void {
+  if (mediaItems?.length) accessors.markMediaItemsDelivered?.(mediaItems.map(m => m.mediaItemId))
+}
+
 async function streamTurn(
   messages: ChatMessage[],
   mode: ChatMode,
@@ -261,6 +270,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         return
       }
       if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
+      markDelivered(accessors, currentMediaItems)
       setStreaming(false)
 
       const ttftMs = firstChunkAt !== null ? Math.round(firstChunkAt - sendStartedAt) : null
@@ -385,6 +395,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       return
     }
     if (userMsgId) accessors.patchMessageById(userMsgId, { status: 'sent' })
+    markDelivered(accessors, retryMediaItemsRef.current)
     setStreaming(false)
 
     const sessionId = retrySessionIdRef.current
@@ -489,6 +500,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       const finalContent = accessors.getMessages().find(m => m.id === messageId)?.content ?? ''
       const versions = [...priorVersions, finalContent]
       accessors.patchMessageById(messageId, { versions, versionIdx: versions.length - 1 })
+      markDelivered(accessors, currentMediaItems)
       setStreaming(false)
       if (activeSessionId) persist(activeSessionId, null)
     },
@@ -615,6 +627,7 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         return
       }
       accessors.patchMessageById(messageId, { status: 'sent' })
+      markDelivered(accessors, currentMediaItems)
       setStreaming(false)
       if (activeSessionId) persist(activeSessionId, null)
     },

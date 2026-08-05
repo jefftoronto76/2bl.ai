@@ -280,30 +280,40 @@ export function ChatProvider({
     // A freshly-attached item is always 'pending' the first time it's read
     // here, so "current turn" attachments are included automatically; no
     // separate case is needed for that.
-    // Accepted gap: this marks an item delivered the moment it's read here,
-    // not once the request it's headed into actually succeeds. If that
-    // specific request fails outright (network error) and the member sends a
-    // brand-new message instead of hitting Retry (which resends the exact
-    // cached list from the failed attempt, bypassing this), the guide never
-    // actually saw the terminal state and it won't be offered again. Judged
-    // an acceptable, narrow edge case rather than threading a
-    // mark-on-success callback through the shared send/regenerate/
-    // truncateAndRedeliver paths for it.
+    // Pure read — does NOT mark anything delivered. Marking happens only in
+    // markMediaItemsDelivered below, called by the engine (useChatTurn.ts)
+    // once the specific request that included these items has genuinely
+    // succeeded. Reading due items here and marking them delivered here used
+    // to be the same step, at request-BUILD time — so a request that then
+    // failed outright (network error, aborted) still left the item marked,
+    // and if the member sent a new message instead of hitting Retry, the
+    // guide never actually saw the terminal state and it was never offered
+    // again. Splitting the two steps closes that gap.
     getMediaItems: (): MediaAttachmentInput[] => {
       const due = mediaItemsRef.current.filter(m => {
         const isTerminal = m.status === 'ready' || m.status === 'failed';
         return !isTerminal || !deliveredTerminalIdsRef.current.has(m.id);
       });
-      for (const m of due) {
-        if (m.status === 'ready' || m.status === 'failed') {
-          deliveredTerminalIdsRef.current.add(m.id);
-        }
-      }
       return due.map(m => ({
         mediaItemId: m.id,
         type: m.type,
         filename: m.original_filename,
       }));
+    },
+    // Called by the engine with exactly the mediaItemIds that were included
+    // in a request, once (and only once) that request has genuinely
+    // succeeded — never on abort or a classified failure (see
+    // ChatEngineAccessors.markMediaItemsDelivered). Only ids that are
+    // currently terminal are recorded — an id included while still
+    // pending/processing is left off, so it keeps being resent on later
+    // turns until it actually resolves.
+    markMediaItemsDelivered: (mediaItemIds: string[]): void => {
+      const ids = new Set(mediaItemIds);
+      for (const m of mediaItemsRef.current) {
+        if (ids.has(m.id) && (m.status === 'ready' || m.status === 'failed')) {
+          deliveredTerminalIdsRef.current.add(m.id);
+        }
+      }
     },
     persistNamespace: 'heirloom',
   });

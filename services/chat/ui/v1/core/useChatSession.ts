@@ -78,6 +78,12 @@ export interface ChatSessionConfig {
    */
   getMediaItems?: () => MediaAttachmentInput[]
   /**
+   * Optional — see ChatEngineAccessors.markMediaItemsDelivered. Called by the
+   * engine with the ids actually included in a request once that request has
+   * genuinely succeeded.
+   */
+  markMediaItemsDelivered?: (mediaItemIds: string[]) => void
+  /**
    * Enables IndexedDB persistence for this session when provided: turn-
    * boundary buffering, a pagehide/visibility flush, and unconditional
    * mount-time rehydration — no signed-in/anonymous gate, for either product.
@@ -117,7 +123,7 @@ export interface ChatSession {
 }
 
 export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
-  const { instanceKey, getMemberId, getInviteToken, getMediaItems, persistNamespace } = config
+  const { instanceKey, getMemberId, getInviteToken, getMediaItems, markMediaItemsDelivered, persistNamespace } = config
 
   // Resolve the backing store. Singleton mode uses the client registry; on the
   // server (where a client component still renders for initial HTML) we never
@@ -179,8 +185,9 @@ export function useChatSession(config: ChatSessionConfig = {}): ChatSession {
       getMemberId,
       getInviteToken,
       getMediaItems,
+      markMediaItemsDelivered,
     }),
-    [store, getMemberId, getInviteToken, getMediaItems],
+    [store, getMemberId, getInviteToken, getMediaItems, markMediaItemsDelivered],
   )
 
   const turn = useChatTurn({ accessors })
