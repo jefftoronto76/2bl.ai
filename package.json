@@ -10,7 +10,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^0.0.39",
+    "@ai-sdk/anthropic": "^0.0.56",
     "@clerk/nextjs": "^7.0.7",
     "@mantine/colors-generator": "^7.17.8",
     "@mantine/core": "^7.17.8",
