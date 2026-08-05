@@ -31,11 +31,16 @@ const sm = 'var(--mantine-font-size-sm)'
 
 export interface BlocksOverviewProps {
   blocks: BlockRow[]
-  version?: number | null
   status?: string | null
   /** compiled_prompts.updated_at for this slot (view-derived) — cut-off for the publish modal's "changed since" list. */
   lastCompiledAt?: string | null
-  /** compiled_prompts.version for this slot (view-derived) — the real source for the next publish version, unlike `version` (prompt_sets.version, dead after row creation). */
+  /**
+   * compiled_prompts.version for this slot (view-derived) — the real,
+   * live-incrementing source, both for the "Live version" badge below and
+   * for PublishButton's next-version math. Do NOT source either from
+   * prompt_sets.version — that column is never incremented after row
+   * creation and silently drifts from reality (see promptSet.ts).
+   */
   compiledVersion?: number | null
   // Passed down so the action buttons live in the left card (design position).
   topics: Topic[]
@@ -45,7 +50,6 @@ export interface BlocksOverviewProps {
 
 export function BlocksOverview({
   blocks,
-  version = null,
   status = null,
   lastCompiledAt = null,
   compiledVersion = null,
@@ -80,7 +84,7 @@ export function BlocksOverview({
             </div>
 
             <Text variant="muted" style={{ fontSize: sm }}>Live version</Text>
-            <Text style={{ fontSize: sm, fontFamily: mono }}>{version != null ? `v${version}` : '—'}</Text>
+            <Text style={{ fontSize: sm, fontFamily: mono }}>{compiledVersion != null ? `v${compiledVersion}` : '—'}</Text>
 
             <Text variant="muted" style={{ fontSize: sm }}>Active blocks</Text>
             <Text style={{ fontSize: sm, fontFamily: mono }}>{active.length}</Text>

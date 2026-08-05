@@ -332,7 +332,7 @@ export function PromptSetSelect({ sets, activeId, label, onSelect, onCreate, pro
                   </Text>
                   <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
                     <Text ff="monospace" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
-                      v{s.version}
+                      {s.compiledVersion != null ? `v${s.compiledVersion}` : '—'}
                     </Text>
                     <StatusBadge status={s.status} />
                     <span style={{ width: 14, display: 'inline-flex' }}>

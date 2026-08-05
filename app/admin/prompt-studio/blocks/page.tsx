@@ -158,7 +158,6 @@ export default async function BlocksPage({
           activeSetId={activeSet?.id ?? null}
           activeSetLabel={activeSet?.label ?? null}
           overview={{
-            version: activeSet?.version ?? null,
             status: activeSet?.status ?? null,
             lastCompiledAt: activeSet?.lastCompiledAt ?? defaultSlotCompiled?.updated_at ?? null,
             compiledVersion: activeSet?.compiledVersion ?? defaultSlotCompiled?.version ?? null,
