@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 const COMPOSER_OPTIONS: MasterPromptOption[] = [
-  { id: 'ps-1', label: 'Composer v1', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'live', version: 3, is_composer_prompt: true },
+  { id: 'ps-1', label: 'Composer v1', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'live', compiled_version: 3, is_composer_prompt: true },
 ]
 
 function mockFetch({

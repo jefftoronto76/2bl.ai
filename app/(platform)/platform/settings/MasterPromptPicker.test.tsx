@@ -15,7 +15,7 @@ describe('CurrentSystemPromptPill', () => {
   it('renders the live set — name, tenant, and status badge', () => {
     render(
       <CurrentSystemPromptPill
-        set={{ id: 'ps-1', label: 'Sage Base', tenantId: 't-1', tenantName: 'Jeff Lougheed', status: 'live', version: 3, is_composer_prompt: true }}
+        set={{ id: 'ps-1', label: 'Sage Base', tenantId: 't-1', tenantName: 'Jeff Lougheed', status: 'live', compiled_version: 3, is_composer_prompt: true }}
       />,
     )
 
@@ -56,8 +56,8 @@ describe('CurrentSystemPromptPill', () => {
 })
 
 const COMPOSER_OPTIONS: MasterPromptOption[] = [
-  { id: 'ps-1', label: 'Composer v1', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'live', version: 3, is_composer_prompt: true },
-  { id: 'ps-2', label: 'Composer v2 draft', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'draft', version: 1, is_composer_prompt: true },
+  { id: 'ps-1', label: 'Composer v1', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'live', compiled_version: 3, is_composer_prompt: true },
+  { id: 'ps-2', label: 'Composer v2 draft', tenantId: 't-sbl', tenantName: 'Second Brain Labs', status: 'draft', compiled_version: 1, is_composer_prompt: true },
 ]
 
 describe('MasterPromptPicker — read-only list', () => {

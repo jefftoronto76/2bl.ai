@@ -135,7 +135,6 @@ export function BlocksTable({
   activeSetId: string | null
   activeSetLabel: string | null
   overview?: {
-    version?: number | null
     status?: string | null
     lastCompiledAt?: string | null
     compiledVersion?: number | null
@@ -572,7 +571,6 @@ export function BlocksTable({
       <SummarySection stats={summaryStats}>
         <BlocksOverview
           blocks={items}
-          version={overview?.version}
           status={overview?.status}
           lastCompiledAt={overview?.lastCompiledAt}
           compiledVersion={overview?.compiledVersion}

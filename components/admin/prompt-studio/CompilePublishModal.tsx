@@ -32,6 +32,12 @@
 // removed escalation, added output_format; uses ORDERED_TYPES from block-types.ts as the
 // canonical compile-order source). It is NOT called from the wiring — the wiring POSTs to
 // the server and renders the returned XML so the reviewer sees the real output (Correction 2).
+//
+// Token budget (Aug 2026): the meta line in stages 2 and 3 recolors past YELLOW_THRESHOLD/
+// TOKEN_LIMIT (services/prompt/tokenize.ts), same two-tier convention as SegmentedTokenMeter/
+// PromptFullnessMeter, and appends the over-budget amount as text (not color alone). This is
+// a soft warning only — 8,000 is informational everywhere it's used, never an enforced
+// ceiling — so it never gates canPublish/submit below.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Group, Loader, Modal, Paper, Stack, Textarea, TextInput, ThemeIcon } from '@mantine/core'
@@ -49,7 +55,7 @@ import {
 import { ORDERED_TYPES, TYPE_COLORS } from '@/services/prompt/block-types'
 import type { BlockType } from '@/services/prompt/block-types'
 import { notify } from '@/components/admin/lib/primitives'
-import { tokensFor } from '@/components/admin/lib/types'
+import { tokensFor, TOKEN_LIMIT, YELLOW_THRESHOLD } from '@/services/prompt/tokenize'
 import {
   SUMMARY_MAX,
   changedSince,
@@ -235,6 +241,18 @@ export function CompilePublishModal({
   const failed = stage === 'failed'
   const tokens = tokensFor(text)
   const lines = text ? text.split('\n').length : 0
+  // Soft warning only — 8,000 is informational everywhere it's used in this
+  // app, never an enforced ceiling, so this never touches canPublish below.
+  const overBudget = tokens > TOKEN_LIMIT
+  const tokenWarning = !overBudget && tokens >= YELLOW_THRESHOLD
+  const tokenColor = overBudget
+    ? 'var(--mantine-color-red-7)'
+    : tokenWarning
+      ? 'var(--mantine-color-yellow-8)'
+      : undefined
+  // Spelled out in text, not color alone, so the over-budget state reads
+  // correctly without relying on color perception.
+  const tokenBudgetSuffix = overBudget ? ` · ${(tokens - TOKEN_LIMIT).toLocaleString()} over budget` : ''
   const slug = set.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
   const filename = `${slug}-v${version}.txt`
   const canPublish = summary.trim().length > 0
@@ -406,8 +424,13 @@ export function CompilePublishModal({
                     </Text>
                   )}
                 </Group>
-                <Text size="xs" c="dimmed" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
-                  {tokens.toLocaleString()} tokens
+                <Text
+                  size="xs"
+                  fw={overBudget || tokenWarning ? 600 : undefined}
+                  c={overBudget || tokenWarning ? undefined : 'dimmed'}
+                  style={{ fontFamily: 'var(--mantine-font-family-monospace)', color: tokenColor }}
+                >
+                  {tokens.toLocaleString()} tokens{tokenBudgetSuffix}
                 </Text>
               </Group>
               {changed.length ? (
@@ -494,8 +517,13 @@ export function CompilePublishModal({
                 v{version}
               </span>
             </Badge>
-            <Text c="dimmed" size="sm" style={{ fontFamily: 'var(--mantine-font-family-monospace)' }}>
-              {tokens.toLocaleString()} tokens · {lines} lines
+            <Text
+              size="sm"
+              fw={overBudget || tokenWarning ? 600 : undefined}
+              c={overBudget || tokenWarning ? undefined : 'dimmed'}
+              style={{ fontFamily: 'var(--mantine-font-family-monospace)', color: tokenColor }}
+            >
+              {tokens.toLocaleString()} tokens · {lines} lines{tokenBudgetSuffix}
             </Text>
           </Group>
 

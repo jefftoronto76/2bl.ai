@@ -11,7 +11,13 @@ export interface MasterPromptOption {
   tenantId: string
   tenantName: string
   status: PromptSetStatus
-  version?: number
+  /**
+   * compiled_prompts.version, via prompt_sets_with_compile_meta — never
+   * prompt_sets.version, which is dead after row creation (see
+   * lib/promptSet.ts). Already present on the GET /api/platform/prompt-sets
+   * response; just wasn't typed here until now.
+   */
+  compiled_version?: number | null
   /** Category flag (not a live pointer) — true for every composer-family set, live or draft. */
   is_composer_prompt: boolean
 }

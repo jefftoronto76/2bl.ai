@@ -8,9 +8,7 @@ import {
   TYPE_LABELS,
   type BlockType,
 } from '@/services/prompt/block-types'
-import { tokensFor, TOKEN_LIMIT } from '@/services/prompt/tokenize'
-
-const YELLOW_THRESHOLD = 5000
+import { tokensFor, TOKEN_LIMIT, YELLOW_THRESHOLD } from '@/services/prompt/tokenize'
 
 export interface SegmentedTokenMeterBlock {
   id: string
