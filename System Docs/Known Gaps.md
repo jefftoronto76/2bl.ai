@@ -128,6 +128,44 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   there's still no `stories` table), and `moveToChapter` / `removeFromChapter`
   / `invite` remain deliberate no-ops for both row types.
 
+- **Media-item state machine (`chatStore.tsx`) — four real bugs found and
+  fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide
+  claimed it couldn't see uploaded photos/files, despite the compiled system
+  prompt already having correct instructions for `ATTACHED MEDIA` /
+  `ATTACHMENT IN PROGRESS` / `ATTACHMENT FAILED`. Root-caused to four
+  distinct, independent bugs, not one:
+  1. **#269 — stale ref.** `mediaItemsRef` only updated on React re-render;
+     `send()` has no `await` between an upload completing and reading it
+     once a session already exists, so a just-attached item was missing
+     from that turn's `media_items` entirely. Fixed by writing the ref
+     synchronously in `addMediaItem()`.
+  2. **#270 — unbounded resend.** `getMediaItems()` re-sent every attachment
+     ever made in a session on every subsequent turn, so
+     `resolveMediaContext()` re-resolved and re-injected every prior
+     attachment's `derived_content` into the system prompt forever. Fixed
+     with `deliveredTerminalIdsRef` tracking which items have already
+     reached a terminal state and been surfaced once.
+  3. **#271 — delivery marked too early.** That marking happened at
+     request-build time, not on confirmed success — a request that then
+     failed outright still marked the item delivered, silently losing it.
+     Fixed by splitting `getMediaItems()` (pure read) from
+     `markMediaItemsDelivered()` (called by `useChatTurn.ts` only on
+     genuine success).
+  4. **#272 — cross-conversation leak.** Neither `newChat()` nor
+     `loadSession()`/`hydrateConversation()` ever reset the two refs, so
+     switching conversations without a full page reload leaked one
+     conversation's attachment context into a different one's system
+     prompt — a real privacy issue (personal photos/documents), not just
+     wasted tokens. Fixed with a conditional reset keyed on the session id
+     actually changing.
+
+  All four are merged to `main`. See `System Docs/Utilities/Chat UI.md`'s
+  "Media-item delivery tracking" section for the current, post-fix
+  mechanics. A related but separate test-isolation issue (fake-indexeddb
+  state leaking across tests within a file, surfaced while writing the
+  regression tests for these fixes) was also found and fixed in the same
+  window (PR #273) — that one is test infrastructure, not a product bug.
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
