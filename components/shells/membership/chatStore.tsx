@@ -404,8 +404,27 @@ export function ChatProvider({
   // Hydrate the conversation from a DB row / Recent-sidebar entry. Primes
   // prevSessionIdRef so the recentSessions-immediate-add effect does NOT treat
   // a restored session id as a newly-created one.
+  //
+  // Also the single choke point for dropping media-item state that belongs to
+  // whichever conversation was active before this call — but ONLY when the
+  // incoming sessionId genuinely differs from it. hydrateConversation is also
+  // used to append a message to the CURRENT session without a network round
+  // trip (injectAssistantMessage passes sessionId: sessionIdRef.current, i.e.
+  // unchanged) — resetting unconditionally would wipe a still-active
+  // conversation's own media items every time that fires. Without this reset
+  // at all, switching to a different conversation here (loadSession, or the
+  // cross-device DB-recovery effect below) left a prior conversation's
+  // attached media items in mediaItemsRef, which getMediaItems() would then
+  // resend on the new conversation's next turn — resolving and injecting an
+  // unrelated conversation's attachment content into the wrong system
+  // prompt. See PR discussion for the incident this guards against.
   const hydrateConversation = useCallback(
     (input: { messages: Message[]; sessionId: string | null }) => {
+      if (input.sessionId !== prevSessionIdRef.current) {
+        mediaItemsRef.current = [];
+        deliveredTerminalIdsRef.current = new Set();
+        setMediaItems([]);
+      }
       prevSessionIdRef.current = input.sessionId;
       hydrate(input);
     },
@@ -653,6 +672,12 @@ export function ChatProvider({
     void clearDraft('heirloom');
     if (cleared) void clearSession('heirloom', cleared);
     prevSessionIdRef.current = null;
+    // Drop the outgoing conversation's media-item state — see
+    // hydrateConversation's comment above for why this must not leak forward
+    // into whatever conversation comes next.
+    mediaItemsRef.current = [];
+    deliveredTerminalIdsRef.current = new Set();
+    setMediaItems([]);
     reset();
   }, [reset]);
 
