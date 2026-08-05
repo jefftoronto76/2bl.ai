@@ -16,6 +16,7 @@ export interface CreateMediaItemInput {
   storage_path: string
   file_size_bytes: number
   mime_type: string
+  content_hash: string | null
 }
 
 export interface UpdateMediaItemInput {
@@ -41,6 +42,7 @@ export async function createMediaItem(input: CreateMediaItemInput): Promise<Medi
       storage_path: input.storage_path,
       file_size_bytes: input.file_size_bytes,
       mime_type: input.mime_type,
+      content_hash: input.content_hash,
       status: 'pending' as MediaItemStatus,
     })
     .select()
@@ -48,6 +50,39 @@ export async function createMediaItem(input: CreateMediaItemInput): Promise<Medi
 
   if (error || !data) throw new Error(`Failed to create media item: ${error?.message}`)
   return data as MediaItem
+}
+
+/**
+ * Looks up an existing media_items row uploaded by the same member, in the
+ * same chat, with identical file content (matched by content_hash, computed
+ * client-side since file bytes never pass through this server — see
+ * services/media/useMediaUpload.ts). Used by the upload-url route to dedupe
+ * a duplicate upload instead of creating an independent row. Scoped to
+ * member_id + chat_id (not member-wide or tenant-wide) — "the same file
+ * uploaded twice in one conversation," not a broader match.
+ *
+ * A null chatId (pre-session upload) matches only against other null-chatId
+ * rows from the same member, not against a real chat_id.
+ */
+export async function findDuplicateMediaItem(params: {
+  tenantId: string
+  memberId: string
+  chatId: string | null
+  contentHash: string
+}): Promise<MediaItem | null> {
+  const supabase = getAdminClient()
+  let query = supabase
+    .from('media_items')
+    .select()
+    .eq('tenant_id', params.tenantId)
+    .eq('member_id', params.memberId)
+    .eq('content_hash', params.contentHash)
+
+  query = params.chatId ? query.eq('chat_id', params.chatId) : query.is('chat_id', null)
+
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(1)
+  if (error || !data || data.length === 0) return null
+  return data[0] as MediaItem
 }
 
 export async function updateMediaItem(id: string, input: UpdateMediaItemInput): Promise<void> {

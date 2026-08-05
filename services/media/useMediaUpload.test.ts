@@ -1,5 +1,7 @@
-// First-ever test coverage for this hook — the client-side upload flow
-// (get signed URL -> PUT to Storage -> fire lifecycle events).
+// Covers the upload hook, including the dedup feature: a content hash is
+// computed client-side (bytes never reach the server) and sent to
+// /api/media/upload-url; a `duplicate: true` response means the server
+// reused an existing row, so the Storage PUT is skipped entirely.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
@@ -40,19 +42,45 @@ describe('useMediaUpload', () => {
     const { result } = renderHook(() => useMediaUpload('session-1', null))
     const file = new File(['hello'], 'dog.jpg', { type: 'image/jpeg' })
 
-    let uploadResult
-    await act(async () => {
-      uploadResult = await result.current.upload(file)
-    })
+    const uploadResult = await act(() => result.current.upload(file))
 
     expect(uploadResult).toEqual({ mediaItemId: 'item-1', type: 'image', filename: 'dog.jpg' })
     expect(result.current.isUploading).toBe(false)
     expect(result.current.error).toBeNull()
 
+    // A content hash is always attempted and sent (crypto.subtle is available
+    // under happy-dom/Node's Web Crypto), even when nothing matches server-side.
+    const uploadUrlCall = fetchMock.mock.calls.find(([input]) => input === '/api/media/upload-url')
+    const sentBody = JSON.parse((uploadUrlCall![1] as RequestInit).body as string)
+    expect(typeof sentBody.contentHash).toBe('string')
+    expect(sentBody.contentHash).toHaveLength(64)
+
     const eventBodies = fetchMock.mock.calls
       .filter(([input]) => (typeof input === 'string' ? input : input.toString()) === '/api/events/media')
       .map(([, init]) => JSON.parse((init as RequestInit).body as string))
     expect(eventBodies.map((b) => b.event)).toEqual(['upload_started', 'upload_completed'])
+  })
+
+  it('on a duplicate response, resolves the existing mediaItemId WITHOUT ever PUTting to Storage', async () => {
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = init?.method ?? 'GET'
+
+      if (url === '/api/media/upload-url' && method === 'POST') {
+        return jsonResponse({ mediaItemId: 'existing-item-1', duplicate: true })
+      }
+      throw new Error(`unexpected fetch: ${method} ${url}`)
+    })
+
+    const { result } = renderHook(() => useMediaUpload('session-1', null))
+    const file = new File(['hello'], 'dog.jpg', { type: 'image/jpeg' })
+
+    const uploadResult = await act(() => result.current.upload(file))
+
+    expect(uploadResult).toEqual({ mediaItemId: 'existing-item-1', type: 'image', filename: 'dog.jpg' })
+    // Only the one call — no PUT, no lifecycle events fired for a dedup.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.current.error).toBeNull()
   })
 
   it('classifies audio and document files correctly', async () => {
@@ -90,10 +118,7 @@ describe('useMediaUpload', () => {
     const { result } = renderHook(() => useMediaUpload('session-1', null))
     const file = new File(['hello'], 'video.mov', { type: 'video/quicktime' })
 
-    let uploadResult
-    await act(async () => {
-      uploadResult = await result.current.upload(file)
-    })
+    const uploadResult = await act(() => result.current.upload(file))
 
     expect(uploadResult).toBeNull()
     expect(result.current.error).toBe('File type not supported: video/quicktime')
@@ -121,10 +146,7 @@ describe('useMediaUpload', () => {
     const { result } = renderHook(() => useMediaUpload('session-1', null))
     const file = new File(['hello'], 'dog.jpg', { type: 'image/jpeg' })
 
-    let uploadResult
-    await act(async () => {
-      uploadResult = await result.current.upload(file)
-    })
+    const uploadResult = await act(() => result.current.upload(file))
 
     expect(uploadResult).toBeNull()
     expect(result.current.error).toBe('Storage upload failed: 500')

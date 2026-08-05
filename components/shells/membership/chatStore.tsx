@@ -12,7 +12,7 @@ import React, {
 } from 'react';
 import { useAuthUser } from '@/services/auth/client';
 import { createClient } from '@/services/auth/supabase';
-import type { MediaItem } from '@/services/media/types';
+import type { MediaItem, MediaItemStatus } from '@/services/media/types';
 import type { MediaAttachmentInput } from '@/services/chat/server/types';
 import type { ChatErrorType } from '@/services/chat/ui/v1/types';
 import { mergeMediaItem } from './mediaItemMerge';
@@ -292,7 +292,12 @@ export function ChatProvider({
     getMediaItems: (): MediaAttachmentInput[] => {
       const due = mediaItemsRef.current.filter(m => {
         const isTerminal = m.status === 'ready' || m.status === 'failed';
-        return !isTerminal || !deliveredTerminalIdsRef.current.has(m.id);
+        if (!isTerminal) return true;
+        const deliveredAtStatus = deliveredTerminalIdsRef.current.get(m.id);
+        // Never delivered while terminal -> due. Delivered, but its current
+        // status no longer matches what it was at delivery time (e.g. a
+        // retry flipped failed -> ready) -> due again, fresh.
+        return deliveredAtStatus === undefined || deliveredAtStatus !== m.status;
       });
       return due.map(m => ({
         mediaItemId: m.id,
@@ -304,14 +309,14 @@ export function ChatProvider({
     // in a request, once (and only once) that request has genuinely
     // succeeded — never on abort or a classified failure (see
     // ChatEngineAccessors.markMediaItemsDelivered). Only ids that are
-    // currently terminal are recorded — an id included while still
-    // pending/processing is left off, so it keeps being resent on later
-    // turns until it actually resolves.
+    // currently terminal are recorded, keyed to the status they have RIGHT
+    // NOW — an id included while still pending/processing is left off, so
+    // it keeps being resent on later turns until it actually resolves.
     markMediaItemsDelivered: (mediaItemIds: string[]): void => {
       const ids = new Set(mediaItemIds);
       for (const m of mediaItemsRef.current) {
         if (ids.has(m.id) && (m.status === 'ready' || m.status === 'failed')) {
-          deliveredTerminalIdsRef.current.add(m.id);
+          deliveredTerminalIdsRef.current.set(m.id, m.status);
         }
       }
     },
@@ -388,9 +393,11 @@ export function ChatProvider({
   // to re-render on updates) and its own effects (catch-up fetch, Realtime,
   // polling) still write it directly since those aren't on this hot path.
   const mediaItemsRef = useRef<ClientMediaItem[]>([]);
-  // Ids whose ready/failed state has already been included in a request once
-  // — see getMediaItems below for why this exists and its one accepted gap.
-  const deliveredTerminalIdsRef = useRef<Set<string>>(new Set());
+  // Ids whose terminal (ready/failed) state has already been included in a
+  // request once, mapped to the status they had at that moment — so a later
+  // status change (e.g. a retry flipping failed -> ready) is detected and the
+  // item resurfaces, rather than staying excluded forever. See getMediaItems below.
+  const deliveredTerminalIdsRef = useRef<Map<string, MediaItemStatus>>(new Map());
 
   // Tracks the sessionId this component last observed, so the recentSessions-
   // immediate-add effect below fires only on a genuine transition — not on
@@ -422,7 +429,7 @@ export function ChatProvider({
     (input: { messages: Message[]; sessionId: string | null }) => {
       if (input.sessionId !== prevSessionIdRef.current) {
         mediaItemsRef.current = [];
-        deliveredTerminalIdsRef.current = new Set();
+        deliveredTerminalIdsRef.current = new Map();
         setMediaItems([]);
       }
       prevSessionIdRef.current = input.sessionId;
@@ -676,7 +683,7 @@ export function ChatProvider({
     // hydrateConversation's comment above for why this must not leak forward
     // into whatever conversation comes next.
     mediaItemsRef.current = [];
-    deliveredTerminalIdsRef.current = new Set();
+    deliveredTerminalIdsRef.current = new Map();
     setMediaItems([]);
     reset();
   }, [reset]);

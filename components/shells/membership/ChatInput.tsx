@@ -387,6 +387,29 @@ export function ChatInput() {
     setIsRecording(false);
   };
 
+  // The composer is mounted once for the whole chat surface and stays
+  // mounted across conversation switches (loadSession/newChat never remount
+  // it) — without this, a staged attachment or draft typed for one
+  // conversation silently carries into whatever conversation comes next.
+  // Guarded on sessionId actually changing (not every render) — mirrors
+  // chatStore.tsx's own hydrateConversation reset for mediaItemsRef.
+  const prevSessionIdRef = useRef(state.sessionId);
+  useEffect(() => {
+    if (state.sessionId === prevSessionIdRef.current) return;
+    prevSessionIdRef.current = state.sessionId;
+
+    setAttachments((prev) => {
+      prev.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+      return [];
+    });
+    setValue('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setTranscribeState('idle');
+    cancelRecording(); // mid-recording switch = implicit cancel; no-op when nothing is recording
+    setSourceMenuOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sessionId]);
+
   const confirmRecording = () => {
     const mr = mediaRecorderRef.current;
     if (!mr) {

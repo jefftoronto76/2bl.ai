@@ -1,11 +1,17 @@
 // POST /api/media/[id]/retry
-// Resets a failed media item back to status=pending, re-triggering the
-// Supabase Database Webhook. No re-upload needed — the file is still in storage.
+// Resets a failed media item back to status=pending, then drives processing
+// directly — no re-upload needed, the file is still in storage. Does NOT
+// depend on the Supabase Database Webhook: that webhook only fires (and is
+// only handled) on INSERT, so this route's UPDATE would never be picked up
+// through that path. processMediaItem re-fetches the item itself and
+// re-verifies status === 'pending' before doing anything, so calling it
+// directly here is safe even under concurrent retry clicks.
 
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getMediaItem, updateMediaItem } from '@/services/media'
+import { processMediaItem } from '@/services/media/processor'
 
 export async function POST(
   req: Request,
@@ -47,12 +53,6 @@ export async function POST(
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // Reset to pending — this re-triggers the Supabase INSERT webhook
-  // (Supabase webhooks fire on INSERT only, so we do a delete+reinsert via
-  // a status patch that the webhook is configured to watch via UPDATE trigger,
-  // OR the Supabase webhook is configured on UPDATE as well).
-  // If the webhook is INSERT-only, the platform admin must re-trigger manually.
-  // Status→pending is the idiomatic signal either way.
   await updateMediaItem(id, {
     status: 'pending',
     error_message: null,
@@ -61,6 +61,17 @@ export async function POST(
     processed_at: null,
   })
 
-  console.log('[media/retry] reset to pending', { mediaItemId: id, memberId: memberRow.id })
+  // Fire-and-forget, matching app/api/webhooks/media-process/route.ts's own
+  // pattern — respond to the client immediately, let processing run in the
+  // background. `item` already carries the id/tenant_id processMediaItem
+  // needs; it re-fetches a fresh copy itself before doing anything.
+  void processMediaItem(item).catch((err) => {
+    console.error('[media/retry] processMediaItem threw unexpectedly', {
+      mediaItemId: id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+
+  console.log('[media/retry] reset to pending, reprocessing', { mediaItemId: id, memberId: memberRow.id })
   return Response.json({ ok: true })
 }

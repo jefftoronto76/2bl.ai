@@ -34,6 +34,9 @@ export function sanitizeFailureReason(raw: string | null): string {
   ) {
     return "the image couldn't be analyzed"
   }
+  if (message.includes('Anthropic file upload error')) {
+    return "the file couldn't be uploaded for processing"
+  }
   if (
     message.includes('DEEPGRAM_API_KEY is not configured') ||
     message.includes('ANTHROPIC_API_KEY is not configured')
