@@ -232,6 +232,16 @@ export interface ChatEngineAccessors {
    *  resolveMediaContext fetches derived_content for ready items and injects an
    *  ATTACHED MEDIA section into the system prompt. */
   getMediaItems?(): MediaAttachmentInput[]
+  /**
+   * Optional — called with the `mediaItemId`s of exactly the media items that
+   * were included in a request, once that request has genuinely completed
+   * (the true success path — never on network/stream failure, and never on a
+   * client-initiated Stop). Lets the caller record ready/failed items as
+   * delivered to the guide only once the guide actually received them,
+   * instead of at getMediaItems() read time — see chatStore.tsx's
+   * getMediaItems/markMediaItemsDelivered for why that distinction matters.
+   */
+  markMediaItemsDelivered?(mediaItemIds: string[]): void
 }
 
 /** Options passed into the useChatTurn hook. */

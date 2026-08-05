@@ -73,6 +73,12 @@ const sageRequestBodies: Array<{
   media_items: { mediaItemId: string; type: string; filename: string }[] | null;
 }> = [];
 
+// When true, the next /api/sage POST throws (simulating a network failure —
+// fetch() itself never resolves a response) instead of streaming a reply.
+// Toggled mid-test to simulate a failed request followed by a successful
+// Retry or a successful brand-new message.
+let sageShouldFail = false;
+
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
   const method = init?.method ?? 'GET';
@@ -82,6 +88,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
   if (url === '/api/sage' && method === 'POST') {
     sageRequestBodies.push(JSON.parse(init!.body as string));
+    if (sageShouldFail) throw new TypeError('network error');
     return streamResponse('ok');
   }
   return jsonResponse({ ok: true });
@@ -89,6 +96,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
 
 beforeEach(() => {
   sageRequestBodies.length = 0;
+  sageShouldFail = false;
   fetchMock.mockClear();
   __clearSingletonRegistry();
   vi.stubGlobal('fetch', fetchMock);
@@ -129,7 +137,7 @@ function mkItem(overrides: {
 }
 
 function TestConsumer() {
-  const { sendMessage, addMediaItem } = useChatStore();
+  const { sendMessage, addMediaItem, retry } = useChatStore();
 
   const sendFirst = () => {
     void sendMessage('first message, no attachment');
@@ -165,6 +173,7 @@ function TestConsumer() {
       <button onClick={() => void sendMessage('plain follow-up, no new attachment')}>
         send follow-up
       </button>
+      <button onClick={() => void retry()}>retry</button>
     </div>
   );
 }
@@ -299,5 +308,96 @@ describe('getMediaItems() resend scoping', () => {
       'media-1',
       'media-2',
     ]);
+  });
+});
+
+// Regression coverage for the delivered-on-read bug: getMediaItems() used to
+// mark a terminal item "delivered" the moment the request was BUILT, not once
+// it actually succeeded. If that request then failed outright (network error,
+// no Retry), the item was permanently excluded from every later request even
+// though the guide never received it. Fixed by moving the marking into
+// markMediaItemsDelivered, called by useChatTurn.ts only from a request's true
+// success completion — see chatStore.tsx's getMediaItems/markMediaItemsDelivered.
+describe('delivered marking happens on confirmed success, not on read/build', () => {
+  it('does NOT mark a terminal item delivered when its request fails outright — it is still included in the next message', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1: item A is already ready when the request is built; the request
+    // fails outright (network error) before any response is ever received.
+    sageShouldFail = true;
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Turn 2: the visitor does not hit Retry — they just send a new message.
+    // A's ready state was never actually delivered, so it must be included again.
+    sageShouldFail = false;
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+  });
+
+  it('marks a terminal item delivered only once its Retry succeeds, then excludes it from later requests', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1 fails outright.
+    sageShouldFail = true;
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Retry re-sends the exact cached request (including media-1), and this
+    // time it succeeds — that success is what should mark media-1 delivered.
+    sageShouldFail = false;
+    await act(async () => {
+      fireEvent.click(screen.getByText('retry'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Turn 3: a plain follow-up. media-1's ready state was delivered by the
+    // successful retry, so it's excluded now — the #270 behavior, preserved.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(3));
+    });
+    expect(sageRequestBodies[2].media_items).toBeNull();
+  });
+
+  it('marks a terminal item delivered on a first-try success, excluding it from the next request (still works)', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items).toBeNull();
   });
 });
