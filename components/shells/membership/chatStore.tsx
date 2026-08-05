@@ -269,11 +269,42 @@ export function ChatProvider({
   const session = useChatSession({
     getMemberId: () => memberIdRef.current,
     getInviteToken: () => inviteTokenRef.current,
-    getMediaItems: (): MediaAttachmentInput[] => mediaItemsRef.current.map(m => ({
-      mediaItemId: m.id,
-      type: m.type,
-      filename: m.original_filename,
-    })),
+    // Scoped to items still worth telling the guide about: anything not yet
+    // ready/failed (so a still-processing upload keeps surfacing "in
+    // progress" until it resolves, however many turns that takes), plus any
+    // ready/failed item whose terminal state hasn't been sent before — once
+    // sent while terminal, it's dropped from every later call. Without this,
+    // every attachment ever made in the session gets re-sent (and its
+    // derived_content re-injected into the system prompt) on every
+    // subsequent turn for the rest of the conversation — unbounded growth.
+    // A freshly-attached item is always 'pending' the first time it's read
+    // here, so "current turn" attachments are included automatically; no
+    // separate case is needed for that.
+    // Accepted gap: this marks an item delivered the moment it's read here,
+    // not once the request it's headed into actually succeeds. If that
+    // specific request fails outright (network error) and the member sends a
+    // brand-new message instead of hitting Retry (which resends the exact
+    // cached list from the failed attempt, bypassing this), the guide never
+    // actually saw the terminal state and it won't be offered again. Judged
+    // an acceptable, narrow edge case rather than threading a
+    // mark-on-success callback through the shared send/regenerate/
+    // truncateAndRedeliver paths for it.
+    getMediaItems: (): MediaAttachmentInput[] => {
+      const due = mediaItemsRef.current.filter(m => {
+        const isTerminal = m.status === 'ready' || m.status === 'failed';
+        return !isTerminal || !deliveredTerminalIdsRef.current.has(m.id);
+      });
+      for (const m of due) {
+        if (m.status === 'ready' || m.status === 'failed') {
+          deliveredTerminalIdsRef.current.add(m.id);
+        }
+      }
+      return due.map(m => ({
+        mediaItemId: m.id,
+        type: m.type,
+        filename: m.original_filename,
+      }));
+    },
     persistNamespace: 'heirloom',
   });
   const {
@@ -347,6 +378,9 @@ export function ChatProvider({
   // to re-render on updates) and its own effects (catch-up fetch, Realtime,
   // polling) still write it directly since those aren't on this hot path.
   const mediaItemsRef = useRef<ClientMediaItem[]>([]);
+  // Ids whose ready/failed state has already been included in a request once
+  // — see getMediaItems below for why this exists and its one accepted gap.
+  const deliveredTerminalIdsRef = useRef<Set<string>>(new Set());
 
   // Tracks the sessionId this component last observed, so the recentSessions-
   // immediate-add effect below fires only on a genuine transition — not on
