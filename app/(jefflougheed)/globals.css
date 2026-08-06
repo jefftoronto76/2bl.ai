@@ -516,6 +516,7 @@ html[data-brand="jefflougheed"] .avatar.sage { color: rgb(var(--color-bg)); }
 html[data-brand="jefflougheed"] .hero-conversation,
 html[data-brand="jefflougheed"] .chat-overlay-log,
 html[data-brand="jefflougheed"] .chat-overlay-composer {
+  --color-surface: 255 255 255;
   --color-text-primary: rgb(24 32 41);
   --color-text-muted: rgb(24 32 41 / 0.70);
   --color-text-dim: rgb(24 32 41 / 0.46);
