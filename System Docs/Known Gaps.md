@@ -374,3 +374,50 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   not require a story to be saved (there is no `stories` table), and when
   story-linking is eventually built it should be many-to-many (a memory
   connecting to more than one thing), not a single column on `artifacts`.
+- **`members.user_id` left null on some active, Clerk-linked members —
+  root-caused and fixed in code 2026-08-06; historical rows need a Studio
+  backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
+  real `clerk_id`, `user_id: NULL`) — the same state as a correctly-linked
+  member, except the pointer to `users.id` was never written. Root cause:
+  `services/auth/sync-member.ts`'s `syncMember()` — the fallback the Clerk
+  webhook (`app/api/webhooks/clerk/route.ts`) and `POST /api/members/sync`
+  both call when `linkInvitedMember` doesn't match a pending invite — built
+  its `members` upsert payload without `user_id` at all (the field was
+  structurally absent from `SyncMemberInput`, not conditionally skipped).
+  Reachable two ways, both silent before this fix (console-only, no durable
+  log): (1) a plain email/token mismatch against an invited row routes
+  straight to `syncMember` on the first webhook delivery; (2) a race where
+  `syncMember` inserts an orphan row for a `clerk_id` before a later webhook
+  delivery lets `linkInvitedMember` find the real invited row — that
+  `UPDATE` then fails on `members.clerk_id`'s unique constraint, so the
+  webhook falls back to `syncMember` again. `acceptInvite()`
+  (`services/members/members.ts`, client-triggered from
+  `/api/heirloom/invites/accept`) was the only code reconciling case (2), and
+  only if that client call actually completed. **Fixed:** `syncMember` now
+  resolves/creates the `users` row first (mirroring `linkInvitedMember`) and
+  always includes the resulting `user_id` — see `System Docs/Utilities/Auth.md`.
+  **Also added:** durable `audit_events` logging for every failure branch in
+  `linkInvitedMember`/`acceptInvite`/`syncMember` that could previously skip
+  or fail the `user_id` write silently — `MEMBER_USER_RESOLVE_FAILED`,
+  `MEMBER_LINK_UPDATE_FAILED`, `MEMBER_ORPHAN_CLEANUP_FAILED`,
+  `MEMBER_ORPHAN_RECONCILED` (see `System Docs/Utilities/Members.md`) — plus
+  an admin-side safety fix (`app/api/admin/members/invite/[memberId]/route.ts`
+  DELETE now gates on `clerk_id`, not `user_id`, so a broken row can't be
+  hard-deleted through the "revoke stale invite" path without cleaning up
+  its Clerk identity) and a visibility fix (`app/admin/members/page.tsx` and
+  `app/(platform)/platform/members/page.tsx` previously excluded these rows
+  from both of their queries entirely — `user_id IS NOT NULL` and
+  `user_id IS NULL AND status IN ('invited','waitlist')` both miss
+  `status='active' AND user_id IS NULL` — so they rendered nowhere in the
+  admin UI; a third query now surfaces them with a "Needs attention" badge,
+  read-only until backfilled). **Not yet done:** backfilling the 2 known
+  rows (and any others created before this fix shipped) — Jeff's call, in
+  Studio, per the division-of-labor convention. Re-run
+  `select id, created_at, email, name, status, clerk_id, user_id from members
+  where user_id is null and status not in ('invited', 'waitlist');` first
+  (some rows may self-heal on next login, since `syncMember`/`/api/members/sync`
+  fire on every re-auth), confirm a `users` row exists for each remaining
+  `clerk_id` before backfilling (no `users` row = a deeper failure, not a
+  simple pointer fix), then
+  `update members m set user_id = u.id from users u where m.clerk_id = u.clerk_id
+  and m.user_id is null and m.status not in ('invited', 'waitlist');`.
