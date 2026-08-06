@@ -99,9 +99,17 @@ interface MemorySlotHandlers {
  * Renders whatever this message's memory is doing right now — running pill,
  * draft card, saved receipt, or a live failure line — or nothing at all.
  * Shared by both render functions below since a bookmark (and therefore a
- * memory) can be anchored to a guide or a visitor message alike.
+ * memory) can be anchored to a guide or a visitor message alike. Takes the
+ * sourceKind this anchor would create() with (source-specific per caller —
+ * see sourceKindForUserMessage / the assistant 'conversation' literal) so
+ * the failure line's "Try again" can replay the exact same call.
  */
-function renderMemorySlot(anchorId: string, memories: UseMemoriesReturn, handlers: MemorySlotHandlers): ReactNode {
+function renderMemorySlot(
+  anchorId: string,
+  sourceKind: MemorySourceKind,
+  memories: UseMemoriesReturn,
+  handlers: MemorySlotHandlers,
+): ReactNode {
   if (memories.isPending(anchorId)) {
     const kind = memories.getPendingKind(anchorId);
     return kind ? <MemoryRunningPill sourceKind={kind} /> : null;
@@ -120,7 +128,10 @@ function renderMemorySlot(anchorId: string, memories: UseMemoriesReturn, handler
   if (memory?.status === 'published') {
     return <MemorySavedReceipt memory={memory} onRetitle={(title) => handlers.onRetitle(memory, title)} />;
   }
-  if (memories.hasError(anchorId)) return <MemoryErrorLine />;
+  const errorType = memories.getErrorType(anchorId);
+  if (errorType) {
+    return <MemoryErrorLine errorType={errorType} onRetry={() => memories.create(anchorId, sourceKind)} />;
+  }
   return null;
 }
 
@@ -421,7 +432,7 @@ function makeRenderUserMessage(
   resendMessage: (id: string) => Promise<void>,
   memories: UseMemoriesReturn,
   keepDisabled: (anchorId: string) => boolean,
-  renderMemorySlotFn: (anchorId: string) => ReactNode,
+  renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -497,7 +508,7 @@ function makeRenderUserMessage(
             keepDisabled={keepDisabled(msg.id)}
           />
         )}
-        {userMsg.text && renderMemorySlotFn(msg.id)}
+        {userMsg.text && renderMemorySlotFn(msg.id, sourceKindForUserMessage(userMsg))}
       </div>
     );
   };
@@ -517,7 +528,7 @@ interface AssistantRenderConfig {
   feedback: UseMessageFeedbackReturn;
   memories: UseMemoriesReturn;
   keepDisabled: (anchorId: string) => boolean;
-  renderMemorySlotFn: (anchorId: string) => ReactNode;
+  renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode;
 }
 
 // Renders an assistant message exactly as before: prose bubble, the
@@ -588,7 +599,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
               hasMemory={!!config.memories.getByAnchor(msg.id)}
               keepDisabled={config.keepDisabled(msg.id)}
             />
-            {config.renderMemorySlotFn(msg.id)}
+            {config.renderMemorySlotFn(msg.id, 'conversation')}
           </div>
         )}
         {authPrompt && (
@@ -702,7 +713,8 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
   };
 
-  const renderMemorySlotFn = (anchorId: string) => renderMemorySlot(anchorId, memories, memoryHandlers);
+  const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind) =>
+    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
   // streaming or *that specific anchor's* draft is already open — nothing

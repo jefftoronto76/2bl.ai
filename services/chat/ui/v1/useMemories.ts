@@ -18,9 +18,11 @@
 // No model call anywhere behind this hook — create() is a verbatim write, and
 // there is no rewrite() anymore (the archivist that used to power it is
 // gone; Rewrite is unwired to a local stub in MemoryCard.tsx). With no model
-// call, there's exactly one failure shape left system-wide (a write erroring),
-// so error state here is a plain boolean per anchor, not a classified type —
-// see components/shells/membership/memory/MemoryCard.tsx's MemoryErrorLine,
+// call there's no streaming-protocol failure mode, but create()'s own fetch
+// still fails in more than one distinguishable shape (network throw, 4xx,
+// 5xx, malformed 2xx body) — error state per anchor is a classified
+// ChatErrorType, not a boolean, classified by classifyCreateError() below.
+// See components/shells/membership/memory/MemoryCard.tsx's MemoryErrorLine,
 // which sources its copy from components/chat/errorCopy.ts's shared
 // ChatErrorType vocabulary rather than a memory-specific one.
 //
@@ -29,6 +31,7 @@
 // but nothing here is Heirloom-specific.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChatErrorType } from './types'
 
 export type MemorySourceKind = 'conversation' | 'photo' | 'video' | 'audio' | 'document'
 export type MemoryStatus = 'draft' | 'published'
@@ -57,6 +60,8 @@ export interface UseMemoriesReturn {
   getPendingKind(anchorMessageId: string): MemorySourceKind | null
   /** True if this anchor's most recent create call failed — stays true until the next attempt. */
   hasError(anchorMessageId: string): boolean
+  /** The classified reason this anchor's most recent create call failed, or null if it didn't. */
+  getErrorType(anchorMessageId: string): ChatErrorType | null
   /**
    * Per-anchor suppression flag for the manual bookmark, per the handoff's
    * state rules: never nag, never go dead — suppressed only while a draft is
@@ -85,10 +90,28 @@ export interface UseMemoriesReturn {
   rename(memoryId: string, title: string): Promise<void>
 }
 
+/**
+ * Classifies a failed create() response into a ChatErrorType, mirroring the
+ * status-code-driven pattern useChatTurn.ts's own (private) classifyError
+ * already uses for chat turns — there's no shared/exported classifier to
+ * reuse (that one is tied to its own ChatTurnError class), so this is the
+ * memory-create path's own. Only called when the caller has already
+ * determined the response is a failure (`!res.ok || !data?.memory`).
+ */
+function classifyCreateFailure(res: Response, data: { memory?: unknown } | null): ChatErrorType {
+  if (!res.ok) {
+    if (res.status === 403) return 'account_required'
+    if (res.status >= 500) return 'server_error'
+    return 'unknown'
+  }
+  // res.ok but data.memory is missing/malformed — a 2xx contract mismatch.
+  return 'invalid_response'
+}
+
 export function useMemories(sessionId: string | null): UseMemoriesReturn {
   const [memories, setMemories] = useState<MemoryRow[]>([])
   const [pendingAnchors, setPendingAnchors] = useState<Record<string, MemorySourceKind>>({})
-  const [erroredAnchors, setErroredAnchors] = useState<Record<string, true>>({})
+  const [erroredAnchors, setErroredAnchors] = useState<Record<string, ChatErrorType>>({})
   // No session yet -> nothing to load, so start "loaded" (there's nothing an
   // automatic trigger could race against). A real sessionId starts unloaded
   // until its fetch below settles.
@@ -125,7 +148,11 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     [pendingAnchors],
   )
   const hasError = useCallback(
-    (anchorMessageId: string) => erroredAnchors[anchorMessageId] === true,
+    (anchorMessageId: string) => erroredAnchors[anchorMessageId] !== undefined,
+    [erroredAnchors],
+  )
+  const getErrorType = useCallback(
+    (anchorMessageId: string) => erroredAnchors[anchorMessageId] ?? null,
     [erroredAnchors],
   )
   const hasOpenDraft = useCallback(
@@ -136,17 +163,17 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
   const setPending = (anchorId: string, kind: MemorySourceKind | null) =>
     setPendingAnchors(prev => (kind ? { ...prev, [anchorId]: kind } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId))))
 
-  const setAnchorError = (anchorId: string, errored: boolean) =>
+  const setAnchorError = (anchorId: string, errorType: ChatErrorType | null) =>
     setErroredAnchors(prev =>
-      errored
-        ? { ...prev, [anchorId]: true }
+      errorType
+        ? { ...prev, [anchorId]: errorType }
         : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId)),
     )
 
   const create = useCallback(async (anchorMessageId: string, sourceKind: MemorySourceKind) => {
     const sid = sessionIdRef.current
     if (!sid) return
-    setAnchorError(anchorMessageId, false)
+    setAnchorError(anchorMessageId, null)
     setPending(anchorMessageId, sourceKind)
     try {
       const res = await fetch(`/api/sessions/${sid}/memories`, {
@@ -156,7 +183,7 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.memory) {
-        setAnchorError(anchorMessageId, true)
+        setAnchorError(anchorMessageId, classifyCreateFailure(res, data))
         return
       }
       const memory = data.memory as MemoryRow
@@ -169,7 +196,7 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
       })
     } catch (err) {
       console.error('[useMemories] create call failed:', err)
-      setAnchorError(anchorMessageId, true)
+      setAnchorError(anchorMessageId, 'network')
     } finally {
       setPending(anchorMessageId, null)
     }
@@ -232,5 +259,5 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
-  return { memories, getByAnchor, isPending, getPendingKind, hasError, hasOpenDraft, isLoaded, create, keep, discard, rename }
+  return { memories, getByAnchor, isPending, getPendingKind, hasError, getErrorType, hasOpenDraft, isLoaded, create, keep, discard, rename }
 }

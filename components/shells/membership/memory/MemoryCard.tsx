@@ -35,6 +35,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Bookmark, Check, Feather, Image as ImageIcon, Video, Mic, FileText, ImagePlus, Pencil } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
+import type { ChatErrorType } from '@/services/chat/ui/v1/types'
+import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { memoryKindOf } from './memoryKinds'
 
 const KIND_ICONS: Record<string, LucideIcon> = {
@@ -66,20 +68,25 @@ export function MemoryRunningPill({ sourceKind }: { sourceKind: MemoryRow['sourc
 
 /**
  * Live failure signal (see the Memories entry in System Docs/Known Gaps.md) —
- * not persisted, not a card. Stays
- * until the visitor tries the bookmark again, rather than auto-dismissing.
- * No model call exists anywhere in the memory system anymore, so there is
- * exactly one failure shape (a write erroring) and exactly one message —
- * kept as a literal string here rather than imported from a classification
- * system with only one possible value.
+ * not persisted, not a card. Stays until the visitor retries, rather than
+ * auto-dismissing. `errorType` is classified by useMemories.ts's create()
+ * (network / account_required / server_error / invalid_response / unknown)
+ * and rendered via the shared components/chat/errorCopy.ts ERROR_COPY
+ * vocabulary — the same system WidgetShell/MessageList's main turn-error
+ * banner already uses, not a memory-specific one.
  */
-export function MemoryErrorLine() {
+export function MemoryErrorLine({ errorType, onRetry }: { errorType: ChatErrorType; onRetry: () => void }) {
   return (
     <div className="flex items-center gap-3" role="status">
       <span className={RAIL} />
-      <span className="font-mono text-[11px] tracking-[0.06em] text-text-muted">
-        Something went wrong gathering that memory — tap the bookmark to try again.
-      </span>
+      <span className="font-mono text-[11px] tracking-[0.06em] text-text-muted">{ERROR_COPY[errorType]}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="font-mono text-[11px] font-medium tracking-[0.06em] text-accent hover:text-accent-hover"
+      >
+        Try again
+      </button>
     </div>
   )
 }
