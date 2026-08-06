@@ -14,7 +14,6 @@ import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
-import { UploadCard } from './memory/UploadCard';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -340,8 +339,6 @@ function makeRenderUserMessage(
   memories: UseMemoriesReturn,
   keepDisabled: (anchorId: string) => boolean,
   renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode,
-  dismissedMediaIds: Set<string>,
-  dismissMediaItem: (mediaItemId: string) => void,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -361,27 +358,10 @@ function makeRenderUserMessage(
 
     return (
       <div key={msg.id} className="flex flex-col gap-2">
-        {/* UploadCard (the running/ready/error progress cards) renders for
-            every real upload unconditionally — caption or no caption, memory
-            or no memory. It has no awareness of the memory/artifact layer at
-            all, by design: media stays media. A captioned upload will show
-            both this card's stubbed "Keep this" AND the real, working memory
-            bookmark below (renderMemorySlotFn) — a known, accepted cosmetic
-            overlap, not something to reconcile here. Keeping media and
-            memory concerns fully separate is worth more than avoiding it. */}
-        {userMsg.uploads
-          .filter(u => !dismissedMediaIds.has(u.mediaItemId))
-          .map(u => (
-            <UploadCard
-              key={u.mediaItemId}
-              item={mediaItems.find(m => m.id === u.mediaItemId)}
-              sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
-              onDiscard={() => dismissMediaItem(u.mediaItemId)}
-            />
-          ))}
+        {/* Upload rendering (thumbnail + shimmer) lands in the next commit —
+            the card-based UploadCard family this replaced is deleted here. */}
         {/* Failed-before-server uploads — no media_items row exists at all,
-            so these are never routed through UploadCard (nothing to retry
-            against). */}
+            so these have nothing to retry against. */}
         {userMsg.failures.map((f, idx) => (
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}
@@ -636,20 +616,6 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     if (editingId && !messages.some(m => m.id === editingId)) setEditingId(null);
   }, [editingId, messages]);
 
-  // media_items ids the member discarded off an UploadReadyCard/UploadErrorCard
-  // (memory/UploadCard.tsx). Client-local only — no DELETE /api/media/[id]
-  // route or `discarded` status exists, so the underlying row is untouched
-  // and a reload will resurface it. Accepted known gap for this pass; local
-  // state is enough since dismissal only needs to hold within one open tab.
-  const [dismissedMediaIds, setDismissedMediaIds] = useState<Set<string>>(new Set());
-  const dismissMediaItem = useCallback((mediaItemId: string) => {
-    setDismissedMediaIds(prev => {
-      const next = new Set(prev);
-      next.add(mediaItemId);
-      return next;
-    });
-  }, []);
-
   // Gate strictly on the boundary's isPlatformAdmin (provider-resolved inside
   // services/auth) — never expose debug view to members.
   const isAdmin = user?.isPlatformAdmin === true;
@@ -716,8 +682,6 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             memories,
             keepDisabled,
             renderMemorySlotFn,
-            dismissedMediaIds,
-            dismissMediaItem,
           )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,

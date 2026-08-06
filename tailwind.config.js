@@ -47,40 +47,19 @@ export default {
       keyframes: {
         waveform: { '0%,100%': { transform: 'scaleY(0.35)' }, '50%': { transform: 'scaleY(1)' } },
         recpulse: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.25' } },
-        // Upload progress cards (UploadRunningCard.tsx) — the breathing halo
-        // behind the kind icon (full-media block) and the icon's own pulse.
-        // Timing ported from the design handoff's prototype reference
-        // (Design Handovers/design_handoff_upload_progress_2026/UploadingCard.jsx).
-        'upload-glow': {
-          '0%,100%': { opacity: '0.3', transform: 'scale(0.82)', filter: 'blur(20px)' },
-          '50%': { opacity: '0.7', transform: 'scale(1.12)', filter: 'blur(24px)' },
-        },
-        'upload-hum': {
-          '0%,100%': { opacity: '0.8', transform: 'scale(1)' },
-          '50%': { opacity: '1', transform: 'scale(1.08)' },
-        },
-        // Background-position sweep — used both for the compact media
-        // block's shimmer bar and (per the approved plan) the running
-        // card's indeterminate progress bar, since neither has a real
-        // percentage to report.
+        // Upload thumbnail shimmer (components/shells/membership/UploadThumbnail.tsx)
+        // — a background-position sweep over the persistent thumbnail/icon
+        // while an item is pending/processing. No percentage to report, so
+        // this stays indeterminate rather than a fake progress bar.
         'upload-shimmer': {
           '0%': { backgroundPosition: '-150% 0' },
           '100%': { backgroundPosition: '150% 0' },
-        },
-        // Crossfade-in for the ticker text each time its step advances
-        // (triggered by React re-keying the span on step index change).
-        'upload-ticker': {
-          from: { opacity: '0', transform: 'translateY(6px)' },
-          to: { opacity: '1', transform: 'translateY(0)' },
         },
       },
       animation: {
         waveform: 'waveform 0.9s ease-in-out infinite',
         recpulse: 'recpulse 1.2s ease-in-out infinite',
-        'upload-glow': 'upload-glow 2.3s ease-in-out infinite',
-        'upload-hum': 'upload-hum 2.3s ease-in-out infinite',
         'upload-shimmer': 'upload-shimmer 1.8s ease-in-out infinite',
-        'upload-ticker': 'upload-ticker 0.35s ease',
       },
     },
   },
