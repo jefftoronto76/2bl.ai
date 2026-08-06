@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
@@ -137,100 +137,6 @@ function renderMemorySlot(
 }
 
 // ── Inline media components ───────────────────────────────────────────────────
-
-function MediaStatusBadge({ item, small = false }: { item: ClientMediaItem | undefined; small?: boolean }) {
-  const sz = small ? 9 : 11;
-  const textCls = small ? 'text-[10px]' : 'text-[10.5px]';
-  if (!item || item.status === 'pending' || item.status === 'processing') {
-    return (
-      <>
-        <Loader2 size={sz} className="text-text-muted animate-spin flex-shrink-0" />
-        <span className={`font-mono ${textCls} text-text-muted`}>Processing…</span>
-      </>
-    );
-  }
-  if (item.status === 'ready') {
-    return (
-      <>
-        <CheckCircle size={sz} className="text-accent flex-shrink-0" />
-        <span className={`font-mono ${textCls} text-text-muted`}>{item.classification ?? 'Ready'}</span>
-      </>
-    );
-  }
-  return (
-    <>
-      <XCircle size={sz} className="text-red-400 flex-shrink-0" />
-      <span className={`font-mono ${textCls} text-red-400`}>Processing failed</span>
-    </>
-  );
-}
-
-/** Inline image preview — shown in the user message thread immediately on upload.
- *  Prefers the batch-fetched signed url (GET /api/media, item.url) so a reloaded
- *  conversation doesn't need a separate signed-url round trip per image. Falls
- *  back to fetching its own signed URL only when neither is available yet
- *  (e.g. item hasn't hydrated into mediaItems at all). */
-function InlineImage({ mediaItemId, filename, item }: {
-  mediaItemId: string;
-  filename: string;
-  item: ClientMediaItem | undefined;
-}) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const src = item?.localPreviewUrl ?? item?.url ?? signedUrl;
-
-  useEffect(() => {
-    if (item?.localPreviewUrl || item?.url) return;
-    fetch(`/api/media/${mediaItemId}/url`)
-      .then(r => r.json())
-      .then((d: { url?: string }) => { if (d.url) setSignedUrl(d.url); })
-      .catch(() => {});
-  }, [mediaItemId, item?.localPreviewUrl, item?.url]);
-
-  return (
-    <div className="flex justify-end">
-      <div className="flex flex-col items-end gap-1.5 max-w-[75%]">
-        {src ? (
-          <img
-            src={src}
-            alt={filename}
-            className="rounded-2xl rounded-br-sm max-h-72 w-auto object-cover"
-          />
-        ) : (
-          <div className="w-48 h-36 rounded-2xl rounded-br-sm bg-surface border border-border flex items-center justify-center">
-            <ImageIcon size={22} className="text-text-muted opacity-30" />
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 pr-0.5">
-          <MediaStatusBadge item={item} small />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Chip for audio/document uploads — shown inline in the user message thread. */
-function InlineFileChip({ filename, type, item }: {
-  filename: string;
-  type: string;
-  item: ClientMediaItem | undefined;
-}) {
-  const icon = type === 'audio'
-    ? <AudioLines size={13} />
-    : <FileText size={13} />;
-  return (
-    <div className="flex justify-end">
-      <div className="flex items-start gap-2.5 max-w-[75%] rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5">
-        <span className="flex-shrink-0 mt-0.5 text-accent">{icon}</span>
-        <div className="min-w-0 flex flex-col gap-0.5">
-          <span className="text-[12.5px] font-body text-text-primary truncate leading-tight">{filename}</span>
-          <div className="flex items-center gap-1.5">
-            <MediaStatusBadge item={item} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Small chip for uploads that failed before reaching the server. */
 function FailedUploadChip({ filename }: { filename: string }) {
@@ -453,59 +359,29 @@ function makeRenderUserMessage(
     const userMsg = parseUserMessage(msg.content);
     const memory = memories.getByAnchor(msg.id);
 
-    // UploadCard (the running/ready/error progress cards) is for a
-    // captionless upload only — the case the design handoff actually built
-    // it for ("reached only when there's no caption to write a passage
-    // from"). A captioned upload already gets a real, working memory
-    // bookmark below (renderMemorySlotFn, driven off the caption's own
-    // text) — showing UploadCard's own stubbed "Keep this" alongside that
-    // real one would put two Keep buttons on screen where only one actually
-    // does anything. So captioned uploads keep today's plain status chips
-    // unchanged; only captionless ones get the new cards.
-    const isCaptionless = !userMsg.text;
-
     return (
       <div key={msg.id} className="flex flex-col gap-2">
-        {isCaptionless
-          ? userMsg.uploads
-              .filter(u => !dismissedMediaIds.has(u.mediaItemId))
-              .map(u => (
-                <UploadCard
-                  key={u.mediaItemId}
-                  item={mediaItems.find(m => m.id === u.mediaItemId)}
-                  sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
-                  onDiscard={() => dismissMediaItem(u.mediaItemId)}
-                />
-              ))
-          : (
-            <>
-              {/* Image uploads — full-width preview above prose */}
-              {userMsg.uploads
-                .filter(u => u.type === 'image')
-                .map(u => (
-                  <InlineImage
-                    key={u.mediaItemId}
-                    mediaItemId={u.mediaItemId}
-                    filename={u.filename}
-                    item={mediaItems.find(m => m.id === u.mediaItemId)}
-                  />
-                ))}
-              {/* Audio / document chips */}
-              {userMsg.uploads
-                .filter(u => u.type !== 'image')
-                .map(u => (
-                  <InlineFileChip
-                    key={u.mediaItemId}
-                    filename={u.filename}
-                    type={u.type}
-                    item={mediaItems.find(m => m.id === u.mediaItemId)}
-                  />
-                ))}
-            </>
-          )}
+        {/* UploadCard (the running/ready/error progress cards) renders for
+            every real upload unconditionally — caption or no caption, memory
+            or no memory. It has no awareness of the memory/artifact layer at
+            all, by design: media stays media. A captioned upload will show
+            both this card's stubbed "Keep this" AND the real, working memory
+            bookmark below (renderMemorySlotFn) — a known, accepted cosmetic
+            overlap, not something to reconcile here. Keeping media and
+            memory concerns fully separate is worth more than avoiding it. */}
+        {userMsg.uploads
+          .filter(u => !dismissedMediaIds.has(u.mediaItemId))
+          .map(u => (
+            <UploadCard
+              key={u.mediaItemId}
+              item={mediaItems.find(m => m.id === u.mediaItemId)}
+              sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
+              onDiscard={() => dismissMediaItem(u.mediaItemId)}
+            />
+          ))}
         {/* Failed-before-server uploads — no media_items row exists at all,
             so these are never routed through UploadCard (nothing to retry
-            against). Unaffected by the isCaptionless branch above. */}
+            against). */}
         {userMsg.failures.map((f, idx) => (
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}

@@ -105,12 +105,24 @@ function mkItem(overrides: {
   };
 }
 
-/** Captionless upload — the case UploadCard actually renders for (see
- *  MessageList.tsx's isCaptionless branch). */
+/** A plain upload marker, no caption text alongside it. */
 const CAPTIONLESS_UPLOAD_MESSAGE = {
   id: 'm1',
   role: 'user' as const,
   content: '[MEDIA_UPLOAD: campfire.jpg | media-1 | image]',
+  timestamp: 1,
+};
+
+/** Same upload, with caption text in the same message — UploadCard has no
+ *  concept of captions or memories at all, so it must render identically to
+ *  the captionless case above. The known, accepted overlap with the real
+ *  memory bookmark (which the caption text also drives, via
+ *  renderMemorySlotFn, untouched by this component) is deliberate — see
+ *  MessageList.tsx's comment on this render block. */
+const CAPTIONED_UPLOAD_MESSAGE = {
+  id: 'm1',
+  role: 'user' as const,
+  content: '[MEDIA_UPLOAD: campfire.jpg | media-1 | image]\nHere\'s the campfire from last summer.',
   timestamp: 1,
 };
 
@@ -163,6 +175,27 @@ describe('UploadCard rendering — status drives which card shows', () => {
 
     expect(screen.getByRole('button', { name: 'Keep this' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+  });
+
+  it('renders UploadCard identically whether or not the message has a caption — no memory-awareness', async () => {
+    render(
+      <ChatProvider>
+        <Harness messages={[CAPTIONED_UPLOAD_MESSAGE]} seedItem={mkItem({ id: 'media-1', status: 'ready' })} />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText('seed'));
+    });
+
+    // Same UploadReadyCard chrome as the captionless case above — the
+    // caption text and the real memory bookmark it drives (getByAnchor)
+    // never gate whether this renders.
+    expect(screen.getByRole('button', { name: 'Keep this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
+    // The caption's own prose still renders too — this is the known,
+    // accepted overlap: both the stub Keep above and the real memory
+    // bookmark (driven by the caption) coexist on screen.
+    expect(screen.getByText("Here's the campfire from last summer.")).toBeInTheDocument();
   });
 
   it('renders the SANITIZED error phrase, never the raw error_message, once status is failed', async () => {
