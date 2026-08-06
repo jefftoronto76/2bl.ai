@@ -420,7 +420,7 @@ function makeRenderUserMessage(
   editMessage: (id: string, text: string) => Promise<void>,
   resendMessage: (id: string) => Promise<void>,
   memories: UseMemoriesReturn,
-  keepDisabled: boolean,
+  keepDisabled: (anchorId: string) => boolean,
   renderMemorySlotFn: (anchorId: string) => ReactNode,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
@@ -494,7 +494,7 @@ function makeRenderUserMessage(
               memories.create(msg.id, sourceKindForUserMessage(userMsg));
             }}
             hasMemory={!!memory}
-            keepDisabled={keepDisabled}
+            keepDisabled={keepDisabled(msg.id)}
           />
         )}
         {userMsg.text && renderMemorySlotFn(msg.id)}
@@ -516,7 +516,7 @@ interface AssistantRenderConfig {
   setActiveVersion: (id: string, versionIdx: number) => void;
   feedback: UseMessageFeedbackReturn;
   memories: UseMemoriesReturn;
-  keepDisabled: boolean;
+  keepDisabled: (anchorId: string) => boolean;
   renderMemorySlotFn: (anchorId: string) => ReactNode;
 }
 
@@ -586,7 +586,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
                 config.memories.create(msg.id, 'conversation');
               }}
               hasMemory={!!config.memories.getByAnchor(msg.id)}
-              keepDisabled={config.keepDisabled}
+              keepDisabled={config.keepDisabled(msg.id)}
             />
             {config.renderMemorySlotFn(msg.id)}
           </div>
@@ -659,21 +659,17 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   // A manual click doesn't need this — a human is never that fast — but the
   // guard is the same function for both, so it's correct for both.
   //
-  // Also gated on memories.hasOpenDraft — fixed 2026-08-02. The manual
-  // bookmark disables itself via keepDisabled = isLoading || hasOpenDraft
-  // (below), which is the only reason useMemories.ts's own "at most one
-  // draft open at a time" comment is true: as long as every *caller* of
-  // create() respects hasOpenDraft, "open" and "newest" coincide by
-  // construction. This effect used to skip straight from the marker check to
-  // the getByAnchor/isPending guard without ever consulting hasOpenDraft, so
-  // a SAVE_MEMORY marker on message B could open a second concurrent draft
-  // while a manual draft on message A was still open, breaking that
-  // invariant (and the "never nag, never go dead" single-draft rule the rest
-  // of the UI assumes holds). Deliberately checked BEFORE autoSavedRef is
-  // marked, and deliberately does not mark it: skipping here is a deferral,
-  // not a permanent no — once the open draft is kept/discarded,
-  // memories.hasOpenDraft flips, this effect re-runs (memories is already a
-  // dependency), and the same still-unmarked anchor fires then.
+  // Also gated on memories.hasOpenDraft(m.id) — per-anchor as of the
+  // cross-anchor-bleed fix (see the Memories entry in
+  // System Docs/Known Gaps.md). This guards against re-opening a second
+  // concurrent draft on the *same* anchor this marker would target — it does
+  // not, and should not, wait on drafts open elsewhere: a manual draft on
+  // message A must never block a SAVE_MEMORY marker on message B, or vice
+  // versa. Deliberately checked BEFORE autoSavedRef is marked, and
+  // deliberately does not mark it: skipping here is a deferral, not a
+  // permanent no — once this anchor's own open draft is kept/discarded,
+  // memories.hasOpenDraft(m.id) flips, this effect re-runs (memories is
+  // already a dependency), and the same still-unmarked anchor fires then.
   const autoSavedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!memories.isLoaded) return;
@@ -683,7 +679,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       if (autoSavedRef.current.has(m.id)) return;
       const hasSaveMarker = markerRegistry.parse(m.content).markers.some((mk) => mk.type === 'SAVE_MEMORY');
       if (!hasSaveMarker) return;
-      if (memories.hasOpenDraft) return;
+      if (memories.hasOpenDraft(m.id)) return;
       autoSavedRef.current.add(m.id);
       if (memories.getByAnchor(m.id) || memories.isPending(m.id)) return;
       void memories.create(m.id, 'conversation');
@@ -709,8 +705,10 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   const renderMemorySlotFn = (anchorId: string) => renderMemorySlot(anchorId, memories, memoryHandlers);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
-  // streaming or a draft is already open — nothing else may hide the bookmark.
-  const keepDisabled = isLoading || memories.hasOpenDraft;
+  // streaming or *that specific anchor's* draft is already open — nothing
+  // else may hide the bookmark. Per-anchor, not session-wide: a stale/open
+  // draft on a different message must never disable this one.
+  const keepDisabled = (anchorId: string) => isLoading || memories.hasOpenDraft(anchorId);
 
   // Which user message (if any) is currently swapped into its editing
   // textarea — local, single-message-at-a-time, doesn't need to survive reload.

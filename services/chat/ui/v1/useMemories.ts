@@ -58,13 +58,15 @@ export interface UseMemoriesReturn {
   /** True if this anchor's most recent create call failed — stays true until the next attempt. */
   hasError(anchorMessageId: string): boolean
   /**
-   * Whole-session suppression flag for the manual bookmark, per the handoff's
+   * Per-anchor suppression flag for the manual bookmark, per the handoff's
    * state rules: never nag, never go dead — suppressed only while a draft is
-   * open (streaming suppression is the caller's own isStreaming, combined
-   * separately). At most one draft should ever be open at a time if callers
-   * respect this flag, so "open" and "newest" coincide by construction.
+   * open for *this specific anchor* (streaming suppression is the caller's
+   * own isStreaming, combined separately). Scoped per-anchor rather than
+   * session-wide: one stale/open draft on another message must never disable
+   * this anchor's bookmark (see the Memories entry in
+   * System Docs/Known Gaps.md and handoff §6 rule #3).
    */
-  hasOpenDraft: boolean
+  hasOpenDraft(anchorMessageId: string): boolean
   /**
    * False until the initial GET for this session has settled (success or
    * failure). Load-bearing for any *automatic* trigger (e.g. the SAVE_MEMORY
@@ -126,7 +128,10 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     (anchorMessageId: string) => erroredAnchors[anchorMessageId] === true,
     [erroredAnchors],
   )
-  const hasOpenDraft = memories.some(m => m.status === 'draft')
+  const hasOpenDraft = useCallback(
+    (anchorMessageId: string) => memories.some(m => m.anchor_message_id === anchorMessageId && m.status === 'draft'),
+    [memories],
+  )
 
   const setPending = (anchorId: string, kind: MemorySourceKind | null) =>
     setPendingAnchors(prev => (kind ? { ...prev, [anchorId]: kind } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId))))
