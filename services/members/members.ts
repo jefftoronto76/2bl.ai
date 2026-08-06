@@ -195,6 +195,12 @@ export async function linkInvitedMember(
       email,
       error: userErr?.message,
     })
+    void logEvent({
+      action: AuditAction.MEMBER_USER_RESOLVE_FAILED,
+      clerk_user_id: clerkId,
+      outcome: 'failure',
+      metadata: { stage: 'link_invited_member', email, error: userErr?.message ?? 'no row returned' },
+    })
     return false
   }
 
@@ -298,6 +304,14 @@ export async function linkInvitedMember(
       memberId,
       error: updateErr.message,
     })
+    void logEvent({
+      action: AuditAction.MEMBER_LINK_UPDATE_FAILED,
+      clerk_user_id: clerkId,
+      target_type: 'member',
+      target_id: memberId,
+      outcome: 'failure',
+      metadata: { error: updateErr.message, pg_code: updateErr.code },
+    })
     return false
   }
 
@@ -385,22 +399,44 @@ export async function acceptInvite(
 
   // Step 3: delete any orphan row syncMember inserted for this clerk_id
   // (clerk_id was null on the invited row → no conflict → new active row).
-  const { error: orphanErr } = await supabase
+  const { data: orphanRows, error: orphanErr } = await supabase
     .from('members')
     .delete()
     .eq('clerk_id', clerkUserId)
     .eq('tenant_id', row.tenant_id)
     .neq('id', row.id)
+    .select('id')
 
   if (orphanErr) {
     console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
       clerkUserId,
       error: orphanErr.message,
     })
+    void logEvent({
+      action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
+      clerk_user_id: clerkUserId,
+      target_type: 'member',
+      target_id: row.id,
+      outcome: 'failure',
+      metadata: { error: orphanErr.message },
+    })
     // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
     // on clerk_id will surface a real error if the orphan remains.
   } else {
-    console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id })
+    const deletedCount = orphanRows?.length ?? 0
+    console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
+    if (deletedCount > 0) {
+      // A syncMember-created orphan actually existed — confirms the
+      // linkInvitedMember/syncMember race described in Known Gaps.md fired
+      // and was reconciled here rather than left as a stuck user_id-null row.
+      void logEvent({
+        action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+        clerk_user_id: clerkUserId,
+        target_type: 'member',
+        target_id: row.id,
+        metadata: { deleted_count: deletedCount },
+      })
+    }
   }
 
   // Step 4: stamp the original invited row.

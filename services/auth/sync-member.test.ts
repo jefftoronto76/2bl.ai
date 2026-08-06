@@ -1,0 +1,144 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest'
+
+const { adminHolder } = vi.hoisted(() => ({
+  adminHolder: { client: null as unknown },
+}))
+
+vi.mock('./supabase-admin', () => ({
+  getAdminClient: () => adminHolder.client,
+}))
+
+const logEventMock = vi.fn()
+vi.mock('@/services/audit', () => ({
+  logEvent: (...args: unknown[]) => logEventMock(...args),
+  AuditAction: {
+    MEMBER_USER_RESOLVE_FAILED: 'member.user_resolve_failed',
+  },
+}))
+
+import { syncMember } from './sync-member'
+
+// Two-call mock:
+//   Call 1: from('users').upsert().select('id').single()
+//   Call 2: from('members').upsert().select().single()
+function makeSyncClient({
+  userRow,
+  userError = null,
+  memberRow,
+  memberError = null,
+}: {
+  userRow: unknown
+  userError?: unknown
+  memberRow?: unknown
+  memberError?: unknown
+}) {
+  const usersUpsertCalls: unknown[] = []
+  const membersUpsertCalls: unknown[] = []
+  const client = {
+    from(table: string) {
+      if (table === 'users') {
+        return {
+          upsert(payload: unknown, _opts: unknown) {
+            usersUpsertCalls.push(payload)
+            return {
+              select(_cols: string) {
+                return { single: async () => ({ data: userRow, error: userError }) }
+              },
+            }
+          },
+        }
+      }
+      return {
+        upsert(payload: unknown, _opts: unknown) {
+          membersUpsertCalls.push(payload)
+          return {
+            select() {
+              return { single: async () => ({ data: memberRow, error: memberError }) }
+            },
+          }
+        },
+      }
+    },
+  }
+  return {
+    client,
+    getUsersUpsertCalls: () => usersUpsertCalls,
+    getMembersUpsertCalls: () => membersUpsertCalls,
+  }
+}
+
+describe('syncMember', () => {
+  beforeEach(() => {
+    logEventMock.mockReset()
+  })
+
+  it('includes the resolved users.id as user_id in the members upsert payload', async () => {
+    const { client, getMembersUpsertCalls } = makeSyncClient({
+      userRow: { id: 'user-uuid-9' },
+      memberRow: { id: 'member-uuid-9' },
+    })
+    adminHolder.client = client
+
+    const result = await syncMember({ clerkUserId: 'clerk-9', email: 'nine@example.com' })
+
+    expect(result.ok).toBe(true)
+    const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+    expect(payload.user_id).toBe('user-uuid-9')
+    expect(payload.clerk_id).toBe('clerk-9')
+    expect(payload.status).toBe('active')
+  })
+
+  it('resolves/creates the users row before writing members, even with no name/email/phone supplied', async () => {
+    const { client, getUsersUpsertCalls, getMembersUpsertCalls } = makeSyncClient({
+      userRow: { id: 'user-uuid-10' },
+      memberRow: { id: 'member-uuid-10' },
+    })
+    adminHolder.client = client
+
+    await syncMember({ clerkUserId: 'clerk-10' })
+
+    expect(getUsersUpsertCalls()).toHaveLength(1)
+    const [usersPayload] = getUsersUpsertCalls() as [Record<string, unknown>]
+    expect(usersPayload.clerk_id).toBe('clerk-10')
+    expect('email' in usersPayload).toBe(false)
+
+    const [membersPayload] = getMembersUpsertCalls() as [Record<string, unknown>]
+    expect(membersPayload.user_id).toBe('user-uuid-10')
+  })
+
+  it('returns ok:false and logs MEMBER_USER_RESOLVE_FAILED without writing members when the users upsert fails', async () => {
+    const { client, getMembersUpsertCalls } = makeSyncClient({
+      userRow: null,
+      userError: { message: 'users upsert failed' },
+    })
+    adminHolder.client = client
+
+    const result = await syncMember({ clerkUserId: 'clerk-11', email: 'eleven@example.com' })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toBe('users upsert failed')
+    expect(getMembersUpsertCalls()).toHaveLength(0)
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.user_resolve_failed')
+    expect(arg.outcome).toBe('failure')
+    expect(arg.clerk_user_id).toBe('clerk-11')
+  })
+
+  it('returns ok:false on members upsert failure', async () => {
+    const { client } = makeSyncClient({
+      userRow: { id: 'user-uuid-12' },
+      memberRow: null,
+      memberError: { message: 'members upsert failed' },
+    })
+    adminHolder.client = client
+
+    const result = await syncMember({ clerkUserId: 'clerk-12' })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toBe('members upsert failed')
+  })
+})
