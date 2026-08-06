@@ -100,7 +100,7 @@ export interface UseMemoriesReturn {
  */
 function classifyCreateFailure(res: Response, data: { memory?: unknown } | null): ChatErrorType {
   if (!res.ok) {
-    if (res.status === 403) return 'account_required'
+    if (res.status === 401) return 'account_required'
     if (res.status >= 500) return 'server_error'
     return 'unknown'
   }

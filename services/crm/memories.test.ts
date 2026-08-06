@@ -296,7 +296,7 @@ describe('createDraftMemory — user_id resolution (Bug A)', () => {
     expect(insertCalls[0].member_id).toBe('member-1')
   })
 
-  it('rejects a fully anonymous visitor (no memberId) with a distinguishable 403, not a generic 500 — no insert attempted', async () => {
+  it('rejects a fully anonymous visitor (no memberId) with a distinguishable 401, not a generic 500 — no insert attempted', async () => {
     const { client, insertCalls } = makeClient({})
     adminHolder.client = client
 
@@ -304,13 +304,13 @@ describe('createDraftMemory — user_id resolution (Bug A)', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.status).toBe(403)
+      expect(result.status).toBe(401)
       expect(result.error).toBe(ACCOUNT_REQUIRED_ERROR)
     }
     expect(insertCalls.length).toBe(0)
   })
 
-  it('rejects a member that exists but has no linked account yet (invited, not signed up) with the same 403 — no insert attempted', async () => {
+  it('rejects a member that exists but has no linked account yet (invited, not signed up) with the same 401 — no insert attempted', async () => {
     const { client, insertCalls } = makeClient({ memberResult: { data: { user_id: null }, error: null } })
     adminHolder.client = client
 
@@ -318,13 +318,13 @@ describe('createDraftMemory — user_id resolution (Bug A)', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.status).toBe(403)
+      expect(result.status).toBe(401)
       expect(result.error).toBe(ACCOUNT_REQUIRED_ERROR)
     }
     expect(insertCalls.length).toBe(0)
   })
 
-  it('treats a genuine DB error resolving user_id as a 500 infra failure, distinct from the 403 "no account" case', async () => {
+  it('treats a genuine DB error resolving user_id as a 500 infra failure, distinct from the 401 "no account" case', async () => {
     const { client, insertCalls } = makeClient({ memberResult: { data: null, error: { message: 'db unreachable' } } })
     adminHolder.client = client
 
@@ -355,7 +355,7 @@ describe('createMemoryFromAnchor — anonymous-member rejection is covered by th
     })
 
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.status).toBe(403)
+    if (!result.ok) expect(result.status).toBe(401)
     expect(mockLogEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.MEMORY_CREATED,

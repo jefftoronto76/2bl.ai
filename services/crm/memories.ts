@@ -176,9 +176,11 @@ export async function createDraftMemory(
   if (!userIdResult.userId) {
     // Anonymous visitor (no memberId) or a member not yet linked to an
     // account (memberId resolved but members.user_id is null) — artifacts.user_id
-    // is NOT NULL, so there is no row to attempt here. A distinct status
-    // (403, not 500) so this doesn't read as an infra failure downstream.
-    return { ok: false, status: 403, error: ACCOUNT_REQUIRED_ERROR }
+    // is NOT NULL, so there is no row to attempt here. 401, not 403: no
+    // identity was presented at all (403 would imply an identified-but-
+    // forbidden actor, which doesn't apply here), and not 500 so this
+    // doesn't read as an infra failure downstream.
+    return { ok: false, status: 401, error: ACCOUNT_REQUIRED_ERROR }
   }
   const userId = userIdResult.userId
 

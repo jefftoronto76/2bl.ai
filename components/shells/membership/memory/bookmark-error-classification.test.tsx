@@ -2,7 +2,7 @@
 // 5xx, malformed 2xx body) must classify into distinct ChatErrorType values
 // and render the matching components/chat/errorCopy.ts ERROR_COPY text, not
 // one hardcoded string. Mirrors bookmark-render.test.tsx's mocking
-// convention (this shell's established pattern). The 403 "account required"
+// convention (this shell's established pattern). The 401 "account required"
 // case (Bug A) gets its own dedicated ChatErrorType/copy since it's an
 // expected, common rejection, not a rare infra failure.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -114,14 +114,14 @@ describe('memory bookmark — error classification', () => {
     await waitFor(() => expect(within(group).getByText(ERROR_COPY.network)).toBeTruthy());
   });
 
-  it('classifies a 403 as "account_required" — Bug A\'s anonymous/unlinked-member rejection', async () => {
-    postHandler = () => jsonResponse({ error: 'An account is required to save memories.' }, 403);
+  it('classifies a 401 as "account_required" — Bug A\'s anonymous/unlinked-member rejection', async () => {
+    postHandler = () => jsonResponse({ error: 'An account is required to save memories.' }, 401);
     const group = await clickBookmarkAndGetErrorGroup();
 
     await waitFor(() => expect(within(group).getByText(ERROR_COPY.account_required)).toBeTruthy());
   });
 
-  it('classifies a non-403 4xx as "unknown" — no dedicated type for generic validation failures', async () => {
+  it('classifies a non-401 4xx as "unknown" — no dedicated type for generic validation failures', async () => {
     postHandler = () => jsonResponse({ error: 'anchor_message_id is required' }, 400);
     const group = await clickBookmarkAndGetErrorGroup();
 

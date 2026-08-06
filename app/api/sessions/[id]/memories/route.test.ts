@@ -135,12 +135,12 @@ describe('POST /api/sessions/[id]/memories — validation failures log MEMORY_CR
     expect(mockLogEvent).not.toHaveBeenCalled()
   })
 
-  it('propagates the 403 account-required rejection from createMemoryFromAnchor unchanged', async () => {
-    mockCreateMemoryFromAnchor.mockResolvedValue({ ok: false, status: 403, error: 'An account is required to save memories.' })
+  it('propagates the 401 account-required rejection from createMemoryFromAnchor unchanged', async () => {
+    mockCreateMemoryFromAnchor.mockResolvedValue({ ok: false, status: 401, error: 'An account is required to save memories.' })
 
     const res = await POST(makeRequest({ anchor_message_id: 'm1', source_kind: 'conversation' }), makeParams('s1'))
 
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(401)
     const bodyJson = await res.json()
     expect(bodyJson.error).toBe('An account is required to save memories.')
   })
