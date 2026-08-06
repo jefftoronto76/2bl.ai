@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { XCircle } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem } from './chatStore';
@@ -15,6 +16,8 @@ import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/ch
 import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
 import { UploadThumbnail } from './UploadThumbnail';
+import { ImageLightbox } from './ImageLightbox';
+import { useChatOverlayHost } from './v2/ChatOverlayHost';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -340,6 +343,7 @@ function makeRenderUserMessage(
   memories: UseMemoriesReturn,
   keepDisabled: (anchorId: string) => boolean,
   renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode,
+  onEnlarge: (src: string, filename: string) => void,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -370,6 +374,7 @@ function makeRenderUserMessage(
             item={mediaItems.find(m => m.id === u.mediaItemId)}
             sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
             filename={u.filename}
+            onEnlarge={onEnlarge}
           />
         ))}
         {/* Failed-before-server uploads — no media_items row exists at all,
@@ -547,6 +552,8 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   const feedback = useMessageFeedback(state.sessionId);
   const memories = useMemories(state.sessionId);
   const { user } = useAuthUser();
+  const overlayHost = useChatOverlayHost();
+  const [lightbox, setLightbox] = useState<{ src: string; filename: string } | null>(null);
 
   // SAVE_MEMORY: the guide's own inline signal ("enough has surfaced, write
   // this one up") rather than a manual click — but it triggers the exact same
@@ -669,6 +676,12 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   }, [claimCurrentSession]);
 
   return (
+    <>
+    {lightbox && overlayHost &&
+      createPortal(
+        <ImageLightbox src={lightbox.src} filename={lightbox.filename} onClose={() => setLightbox(null)} />,
+        overlayHost,
+      )}
     <div
       className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-6"
       role="log"
@@ -694,6 +707,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             memories,
             keepDisabled,
             renderMemorySlotFn,
+            (src, filename) => setLightbox({ src, filename }),
           )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -720,5 +734,6 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
         />
       </div>
     </div>
+    </>
   );
 }
