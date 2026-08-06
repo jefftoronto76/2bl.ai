@@ -217,9 +217,29 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       abortControllerRef.current = controller
 
       let activeSessionId = accessors.getSessionId()
+      // Read before session creation (a pure, synchronous ref read — see
+      // getMediaItems' own doc comment) so a brand-new session's creation
+      // request can carry these ids straight through: any item due here
+      // while activeSessionId is still null was necessarily uploaded before
+      // this conversation had a session at all (ChatInput.tsx uploads before
+      // calling send()), so its media_items row's chat_id is still null.
+      // /api/sessions backfills it server-side in that same request — see
+      // app/api/sessions/route.ts — closing the gap where such an item would
+      // otherwise never match any later chat_id-filtered query (Realtime,
+      // catch-up, or the poll) and stay stuck "processing" forever.
+      const currentMediaItems = accessors.getMediaItems?.() ?? null
       if (!activeSessionId) {
         try {
-          const res = await fetch('/api/sessions', { method: 'POST' })
+          const pendingMediaItemIds = currentMediaItems?.map(m => m.mediaItemId) ?? []
+          const res = await fetch('/api/sessions', {
+            method: 'POST',
+            ...(pendingMediaItemIds.length > 0
+              ? {
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ mediaItemIds: pendingMediaItemIds }),
+                }
+              : {}),
+          })
           const data = await res.json()
           console.log('[chat/turn] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
           if (data.id) {
@@ -231,7 +251,6 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
         }
       }
 
-      const currentMediaItems = accessors.getMediaItems?.() ?? null
       retryMsgsRef.current = msgsToSend
       retrySessionIdRef.current = activeSessionId
       retryMediaItemsRef.current = currentMediaItems
