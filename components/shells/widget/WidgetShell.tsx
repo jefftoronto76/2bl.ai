@@ -819,9 +819,14 @@ export function WidgetShellHero() {
     ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [input])
 
+  // This is the inline surface — per useKeyboardViewport's own contract,
+  // inline surfaces must never lock body scroll (position:fixed on the body
+  // broke desktop scroll-past-hero and put the composer/latest message
+  // outside the viewport; see WidgetShellChat's own call below for the one
+  // surface that's actually meant to freeze the page).
   useKeyboardViewport({
     active: isEngaged || composerFocused,
-    lockBodyScroll: isEngaged,
+    lockBodyScroll: false,
     trackViewport: false,
   })
 
