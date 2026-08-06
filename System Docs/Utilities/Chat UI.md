@@ -132,6 +132,28 @@ incident.
   threading it through `useMediaUpload.ts`'s `UploadResult.status` into
   `ChatInput.tsx`'s `addMediaItem()` call, instead of assuming every result
   means "brand new."
+- **An item attached before its session existed had a permanently-null
+  `chat_id`, stranding it outside every status mechanism — fixed 2026-08-06,
+  PR #291.** `ChatInput.tsx`'s `handleSend` uploads attachments *before*
+  calling `sendMessage()`, and `sendMessage()` (`useChatTurn.ts`'s `send()`)
+  is what lazily creates the session — so an attachment on a brand-new
+  conversation's first message always reaches `/api/media/upload-url` while
+  `state.sessionId` is still null, and its `media_items` row is created with
+  `chat_id: null`. Every status mechanism above — Realtime's channel filter,
+  the catch-up fetch, and the poll — filters by `chat_id`, so a still-null
+  row could never be found again by any of them, ever (not even a page
+  reload, which hits the same dead filter): confirmed live via a direct DB
+  query, a permanently stuck "Processing…" badge despite the server having
+  already finished. Fixed by having `send()` include the pending
+  `mediaItemIds` in the `POST /api/sessions` body when it has to create a new
+  session, and `app/api/sessions/route.ts` backfills `chat_id` on those rows
+  server-side in that same request (`backfillMediaChatId`,
+  `services/media/index.ts`) — see `System Docs/API Routes.md`'s `/api/sessions`
+  row and `System Docs/Utilities/Audit.md`'s `MEDIA_CHAT_ID_BACKFILLED` /
+  `MEDIA_CHAT_ID_BACKFILL_FAILED` entry for the full mechanics. Note this is a
+  distinct bug from the six above — none of #269–#286's fixes touch when or
+  how `chat_id` itself gets set, only how the client tracks/resends status
+  once a `chat_id` already exists.
 
 #### Stop / interrupted-turn protocol (2026-07-28)
 

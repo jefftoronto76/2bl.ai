@@ -296,6 +296,39 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `components/shells/membership/chatStore.mediaItemsRace.test.tsx`,
   `chatStore.mediaPolling.test.tsx`, and `ChatInput.upload.test.tsx`.
 
+- **A stuck "Processing…" badge on a first-message attachment traced to a
+  permanently-null `chat_id`, not a resurfacing of the delivery-tracking
+  bugs above — found and fixed 2026-08-06, PR #291.** Live-tested the same
+  morning as the three-bugs entry above; symptom looked identical (a member
+  photo stuck showing "Processing…" indefinitely despite the DB confirming
+  `status: 'ready'` within seconds) but the delivery-tracking machinery
+  those three fixes shape was independently confirmed correct via a passing
+  regression test reproducing the exact multi-item-batch scenario against
+  the already-fixed code. Root cause was one layer earlier: `ChatInput.tsx`
+  uploads attachments *before* calling `sendMessage()`, and `sendMessage()`
+  is what lazily creates the session — so an attachment on a brand-new
+  conversation's first message always reaches `/api/media/upload-url` while
+  no session exists yet, and its `media_items` row is created with
+  `chat_id: null`. Every client-side status mechanism (Realtime, the
+  catch-up fetch, the poll) filters by `chat_id`, so a still-null row could
+  never be found by any of them again, ever — confirmed live via a direct DB
+  query: 3 items uploaded on a new conversation's first message all showed
+  `chat_id: null`, all reached `status: 'ready'` server-side within seconds,
+  all three permanently stuck client-side. Fixed by having `send()`
+  (`useChatTurn.ts`) include the pending `mediaItemIds` in the
+  `POST /api/sessions` body when it has to create a new session, and having
+  that route backfill `chat_id` on those rows server-side in the same
+  request (`backfillMediaChatId`, `services/media/index.ts`) — scoped to the
+  resolved member and only touching rows still null, with every failure path
+  durably logged rather than silently re-orphaning the row. See
+  `System Docs/Utilities/Chat UI.md`'s "Media-item delivery tracking"
+  section and `System Docs/API Routes.md`'s `/api/sessions` row for the full
+  mechanics; `System Docs/Utilities/Audit.md` for the two new `AuditAction`
+  values. Regression coverage: `app/api/sessions/route.test.ts` (server-side
+  backfill logic) and
+  `components/shells/membership/chatStore.newConversationMediaBackfill.test.tsx`
+  (client-side, end to end).
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
