@@ -968,40 +968,74 @@ export function ChatProvider({
   // be cleaner but requires RLS SELECT access — since Heirloom authenticates
   // via Clerk rather than Supabase Auth, auth.uid() is always null and the
   // subscription silently receives no events. The API route uses the service-
-  // role client so it bypasses RLS. The effect re-runs whenever mediaItems
-  // changes, creating a self-regulating loop that stops automatically once
-  // all items are ready or failed.
+  // role client so it bypasses RLS.
+  //
+  // The poll() below is self-sustaining: it reschedules itself from inside
+  // its own .then()/.catch() continuation, gated on whether mediaItemsRef.current
+  // (read fresh each round, not the mediaItems closure) still has a
+  // pending/processing item — NOT on whether this particular round happened
+  // to find something new. Real processing routinely takes longer than one
+  // 3s tick, so a round finding nothing new is the common case, not the
+  // exception; a version that only rescheduled via a mediaItems state change
+  // (relying on setMediaItems being called to re-arm the effect) would go
+  // dead after the first empty round and never resume, leaving the client
+  // stuck believing an item is still processing long after the DB says
+  // otherwise. The effect still depends on `mediaItems` so a genuinely new
+  // attachment restarts the chain if it had gone idle (nothing pending) —
+  // each dependency-change cleanup cancels the previous chain before a fresh
+  // one starts, so there's never more than one chain running at once.
   useEffect(() => {
     if (!sessionId || !isSignedIn) return;
-    const hasPending = mediaItems.some(
-      (m) => m.status === 'pending' || m.status === 'processing',
-    );
-    if (!hasPending) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const timer = setTimeout(() => {
-      fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
-        .then((r) => r.json())
-        .then((data: { items?: ClientMediaItem[] }) => {
-          if (!Array.isArray(data.items) || data.items.length === 0) return;
-          setMediaItems((prev) => {
-            const merged = [...prev];
-            for (const item of data.items!) {
-              const idx = merged.findIndex((m) => m.id === item.id);
-              if (idx >= 0) {
-                merged[idx] = mergeMediaItem(merged[idx], item);
-              } else {
-                merged.push(mergeMediaItem(undefined, item));
+    const poll = () => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
+          .then((r) => r.json())
+          .then((data: { items?: ClientMediaItem[] }) => {
+            if (cancelled) return;
+            let current = mediaItemsRef.current;
+            if (Array.isArray(data.items) && data.items.length > 0) {
+              const merged = [...mediaItemsRef.current];
+              for (const item of data.items!) {
+                const idx = merged.findIndex((m) => m.id === item.id);
+                if (idx >= 0) {
+                  merged[idx] = mergeMediaItem(merged[idx], item);
+                } else {
+                  merged.push(mergeMediaItem(undefined, item));
+                }
               }
+              current = merged;
+              // Write the ref synchronously (same idiom as addMediaItem
+              // above) so the stillPending check below never reads a stale
+              // value while waiting on React's render/queuing.
+              mediaItemsRef.current = merged;
+              setMediaItems(merged);
             }
-            return merged;
+            const stillPending = current.some(
+              (m) => m.status === 'pending' || m.status === 'processing',
+            );
+            if (stillPending) poll();
+          })
+          .catch((err) => {
+            console.error('[heirloom/chat] media status poll failed:', err);
+            // A transient network failure must not permanently kill status
+            // tracking any more than an empty result should — keep trying.
+            if (!cancelled) poll();
           });
-        })
-        .catch((err) =>
-          console.error('[heirloom/chat] media status poll failed:', err),
-        );
-    }, 3000);
+      }, 3000);
+    };
 
-    return () => clearTimeout(timer);
+    if (mediaItems.some((m) => m.status === 'pending' || m.status === 'processing')) {
+      poll();
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [sessionId, isSignedIn, mediaItems]);
 
   // The context state preserves the historical ChatState shape: conversation
