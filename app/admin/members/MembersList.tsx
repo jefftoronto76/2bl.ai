@@ -94,7 +94,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
 
   // Invited-only rows (isInviteOnly=true) have no real user_id and cannot participate
   // in the bulk status API — exclude them from checkbox selection.
-  const selectableIds = visible.filter((u) => !u.isInviteOnly).map((u) => u.id);
+  const selectableIds = visible.filter((u) => !u.isInviteOnly && !u.isOrphaned).map((u) => u.id);
   const selectedVisible = selectableIds.filter((id) => selected.has(id));
   const allChecked = selectableIds.length > 0 && selectedVisible.length === selectableIds.length;
   const someChecked = selectedVisible.length > 0 && !allChecked;
@@ -231,6 +231,24 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
   function RowMenu({ user }: { user: UserRow }) {
     const st = primaryStatus(user);
     const m0 = user.memberships[0];
+
+    // Orphaned rows have a real Clerk account (clerk_id set) but no user_id —
+    // neither the invite-delete path (now rejected, see the API route's
+    // clerk_id guard) nor the user-scoped status/delete APIs (need user_id)
+    // apply here. No safe action exists from this UI until the row is
+    // backfilled or self-heals — see System Docs/Known Gaps.md.
+    if (user.isOrphaned) {
+      return (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          aria-label={`No actions available for ${user.name} — data needs backfill`}
+          disabled
+        >
+          <IconDots size={18} />
+        </ActionIcon>
+      );
+    }
 
     if (user.isInviteOnly) {
       return (
@@ -525,9 +543,9 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                       <Table.Td onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           aria-label={`Select ${u.name}`}
-                          checked={!u.isInviteOnly && selected.has(u.id)}
-                          onChange={() => !u.isInviteOnly && toggleOne(u.id)}
-                          disabled={u.isInviteOnly}
+                          checked={!u.isInviteOnly && !u.isOrphaned && selected.has(u.id)}
+                          onChange={() => !u.isInviteOnly && !u.isOrphaned && toggleOne(u.id)}
+                          disabled={u.isInviteOnly || u.isOrphaned}
                         />
                       </Table.Td>
                       <Table.Td>
@@ -542,8 +560,8 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                                 {u.email}
                               </Text>
                             ) : (
-                              <Text size="xs" c="dimmed" fs="italic">
-                                Invite pending
+                              <Text size="xs" c={u.isOrphaned ? 'orange' : 'dimmed'} fs="italic">
+                                {u.isOrphaned ? 'No account link — needs attention' : 'Invite pending'}
                               </Text>
                             )}
                           </div>
@@ -560,18 +578,25 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                         )}
                       </Table.Td>
                       <Table.Td>
-                        {p && !u.isInviteOnly && (
+                        {p && !u.isInviteOnly && !u.isOrphaned && (
                           <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">
                             {PLAN_LABEL[p.plan]}
                           </Badge>
                         )}
                       </Table.Td>
                       <Table.Td>
-                        {p && (
-                          <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">
-                            {cap(p.status)}
-                          </Badge>
-                        )}
+                        <Group gap={4} wrap="nowrap">
+                          {p && (
+                            <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">
+                              {cap(p.status)}
+                            </Badge>
+                          )}
+                          {u.isOrphaned && (
+                            <Badge color="orange" variant="light" tt="none" size="sm">
+                              Needs attention
+                            </Badge>
+                          )}
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" c={p?.invitedByName ? undefined : 'dimmed'}>
@@ -580,7 +605,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" c="dimmed">
-                          {u.isInviteOnly ? '—' : formatRelative(p?.lastActive ?? null)}
+                          {u.isInviteOnly || u.isOrphaned ? '—' : formatRelative(p?.lastActive ?? null)}
                         </Text>
                       </Table.Td>
                       <Table.Td onClick={(e) => e.stopPropagation()}>
@@ -612,7 +637,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                 >
                   <Group justify="space-between" wrap="nowrap" align="flex-start">
                     <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-                      {!u.isInviteOnly && (
+                      {!u.isInviteOnly && !u.isOrphaned && (
                         <Checkbox
                           aria-label={`Select ${u.name}`}
                           checked={selected.has(u.id)}
@@ -630,8 +655,8 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                             {u.email}
                           </Text>
                         ) : (
-                          <Text size="xs" c="dimmed" fs="italic">
-                            Invite pending
+                          <Text size="xs" c={u.isOrphaned ? 'orange' : 'dimmed'} fs="italic">
+                            {u.isOrphaned ? 'No account link — needs attention' : 'Invite pending'}
                           </Text>
                         )}
                       </div>
@@ -646,7 +671,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                       <Badge color={ROLE_COLOR[p.role]} variant="light" tt="none" size="sm">
                         {cap(p.role)}
                       </Badge>
-                      {!u.isInviteOnly && (
+                      {!u.isInviteOnly && !u.isOrphaned && (
                         <Badge color={PLAN_COLOR[p.plan]} variant="light" tt="none" size="sm">
                           {PLAN_LABEL[p.plan]}
                         </Badge>
@@ -654,6 +679,11 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                       <Badge color={STATUS_COLOR[p.status]} variant="light" tt="none" size="sm">
                         {cap(p.status)}
                       </Badge>
+                      {u.isOrphaned && (
+                        <Badge color="orange" variant="light" tt="none" size="sm">
+                          Needs attention
+                        </Badge>
+                      )}
                     </Group>
                   )}
 
@@ -670,7 +700,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                     </Text>
                   </Group>
 
-                  {!u.isInviteOnly && (
+                  {!u.isInviteOnly && !u.isOrphaned && (
                     <Group justify="space-between" mt="xs">
                       <Text size="xs" c="dimmed">
                         Last active

@@ -77,6 +77,13 @@ export const AuditAction = {
   MEMBER_INVITE_OPENED: 'member.invite_opened',
   MEMBER_INVITE_ACCEPTED: 'member.invite_accepted',
   MEMBER_HARD_DELETED: 'user.hard_deleted',
+  // Failure-mode telemetry for the members.user_id write paths
+  // (services/auth/sync-member.ts, services/members/members.ts). See
+  // System Docs/Known Gaps.md for the incident these were added for.
+  MEMBER_USER_RESOLVE_FAILED: 'member.user_resolve_failed',
+  MEMBER_LINK_UPDATE_FAILED: 'member.link_update_failed',
+  MEMBER_ORPHAN_CLEANUP_FAILED: 'member.orphan_cleanup_failed',
+  MEMBER_ORPHAN_RECONCILED: 'member.orphan_reconciled',
   // Conversations (Composer history)
   CONVERSATION_CREATE: 'conversation.create',
   CONVERSATION_UPDATE: 'conversation.update',

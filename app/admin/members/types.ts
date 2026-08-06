@@ -82,6 +82,10 @@ export interface UserRow {
   memberships: Membership[];
   /** True when this row represents an invited-only member with no users row yet. */
   isInviteOnly?: boolean;
+  /** True when this row has a Clerk account (clerk_id set, status active/suspended)
+   *  but members.user_id is null — a data-integrity gap, not a normal invite.
+   *  See System Docs/Known Gaps.md. Read-only until backfilled or self-healed. */
+  isOrphaned?: boolean;
 }
 
 export interface TenantOption {

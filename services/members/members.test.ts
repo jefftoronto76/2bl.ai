@@ -23,7 +23,9 @@ import {
   createMemberInvite,
   validateMemberToken,
   linkInvitedMember,
+  acceptInvite,
   hardDeleteMember,
+  HEIRLOOM_TENANT_ID,
 } from './members'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -319,6 +321,8 @@ describe('validateMemberToken', () => {
 // ── linkInvitedMember ────────────────────────────────────────────────────────
 
 describe('linkInvitedMember', () => {
+  beforeEach(() => { logEventMock.mockReset() })
+
   it('no-ops when email is empty', async () => {
     // client should never be called — this guard is at the top of the function
     adminHolder.client = { from: vi.fn() }
@@ -365,9 +369,16 @@ describe('linkInvitedMember', () => {
     })
     adminHolder.client = client
 
-    await linkInvitedMember('clerk-zzz', 'bad@example.com')
+    const result = await linkInvitedMember('clerk-zzz', 'bad@example.com')
 
+    expect(result).toBe(false)
     expect(getUpdateCalls()).toHaveLength(0)
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.user_resolve_failed')
+    expect(arg.outcome).toBe('failure')
+    expect(arg.clerk_user_id).toBe('clerk-zzz')
   })
 
   it('returns early without updating members when the invite find fails', async () => {
@@ -381,6 +392,184 @@ describe('linkInvitedMember', () => {
     await linkInvitedMember('clerk-yyy', 'error@example.com')
 
     expect(getUpdateCalls()).toHaveLength(0)
+  })
+
+  it('returns false and logs MEMBER_LINK_UPDATE_FAILED (with pg_code) when the final update fails', async () => {
+    // Simulates the clerk_id unique-constraint collision race: syncMember
+    // already inserted an orphan row for this clerk_id on an earlier webhook
+    // delivery, so linkInvitedMember's UPDATE to the still-invited row fails.
+    const { client, getUpdateCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-13' },
+      inviteRow: { id: 'member-uuid-13', tenant_id: 'tenant-1' },
+      updateError: { message: 'duplicate key value violates unique constraint', code: '23505' },
+    })
+    adminHolder.client = client
+
+    const result = await linkInvitedMember('clerk-13', 'thirteen@example.com')
+
+    expect(result).toBe(false)
+    expect(getUpdateCalls()).toHaveLength(1)
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.link_update_failed')
+    expect(arg.outcome).toBe('failure')
+    expect(arg.target_id).toBe('member-uuid-13')
+    expect((arg.metadata as Record<string, unknown>).pg_code).toBe('23505')
+  })
+})
+
+// ── acceptInvite ─────────────────────────────────────────────────────────────
+
+// Three-call mock for acceptInvite:
+//   Call 1: from('members').select().eq('token').is('used_at').is('revoked_at').maybeSingle()
+//   Call 2: from('members').delete().eq('clerk_id').eq('tenant_id').neq('id').select('id')
+//   Call 3: from('members').update().eq('id')
+function makeAcceptInviteClient({
+  invitedRow,
+  findError = null,
+  orphanRows = [],
+  orphanError = null,
+  updateError = null,
+}: {
+  invitedRow: unknown
+  findError?: unknown
+  orphanRows?: unknown[]
+  orphanError?: unknown
+  updateError?: unknown
+}) {
+  const updateCalls: unknown[] = []
+  const client = {
+    from(_table: string) {
+      return {
+        select(_cols: string) {
+          return {
+            eq(_col: string, _val: unknown) {
+              return {
+                is(_col2: string, _val2: unknown) {
+                  return {
+                    is(_col3: string, _val3: unknown) {
+                      return { maybeSingle: async () => ({ data: invitedRow, error: findError }) }
+                    },
+                  }
+                },
+              }
+            },
+          }
+        },
+        delete() {
+          return {
+            eq(_col: string, _val: unknown) {
+              return {
+                eq(_col2: string, _val2: unknown) {
+                  return {
+                    neq(_col3: string, _val3: unknown) {
+                      return {
+                        select: async (_cols: string) => ({ data: orphanRows, error: orphanError }),
+                      }
+                    },
+                  }
+                },
+              }
+            },
+          }
+        },
+        update(payload: unknown) {
+          updateCalls.push(payload)
+          return { eq: async (_col: string, _val: unknown) => ({ error: updateError }) }
+        },
+      }
+    },
+  }
+  return { client, getUpdateCalls: () => updateCalls }
+}
+
+describe('acceptInvite', () => {
+  beforeEach(() => { logEventMock.mockReset() })
+
+  it('returns 404 when no matching unused, unrevoked invite token exists', async () => {
+    const { client } = makeAcceptInviteClient({ invitedRow: null })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-1', 'user-1')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(404)
+  })
+
+  it('stamps the invited row with clerk_id, user_id, status=active on success', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-1', tenant_id: HEIRLOOM_TENANT_ID },
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.clerk_id).toBe('clerk-1')
+    expect(update.user_id).toBe('user-1')
+    expect(update.status).toBe('active')
+  })
+
+  it('does not log an orphan-reconciled event when no orphan row existed', async () => {
+    const { client } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanRows: [],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-2', 'user-2')
+
+    expect(logEventMock).not.toHaveBeenCalled()
+  })
+
+  it('logs MEMBER_ORPHAN_RECONCILED with the deleted count when a syncMember-created orphan row is deleted', async () => {
+    const { client } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-3', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanRows: [{ id: 'orphan-1' }],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-3', 'user-3')
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.orphan_reconciled')
+    expect((arg.metadata as Record<string, unknown>).deleted_count).toBe(1)
+  })
+
+  it('logs MEMBER_ORPHAN_CLEANUP_FAILED but still stamps the invited row when the orphan delete fails', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-4', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanError: { message: 'delete failed' },
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-4', 'user-4')
+
+    expect(result.ok).toBe(true)
+    expect(getUpdateCalls()).toHaveLength(1)
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.orphan_cleanup_failed')
+    expect(arg.outcome).toBe('failure')
+  })
+
+  it('returns ok:false when the final stamp update fails', async () => {
+    const { client } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-5', tenant_id: HEIRLOOM_TENANT_ID },
+      updateError: { message: 'update failed' },
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-5', 'user-5')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(500)
   })
 })
 

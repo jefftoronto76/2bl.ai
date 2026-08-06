@@ -69,6 +69,18 @@ export default async function MembersPage() {
     .in('status', ['invited', 'waitlist'])
     .order('created_at', { ascending: false });
 
+  // Orphaned: active/suspended members rows with no user_id — a data-integrity
+  // gap (see Known Gaps.md), not a normal invite. Neither query above catches
+  // these (not user_id-populated, not status invited/waitlist), so without
+  // this they render nowhere in the admin UI at all.
+  const { data: orphanedData } = await supabase
+    .from('members')
+    .select('id, tenant_id, role, status, created_at, invited_name, token, used_at, opened_at, opens, expires_at, revoked_at, inviter:users!invited_by ( name, email ), tenant:tenants ( id, name, domain )')
+    .eq('tenant_id', authCtx.tenant_id)
+    .is('user_id', null)
+    .not('status', 'in', '(invited,waitlist)')
+    .order('created_at', { ascending: false });
+
   // All tenants list for the InviteMemberModal tenant selector.
   const { data: tenantData } = await supabase
     .from('tenants')
@@ -122,8 +134,32 @@ export default async function MembersPage() {
     ],
   }));
 
+  const orphanedRows: UserRow[] = (orphanedData ?? []).map((m: any) => ({
+    id: `orphaned:${m.id}`,
+    name: m.invited_name ?? 'Unnamed member',
+    email: '',
+    isOrphaned: true,
+    memberships: [
+      {
+        memberId: m.id,
+        tenantId: m.tenant_id,
+        tenantName: m.tenant?.name ?? 'Unknown tenant',
+        tenantDomain: m.tenant?.domain ?? null,
+        role: m.role,
+        status: m.status,
+        plan: 'free',
+        joined: m.created_at ?? null,
+        lastActive: null,
+        invitedName: m.invited_name ?? null,
+        invitedByName: m.inviter?.name ?? m.inviter?.email ?? null,
+        token: m.token ?? null,
+        invite: toInviteLink(m),
+      } satisfies Membership,
+    ],
+  }));
+
   const tenants: TenantOption[] = (tenantData ?? []).map((t: any) => ({ id: t.id, name: t.name, domain: t.domain ?? null }));
-  const allUsers = [...users, ...invitedRows];
+  const allUsers = [...users, ...invitedRows, ...orphanedRows];
 
   return (
     <Stack h="100%" gap={0}>
