@@ -14,6 +14,7 @@ import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
+import { UploadThumbnail } from './UploadThumbnail';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -358,8 +359,19 @@ function makeRenderUserMessage(
 
     return (
       <div key={msg.id} className="flex flex-col gap-2">
-        {/* Upload rendering (thumbnail + shimmer) lands in the next commit —
-            the card-based UploadCard family this replaced is deleted here. */}
+        {/* Real uploads — thumbnail/icon + shimmer while pending/processing,
+            static once ready, small retry badge on failure. No memory
+            awareness here: renders unconditionally, caption or no caption,
+            memory or no memory (see the memory bookmark below, which the
+            caption text separately drives, untouched by this). */}
+        {userMsg.uploads.map(u => (
+          <UploadThumbnail
+            key={u.mediaItemId}
+            item={mediaItems.find(m => m.id === u.mediaItemId)}
+            sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
+            filename={u.filename}
+          />
+        ))}
         {/* Failed-before-server uploads — no media_items row exists at all,
             so these have nothing to retry against. */}
         {userMsg.failures.map((f, idx) => (
