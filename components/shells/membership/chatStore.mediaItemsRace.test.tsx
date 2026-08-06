@@ -740,3 +740,61 @@ describe('delivery marking uses the status at request-build time, not a live re-
     expect(sageRequestBodies[1].media_items).toBeNull();
   });
 });
+
+// Regression coverage from PR #286's pre-merge review (Check 2): confirms
+// dueStatusSnapshotRef's un-consumed entry from a FAILED turn does not leak
+// into a LATER, unrelated successful turn that re-includes the same id.
+// markMediaItemsDelivered is only ever called on the true-success path
+// (see useChatTurn.ts) — a turn that fails outright or gets aborted never
+// consumes/deletes its snapshot entry. That gap is accepted as a low-severity
+// memory leak (bounded by hydrateConversation()/newChat()'s reset of the
+// ref), not a correctness bug, precisely because getMediaItems() always
+// re-snapshots every due id fresh on every call — so any id left un-delivered
+// by a failed turn is guaranteed to be re-included and re-snapshotted on the
+// very next turn, overwriting the stale entry before anything reads it.
+describe('a stale snapshot entry left by a failed turn does not leak into a later unrelated turn', () => {
+  it('a later successful turn correctly re-snapshots and delivers, even though the earlier failed turn never consumed its snapshot entry', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1: media-1 pending, request fails outright — getMediaItems() ran
+    // (snapshotting media-1 -> 'pending'), but markMediaItemsDelivered never
+    // runs on this path, so that snapshot entry is never consumed/deleted.
+    sageShouldFail = true;
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Between turns: media-1 actually finishes processing.
+    sageShouldFail = false;
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+    });
+
+    // Turn 2: an entirely new, unrelated follow-up message (NOT a retry) —
+    // getMediaItems() runs fresh and must re-snapshot media-1's CURRENT
+    // status ('ready'), not read the stale 'pending' entry left over from
+    // turn 1's failed attempt.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Turn 3: if turn 2 had wrongly used the stale 'pending' snapshot,
+    // markMediaItemsDelivered would never have recorded media-1 as
+    // delivered (pending isn't terminal), so it would incorrectly still be
+    // "due" here. Correct behavior: excluded now (delivered as ready on turn 2).
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(3));
+    });
+    expect(sageRequestBodies[2].media_items).toBeNull();
+  });
+});
