@@ -190,7 +190,17 @@ export async function POST(req: Request) {
         tenantId,
       })
 
-      return Response.json({ mediaItemId: existing.id, duplicate: true })
+      // Report the item's ACTUAL current status back to the client — a
+      // failed match was just reset to pending above (and reprocessing
+      // kicked off), so that's what's reported for that case; ready/pending/
+      // processing matches are untouched and reported as-is. The client uses
+      // this to seed its local media-item state correctly instead of
+      // assuming every dedup response means "brand new, still pending" —
+      // that assumption previously reset an already-`ready` item back to
+      // `pending` client-side on every re-attach.
+      const status = existing.status === 'failed' ? 'pending' : existing.status
+
+      return Response.json({ mediaItemId: existing.id, duplicate: true, status })
     }
   }
 

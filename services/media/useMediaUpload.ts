@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { MediaItemStatus } from '@/services/media/types'
 
 export type MediaUploadType = 'audio' | 'image' | 'document'
 
@@ -8,6 +9,15 @@ export interface UploadResult {
   mediaItemId: string
   type: MediaUploadType
   filename: string
+  /**
+   * The item's actual status as of this response — 'pending' for a freshly
+   * created row (createMediaItem always creates one at 'pending'), or the
+   * server-reported status of the reused row on a duplicate match (never a
+   * hardcoded guess — see the route's dedup branch). Callers must seed their
+   * local media-item state from this, not assume every result means "brand
+   * new and pending": a duplicate can reuse an already-`ready` item.
+   */
+  status: MediaItemStatus
 }
 
 function classifyFile(file: File): MediaUploadType {
@@ -95,6 +105,7 @@ export function useMediaUpload(
           mediaItemId,
           type: classifyFile(file),
           filename: file.name,
+          status: (result.status as MediaItemStatus | undefined) ?? 'pending',
         }
       }
 
@@ -130,6 +141,9 @@ export function useMediaUpload(
         mediaItemId,
         type: classifyFile(file),
         filename: file.name,
+        // A freshly created row is always 'pending' — createMediaItem
+        // (services/media/index.ts) hardcodes this server-side.
+        status: 'pending',
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Upload failed'
