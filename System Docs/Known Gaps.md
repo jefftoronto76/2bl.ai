@@ -249,6 +249,53 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   testing against both. New `AuditAction` values documented in
   `System Docs/Utilities/Audit.md`.
 
+- **Guide still reported uncertain/failed media status despite 100% backend
+  success — three more bugs found and fixed 2026-08-06.** Live testing on
+  2026-08-05 showed every media operation (`audit_events`) succeeding on the
+  backend, yet the guide repeatedly told the member it "didn't load" or
+  couldn't confirm how many attachments succeeded — a symptom the #269–#281
+  work above didn't fully close. Root-caused to three more distinct bugs, all
+  in the same delivery-tracking machinery:
+  1. **Delivery-marking race.** `markMediaItemsDelivered()` recorded a
+     *live* read of `mediaItemsRef.current`, taken only after the assistant's
+     reply finished streaming. `resolveMediaContext`
+     (`services/chat/server/index.ts`) freezes an item's status into that
+     turn's system prompt at *request-build* time, before any streaming
+     happens. If an item flipped `pending` → `ready` in the gap between
+     those two moments (plausible for any multi-second reply, more so with
+     several attachments in flight), the old code marked it "delivered as
+     ready" even though the reply the member actually received reflected the
+     older, still-processing snapshot — permanently excluding the item from
+     ever resurfacing. Fixed by having `getMediaItems()` snapshot each due
+     item's status at read-time (`dueStatusSnapshotRef`) and having
+     `markMediaItemsDelivered()` key off that snapshot instead of a fresh
+     re-read. See `System Docs/Utilities/Chat UI.md`'s "Media-item delivery
+     tracking" section for the mechanics.
+  2. **Duplicate-reuse status bug.** `ChatInput.tsx` hardcoded
+     `status: 'pending'` on every `addMediaItem()` call, including when the
+     #280 dedup match reused an item that was already `ready` —
+     `mergeMediaItem`'s incoming-always-wins merge then flipped it back to
+     `pending` client-side, re-arming bug 1's race for something that had
+     already succeeded. Fixed by having `/api/media/upload-url` report the
+     reused item's real status and threading it through
+     `useMediaUpload.ts`'s `UploadResult.status` into `ChatInput.tsx`,
+     instead of assuming every result means "brand new."
+  3. **Polling effect silently dying.** The pending-item poll effect
+     (`chatStore.tsx`) only rescheduled by depending on `mediaItems`
+     changing, and its own fetch callback only called `setMediaItems` (the
+     one thing that re-armed the effect) when a given 3-second check found
+     at least one newly-terminal item. Real processing routinely takes
+     longer than 3 seconds, so the first check often found nothing, and the
+     effect then never rescheduled — the client stayed stuck believing an
+     item was still processing long after the DB said otherwise. Fixed by
+     making the scheduling self-sustaining, checking `mediaItemsRef.current`
+     fresh each round independent of whether that round found something new.
+
+  All three verified with regression tests reproducing the exact race/dead-
+  poll conditions (not just "tests pass") — see
+  `components/shells/membership/chatStore.mediaItemsRace.test.tsx`,
+  `chatStore.mediaPolling.test.tsx`, and `ChatInput.upload.test.tsx`.
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
