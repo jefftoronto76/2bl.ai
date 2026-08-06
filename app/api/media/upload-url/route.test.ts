@@ -196,7 +196,7 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
     const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true })
+    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'ready' })
     expect(mockCreateMediaItem).not.toHaveBeenCalled()
     expect(mockGenerateSignedUploadUrl).not.toHaveBeenCalled()
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
@@ -208,7 +208,7 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
 
     const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
 
-    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true })
+    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'processing' })
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
     expect(mockProcessMediaItem).not.toHaveBeenCalled()
   })
@@ -220,7 +220,10 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
     const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true })
+    // The response reports 'pending' (not the pre-reset 'failed') — the item
+    // was just reset to pending and reprocessing kicked off, so that's its
+    // real current status, matching what updateMediaItem just wrote.
+    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'pending' })
     expect(mockCreateMediaItem).not.toHaveBeenCalled()
     expect(mockUpdateMediaItem).toHaveBeenCalledWith('existing-item-1', {
       status: 'pending',

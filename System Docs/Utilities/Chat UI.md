@@ -84,6 +84,53 @@ incident.
   which `getMediaItems()` would then resend on the new conversation's next
   turn — a real cross-conversation data leak (personal photos/documents
   resolved into the wrong system prompt), not just wasted tokens.
+- **`dueStatusSnapshotRef` (`Map<string, MediaItemStatus>`) — added
+  2026-08-06 to fix a delivery-marking race the #269–#272/#275 fixes above
+  didn't close.** `resolveMediaContext` (`services/chat/server/index.ts`)
+  freezes an item's status into that turn's system prompt at *request-build*
+  time, well before any streaming happens. `markMediaItemsDelivered` used to
+  record a *live* read of `mediaItemsRef.current`, taken only after the
+  assistant's reply finished streaming — often several seconds later. If an
+  item flipped `pending` → `ready` in that gap (plausible for any turn whose
+  reply takes a few seconds, more so with several attachments in flight), the
+  old code marked it "delivered as ready" even though the reply the member
+  actually received was generated from the *older*, still-processing
+  snapshot — permanently excluding the item from ever resurfacing, so the
+  guide never got a chance to actually confirm it. Fixed by having
+  `getMediaItems()` snapshot each due item's status into this ref at the
+  exact moment it's read, and having `markMediaItemsDelivered()` key off
+  *that* snapshot (consuming/deleting the entry) instead of a fresh re-read.
+  Reset alongside the other two refs in `hydrateConversation()`/`newChat()`.
+- **The pending-item poll effect (below "Media items — Realtime
+  subscription + catch-up hydration") was silently dying after one empty
+  check — fixed 2026-08-06.** It used to reschedule itself only via its
+  `mediaItems` dependency changing, and its own fetch callback only called
+  `setMediaItems` (the sole thing that re-armed the effect) when a given
+  3-second round found at least one newly-terminal item. Real processing
+  routinely takes longer than 3 seconds, so the very first round often found
+  nothing — and the effect then never rescheduled, ever, until something
+  unrelated changed `mediaItems`. This was the only client-side mechanism
+  that updates status without a new message, so when it died, the client
+  stayed stuck believing an item was still processing long after the DB said
+  otherwise. Fixed by making the scheduling self-sustaining: a local `poll()`
+  reschedules itself from inside its own `.then()`/`.catch()` continuation
+  based on whether `mediaItemsRef.current` still has a pending/processing
+  item — checked fresh each round — independent of whether that particular
+  round's fetch found anything new. Still stops for real once nothing is
+  pending/processing; still restarts on a genuinely new attachment via the
+  unchanged `mediaItems` dependency.
+- **The dedup duplicate-reuse path was resetting an already-`ready` item back
+  to `pending` client-side — fixed 2026-08-06.** `ChatInput.tsx` hardcoded
+  `status: 'pending'` on every `addMediaItem()` call, including when
+  `/api/media/upload-url`'s dedup match (#280) reused an item that was
+  already `ready` (or `processing`) — `mergeMediaItem`'s incoming-always-wins
+  merge then flipped it back to `pending` in `mediaItemsRef`, re-arming the
+  delivery-marking race above for something that had already succeeded
+  cleanly. Fixed by having the route report the reused item's real status
+  (`existing.status`, or `'pending'` for the reprocessed-failed case) and
+  threading it through `useMediaUpload.ts`'s `UploadResult.status` into
+  `ChatInput.tsx`'s `addMediaItem()` call, instead of assuming every result
+  means "brand new."
 
 #### Stop / interrupted-turn protocol (2026-07-28)
 

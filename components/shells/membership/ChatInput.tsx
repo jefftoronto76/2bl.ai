@@ -284,7 +284,12 @@ export function ChatInput() {
               storage_path: '',
               file_size_bytes: att.file.size,
               mime_type: att.file.type,
-              status: 'pending',
+              // The real status the server reported — 'pending' for a fresh
+              // upload, but a dedup match can reuse an already-'ready' (or
+              // 'processing'/'pending') item; hardcoding 'pending' here used
+              // to reset an already-delivered ready item back to pending on
+              // every re-attach (see useMediaUpload.ts's UploadResult.status).
+              status: result.status,
               derived_content: null,
               classification: null,
               error_message: null,
