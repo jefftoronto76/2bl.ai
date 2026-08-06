@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { FileText, AudioLines, Image as ImageIcon, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { XCircle, Feather } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
-import { Message, useChatStore, type ClientMediaItem } from './chatStore';
+import { Message, useChatStore, type ClientMediaItem, type PendingEcho } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
@@ -14,6 +15,10 @@ import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
+import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
+import { UploadThumbnail } from './UploadThumbnail';
+import { ImageLightbox } from './ImageLightbox';
+import { useChatOverlayHost } from './v2/ChatOverlayHost';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -137,100 +142,6 @@ function renderMemorySlot(
 
 // ── Inline media components ───────────────────────────────────────────────────
 
-function MediaStatusBadge({ item, small = false }: { item: ClientMediaItem | undefined; small?: boolean }) {
-  const sz = small ? 9 : 11;
-  const textCls = small ? 'text-[10px]' : 'text-[10.5px]';
-  if (!item || item.status === 'pending' || item.status === 'processing') {
-    return (
-      <>
-        <Loader2 size={sz} className="text-text-muted animate-spin flex-shrink-0" />
-        <span className={`font-mono ${textCls} text-text-muted`}>Processing…</span>
-      </>
-    );
-  }
-  if (item.status === 'ready') {
-    return (
-      <>
-        <CheckCircle size={sz} className="text-accent flex-shrink-0" />
-        <span className={`font-mono ${textCls} text-text-muted`}>{item.classification ?? 'Ready'}</span>
-      </>
-    );
-  }
-  return (
-    <>
-      <XCircle size={sz} className="text-red-400 flex-shrink-0" />
-      <span className={`font-mono ${textCls} text-red-400`}>Processing failed</span>
-    </>
-  );
-}
-
-/** Inline image preview — shown in the user message thread immediately on upload.
- *  Prefers the batch-fetched signed url (GET /api/media, item.url) so a reloaded
- *  conversation doesn't need a separate signed-url round trip per image. Falls
- *  back to fetching its own signed URL only when neither is available yet
- *  (e.g. item hasn't hydrated into mediaItems at all). */
-function InlineImage({ mediaItemId, filename, item }: {
-  mediaItemId: string;
-  filename: string;
-  item: ClientMediaItem | undefined;
-}) {
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const src = item?.localPreviewUrl ?? item?.url ?? signedUrl;
-
-  useEffect(() => {
-    if (item?.localPreviewUrl || item?.url) return;
-    fetch(`/api/media/${mediaItemId}/url`)
-      .then(r => r.json())
-      .then((d: { url?: string }) => { if (d.url) setSignedUrl(d.url); })
-      .catch(() => {});
-  }, [mediaItemId, item?.localPreviewUrl, item?.url]);
-
-  return (
-    <div className="flex justify-end">
-      <div className="flex flex-col items-end gap-1.5 max-w-[75%]">
-        {src ? (
-          <img
-            src={src}
-            alt={filename}
-            className="rounded-2xl rounded-br-sm max-h-72 w-auto object-cover"
-          />
-        ) : (
-          <div className="w-48 h-36 rounded-2xl rounded-br-sm bg-surface border border-border flex items-center justify-center">
-            <ImageIcon size={22} className="text-text-muted opacity-30" />
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 pr-0.5">
-          <MediaStatusBadge item={item} small />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Chip for audio/document uploads — shown inline in the user message thread. */
-function InlineFileChip({ filename, type, item }: {
-  filename: string;
-  type: string;
-  item: ClientMediaItem | undefined;
-}) {
-  const icon = type === 'audio'
-    ? <AudioLines size={13} />
-    : <FileText size={13} />;
-  return (
-    <div className="flex justify-end">
-      <div className="flex items-start gap-2.5 max-w-[75%] rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5">
-        <span className="flex-shrink-0 mt-0.5 text-accent">{icon}</span>
-        <div className="min-w-0 flex flex-col gap-0.5">
-          <span className="text-[12.5px] font-body text-text-primary truncate leading-tight">{filename}</span>
-          <div className="flex items-center gap-1.5">
-            <MediaStatusBadge item={item} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Small chip for uploads that failed before reaching the server. */
 function FailedUploadChip({ filename }: { filename: string }) {
   return (
@@ -239,6 +150,83 @@ function FailedUploadChip({ filename }: { filename: string }) {
         <XCircle size={12} className="flex-shrink-0" />
         <span className="font-mono text-[10.5px] truncate">{filename} — upload failed</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * PendingEcho's own rendering — a standalone visual echo of what the real
+ * message + UploadThumbnail will look like once it exists, deliberately NOT
+ * built by reusing UploadThumbnail.tsx (kept untouched, per this feature's
+ * scope). Same container classes/shimmer treatment as UploadThumbnail's own
+ * uploading state, so the swap from echo to real message (see MessageList's
+ * pendingEcho render block below) reads as one continuous thing, not two.
+ */
+function PendingEchoAttachment({
+  filename,
+  previewUrl,
+  type,
+}: {
+  filename: string;
+  previewUrl?: string;
+  type: 'audio' | 'image' | 'document';
+}) {
+  const kind = memoryKindOf(type === 'image' ? 'photo' : type);
+  const Icon = KIND_ICONS[kind.icon] ?? Feather;
+  const isImage = type === 'image';
+
+  return (
+    <div className="flex justify-end">
+      <div
+        className={
+          isImage
+            ? 'relative w-48 max-h-72 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
+            : 'relative flex max-w-[75%] items-center gap-2.5 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5'
+        }
+      >
+        {isImage ? (
+          previewUrl ? (
+            <img src={previewUrl} alt={filename} className="block h-36 w-48 object-cover" />
+          ) : (
+            <div className="h-36 w-48" />
+          )
+        ) : (
+          <>
+            <span className="flex-shrink-0 text-accent"><Icon size={16} aria-hidden /></span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-body text-text-primary leading-tight">
+              {filename}
+            </span>
+          </>
+        )}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 animate-upload-shimmer motion-reduce:animate-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(100deg, transparent 30%, rgb(var(--color-accent) / 0.28) 50%, transparent 70%)',
+            backgroundSize: '200% 100%',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The full echo — attachment thumbnails + the composer's text, if any,
+ *  positioned exactly where the real message will land once it exists. */
+function PendingEchoBubble({ echo }: { echo: PendingEcho }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {echo.attachments.map((a, i) => (
+        <PendingEchoAttachment key={i} filename={a.filename} previewUrl={a.previewUrl} type={a.type} />
+      ))}
+      {echo.text && (
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border border-border bg-surface px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary opacity-55">
+            {echo.text}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -433,6 +421,7 @@ function makeRenderUserMessage(
   memories: UseMemoriesReturn,
   keepDisabled: (anchorId: string) => boolean,
   renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode,
+  onEnlarge: (src: string, filename: string) => void,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -452,29 +441,22 @@ function makeRenderUserMessage(
 
     return (
       <div key={msg.id} className="flex flex-col gap-2">
-        {/* Image uploads — full-width preview above prose */}
-        {userMsg.uploads
-          .filter(u => u.type === 'image')
-          .map(u => (
-            <InlineImage
-              key={u.mediaItemId}
-              mediaItemId={u.mediaItemId}
-              filename={u.filename}
-              item={mediaItems.find(m => m.id === u.mediaItemId)}
-            />
-          ))}
-        {/* Audio / document chips */}
-        {userMsg.uploads
-          .filter(u => u.type !== 'image')
-          .map(u => (
-            <InlineFileChip
-              key={u.mediaItemId}
-              filename={u.filename}
-              type={u.type}
-              item={mediaItems.find(m => m.id === u.mediaItemId)}
-            />
-          ))}
-        {/* Failed-before-server uploads */}
+        {/* Real uploads — thumbnail/icon + shimmer while pending/processing,
+            static once ready, small retry badge on failure. No memory
+            awareness here: renders unconditionally, caption or no caption,
+            memory or no memory (see the memory bookmark below, which the
+            caption text separately drives, untouched by this). */}
+        {userMsg.uploads.map(u => (
+          <UploadThumbnail
+            key={u.mediaItemId}
+            item={mediaItems.find(m => m.id === u.mediaItemId)}
+            sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
+            filename={u.filename}
+            onEnlarge={onEnlarge}
+          />
+        ))}
+        {/* Failed-before-server uploads — no media_items row exists at all,
+            so these have nothing to retry against. */}
         {userMsg.failures.map((f, idx) => (
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}
@@ -643,11 +625,14 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     editMessage,
     resendMessage,
     bumpMemoryCount,
+    pendingEcho,
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
   const memories = useMemories(state.sessionId);
   const { user } = useAuthUser();
+  const overlayHost = useChatOverlayHost();
+  const [lightbox, setLightbox] = useState<{ src: string; filename: string } | null>(null);
 
   // SAVE_MEMORY: the guide's own inline signal ("enough has surfaced, write
   // this one up") rather than a manual click — but it triggers the exact same
@@ -770,6 +755,12 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
   }, [claimCurrentSession]);
 
   return (
+    <>
+    {lightbox && overlayHost &&
+      createPortal(
+        <ImageLightbox src={lightbox.src} filename={lightbox.filename} onClose={() => setLightbox(null)} />,
+        overlayHost,
+      )}
     <div
       className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-6"
       role="log"
@@ -795,6 +786,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
             memories,
             keepDisabled,
             renderMemorySlotFn,
+            (src, filename) => setLightbox({ src, filename }),
           )}
           renderAssistantMessage={makeRenderAssistantMessage({
             isAdmin,
@@ -817,9 +809,11 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
           showStreamingIndicator={isLoading}
           markdownComponents={membershipMarkdownComponents}
           scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, errorType]}
+          scrollDeps={[messages, isLoading, errorType, pendingEcho]}
         />
+        {pendingEcho && <PendingEchoBubble echo={pendingEcho} />}
       </div>
     </div>
+    </>
   );
 }

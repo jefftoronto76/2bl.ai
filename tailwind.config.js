@@ -47,10 +47,19 @@ export default {
       keyframes: {
         waveform: { '0%,100%': { transform: 'scaleY(0.35)' }, '50%': { transform: 'scaleY(1)' } },
         recpulse: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.25' } },
+        // Upload thumbnail shimmer (components/shells/membership/UploadThumbnail.tsx)
+        // — a background-position sweep over the persistent thumbnail/icon
+        // while an item is pending/processing. No percentage to report, so
+        // this stays indeterminate rather than a fake progress bar.
+        'upload-shimmer': {
+          '0%': { backgroundPosition: '-150% 0' },
+          '100%': { backgroundPosition: '150% 0' },
+        },
       },
       animation: {
         waveform: 'waveform 0.9s ease-in-out infinite',
         recpulse: 'recpulse 1.2s ease-in-out infinite',
+        'upload-shimmer': 'upload-shimmer 1.8s ease-in-out infinite',
       },
     },
   },
