@@ -14,7 +14,21 @@
 // specific actions are specified but not built this pass (they fire a
 // lightweight local toast) — see MemoryCard.tsx.
 
+import { Feather, Image as ImageIcon, Video, Mic, FileText } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { MemorySourceKind } from '@/services/chat/ui/v1/useMemories'
+
+/** Maps every MemoryKindSpec.icon string to its lucide component. Shared
+ *  across every kind-aware card (MemoryCard.tsx, the upload progress cards)
+ *  so there's exactly one icon-name -> component mapping to keep in sync
+ *  with the table below, not one copy per consumer. */
+export const KIND_ICONS: Record<string, LucideIcon> = {
+  feather: Feather,
+  image: ImageIcon,
+  video: Video,
+  mic: Mic,
+  'file-text': FileText,
+}
 
 export interface MemoryKindSpec {
   /** lucide-react icon name (kebab-case) — used in the running pill, card header, and saved receipt. */

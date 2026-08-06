@@ -32,20 +32,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, Feather, Image as ImageIcon, Video, Mic, FileText, ImagePlus, Pencil } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
-import { memoryKindOf } from './memoryKinds'
-
-const KIND_ICONS: Record<string, LucideIcon> = {
-  feather: Feather,
-  image: ImageIcon,
-  video: Video,
-  mic: Mic,
-  'file-text': FileText,
-}
+import { memoryKindOf, KIND_ICONS } from './memoryKinds'
 
 /** Aligns every card/pill/receipt with the assistant avatar rail (w-8) they sit below. */
 const RAIL = 'w-8 shrink-0'
