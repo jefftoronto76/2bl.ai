@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { XCircle } from 'lucide-react';
+import { XCircle, Feather } from 'lucide-react';
 import { useAuthUser } from '@/services/auth/client';
-import { Message, useChatStore, type ClientMediaItem } from './chatStore';
+import { Message, useChatStore, type ClientMediaItem, type PendingEcho } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
 import { ChatThread } from '@/components/chat/ChatThread';
@@ -15,6 +15,7 @@ import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
+import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
 import { UploadThumbnail } from './UploadThumbnail';
 import { ImageLightbox } from './ImageLightbox';
 import { useChatOverlayHost } from './v2/ChatOverlayHost';
@@ -149,6 +150,83 @@ function FailedUploadChip({ filename }: { filename: string }) {
         <XCircle size={12} className="flex-shrink-0" />
         <span className="font-mono text-[10.5px] truncate">{filename} — upload failed</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * PendingEcho's own rendering — a standalone visual echo of what the real
+ * message + UploadThumbnail will look like once it exists, deliberately NOT
+ * built by reusing UploadThumbnail.tsx (kept untouched, per this feature's
+ * scope). Same container classes/shimmer treatment as UploadThumbnail's own
+ * uploading state, so the swap from echo to real message (see MessageList's
+ * pendingEcho render block below) reads as one continuous thing, not two.
+ */
+function PendingEchoAttachment({
+  filename,
+  previewUrl,
+  type,
+}: {
+  filename: string;
+  previewUrl?: string;
+  type: 'audio' | 'image' | 'document';
+}) {
+  const kind = memoryKindOf(type === 'image' ? 'photo' : type);
+  const Icon = KIND_ICONS[kind.icon] ?? Feather;
+  const isImage = type === 'image';
+
+  return (
+    <div className="flex justify-end">
+      <div
+        className={
+          isImage
+            ? 'relative w-48 max-h-72 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
+            : 'relative flex max-w-[75%] items-center gap-2.5 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5'
+        }
+      >
+        {isImage ? (
+          previewUrl ? (
+            <img src={previewUrl} alt={filename} className="block h-36 w-48 object-cover" />
+          ) : (
+            <div className="h-36 w-48" />
+          )
+        ) : (
+          <>
+            <span className="flex-shrink-0 text-accent"><Icon size={16} aria-hidden /></span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-body text-text-primary leading-tight">
+              {filename}
+            </span>
+          </>
+        )}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 animate-upload-shimmer motion-reduce:animate-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(100deg, transparent 30%, rgb(var(--color-accent) / 0.28) 50%, transparent 70%)',
+            backgroundSize: '200% 100%',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The full echo — attachment thumbnails + the composer's text, if any,
+ *  positioned exactly where the real message will land once it exists. */
+function PendingEchoBubble({ echo }: { echo: PendingEcho }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {echo.attachments.map((a, i) => (
+        <PendingEchoAttachment key={i} filename={a.filename} previewUrl={a.previewUrl} type={a.type} />
+      ))}
+      {echo.text && (
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border border-border bg-surface px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary opacity-55">
+            {echo.text}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -547,6 +625,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     editMessage,
     resendMessage,
     bumpMemoryCount,
+    pendingEcho,
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
@@ -730,8 +809,9 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
           showStreamingIndicator={isLoading}
           markdownComponents={membershipMarkdownComponents}
           scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, errorType]}
+          scrollDeps={[messages, isLoading, errorType, pendingEcho]}
         />
+        {pendingEcho && <PendingEchoBubble echo={pendingEcho} />}
       </div>
     </div>
     </>
