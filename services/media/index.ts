@@ -85,6 +85,52 @@ export async function findDuplicateMediaItem(params: {
   return data[0] as MediaItem
 }
 
+export interface BackfillChatIdInput {
+  tenantId: string
+  memberId: string
+  chatId: string
+  mediaItemIds: string[]
+}
+
+/**
+ * Backfills chat_id on media_items rows uploaded before their session
+ * existed. The first message of a brand-new conversation uploads its
+ * attachments before /api/sessions ever creates a row (ChatInput.tsx's
+ * handleSend uploads before calling send()), so those rows are created with
+ * chat_id: null — and every client-side status mechanism (Realtime, the
+ * catch-up fetch, the poll) filters by chat_id, so a still-null row can never
+ * be found again once the session exists. Called from app/api/sessions/route.ts
+ * POST, in the same request that creates the session, right after its id is
+ * known.
+ *
+ * Scoped to tenant_id + member_id (never trusts the id list alone — a caller
+ * could otherwise backfill someone else's rows) and only touches rows still
+ * null (`chat_id IS NULL`), so it can never clobber an already-correct
+ * chat_id from a genuinely different call. Returns the ids actually updated;
+ * the caller diffs against the requested list to detect ids that didn't
+ * match (already set, wrong owner, or nonexistent) for its own audit
+ * logging — this function does no logging itself, matching updateMediaItem
+ * above.
+ */
+export async function backfillMediaChatId(
+  input: BackfillChatIdInput,
+): Promise<{ updatedIds: string[] }> {
+  if (input.mediaItemIds.length === 0) return { updatedIds: [] }
+
+  const supabase = getAdminClient()
+  const { data, error } = await supabase
+    .from('media_items')
+    .update({ chat_id: input.chatId, updated_at: new Date().toISOString() })
+    .in('id', input.mediaItemIds)
+    .eq('tenant_id', input.tenantId)
+    .eq('member_id', input.memberId)
+    .is('chat_id', null)
+    .select('id')
+
+  if (error) throw new Error(`Failed to backfill media chat_id: ${error.message}`)
+  return { updatedIds: (data ?? []).map((row) => (row as { id: string }).id) }
+}
+
 export async function updateMediaItem(id: string, input: UpdateMediaItemInput): Promise<void> {
   const supabase = getAdminClient()
   const { error } = await supabase
