@@ -155,6 +155,65 @@ incident.
   how `chat_id` itself gets set, only how the client tracks/resends status
   once a `chat_id` already exists.
 
+#### Optimistic-send echo (`pendingEcho`, `chatStore.tsx`, 2026-08-06, PR #293)
+
+Closes a separate gap from the delivery-tracking work above: with an
+attachment on the message, `ChatInput.tsx`'s `handleSend` doesn't call
+`sendMessage()` (and therefore `useChatTurn`'s `send()` doesn't add the real
+message to `messages`) until `Promise.all(pendingAttachments.map(upload))`
+resolves — the full upload round trip (client-side SHA-256 hash,
+`POST /api/media/upload-url`, `PUT` the file body to Storage). Until then
+there is no message for `UploadThumbnail` to mount inside at all, which read
+as a real gap between hitting Send and anything rendering (confirmed live,
+not a guess).
+
+`pendingEcho` (`ChatState`, exported type `PendingEcho`) is a purely visual,
+ephemeral placeholder for exactly that window — `{ text, attachments: {
+filename, previewUrl?, type }[] }`. It never has an id and never touches
+`mediaItems`; it is swapped for the real message, not reconciled with it. Set
+in `ChatInput.tsx`'s `handleSend`, in the attachment branch only (a text-only
+send already calls `sendMessage` with no `await` in front of it, so it
+already appeared instantly — no echo needed there), right before the upload
+round trip starts, using each attachment's already-live pick-time preview
+blob URL (`att.previewUrl`, from `addFiles` — no longer revoked immediately
+on Send; the revoke is deferred until the echo clears, since the echo needs
+it for its full lifetime). Cleared on the line immediately after
+`sendMessage(...)` is called — `useChatTurn.ts`'s `send()` adds the real
+message synchronously (`accessors.addMessage`) before its first `await`, so
+by the time control returns to `handleSend`'s next line the real message
+already exists; clearing the echo there means the swap happens in the same
+tick, with no visible gap or flash. Rendered by
+`components/shells/membership/MessageList.tsx`'s own
+`PendingEchoAttachment`/`PendingEchoBubble` — standalone components sharing
+`UploadThumbnail`'s container classes and shimmer treatment, not built by
+reusing `UploadThumbnail.tsx` itself (kept untouched by this change).
+
+`ChatState.hasStarted` is widened to `messages.length > 0 || pendingEcho !==
+null` (was `messages.length > 0` alone) so the very first message of a
+brand-new conversation — the exact case the `chat_id` backfill fix above
+exists for — still mounts `MessageList` (where the echo renders) instead of
+`ChatHero.tsx`'s empty-state greeting while the echo needs to be visible.
+
+**No interaction with the `chat_id` backfill fix above, by design — not
+assumed.** An architecture that made the *real* message/media-item entity
+appear optimistically (a client-side temp id, reconciled to the real id once
+the upload resolves) was considered and rejected specifically because it
+would have reintroduced the bug the backfill fix closed: `send()`'s
+synchronous `getMediaItems()` read (used to build `POST /api/sessions`'s
+`pendingMediaItemIds`) would then run before the real id existed, so the
+one-shot backfill call would have nothing real to backfill against.
+`pendingEcho` avoids this entirely by leaving the real upload → `addMediaItem`
+→ `sendMessage` timing completely untouched — same `Promise.all(uploads)`
+gate as before this change, so `getMediaItems()`, the backfill payload, and
+Sage's same-turn media context are all byte-identical to pre-`pendingEcho`
+behavior.
+
+Regression coverage: `components/shells/membership/optimistic-echo.test.tsx`
+— echo appears synchronously with the real local preview before the mocked
+upload resolves, is replaced by the real message with no duplicate once it
+settles, a text-only send never produces an echo, and the `chat_id` backfill
+payload is unchanged by the echo's presence.
+
 #### Stop / interrupted-turn protocol (2026-07-28)
 
 When the visitor hits Stop, whatever text had already streamed in — including

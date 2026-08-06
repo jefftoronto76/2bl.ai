@@ -329,6 +329,49 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `components/shells/membership/chatStore.newConversationMediaBackfill.test.tsx`
   (client-side, end to end).
 
+- **Upload-card flicker + Send-to-thumbnail latency — both root-caused and
+  fixed 2026-08-06, PR #293.** A design handoff (see the stale-doc note
+  below) proposed a rich card system for upload status (`UploadCard`,
+  selecting between `UploadRunningCard`/`UploadReadyCard`/`UploadErrorCard`
+  by `item.status`) to replace `MessageList.tsx`'s plain inline chips. It was
+  built, then live-tested and found to visibly flicker — cards disappearing
+  and reappearing instead of updating smoothly — rather than assumed fixed.
+  Root cause: the selector returned three structurally different component
+  types at the same JSX position, keyed off `item.status`; React's
+  reconciliation is type-based at each tree position, so a changed returned
+  type there unmounts the whole old subtree and mounts a new one from
+  scratch, regardless of a stable outer `key`. Rather than patch the card
+  system, it was replaced entirely with a simpler pattern built directly from
+  a live reference (Claude.ai's own mobile web chat) instead of the handoff:
+  `UploadThumbnail.tsx` keeps one persistent element (the `<img>`/icon) at
+  the same JSX position and type across every status, with shimmer/retry as
+  additive sibling children — see `System Docs/Public Site.md`'s
+  `UploadThumbnail` row for the full structural description, and
+  `components/shells/membership/upload-thumbnail-render.test.tsx`'s
+  no-remount test for the regression guard. Tapping a ready image opens the
+  new `ImageLightbox.tsx` (own row, same doc).
+
+  A second, separate gap surfaced in the same live-testing pass: a
+  noticeable delay between hitting Send with an attachment and anything
+  rendering at all, traced to `ChatInput.tsx`'s `handleSend` not calling
+  `sendMessage()` until the full upload round trip resolves — investigated
+  and fixed via `pendingEcho`, an optimistic, purely visual placeholder; see
+  `System Docs/Utilities/Chat UI.md`'s "Optimistic-send echo" section for
+  the full mechanics, including why a true optimistic entity (a client-side
+  temp id, reconciled later) was considered and rejected — it would have
+  reintroduced this same file's `chat_id`-backfill bug above.
+
+  **Stale design-handoff docs, not corrected in place (flagged here for
+  context, separate note going to CD):** both
+  `Design Handovers/design_handoff_upload_progress_2026/` and
+  `Design Handovers/design_handoff_upload_progress_2026_V2/` still describe
+  the now-deleted `UploadRunningCard`/`UploadReadyCard`/`UploadErrorCard` as
+  current/buildable; the former's `HANDOFF_UPLOAD_FLOW.md` also describes the
+  also-now-deleted `InlineImage`/`InlineFileChip` chips as the current
+  `MessageList.tsx` rendering. Neither directory is linked from `System
+  Docs/`, so nothing here pointed at them as current — but anyone opening
+  either doc next should know both predate this entry.
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
