@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type RefObject } from 'react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
   ChevronDown,
@@ -34,9 +34,16 @@ export interface ChatHeaderProps {
   /** When provided, renders a hamburger button (mobile-only via md:hidden)
    *  to the left of the title. Desktop passes undefined — no button rendered. */
   onMenuOpen?: () => void;
+  /** Ref to the hamburger button's DOM node, for callers that need a stable
+   *  focus-restoration target — e.g. a mobile modal opened from the sidebar
+   *  overlay (which unmounts itself), where the opener that triggered it
+   *  won't exist anymore by the time the modal closes. This button, unlike
+   *  the overlay's own controls, stays mounted for the life of the mobile
+   *  session. */
+  menuButtonRef?: RefObject<HTMLButtonElement | null>;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, menuButtonRef }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -113,6 +120,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
     <header className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
       {onMenuOpen && (
         <button
+          ref={menuButtonRef}
           type="button"
           aria-label="Open navigation"
           onClick={onMenuOpen}

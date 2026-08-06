@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AudioLines,
   FileText,
@@ -170,16 +170,32 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
 export function MediaGallery({ onClose }: MediaGalleryProps) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Distinct from "loaded, zero items" — a fetch rejection or non-OK response
+  // must not render as "No media yet," which would misrepresent an outage as
+  // an empty gallery.
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  useEffect(() => {
+  const loadItems = useCallback(() => {
+    setLoading(true);
+    setLoadFailed(false);
     fetch('/api/media')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
       .then((data: { items?: MediaItem[] }) => {
         setItems(Array.isArray(data.items) ? data.items : []);
       })
-      .catch((err) => console.error('[MediaGallery] fetch failed:', err))
+      .catch((err) => {
+        console.error('[MediaGallery] fetch failed:', err);
+        setLoadFailed(true);
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
 
   const handleRetry = (id: string) => {
     setItems((prev) =>
@@ -205,6 +221,21 @@ export function MediaGallery({ onClose }: MediaGalleryProps) {
         {loading ? (
           <div className="flex items-center justify-center h-32 text-text-muted">
             <Loader2 size={18} className="animate-spin" />
+          </div>
+        ) : loadFailed ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+            <XCircle size={28} className="text-red-400/70" />
+            <p className="font-body text-sm text-text-muted">
+              Couldn&apos;t load your media. Check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={loadItems}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 font-body text-[11.5px] transition-colors"
+            >
+              <RefreshCw size={12} />
+              Try again
+            </button>
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">

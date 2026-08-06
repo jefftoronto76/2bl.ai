@@ -137,6 +137,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   The v1 `Sidebar.tsx` is superseded and unmounted — delete after preview
   verification.
 
+  **Update (2026-08-05): the sidebar's "Media" nav item is no longer inert.**
+  `components/shells/membership/MediaGallery.tsx` — working retry (re-triggers
+  processing via #277's fix, not just a status reset), download, status
+  badges, expandable extracted content — was built but never wired to a nav
+  entry point. `ChatHero.tsx` now passes `onMedia` to `SidebarV2` (desktop
+  docked and mobile overlay both), opening `MediaGallery` as a full-bleed
+  overlay portaled into `ChatDrawerV2`'s relative body, the same pattern
+  `VoiceImmersive` uses. This is the simpler existing version, not the
+  story-grouped spec — see `Backlog/media-gallery-finish-to-spec.md` for the
+  deferred work (story grouping, chat-navigation links).
+
   **Per-row kebab actions — resolved for conversations 2026-08-03 (PR #247).**
   `ChatHero.tsx` now passes `onRowAction` to `SidebarV2` on both desktop and
   mobile, so kebab menus render for both conversation and story rows.

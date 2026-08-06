@@ -11,21 +11,23 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { useModalA11y } from './useModalA11y';
 
 function TestModal({
   open,
   onClose,
   useInitialFocus = false,
+  restoreFocusRef,
 }: {
   open: boolean;
   onClose: () => void;
   useInitialFocus?: boolean;
+  restoreFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLButtonElement>(null);
-  useModalA11y(open, dialogRef, onClose, useInitialFocus ? firstRef : undefined);
+  useModalA11y(open, dialogRef, onClose, useInitialFocus ? firstRef : undefined, restoreFocusRef);
   if (!open) return null;
   return (
     <div ref={dialogRef} tabIndex={-1} role="dialog" aria-label="Test dialog">
@@ -94,6 +96,52 @@ describe('useModalA11y', () => {
 
     fireEvent.keyDown(getByTestId('first'), { key: 'Escape' });
     await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  // Regression: a mobile nav button whose containing overlay unmounts the
+  // instant it's clicked (e.g. ChatHero's mobile "Media" button, which
+  // closes the sidebar sheet in the same state update that opens the modal).
+  // By the time this hook's effect runs, `document.activeElement` has
+  // already reverted to <body> — capturing it would restore focus nowhere.
+  // restoreFocusRef lets the caller name a persistent target instead.
+  function VanishingOpenerHarness() {
+    const [open, setOpen] = useState(false);
+    const [openerMounted, setOpenerMounted] = useState(true);
+    const persistentRef = useRef<HTMLButtonElement>(null);
+    return (
+      <div>
+        <button type="button" data-testid="persistent" ref={persistentRef}>
+          Persistent
+        </button>
+        {openerMounted && (
+          <button
+            type="button"
+            data-testid="vanishing-opener"
+            onClick={() => {
+              setOpen(true);
+              setOpenerMounted(false);
+            }}
+          >
+            Open (vanishes)
+          </button>
+        )}
+        <TestModal open={open} onClose={() => setOpen(false)} restoreFocusRef={persistentRef} />
+      </div>
+    );
+  }
+
+  it('restores focus to restoreFocusRef when the real opener unmounts before the modal closes', async () => {
+    const { getByTestId, queryByTestId } = render(<VanishingOpenerHarness />);
+    const opener = getByTestId('vanishing-opener');
+    opener.focus();
+    fireEvent.click(opener);
+
+    // The opener is gone — confirms this test actually exercises the race,
+    // not just a same-tick focus check.
+    await waitFor(() => expect(queryByTestId('vanishing-opener')).toBeNull());
+
+    fireEvent.keyDown(getByTestId('first'), { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(getByTestId('persistent')));
   });
 
   it('wraps Tab from the last focusable to the first', () => {

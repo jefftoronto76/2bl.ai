@@ -286,7 +286,7 @@ All 15 originally-specced columns exist and are correctly typed. Confirmed via d
 
 ### Still confirmed absent, matching the original spec's own build sequence
 
-Per the June build sequence, steps 4 (background function), 6 (guide prompt), and 7 (Media nav section) were never fully completed. Specifically: the Realtime alert mechanism (step 5\) was never implemented — current behavior is context-injection on the visitor's *next* message, not an inline event pushed the instant processing finishes. **Update (2026-08-05): the Media nav section isn't fully absent — `components/shells/membership/MediaGallery.tsx` exists, with working retry and download UI, but it is unmounted from navigation, so nothing in the app renders it today.** The guide prompt blocks are being written now, as a direct result of today's bug investigation.
+Per the June build sequence, steps 4 (background function), 6 (guide prompt), and 7 (Media nav section) were never fully completed. Specifically: the Realtime alert mechanism (step 5\) was never implemented — current behavior is context-injection on the visitor's *next* message, not an inline event pushed the instant processing finishes. **Update (2026-08-05): the Media nav section isn't fully absent — `components/shells/membership/MediaGallery.tsx` exists, with working retry and download UI, and (as of this PR) is now wired into `SidebarV2`'s "Media" nav item, reachable in the shipped app.** The guide prompt blocks are being written now, as a direct result of today's bug investigation.
 
 ---
 
@@ -315,7 +315,7 @@ Per the June build sequence, steps 4 (background function), 6 (guide prompt), an
 | **Collect real processing-time data** | No timing data exists for any of the three pipelines today. Precondition for the SLA/contract messaging — can't promise something unmeasured. | Medium — needed before the contract framework can ship honestly |
 | **Contract/SLA messaging design** | The 5-point framework (understandable, recallable, informative, contract-based, useful feedback against the contract) — real design work, zero implementation | Medium — depends on timing data above |
 | **Realtime push** | Original spec called for inline completion events the instant processing finishes. Never built. Current fallback: context-injection on the visitor's next message — works, but not instant. | Low — real gap, but the fallback is functional |
-| **Media nav section** | Gallery view, grouped by story, "source material shelf" framing from the original spec. **Update (2026-08-05): not "never built" — `MediaGallery.tsx` exists with working retry/download UI, but it's unmounted from navigation, so it's unreachable in the shipped app.** Story-grouping and the "source material shelf" framing are still absent. | Low — no functional dependency on anything above |
+| **Media nav section** | Gallery view, grouped by story, "source material shelf" framing from the original spec. **Update (2026-08-05): not "never built" — `MediaGallery.tsx` exists with working retry/download UI, and is now wired into `SidebarV2`'s "Media" nav item (this PR), reachable in the shipped app.** Story-grouping and the "source material shelf" framing are still absent — see `Backlog/media-gallery-finish-to-spec.md`. | Low — no functional dependency on anything above |
 | **Connect media to artifacts (`artifact_id`)** | Column exists, confirmed dead — nothing sets or reads it. Real design decision needed first, not just wiring: auto-link on upload near a `SAVE_MEMORY` trigger, member manually attaches, or deferred until the Media section exists and becomes the natural place this happens. | Medium — blocks memory cards from ever showing real photos, but needs a decision before it needs code |
 | **Retry UX** | June spec flagged this as an open question — does retry re-trigger the same job or require re-upload? Never decided. | Low — matters more once Bug 1's real failure rate is known |
 
@@ -331,6 +331,6 @@ Per the June build sequence, steps 4 (background function), 6 (guide prompt), an
 
 **Phase 3 — build the real experience (needs Phase 2's data, real design time):** 5\. Contract/SLA messaging — write the actual acknowledgement/completion language against real timing numbers, not guesses. 6\. Decide Realtime vs. staying with context-injection, now informed by how the contract messaging is meant to feel (an SLA implies some responsiveness expectation — worth revisiting once the UX is actually designed).
 
-**Phase 4 — the parts with no urgency (whenever):** 7\. Media nav section. 8\. Retry UX decision.
+**Phase 4 — the parts with no urgency (whenever):** 7\. Media nav section finish-to-spec work (story grouping, "source material shelf" framing — the nav connection itself shipped 2026-08-05; see `Backlog/media-gallery-finish-to-spec.md`). 8\. Retry UX decision.
 
 **What NOT to do:** don't build the contract/SLA messaging before Phase 2's timing data exists — that's the one sequencing rule worth holding firm on, since a wrong promise is worse than the current vague acknowledgement.  
