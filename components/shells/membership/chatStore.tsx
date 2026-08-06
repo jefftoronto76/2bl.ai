@@ -22,6 +22,21 @@ import { mergeMediaItem } from './mediaItemMerge';
 // row itself — it won't be present on raw Realtime postgres_changes payloads,
 // which is why mergeMediaItem (mediaItemMerge.ts) preserves a previously-fetched one.
 export type ClientMediaItem = MediaItem & { localPreviewUrl?: string; url?: string | null };
+
+// Purely visual, ephemeral placeholder for a message-with-attachments send
+// still in flight (ChatInput.tsx's handleSend awaits the real upload before
+// the real message exists — see MessageList.tsx's echo render block). Never
+// has an id, is never sent anywhere, and never touches mediaItems — it's
+// swapped for the real message the instant it mounts, not reconciled with it.
+export interface PendingEcho {
+  text: string;
+  attachments: Array<{
+    filename: string;
+    /** Local blob: URL from the composer's pick-time createObjectURL — undefined for audio/document (icon only). */
+    previewUrl?: string;
+    type: 'audio' | 'image' | 'document';
+  }>;
+}
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
 import { reviveUIMessages } from '@/services/chat/ui/v1';
 import {
@@ -155,6 +170,10 @@ interface ChatContextType {
    *  before the background job starts. Upserts by id. For images, pass
    *  localPreviewUrl (a blob: URL from URL.createObjectURL) for instant preview. */
   addMediaItem: (item: ClientMediaItem) => void;
+  /** Optimistic-send placeholder for a message-with-attachments in flight —
+   *  see PendingEcho's own doc comment. Null when nothing is in flight. */
+  pendingEcho: PendingEcho | null;
+  setPendingEcho: (echo: PendingEcho | null) => void;
 }
 
 // Shape returned by GET /api/sessions. `messages` is opaque jsonb over the wire;
@@ -890,6 +909,10 @@ export function ChatProvider({
     }
   }, [recentSessions, newChat]);
 
+  // Optimistic-send placeholder — see PendingEcho's doc comment above. Purely
+  // local UI state, not part of the media-items/message pipeline.
+  const [pendingEcho, setPendingEcho] = useState<PendingEcho | null>(null);
+
   // ── Media items — Realtime subscription + catch-up hydration ──────────────
   const [mediaItems, setMediaItems] = useState<ClientMediaItem[]>([]);
   // Backstop mirror for the other writers below (catch-up fetch, Realtime,
@@ -1043,7 +1066,11 @@ export function ChatProvider({
   // isMember derives directly from Clerk — no local state needed.
   const state: ChatState = {
     messages,
-    hasStarted: messages.length > 0,
+    // Also true while an attachment-send's optimistic echo is in flight (see
+    // PendingEcho) — otherwise the very first message of a brand-new
+    // conversation would render EmptyState instead of MessageList for the
+    // whole span the echo needs to be visible in (ChatHero.tsx's consumer).
+    hasStarted: messages.length > 0 || pendingEcho !== null,
     isSidebarExpanded: shellState.isSidebarExpanded,
     isLoading: isStreaming,
     isChatOpen: shellState.isChatOpen,
@@ -1053,7 +1080,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>
