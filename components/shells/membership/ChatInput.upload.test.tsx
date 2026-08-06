@@ -25,6 +25,7 @@ const mockAddMediaItem = vi.fn()
 const mockInjectAssistantMessage = vi.fn()
 const mockStop = vi.fn()
 const mockUpload = vi.fn()
+const mockSetPendingEcho = vi.fn()
 
 vi.mock('./chatStore', () => ({
   useChatStore: () => ({
@@ -32,6 +33,7 @@ vi.mock('./chatStore', () => ({
     injectAssistantMessage: mockInjectAssistantMessage,
     state: mockState,
     addMediaItem: mockAddMediaItem,
+    setPendingEcho: mockSetPendingEcho,
     stop: mockStop,
   }),
 }))
@@ -49,6 +51,7 @@ beforeEach(() => {
   mockInjectAssistantMessage.mockReset()
   mockStop.mockReset()
   mockUpload.mockReset()
+  mockSetPendingEcho.mockReset()
 
   global.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
   global.URL.revokeObjectURL = vi.fn()

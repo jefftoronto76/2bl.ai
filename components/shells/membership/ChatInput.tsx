@@ -52,6 +52,17 @@ function prettySize(bytes: number): string {
 }
 
 /**
+ * Same classification useMediaUpload.ts's own (unexported) classifyFile uses
+ * — duplicated rather than imported so the optimistic echo (client-only,
+ * pre-upload) never depends on useMediaUpload.ts, which stays untouched.
+ */
+function classifyAttachmentType(file: File): 'audio' | 'image' | 'document' {
+  if (file.type.startsWith('audio/')) return 'audio';
+  if (file.type.startsWith('image/')) return 'image';
+  return 'document';
+}
+
+/**
  * POSTs audio to /api/transcribe and returns the transcript.
  * Throws on non-ok responses so the caller can surface the error state.
  */
@@ -206,7 +217,7 @@ export function ChatInput() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { sendMessage, injectAssistantMessage, state, addMediaItem, stop } = useChatStore();
+  const { sendMessage, injectAssistantMessage, state, addMediaItem, setPendingEcho, stop } = useChatStore();
   const { isMember } = state;
 
   const overlayHost = useChatOverlayHost();
@@ -252,13 +263,34 @@ export function ChatInput() {
 
     // Clear UI immediately so the composer feels responsive while uploads happen.
     const pendingAttachments = [...attachments];
-    attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+    // Attachment preview blob URLs are kept alive (not revoked here) when
+    // there are pending attachments — the optimistic echo below needs them
+    // for the duration of the upload. Revoked once the echo clears, further
+    // down. A text-only send has nothing to revoke either way.
+    if (pendingAttachments.length === 0) {
+      attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+    }
     setValue('');
     setAttachments([]);
     setTranscribeState('idle');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     if (pendingAttachments.length > 0) {
+      // Optimistic echo: the message (with each attachment's already-live
+      // local preview) appears immediately, before any network call starts.
+      // Purely visual — never touches mediaItems, never has an id. Cleared
+      // the instant the real message exists (right after sendMessage below),
+      // which happens in the same tick since useChatTurn's send() adds the
+      // real message synchronously before its first await.
+      setPendingEcho({
+        text: trimmed,
+        attachments: pendingAttachments.map((a) => ({
+          filename: a.file.name,
+          previewUrl: a.previewUrl,
+          type: classifyAttachmentType(a.file),
+        })),
+      });
+
       // Upload each attachment and build a [MEDIA_UPLOAD: ...] acknowledgement
       // marker for each successful upload. Failures are logged; the text message
       // still sends so the turn is never silently dropped.
@@ -268,8 +300,10 @@ export function ChatInput() {
           const result = await upload(att.file);
           if (result) {
             markers.push(`[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`);
-            // Fresh object URL for image preview — att.previewUrl was already
-            // revoked above, but the File is still in memory so we can re-create.
+            // A fresh object URL, independent of att.previewUrl (which the
+            // optimistic echo above is still using, and which handleSend
+            // revokes once the echo clears, below) — this one is what the
+            // real UploadThumbnail uses via ClientMediaItem.localPreviewUrl.
             const localPreviewUrl = att.file.type.startsWith('image/')
               ? URL.createObjectURL(att.file)
               : undefined;
@@ -307,6 +341,12 @@ export function ChatInput() {
 
       const parts = [...markers, trimmed].filter(Boolean);
       void sendMessage(parts.join('\n'));
+      // send() adds the real user message synchronously before its first
+      // await (useChatTurn.ts), so by this line it already exists — clear
+      // the echo (and revoke its deferred preview URLs) in the same tick to
+      // avoid any visible gap or flash between the two.
+      setPendingEcho(null);
+      pendingAttachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     } else {
       void sendMessage(trimmed);
     }
