@@ -87,10 +87,14 @@ export async function DELETE(req: Request, context: RouteContext) {
 
   const supabase = getAdminClient()
 
-  // Verify the row exists, belongs to this tenant, and has no linked user.
+  // Verify the row exists, belongs to this tenant, and has no linked Clerk
+  // account. Gate on clerk_id rather than user_id: user_id can be null on a
+  // row that DOES have a real signed-up Clerk account (see Known Gaps.md) —
+  // clerk_id is the reliable "has this person signed up" signal, since every
+  // members.user_id write path sets it correctly.
   const { data: memberRow, error: fetchErr } = await supabase
     .from('members')
-    .select('id, tenant_id, status, user_id')
+    .select('id, tenant_id, status, clerk_id')
     .eq('id', memberId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
@@ -100,7 +104,7 @@ export async function DELETE(req: Request, context: RouteContext) {
     return Response.json({ error: 'Member not found' }, { status: 404 })
   }
 
-  if ((memberRow as { user_id: string | null }).user_id !== null) {
+  if ((memberRow as { clerk_id: string | null }).clerk_id !== null) {
     return Response.json(
       { error: 'Use the user delete endpoint for members who have signed up' },
       { status: 400 },
