@@ -1,57 +1,20 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
+import { sanitizeFailureReason } from '@/services/media/errorCopy'
 import type { ChatMessage } from './types'
 import type { MediaAttachmentInput } from './types'
+
+// Re-exported so existing importers (and this file's own test) keep working
+// unchanged — the implementation moved to services/media/errorCopy.ts so a
+// client component (the upload progress cards) can use the same
+// classification without pulling in this module's getAdminClient import.
+export { sanitizeFailureReason }
 
 // Captures the filename out of `[MEDIA_UPLOAD: filename | mediaItemId | type]`
 // (group 1) so stripMediaMarkers can build a fallback from it without a
 // separate lookup.
 const MEDIA_UPLOAD_PATTERN = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|[^\]]*\]/g
-
-/**
- * Maps a raw, internal error_message to a fixed, pre-written safe phrase —
- * never the raw string itself. This is a category classifier, not string
- * scrubbing: regex-stripping "known bad patterns" (storage paths, vendor
- * names) out of an open-ended string is inherently incomplete, since any
- * error shape not anticipated here would leak straight through. Mapping to
- * a bounded set of known-safe phrases guarantees no vendor name or internal
- * path ever reaches the prompt regardless of what the underlying error
- * actually says — the fallback category alone is the backstop.
- */
-export function sanitizeFailureReason(raw: string | null): string {
-  const message = raw ?? ''
-
-  if (message.includes('Storage object not available after')) {
-    return "the file didn't finish uploading before we tried to process it"
-  }
-  if (message.includes('Deepgram API error')) {
-    return "the audio transcription service couldn't process this file"
-  }
-  if (
-    message.includes('Anthropic vision error') ||
-    message.includes('No text block returned from Anthropic vision')
-  ) {
-    return "the image couldn't be analyzed"
-  }
-  if (message.includes('Anthropic file upload error')) {
-    return "the file couldn't be uploaded for processing"
-  }
-  if (
-    message.includes('DEEPGRAM_API_KEY is not configured') ||
-    message.includes('ANTHROPIC_API_KEY is not configured')
-  ) {
-    return "a processing service isn't available right now"
-  }
-  if (
-    message.includes('Failed to create signed download URL') ||
-    message.includes('Failed to create long-lived signed URL') ||
-    message.includes('Failed to download file')
-  ) {
-    return "the file couldn't be retrieved for processing"
-  }
-  return 'something went wrong while processing this file'
-}
 
 /**
  * Fetches status/derived_content/error_message for every attached media item
