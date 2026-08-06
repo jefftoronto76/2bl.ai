@@ -102,6 +102,31 @@ session's genuine first assistant turn, not repeatedly.
   `components/shells/membership/MessageList.tsx`. Stripped from prose in every
   other context (widget shell, admin transcript) via `createDefaultRegistry()`.
 
+### `[SAVE_MEMORY]` — dispatch `client`
+
+- Bare marker, no field (confirmed against the live Heirloom compiled
+  prompt — not `[SAVE_MEMORY: reason]` like `ACCOUNT_CREATE`). A guide-emitted
+  signal ("enough has surfaced, write this one up") that `MessageList.tsx`
+  watches for on a finished assistant reply and dispatches to the exact same
+  `memories.create()` the manual bookmark button calls — a second trigger for
+  that one action, not a separate save path. Parsed by `SAVE_MEMORY_MARKER`
+  (`services/chat/ui/v1/registry.ts`) and stripped from prose in every
+  context via `createDefaultRegistry()`. See `System Docs/Public Site.md`'s
+  memory bookmark row and `Utilities/Chat UI.md`'s `useMemories.ts` row for
+  the create/error/retry mechanics this feeds into.
+
+### `[MEMORY_TITLE: short title]` — dispatch `server`
+
+- Optional title override for a memory bookmark, resolved server-side at
+  create time — `services/crm/memories.ts`'s `createMemoryFromAnchor` reads
+  it directly off the anchor message's own stored content (the same pattern
+  `NAME`/`EMAIL`/`PHONE` use for server-side resolution rather than a client
+  dispatch). Parsed by `MEMORY_TITLE_MARKER` (`services/chat/ui/v1/registry.ts`)
+  and stripped from displayed prose everywhere, like every other marker, even
+  though nothing client-side ever reads it directly. When absent,
+  `deriveFallbackMemoryTitle()` derives one from the passage itself (60-char
+  cap, breaks at the last full word).
+
 ### `[CONTACT: phone]` — **retired**
 
 - The `[CONTACT:]` marker, its `'CONTACT'` `MarkerType` member, and the entire
