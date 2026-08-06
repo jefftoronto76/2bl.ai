@@ -168,12 +168,35 @@ describe('SAVE_MEMORY marker', () => {
     expect(postMemoryCalls.length).toBe(0);
   });
 
-  it('does not fire while a different anchor already has an open draft — matches the manual bookmark\'s own keepDisabled (hasOpenDraft) guard', async () => {
+  it('still fires when a *different* anchor has an open draft — hasOpenDraft is scoped per-anchor, not session-wide (cross-anchor bleed fix)', async () => {
     session = sessionWith('That sounds like a wonderful memory. [SAVE_MEMORY]');
-    // A draft open on a different anchor than m2 — getByAnchor('m2') is still
-    // undefined, so only the hasOpenDraft guard (not the getByAnchor guard)
-    // can be what stops this from firing.
+    // A draft open on a different anchor than m2. Pre-fix, useMemories.ts's
+    // hasOpenDraft was a single whole-session boolean, so this stale draft on
+    // 'earlier-msg' would have silenced every bookmark/marker in the
+    // transcript, including m2's. Post-fix, hasOpenDraft(anchorId) is scoped
+    // to that anchor alone — m2 has no open draft of its own, so the marker
+    // must still fire.
     existingMemories = [{ ...DRAFT_MEMORY, id: 'mem-other', anchor_message_id: 'earlier-msg' }];
+
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByText(/That sounds like a wonderful memory\./).length).toBeGreaterThan(0));
+    await waitFor(() => expect(postMemoryCalls.length).toBeGreaterThan(0));
+
+    expect(postMemoryCalls[0]).toEqual({
+      anchor_message_id: 'm2',
+      source_kind: 'conversation',
+    });
+  });
+
+  it('does not fire while its own anchor already has an open draft — the same-anchor suppression that remains after the cross-anchor bleed fix', async () => {
+    session = sessionWith('That sounds like a wonderful memory. [SAVE_MEMORY]');
+    // The open draft is on m2 itself — hasOpenDraft('m2') must still be true.
+    existingMemories = [{ ...DRAFT_MEMORY, id: 'mem-existing', anchor_message_id: 'm2', status: 'draft' }];
 
     render(
       <ChatProvider>

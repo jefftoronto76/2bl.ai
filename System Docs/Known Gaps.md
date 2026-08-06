@@ -374,6 +374,24 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   not require a story to be saved (there is no `stories` table), and when
   story-linking is eventually built it should be many-to-many (a memory
   connecting to more than one thing), not a single column on `artifacts`.
+  - **Anonymous visitors get a dead-end "account required" failure on
+    bookmark — no path forward to actually create one.** Fixed in PR #288
+    (2026-08-06): `createDraftMemory` now cleanly rejects an anonymous or
+    not-yet-linked member's save attempt (401, `ACCOUNT_REQUIRED_ERROR`,
+    `services/crm/memories.ts`) instead of erroring on the `artifacts.user_id`
+    `NOT NULL` constraint, and the bookmark shows accurate `account_required`
+    copy with a working "Try again" (`services/chat/ui/v1/useMemories.ts`,
+    `components/shells/membership/memory/MemoryCard.tsx`). But "Try again"
+    just re-attempts the same call, which will keep failing the same way for
+    an anonymous visitor — there is still no account-creation flow wired to
+    that moment. The instant someone tries to save something is the
+    highest-intent point to convert them into a signed-up member, and today
+    that moment is still a dead end, just a legible one. A real fix would
+    surface a sign-up/account-creation prompt directly from the bookmark's
+    error state (e.g. reusing the existing `MagicLinkCard` auth flow already
+    used elsewhere in Heirloom) rather than leaving the visitor stuck.
+    Flagged as a real, wanted improvement — explicitly out of scope for PR
+    #288, which only made the failure clean and legible, not actionable.
 - **`members.user_id` left null on some active, Clerk-linked members —
   root-caused and fixed in code 2026-08-06; historical rows need a Studio
   backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,

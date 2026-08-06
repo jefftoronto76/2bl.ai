@@ -13,4 +13,7 @@ export const ERROR_COPY: Record<ChatErrorType, string> = {
   auth_error: 'Your session has expired. Refresh the page to continue.',
   unknown: "Something went sideways on our end. It's not you — try again in a moment.",
   user_stopped: 'You stopped the response.',
+  account_required: "You'll need an account to save this — sign up to keep it.",
+  server_error: "We couldn't save that just now. Try again in a moment.",
+  invalid_response: "That didn't save correctly. Try again.",
 }

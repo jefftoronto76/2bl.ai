@@ -24,6 +24,16 @@ import type { ChatMessage, ChatMode, ChatRole, MediaAttachmentInput } from '@/se
  * banner + persistence treatment as the other 5, regardless of whether any
  * content had streamed back yet when Stop was clicked (see
  * `finishAbortedTurn` in useChatTurn.ts).
+ *
+ * The last three members (`account_required`, `server_error`,
+ * `invalid_response`) are produced only by the memory-bookmark create path
+ * (services/chat/ui/v1/useMemories.ts) — useChatTurn.ts's own classifier
+ * never throws them. They exist because the original 6 don't map cleanly
+ * onto a memory-create failure: no member here fit a 5xx write failure, a
+ * malformed-response contract mismatch, or (once artifacts.user_id became
+ * required) an anonymous/unlinked member being rejected from saving. Neither
+ * of these three is ever persisted to chat_sessions.last_error_type — that
+ * column only ever receives what useChatTurn.ts's classifier produces.
  */
 export type ChatErrorType =
   | 'network'
@@ -32,6 +42,9 @@ export type ChatErrorType =
   | 'auth_error'
   | 'unknown'
   | 'user_stopped'
+  | 'account_required'
+  | 'server_error'
+  | 'invalid_response'
 
 // ── Canonical UI message ────────────────────────────────────────────────────
 

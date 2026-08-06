@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth'
 import { listMemories, deleteMemoriesForAnchors, createMemoryFromAnchor, type MemorySourceKind } from '@/services/crm/memories'
 import { resolveMemberId } from '@/services/crm/feedback'
+import { logEvent } from '@/services/audit'
+import { AuditAction } from '@/services/audit/types'
 
 const VALID_SOURCE_KINDS: readonly MemorySourceKind[] = ['conversation', 'photo', 'video', 'audio', 'document']
 
@@ -46,11 +48,24 @@ export async function POST(
   const tenantId = await getTenantFromRequest(req)
   if (!tenantId) {
     console.error('[sessions/[id]/memories] tenant resolution failed for host:', req.headers.get('host'))
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'tenant_resolution_failed', host: req.headers.get('host') },
+    })
     return NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 })
   }
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== 'object') {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'invalid_request_body' },
+    })
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
@@ -61,9 +76,23 @@ export async function POST(
   }
 
   if (typeof anchor_message_id !== 'string' || !anchor_message_id) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'missing_anchor_message_id' },
+    })
     return NextResponse.json({ error: 'anchor_message_id is required' }, { status: 400 })
   }
   if (typeof source_kind !== 'string' || !VALID_SOURCE_KINDS.includes(source_kind as MemorySourceKind)) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'invalid_source_kind', source_kind },
+    })
     return NextResponse.json({ error: `source_kind must be one of: ${VALID_SOURCE_KINDS.join(', ')}` }, { status: 400 })
   }
 

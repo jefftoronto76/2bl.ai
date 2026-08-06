@@ -119,6 +119,45 @@ export interface CreateDraftMemoryInput {
   body: string
 }
 
+/** Distinct error string for the "no linked account" rejection below — lets
+ *  callers (createMemoryFromAnchor's audit logging, the route's HTTP status,
+ *  and eventually the client's ChatErrorType classification) tell this case
+ *  apart from a generic infra failure without a second field. */
+export const ACCOUNT_REQUIRED_ERROR = 'An account is required to save memories.'
+
+type ResolveUserIdResult =
+  | { ok: true; userId: string | null }
+  | { ok: false; error: string }
+
+/**
+ * Resolves the Supabase users.id a memory write should be attributed to,
+ * from an already-resolved members.id. Not a duplicate of
+ * services/crm/feedback.ts's resolveMemberId — that resolves the opposite
+ * direction (Clerk session -> users.id -> members.id) and its client-
+ * supplied-id fallback never touches user_id at all, so it can't answer this
+ * question. `userId: null` on an `ok: true` result covers both a fully
+ * anonymous visitor (no memberId) and a member row that exists but isn't
+ * linked to an account yet (an invited-but-not-signed-up member,
+ * members.user_id IS NULL) — both are the same "no account" case from this
+ * table's point of view. `ok: false` is reserved for a genuine lookup
+ * failure (DB error), kept distinct so it isn't mistaken for "no account".
+ */
+async function resolveUserIdForMember(tenantId: string, memberId: string | null): Promise<ResolveUserIdResult> {
+  if (!memberId) return { ok: true, userId: null }
+  const supabase = getAdminClient()
+  const { data, error } = await supabase
+    .from('members')
+    .select('user_id')
+    .eq('id', memberId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) {
+    console.error('[memories] resolveUserIdForMember lookup error:', JSON.stringify(error))
+    return { ok: false, error: error.message }
+  }
+  return { ok: true, userId: (data?.user_id as string | undefined) ?? null }
+}
+
 /**
  * Inserts the artifacts row for a successful archivist call. Only ever
  * called on success (see the module doc) — there is deliberately no
@@ -128,12 +167,30 @@ export async function createDraftMemory(
   tenantId: string,
   input: CreateDraftMemoryInput,
 ): Promise<MemoryResult<MemoryRow>> {
+  const userIdResult = await resolveUserIdForMember(tenantId, input.memberId)
+  if (!userIdResult.ok) {
+    // A genuine DB error resolving user_id — an infra failure, not the
+    // "no account" case, so it keeps the generic 500 shape.
+    return { ok: false, status: 500, error: userIdResult.error }
+  }
+  if (!userIdResult.userId) {
+    // Anonymous visitor (no memberId) or a member not yet linked to an
+    // account (memberId resolved but members.user_id is null) — artifacts.user_id
+    // is NOT NULL, so there is no row to attempt here. 401, not 403: no
+    // identity was presented at all (403 would imply an identified-but-
+    // forbidden actor, which doesn't apply here), and not 500 so this
+    // doesn't read as an infra failure downstream.
+    return { ok: false, status: 401, error: ACCOUNT_REQUIRED_ERROR }
+  }
+  const userId = userIdResult.userId
+
   const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('artifacts')
     .insert({
       tenant_id: tenantId,
+      user_id: userId,
       session_id: input.sessionId,
       anchor_message_id: input.anchorMessageId,
       member_id: input.memberId,
@@ -191,10 +248,12 @@ export interface CreateMemoryFromAnchorInput {
  * message if the guide emitted one, else deriveFallbackMemoryTitle().
  *
  * Returns the plain shared MemoryResult, same as every other function in
- * this file — with no model call anywhere in the memory system, there is
- * exactly one failure shape left (a Supabase write erroring), so there is no
- * classification to carry on the result the way an archivist-call result
- * once needed to.
+ * this file — with no model call anywhere in the memory system, there is no
+ * archivist-call classification to carry on the result the way one once
+ * needed to. Every failure branch below (including createDraftMemory's own)
+ * logs to audit_events via AuditAction.MEMORY_CREATED, outcome: 'failure',
+ * with a distinct metadata.error_detail per branch — see the Memories entry
+ * in System Docs/Known Gaps.md.
  */
 export async function createMemoryFromAnchor(
   tenantId: string,
@@ -203,24 +262,58 @@ export async function createMemoryFromAnchor(
   const { sessionId, anchorMessageId, memberId, sourceKind } = input
 
   const sessionResult = await getSessionMessages(tenantId, sessionId)
-  if (!sessionResult.ok) return { ok: false, status: sessionResult.status, error: sessionResult.error }
+  if (!sessionResult.ok) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'session_lookup_failed', session_error: sessionResult.error },
+    })
+    return { ok: false, status: sessionResult.status, error: sessionResult.error }
+  }
 
   const rawMessages = Array.isArray(sessionResult.data.messages) ? sessionResult.data.messages : []
   const anchorIdx = (rawMessages as unknown[]).findIndex(
     m => (m as { id?: unknown } | null)?.id === anchorMessageId,
   )
   if (anchorIdx === -1) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'anchor_not_found' },
+    })
     return { ok: false, status: 400, error: 'anchor_message_id does not match a message in this session' }
   }
 
   const anchorContent = (rawMessages[anchorIdx] as { content?: unknown }).content
   if (typeof anchorContent !== 'string') {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'anchor_content_not_string' },
+    })
     return { ok: false, status: 400, error: 'anchor message has no text content' }
   }
 
   const { prose, markers } = createDefaultRegistry().parse(anchorContent)
   const body = prose.trim()
   if (!body) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'empty_body_after_marker_strip' },
+    })
     return { ok: false, status: 400, error: 'anchor message has no content to save once markers are stripped' }
   }
 
