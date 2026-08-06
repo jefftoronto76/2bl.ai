@@ -80,6 +80,21 @@ const sageRequestBodies: Array<{
 // Retry or a successful brand-new message.
 let sageShouldFail = false;
 
+// When set, the next /api/sage POST's response is held open until the test
+// calls the resolver — simulating the assistant's reply still streaming so a
+// test can mutate media-item status "mid-turn" (e.g. the polling fallback
+// catching a pending -> ready transition) before the request resolves. The
+// request body is still captured synchronously the moment fetch() is called
+// (see below), same as the un-gated path — only the RESPONSE is delayed.
+let sageResponseGate: Promise<void> | null = null;
+let releaseSageResponse: (() => void) | null = null;
+function armSageResponseGate(): void {
+  releaseSageResponse = null;
+  sageResponseGate = new Promise<void>((resolve) => {
+    releaseSageResponse = resolve;
+  });
+}
+
 // Overridable per test — the recentSessions list GET /api/sessions returns on
 // mount. Defaults to empty so the cross-device auto-recovery effect (which
 // would otherwise auto-hydrate into whichever session it returns) is a no-op
@@ -103,6 +118,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   if (url === '/api/sage' && method === 'POST') {
     sageRequestBodies.push(JSON.parse(init!.body as string));
     if (sageShouldFail) throw new TypeError('network error');
+    if (sageResponseGate) await sageResponseGate;
     return streamResponse('ok');
   }
   return jsonResponse({ ok: true });
@@ -118,6 +134,8 @@ beforeEach(async () => {
   await __resetPersistenceForTests('heirloom');
   sageRequestBodies.length = 0;
   sageShouldFail = false;
+  sageResponseGate = null;
+  releaseSageResponse = null;
   recentSessionsResponse = [];
   fetchMock.mockClear();
   __clearSingletonRegistry();
@@ -159,7 +177,7 @@ function mkItem(overrides: {
 }
 
 function TestConsumer() {
-  const { sendMessage, addMediaItem, retry, newChat, loadSession } = useChatStore();
+  const { sendMessage, addMediaItem, retry, newChat, loadSession, state } = useChatStore();
 
   const sendFirst = () => {
     void sendMessage('first message, no attachment');
@@ -178,6 +196,10 @@ function TestConsumer() {
 
   return (
     <div>
+      {/* Exposes turn-in-flight state so a test can deterministically wait
+          for a gated (held-open) /api/sage response to actually finish
+          before driving the next turn. */}
+      <div data-testid="loading">{String(state.isLoading)}</div>
       <button onClick={sendFirst}>send first</button>
       <button onClick={attachThenSend}>attach then send</button>
       <button onClick={() => addMediaItem(mkItem({ id: 'media-1', status: 'pending' }))}>
@@ -634,5 +656,87 @@ describe('media items reset on conversation switch', () => {
     // media-1 is still pending (never resolved) and this was a same-session
     // hydrate — it must still be resent, not wiped.
     expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+  });
+});
+
+// Regression coverage for the delivery-marking race: markMediaItemsDelivered
+// used to record a LIVE read of mediaItemsRef.current, taken after the
+// assistant's reply finished streaming — often several seconds after the
+// server actually built the request and froze the item's status into that
+// turn's system prompt (resolveMediaContext runs at request-BUILD time, well
+// before any streaming happens). If an item flips pending -> ready in the gap
+// between those two moments — plausible for any turn whose reply takes a
+// few seconds, and more likely with multiple attachments in flight — the old
+// code would mark the item "delivered as ready" even though the actual reply
+// the member received was generated from the OLDER, still-processing
+// snapshot. The item was then permanently excluded from every later turn,
+// so the guide never got a chance to actually confirm it. Fixed by having
+// getMediaItems() snapshot each due item's status at read-time
+// (dueStatusSnapshotRef) and having markMediaItemsDelivered() key off THAT,
+// not a fresh re-read.
+describe('delivery marking uses the status at request-build time, not a live re-read after the stream resolves', () => {
+  it('an item that flips pending -> ready WHILE the reply is still streaming is not wrongly marked delivered — it resurfaces on the next turn', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // Turn 1: attach media-1 (still pending) and send, but hold the /api/sage
+    // response open — simulating the assistant's reply still streaming.
+    armSageResponseGate();
+    await act(async () => {
+      fireEvent.click(screen.getByText('attach pending A'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    // The request was built while media-1 was still pending.
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // While that reply is STILL streaming (response held open), the polling
+    // fallback (or a Realtime event) catches media-1 finishing processing.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+    });
+
+    // Now let the held response resolve, completing the turn.
+    await act(async () => {
+      releaseSageResponse!();
+      await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    });
+
+    // Turn 2: a plain follow-up. Despite media-1 now showing 'ready' in
+    // mediaItemsRef, the guide's turn-1 reply never actually reflected that —
+    // it was generated from the still-pending snapshot — so media-1 must
+    // resurface here, not be silently excluded.
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+  });
+
+  it('an item already ready BEFORE the request is built is still marked delivered correctly (no regression from the snapshot change)', async () => {
+    render(
+      <ChatProvider>
+        <TestConsumer />
+      </ChatProvider>,
+    );
+
+    // media-1 is ready well before send() ever runs — the ordinary, common case.
+    await act(async () => {
+      fireEvent.click(screen.getByText('resolve A to ready'));
+      fireEvent.click(screen.getByText('send first'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(1));
+    });
+    expect(sageRequestBodies[0].media_items?.map((m) => m.mediaItemId)).toEqual(['media-1']);
+
+    // Turn 2: no status change since — media-1 was genuinely delivered ready,
+    // so it's excluded now (matches the #270 resend-scoping behavior).
+    await act(async () => {
+      fireEvent.click(screen.getByText('send follow-up'));
+      await waitFor(() => expect(sageRequestBodies.length).toBe(2));
+    });
+    expect(sageRequestBodies[1].media_items).toBeNull();
   });
 });

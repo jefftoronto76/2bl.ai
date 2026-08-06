@@ -299,6 +299,22 @@ export function ChatProvider({
         // retry flipped failed -> ready) -> due again, fresh.
         return deliveredAtStatus === undefined || deliveredAtStatus !== m.status;
       });
+      // Snapshot each due item's status RIGHT NOW, at the exact moment it's
+      // included in an outgoing request — markMediaItemsDelivered reads this
+      // snapshot, not a live re-read of mediaItemsRef.current, below. The
+      // server freezes an item's status into that turn's system prompt at
+      // request-BUILD time (resolveMediaContext, services/chat/server/index.ts),
+      // before any streaming happens. The assistant's reply can then take
+      // several seconds to finish streaming, and this same item can flip
+      // pending -> ready in that window (e.g. the polling fallback below
+      // catches it mid-stream). A live read at delivery time would then mark
+      // the item "delivered as ready" even though the reply the member
+      // actually received was generated from the OLDER, still-processing
+      // snapshot — permanently excluding it from ever resurfacing, even
+      // though the guide never actually confirmed it.
+      for (const m of due) {
+        dueStatusSnapshotRef.current.set(m.id, m.status);
+      }
       return due.map(m => ({
         mediaItemId: m.id,
         type: m.type,
@@ -308,15 +324,17 @@ export function ChatProvider({
     // Called by the engine with exactly the mediaItemIds that were included
     // in a request, once (and only once) that request has genuinely
     // succeeded — never on abort or a classified failure (see
-    // ChatEngineAccessors.markMediaItemsDelivered). Only ids that are
-    // currently terminal are recorded, keyed to the status they have RIGHT
-    // NOW — an id included while still pending/processing is left off, so
-    // it keeps being resent on later turns until it actually resolves.
+    // ChatEngineAccessors.markMediaItemsDelivered). Keyed to the status each
+    // id had AT THE MOMENT getMediaItems() built this request (see
+    // dueStatusSnapshotRef above), not whatever mediaItemsRef.current shows
+    // by now — an id snapshotted while still pending/processing is left off,
+    // so it keeps being resent on later turns until it actually resolves.
     markMediaItemsDelivered: (mediaItemIds: string[]): void => {
-      const ids = new Set(mediaItemIds);
-      for (const m of mediaItemsRef.current) {
-        if (ids.has(m.id) && (m.status === 'ready' || m.status === 'failed')) {
-          deliveredTerminalIdsRef.current.set(m.id, m.status);
+      for (const id of mediaItemIds) {
+        const statusAtRequestTime = dueStatusSnapshotRef.current.get(id);
+        dueStatusSnapshotRef.current.delete(id);
+        if (statusAtRequestTime === 'ready' || statusAtRequestTime === 'failed') {
+          deliveredTerminalIdsRef.current.set(id, statusAtRequestTime);
         }
       }
     },
@@ -398,6 +416,12 @@ export function ChatProvider({
   // status change (e.g. a retry flipping failed -> ready) is detected and the
   // item resurfaces, rather than staying excluded forever. See getMediaItems below.
   const deliveredTerminalIdsRef = useRef<Map<string, MediaItemStatus>>(new Map());
+  // Snapshot of each due item's status at the exact moment getMediaItems()
+  // last included it in an outgoing request, keyed by id — consumed (read
+  // and deleted) by markMediaItemsDelivered once that request's turn
+  // resolves. See getMediaItems/markMediaItemsDelivered above for why this
+  // can't be a live re-read of mediaItemsRef.current at delivery time.
+  const dueStatusSnapshotRef = useRef<Map<string, MediaItemStatus>>(new Map());
 
   // Tracks the sessionId this component last observed, so the recentSessions-
   // immediate-add effect below fires only on a genuine transition — not on
@@ -430,6 +454,7 @@ export function ChatProvider({
       if (input.sessionId !== prevSessionIdRef.current) {
         mediaItemsRef.current = [];
         deliveredTerminalIdsRef.current = new Map();
+        dueStatusSnapshotRef.current = new Map();
         setMediaItems([]);
       }
       prevSessionIdRef.current = input.sessionId;
@@ -684,6 +709,7 @@ export function ChatProvider({
     // into whatever conversation comes next.
     mediaItemsRef.current = [];
     deliveredTerminalIdsRef.current = new Map();
+    dueStatusSnapshotRef.current = new Map();
     setMediaItems([]);
     reset();
   }, [reset]);
