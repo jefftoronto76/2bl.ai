@@ -101,6 +101,24 @@ incident.
   exact moment it's read, and having `markMediaItemsDelivered()` key off
   *that* snapshot (consuming/deleting the entry) instead of a fresh re-read.
   Reset alongside the other two refs in `hydrateConversation()`/`newChat()`.
+- **`dueStatusSnapshotRef` is not cleaned up when a turn errors or aborts —
+  accepted gap, confirmed in PR #286's pre-merge review (2026-08-06), see
+  `System Docs/Known Gaps.md` for the full accepted-risk reasoning.**
+  `markMediaItemsDelivered()` is the only thing that ever deletes a consumed
+  snapshot entry, and it's called from exactly four places in
+  `useChatTurn.ts` (`send()`, `retry()`, `regenerate()`,
+  `truncateAndRedeliver()`), always *after* the `try/catch` around
+  `streamTurn(...)` — both the abort and classified-failure catch branches
+  `return` before reaching it. So a turn that fails outright or gets aborted
+  leaves that turn's due ids' entries sitting in the `Map` unconsumed.
+  Mechanically this is harmless: `getMediaItems()` unconditionally
+  overwrites the snapshot for every due id on every call, so a stale entry
+  from a failed turn is always refreshed before anything reads it — the one
+  exception, `retry()`'s deliberate reuse of the original attempt's
+  snapshot, is safe by construction since `resolveMediaContext` re-validates
+  against live DB status server-side regardless. Left as a bounded memory
+  leak (bounded by the conversation-switch reset just above) rather than
+  fixed.
 - **The pending-item poll effect (below "Media items — Realtime
   subscription + catch-up hydration") was silently dying after one empty
   check — fixed 2026-08-06.** It used to reschedule itself only via its
@@ -119,6 +137,25 @@ incident.
   round's fetch found anything new. Still stops for real once nothing is
   pending/processing; still restarts on a genuinely new attachment via the
   unchanged `mediaItems` dependency.
+- **Why this poll effect can never run two overlapping chains at once —
+  confirmed in PR #286's pre-merge review (2026-08-06), no bug found.**
+  `poll()` and the effect's cleanup function close over the *same* mutable
+  `let timer` / `let cancelled` bindings, not copies. When a round's
+  `setMediaItems(...)` call changes `mediaItems` (a dependency of this same
+  effect), React always runs that effect instance's cleanup — which reads
+  whatever `timer` currently equals, already reassigned by that round's own
+  `poll()` call moments earlier in the same continuation — *before* running
+  the next effect instance's body. So the freshly-rescheduled timer from the
+  old chain is always cleared before a new chain's timer gets scheduled;
+  there is never a window with two live timers/fetches for this effect.
+  Verified empirically with fake timers (`vi.getTimerCount()` staying at 1
+  across several rounds that each force a dependency-driven effect restart)
+  and sensitivity-tested by temporarily breaking the cleanup body and
+  watching the check catch the resulting overlap — see
+  `chatStore.mediaPollOverlap.test.tsx`. Worth keeping this reasoning
+  written down: a future refactor of this effect's closure structure could
+  silently reintroduce the overlap risk without realizing what property it
+  was relying on.
 - **The dedup duplicate-reuse path was resetting an already-`ready` item back
   to `pending` client-side — fixed 2026-08-06.** `ChatInput.tsx` hardcoded
   `status: 'pending'` on every `addMediaItem()` call, including when

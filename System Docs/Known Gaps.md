@@ -294,7 +294,51 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   All three verified with regression tests reproducing the exact race/dead-
   poll conditions (not just "tests pass") — see
   `components/shells/membership/chatStore.mediaItemsRace.test.tsx`,
-  `chatStore.mediaPolling.test.tsx`, and `ChatInput.upload.test.tsx`.
+  `chatStore.mediaPolling.test.tsx`, `chatStore.mediaPollOverlap.test.tsx`,
+  and `ChatInput.upload.test.tsx`.
+
+- **`dueStatusSnapshotRef` isn't cleaned up on a turn that errors or
+  aborts — accepted as a low-severity memory leak, not fixed (pre-merge
+  review of PR #286, 2026-08-06).** `markMediaItemsDelivered()` — the only
+  thing that ever deletes a consumed snapshot entry — is called from exactly
+  four places in `useChatTurn.ts` (`send()`, `retry()`, `regenerate()`,
+  `truncateAndRedeliver()`), and in every one of them it's reached only
+  *after* the `try/catch` around `streamTurn(...)`; both the abort branch and
+  the classified-failure branch `return` before ever reaching it. So a turn
+  that fails outright or gets aborted leaves that turn's due ids' snapshot
+  entries sitting in the `Map`, unconsumed.
+
+  Traced and empirically confirmed (via a temporarily-broken version of the
+  refresh logic that made a regression test fail exactly as predicted) that
+  this is a memory leak only, **not** a correctness bug: `getMediaItems()`
+  unconditionally overwrites the snapshot for every due id on every call, so
+  any id left un-delivered by a failed turn is guaranteed to be re-included
+  and re-snapshotted fresh on the very next turn of any kind — nothing ever
+  reads the stale value. The one path that deliberately reuses an old
+  snapshot without refreshing it is `retry()` (resends the identical
+  originally-built payload) — safe by design, since `resolveMediaContext`
+  re-validates against live DB status on the server regardless of what the
+  client's snapshot says, so at worst this causes one harmless extra resend,
+  never wrong data reaching the guide.
+
+  Bounded in practice by `hydrateConversation()`/`newChat()`'s existing reset
+  of all three media-tracking refs at conversation-switch boundaries (see
+  `System Docs/Utilities/Chat UI.md`'s "Media-item delivery tracking"
+  section) — the only genuinely unbounded case is a single conversation that
+  racks up many distinct failed-then-abandoned attachment ids without ever
+  switching chats or starting a new one. Regression coverage for the
+  self-healing behavior (not the leak itself, which is intentionally
+  untested/accepted) lives in `chatStore.mediaItemsRace.test.tsx`'s `'a stale
+  snapshot entry left by a failed turn does not leak into a later unrelated
+  turn'` describe block.
+
+  The same pre-merge review separately checked whether the Bug 3 poll
+  effect's `setMediaItems()`-triggered dependency changes could ever race its
+  own internal `setTimeout` recursion into running two live poll chains at
+  once — confirmed **no bug**, empirically (fake timers +
+  `vi.getTimerCount()`, sensitivity-tested by breaking cleanup and watching
+  the check catch it). See `Chat UI.md` for the mechanics and
+  `chatStore.mediaPollOverlap.test.tsx` for the proof.
 
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
