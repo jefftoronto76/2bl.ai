@@ -246,10 +246,12 @@ export interface CreateMemoryFromAnchorInput {
  * message if the guide emitted one, else deriveFallbackMemoryTitle().
  *
  * Returns the plain shared MemoryResult, same as every other function in
- * this file — with no model call anywhere in the memory system, there is
- * exactly one failure shape left (a Supabase write erroring), so there is no
- * classification to carry on the result the way an archivist-call result
- * once needed to.
+ * this file — with no model call anywhere in the memory system, there is no
+ * archivist-call classification to carry on the result the way one once
+ * needed to. Every failure branch below (including createDraftMemory's own)
+ * logs to audit_events via AuditAction.MEMORY_CREATED, outcome: 'failure',
+ * with a distinct metadata.error_detail per branch — see the Memories entry
+ * in System Docs/Known Gaps.md.
  */
 export async function createMemoryFromAnchor(
   tenantId: string,
@@ -258,24 +260,58 @@ export async function createMemoryFromAnchor(
   const { sessionId, anchorMessageId, memberId, sourceKind } = input
 
   const sessionResult = await getSessionMessages(tenantId, sessionId)
-  if (!sessionResult.ok) return { ok: false, status: sessionResult.status, error: sessionResult.error }
+  if (!sessionResult.ok) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'session_lookup_failed', session_error: sessionResult.error },
+    })
+    return { ok: false, status: sessionResult.status, error: sessionResult.error }
+  }
 
   const rawMessages = Array.isArray(sessionResult.data.messages) ? sessionResult.data.messages : []
   const anchorIdx = (rawMessages as unknown[]).findIndex(
     m => (m as { id?: unknown } | null)?.id === anchorMessageId,
   )
   if (anchorIdx === -1) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'anchor_not_found' },
+    })
     return { ok: false, status: 400, error: 'anchor_message_id does not match a message in this session' }
   }
 
   const anchorContent = (rawMessages[anchorIdx] as { content?: unknown }).content
   if (typeof anchorContent !== 'string') {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'anchor_content_not_string' },
+    })
     return { ok: false, status: 400, error: 'anchor message has no text content' }
   }
 
   const { prose, markers } = createDefaultRegistry().parse(anchorContent)
   const body = prose.trim()
   if (!body) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'empty_body_after_marker_strip' },
+    })
     return { ok: false, status: 400, error: 'anchor message has no content to save once markers are stripped' }
   }
 

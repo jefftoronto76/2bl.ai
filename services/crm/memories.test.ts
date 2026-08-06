@@ -1,10 +1,11 @@
 // Coverage for the verbatim create path (no model call): title resolution
 // ([MEMORY_TITLE] marker vs. the fallback truncation), verbatim body with
 // every marker stripped, anchor-not-found handling, the title-only rename
-// path, and user_id resolution (Bug A). Mocks @supabase/supabase-js's
-// createClient directly (mirrors sessions.test.ts's own pattern) rather than
-// @/services/auth/supabase-admin — services/crm/memories.ts's
-// getAdminClient() and services/crm/sessions.ts's own LOCAL
+// path, user_id resolution (Bug A), and the audit_events logging added for
+// every previously-silent failure branch (Bug C groundwork / Task 4). Mocks
+// @supabase/supabase-js's createClient directly (mirrors sessions.test.ts's
+// own pattern) rather than @/services/auth/supabase-admin — services/crm/
+// memories.ts's getAdminClient() and services/crm/sessions.ts's own LOCAL
 // getAdminClient(label) helper (a separate, file-local function, not the
 // shared one) both bottom out in the same @supabase/supabase-js createClient
 // call, so mocking it there is what actually covers both
@@ -31,6 +32,7 @@ type SelectResult = { data: Row | null; error: { message: string } | null }
 
 function makeClient(opts: {
   sessionMessages?: Row[]
+  sessionLookupResult?: SelectResult
   memberResult?: SelectResult
   insertResult?: SelectResult
   updateResult?: SelectResult
@@ -46,7 +48,8 @@ function makeClient(opts: {
           select: () => ({
             eq: () => ({
               eq: () => ({
-                maybeSingle: async () => ({ data: { messages: opts.sessionMessages ?? [] }, error: null }),
+                maybeSingle: async () =>
+                  opts.sessionLookupResult ?? { data: { messages: opts.sessionMessages ?? [] }, error: null },
               }),
             }),
           }),
@@ -180,7 +183,7 @@ describe('createMemoryFromAnchor', () => {
     expect(insertCalls[0].user_id).toBe('user-1')
   })
 
-  it('returns a 400 when the anchor message id has no match in the session', async () => {
+  it('returns a 400 when the anchor message id has no match in the session, and logs the failure', async () => {
     const { client } = makeClient({ sessionMessages: [{ id: 'other', role: 'assistant', content: 'hi' }] })
     adminHolder.client = client
 
@@ -193,9 +196,62 @@ describe('createMemoryFromAnchor', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'anchor_not_found' }),
+      }),
+    )
   })
 
-  it('rejects a message that is only markers, once stripped there is no body left', async () => {
+  it('returns a 400 and logs the failure when the anchor message has non-string content', async () => {
+    const { client } = makeClient({
+      sessionMessages: [{ id: 'm1', role: 'assistant', content: { not: 'a string' } }],
+    })
+    adminHolder.client = client
+
+    const result = await createMemoryFromAnchor('tenant-1', {
+      sessionId: 's1',
+      anchorMessageId: 'm1',
+      memberId: null,
+      sourceKind: 'conversation',
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'anchor_content_not_string' }),
+      }),
+    )
+  })
+
+  it('returns a 500 and logs the failure when the session lookup itself fails', async () => {
+    const { client } = makeClient({ sessionLookupResult: { data: null, error: { message: 'db unreachable' } } })
+    adminHolder.client = client
+
+    const result = await createMemoryFromAnchor('tenant-1', {
+      sessionId: 's1',
+      anchorMessageId: 'm1',
+      memberId: null,
+      sourceKind: 'conversation',
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'session_lookup_failed' }),
+      }),
+    )
+  })
+
+  it('rejects a message that is only markers, once stripped there is no body left, and logs the failure', async () => {
     const { client } = makeClient({
       sessionMessages: [{ id: 'm1', role: 'assistant', content: '[SAVE_MEMORY]' }],
     })
@@ -210,6 +266,13 @@ describe('createMemoryFromAnchor', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'empty_body_after_marker_strip' }),
+      }),
+    )
   })
 })
 
