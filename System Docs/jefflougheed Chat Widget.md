@@ -64,9 +64,9 @@ can fire — and calls `expand()`, mounting the full-screen overlay instead.
 — and `submit()` needs text typed into a focused textarea to run at all. So
 `isEngaged = messages.length > 0 && conversationVisible`
 (`WidgetShell.tsx:602`) stays false on mobile for the ordinary journey; the
-`.stage.engaged` CSS state (§3 in the old sense, now covered by the CSS
-cascade below) and everything that depends on it in `WidgetShellHero` is,
-functionally, a **desktop-only code path** for real visitors.
+`.stage.engaged` CSS state and everything that depends on it in
+`WidgetShellHero` is, functionally, a **desktop-only code path** for real
+visitors.
 
 **The one exception:** `detectModeFromLocation()` (`WidgetShell.tsx:537-546`)
 parses `?mode=question` (hash-query or top-level search param) on mount and,
@@ -75,14 +75,22 @@ if present, calls `textareaRef.current?.focus()` **programmatically**
 (it's not a pointer event), so it's the only way a mobile visitor reaches
 Hero's genuine inline-engaged state. Any bug report about "the mobile inline
 hero" should be checked against which path was actually used — a normal tap
-routes to the overlay (§ below); only a `?mode=question` link exercises
-Hero's own engaged rendering.
+routes to the overlay described above; only a `?mode=question` link
+exercises Hero's own engaged rendering.
 
 **Why this matters for future debugging:** a visual bug reported as "on the
 mobile inline hero" is very likely actually the overlay, reached through a
 different gesture than "the nav chat button" but rendering through the exact
 same component and CSS. Confirmed exactly this way for the visitor-bubble
 color bug — see §5.
+
+**History:** introduced 2026-07-23, commit `867e46fe` (PR #217, "Mobile:
+open full-screen chat on hero tap, keyboard-safe overlay layout"), the same
+change that removed Hero's own JS keyboard handling in favor of the overlay
+(§4) — before this, mobile taps focused Hero's composer inline and Hero
+managed its own keyboard-driven CSS vars; after, mobile is routed to the
+overlay entirely and Hero's inline engaged state became the rarely-reached
+path described above.
 
 ---
 
@@ -109,10 +117,23 @@ Three real call sites in the app:
 | `WidgetShellHero` (`WidgetShell.tsx:620-624`) | `isEngaged \|\| composerFocused` | `false` | `false` | Inline |
 | `ChatHero.tsx` (Heirloom membership shell, `components/shells/membership/ChatHero.tsx:147-150`) | `state.isChatOpen` | `true` | (default `true`) | Modal panel — genuinely a different surface/shell, not this widget |
 
-`WidgetShellHero`'s call previously passed `lockBodyScroll: isEngaged` —
-contradicting the hook's own contract for exactly the reason above. Fixed
-2026-08-06/07; see git history on `WidgetShell.tsx` around that date if this
-regresses.
+**Prior approach (superseded 2026-08-06/07, commit `e96ea4be` on
+`WidgetShell.tsx`):** `WidgetShellHero`'s call passed `lockBodyScroll:
+isEngaged` — freezing `document.body` with `position: fixed` the moment the
+hero engaged. This contradicted the hook's own contract from the start, but
+went unnoticed because the visible symptom only showed up on desktop:
+mobile's `.stage.engaged .chat-surface` is already a deliberate CSS
+full-screen takeover (§2), so the same JS body-freeze underneath it was
+invisible there. On desktop, where the engaged hero is meant to stay in
+normal document flow as a scrollable panel, the freeze meant the page
+couldn't scroll past the hero and the composer/latest message could render
+outside the visible viewport — confirmed live via Playwright
+(`document.body.style.position` read `"fixed"` while engaged). **Current
+behavior:** `lockBodyScroll: false`, unconditional — not a narrower
+desktop-only condition, since the hook's contract draws the line at
+inline-vs-overlay, not viewport width. If this regresses, `git log -p
+--follow -- components/shells/widget/WidgetShell.tsx` around `e96ea4be` has
+the full before/after.
 
 `trackViewport: false` on **both** jefflougheed call sites means neither
 surface uses the hook's `visualViewport` measurement/`keyboardOpen`
@@ -123,17 +144,36 @@ documentation.)
 
 ---
 
-## 4. The `--vvh` viewport-height mechanism (corrects prior stale docs)
+## 4. The `--vvh` viewport-height mechanism
 
-`System Docs/Public Site.md` previously described the overlay's height as
-"pure CSS (`h-dvh`), unconditionally, no JS-computed inline height or
-transform," and separately described `WidgetShellHero`'s keyboard handling
-as writing `--kb-surface-h`/`--kb-surface-y` CSS vars and toggling a
-`.chat-surface--kb` class. **Neither exists in the current code** — grepped
-to confirm zero matches for `h-dvh`, `kb-surface`, `chat-surface--kb`,
-`chatSurfaceRef`, `onViewportChange` anywhere in `WidgetShell.tsx`. Both
-paragraphs described a since-removed implementation that was never updated
-when the code changed. What's actually there today:
+**Prior code approach, in two stages (both superseded — real implementation
+history, not a documentation error):**
+
+1. **Through 2026-07-15 (commit `4c5ba1ae`, "Converge keyboard-viewport
+   consumption across surfaces onto `--vvh`"):** the overlay's height was
+   plain Tailwind `h-dvh` — pure CSS, no JS. `WidgetShellHero` wrote its own
+   `--kb-surface-h` CSS var from `onViewportChange`. `4c5ba1ae` converged the
+   *height* part of both surfaces onto the shared `--vvh` var, but kept a
+   separate `--kb-surface-y` var (offsetTop-driven `translateY`) as Hero's
+   own genuine per-surface need, since Hero is the only surface without a
+   body scroll-lock to keep it pinned.
+2. **2026-07-22/23 (commits `0990067f`, `867e46fe`/PR #217):** Hero's
+   remaining JS keyboard handling (`--kb-surface-y`, `.chat-surface--kb`) was
+   removed entirely, replaced by the current pure-CSS mobile
+   `.stage.engaged .chat-surface { position: fixed; inset: 0; }` takeover
+   (§2's mobile routing mechanism dates from the same PR). The overlay's own
+   `--vvh` wiring was finalized in its current form in the same window.
+
+**Separately, a documentation bug (not a code regression):** `System Docs/
+Public Site.md` continued describing the *pre-`4c5ba1ae`* `h-dvh`/
+`--kb-surface-h`/`--kb-surface-y`/`.chat-surface--kb` state for months after
+both stages above shipped — grepped to confirm zero matches for `h-dvh`,
+`kb-surface`, `chat-surface--kb`, `chatSurfaceRef`, `onViewportChange`
+anywhere in the current `WidgetShell.tsx`. Corrected there 2026-08-07 (see
+that file's own "Prior approach (superseded ...)" callouts, which now carry
+this same history inline).
+
+**What's actually there today:**
 
 `WidgetShellChat` measures the visual viewport directly, independent of the
 `useKeyboardViewport` hook:
@@ -200,23 +240,35 @@ light values):
   not its message log
 - `.chat-overlay-composer` (`globals.css:81-92`)
 - `.hero-conversation`, `.chat-overlay-log`, `.chat-overlay-composer`
-  (`globals.css:516-525`) — text/border tokens were already correct here;
-  `--color-surface` was **missing** until the 2026-08-06/07 fix (this is
-  Bug 3)
+  (`globals.css:516-525`)
 
-**The gap that caused Bug 3, for reference:** `.chat-overlay-log` (the
-overlay's actual message list) sits in a DOM subtree that's a *sibling* of
-`header`, not a descendant of it — so the `#sage-chat-overlay > div > header`
-override (light-theme, scoped to the header only) never reached it, and
-nothing else in the file set `--color-surface` for `.chat-overlay-log`
-before the fix — it fell through to the dark `html[data-brand="jefflougheed"]`
-default. `.hero-conversation` (Hero's own conversation panel) never had this
-problem, because it's a direct DOM child of `.chat-surface`, which *does*
-carve back to light (`globals.css:67-79`), and CSS custom properties inherit
-down the DOM tree regardless of specificity tricks. The lesson for future
-edits: **a selector re-declaring these tokens must actually be an ancestor
-(in the DOM, not just visually adjacent) of everything that needs the light
-theme** — a header-scoped override does not help a sibling container.
+**Prior approach (bug, superseded 2026-08-06/07, commit `4b0ef8c2`/PR #294):**
+the rule above existed and already correctly set `--color-text-primary`/
+`--color-text-muted`/`--color-text-dim`/`--color-border`/`--color-border-hover`
+for all three selectors — but did **not** set `--color-surface`. For
+`.hero-conversation` this was invisible, because it's a direct DOM child of
+`.chat-surface`, which separately carves back to light
+(`globals.css:67-79`), and CSS custom properties inherit down the DOM tree —
+so `--color-surface` reached it anyway, just from a different rule. For
+`.chat-overlay-log` (the overlay's actual message list) there was no such
+rescue: it sits in a DOM subtree that's a *sibling* of `header`, not a
+descendant of it, so the `#sage-chat-overlay > div > header` override
+(light-theme, scoped to the header only) never reached it either. With no
+rule setting `--color-surface` anywhere in its ancestor chain, it fell
+through to the dark `html[data-brand="jefflougheed"]` default — rendering
+the visitor's own message bubble (`bg-surface` in `WidgetShell.tsx`) dark
+slate-blue instead of cream-on-white. This is Bug 3. **Current behavior:**
+`--color-surface: 255 255 255` added directly to the shared rule, so all
+three selectors now set it explicitly rather than relying on inheritance
+for two of them and hoping for the third.
+
+**The lesson for future edits:** a selector re-declaring these tokens must
+actually be an ancestor (in the DOM, not just visually adjacent) of
+everything that needs the light theme — a header-scoped override does not
+help a sibling container. `.hero-conversation` looking "fine" while
+`.chat-overlay-log` was broken, from what reads as the same override
+mechanism, is exactly the kind of gap this note exists to make faster to
+spot next time.
 
 **Known dead-selector trap in the same area:** `.chat-log-light` /
 `.chat-composer-light` (`globals.css:94-124`) define a *correct* light-theme
@@ -229,6 +281,10 @@ editing these — they're inert.
 ---
 
 ## 6. Dead/fragile CSS inside `globals.css` itself
+
+Both findings below are logged as real backlog items in `System Docs/Known
+Gaps.md`, not just documented here — this section is the full writeup those
+entries point back to.
 
 **Dead `.chat-overlay-*` block (`globals.css:552-593`).** Of the ten class
 selectors defined under the "Full-screen chat overlay" comment header —
@@ -319,6 +375,6 @@ references any of these by path):
   This looks like a renamed convention that was never propagated through
   those docs — out of scope for this pass (those files cover every brand,
   not just this widget) but flagged here since it's directly adjacent to §5.
-- `System Docs/Known Gaps.md` — the `.stage.engaged .composer-wrap`
-  cascade-order fragility (§6) is not yet logged there; consider adding an
-  entry if the suggested fix isn't picked up soon.
+- `System Docs/Known Gaps.md` — both §6 findings (the `.stage.engaged
+  .composer-wrap` cascade-order fragility and the dead `.chat-overlay-*`
+  selectors) are logged there as real backlog entries, 2026-08-07.
