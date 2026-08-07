@@ -154,6 +154,20 @@ function FailedUploadChip({ filename }: { filename: string }) {
   );
 }
 
+// Same thumbnail bounding box as UploadThumbnail.tsx — duplicated rather
+// than imported (this component deliberately doesn't share code with
+// UploadThumbnail, see the doc comment below), so the echo and the real
+// thumbnail it swaps into use identical sizing math.
+const THUMB_MAX_W = 240;
+const THUMB_MAX_H = 320;
+const UPLOADING_PLACEHOLDER_BOX = { width: 192, height: 144 };
+
+function thumbnailBoxSize(width?: number, height?: number): { width: number; height: number } {
+  if (!width || !height) return UPLOADING_PLACEHOLDER_BOX;
+  const scale = Math.min(THUMB_MAX_W / width, THUMB_MAX_H / height, 1);
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
 /**
  * PendingEcho's own rendering — a standalone visual echo of what the real
  * message + UploadThumbnail will look like once it exists, deliberately NOT
@@ -166,29 +180,39 @@ function PendingEchoAttachment({
   filename,
   previewUrl,
   type,
+  width,
+  height,
 }: {
   filename: string;
   previewUrl?: string;
   type: 'audio' | 'image' | 'document';
+  width?: number;
+  height?: number;
 }) {
   const kind = memoryKindOf(type === 'image' ? 'photo' : type);
   const Icon = KIND_ICONS[kind.icon] ?? Feather;
   const isImage = type === 'image';
+  const boxSize = thumbnailBoxSize(width, height);
 
   return (
     <div className="flex justify-end">
       <div
         className={
           isImage
-            ? 'relative w-48 max-h-72 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
+            ? 'relative max-w-60 max-h-80 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
             : 'relative flex max-w-[75%] items-center gap-2.5 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5'
         }
       >
         {isImage ? (
           previewUrl ? (
-            <img src={previewUrl} alt={filename} className="block h-36 w-48 object-cover" />
+            <img
+              src={previewUrl}
+              alt={filename}
+              className="block max-w-60 max-h-80 object-contain"
+              style={{ width: boxSize.width, height: boxSize.height }}
+            />
           ) : (
-            <div className="h-36 w-48" />
+            <div style={{ width: boxSize.width, height: boxSize.height }} />
           )
         ) : (
           <>
@@ -218,7 +242,14 @@ function PendingEchoBubble({ echo }: { echo: PendingEcho }) {
   return (
     <div className="flex flex-col gap-2">
       {echo.attachments.map((a, i) => (
-        <PendingEchoAttachment key={i} filename={a.filename} previewUrl={a.previewUrl} type={a.type} />
+        <PendingEchoAttachment
+          key={i}
+          filename={a.filename}
+          previewUrl={a.previewUrl}
+          type={a.type}
+          width={a.width}
+          height={a.height}
+        />
       ))}
       {echo.text && (
         <div className="flex flex-col items-end gap-1.5">
