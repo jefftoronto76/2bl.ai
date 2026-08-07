@@ -40,6 +40,10 @@ interface Attachment {
   file: File;
   /** Object URL for image previews; revoked on removal. */
   previewUrl?: string;
+  /** Natural pixel dimensions read from the file at pick time (image only) —
+   *  undefined until the async read resolves. See addFiles. */
+  width?: number;
+  height?: number;
 }
 
 let _aid = 0;
@@ -288,6 +292,8 @@ export function ChatInput() {
           filename: a.file.name,
           previewUrl: a.previewUrl,
           type: classifyAttachmentType(a.file),
+          width: a.width,
+          height: a.height,
         })),
       });
 
@@ -331,6 +337,8 @@ export function ChatInput() {
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
               localPreviewUrl,
+              width: att.width,
+              height: att.height,
             });
           } else {
             // Upload failed — include the filename so the guide knows what was attempted.
@@ -376,11 +384,27 @@ export function ChatInput() {
         console.warn(`[ChatInput] HEIC not supported — skipped: ${file.name}`);
         continue;
       }
-      next.push({
-        id: attachmentId(),
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
-      });
+      const isImage = file.type.startsWith('image/');
+      const id = attachmentId();
+      const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+      next.push({ id, file, previewUrl });
+
+      // Read natural dimensions off the same local blob URL — no network
+      // round-trip, resolves essentially instantly for a local file. Patches
+      // this specific attachment by id once known; a no-op if the attachment
+      // was removed or already sent by the time it resolves (the functional
+      // update below only touches an attachment still present in state).
+      if (isImage && previewUrl) {
+        const img = new Image();
+        img.onload = () => {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === id ? { ...a, width: img.naturalWidth, height: img.naturalHeight } : a,
+            ),
+          );
+        };
+        img.src = previewUrl;
+      }
     }
     setAttachments((prev) => [...prev, ...next].slice(0, 6)); // cap at 6
   };

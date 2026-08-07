@@ -56,6 +56,21 @@ export interface UploadThumbnailProps {
   onEnlarge?: (src: string, filename: string) => void
 }
 
+// Thumbnail bounding box — an image is scaled (never upscaled) to fit within
+// this box while preserving its real aspect ratio, replacing the old fixed
+// 192x144 crop. Placeholder for the shimmer phase when dimensions aren't
+// known yet (rare: send fired before the pick-time decode in ChatInput.tsx
+// resolved) matches the previous fixed box so the shimmer doesn't collapse.
+const THUMB_MAX_W = 240
+const THUMB_MAX_H = 320
+const UPLOADING_PLACEHOLDER_BOX = { width: 192, height: 144 }
+
+function thumbnailBoxSize(width?: number, height?: number): { width: number; height: number } | null {
+  if (!width || !height) return null
+  const scale = Math.min(THUMB_MAX_W / width, THUMB_MAX_H / height, 1)
+  return { width: Math.round(width * scale), height: Math.round(height * scale) }
+}
+
 export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: UploadThumbnailProps) {
   const kind = memoryKindOf(sourceKind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
@@ -65,6 +80,13 @@ export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: Uploa
   const isReady = item?.status === 'ready'
   const src = item?.localPreviewUrl ?? item?.url ?? null
   const canEnlarge = isImage && isReady && !!src && !!onEnlarge
+  // Historical items loaded on reload never carry width/height (client-only,
+  // not persisted — see Design Handovers note in the plan this ships from),
+  // so this is null there; the img falls back to its own intrinsic sizing
+  // clamped by max-w-60/max-h-80 below, same as CSS-only object-contain.
+  const boxSize = isImage
+    ? thumbnailBoxSize(item?.width, item?.height) ?? (isUploading ? UPLOADING_PLACEHOLDER_BOX : null)
+    : null
 
   const handleRetry = () => {
     if (!item) return
@@ -78,7 +100,7 @@ export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: Uploa
       <div
         className={
           isImage
-            ? 'relative w-48 max-h-72 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
+            ? 'relative max-w-60 max-h-80 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface'
             : 'relative flex max-w-[75%] items-center gap-2.5 overflow-hidden rounded-2xl rounded-br-sm border border-border bg-surface px-3.5 py-2.5'
         }
       >
@@ -87,7 +109,8 @@ export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: Uploa
             src={src ?? BLANK_PIXEL}
             alt={filename}
             onClick={canEnlarge ? () => onEnlarge!(src!, filename) : undefined}
-            className={`block h-36 w-48 object-cover${canEnlarge ? ' cursor-zoom-in' : ''}`}
+            className={`block max-w-60 max-h-80 object-contain${canEnlarge ? ' cursor-zoom-in' : ''}`}
+            style={boxSize ? { width: boxSize.width, height: boxSize.height } : undefined}
           />
         ) : (
           <>

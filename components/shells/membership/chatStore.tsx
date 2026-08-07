@@ -21,7 +21,16 @@ import { mergeMediaItem } from './mediaItemMerge';
 // `url` (image items only) is server-attached by GET /api/media, not the DB
 // row itself — it won't be present on raw Realtime postgres_changes payloads,
 // which is why mergeMediaItem (mediaItemMerge.ts) preserves a previously-fetched one.
-export type ClientMediaItem = MediaItem & { localPreviewUrl?: string; url?: string | null };
+// width/height are client-captured only (read from the picked File at
+// attach time via ChatInput.tsx's addFiles) — never persisted to the DB.
+// Undefined for non-image items and for images whose dimension read hasn't
+// resolved yet (or wasn't captured, e.g. a returning visitor's historical item).
+export type ClientMediaItem = MediaItem & {
+  localPreviewUrl?: string;
+  url?: string | null;
+  width?: number;
+  height?: number;
+};
 
 // Purely visual, ephemeral placeholder for a message-with-attachments send
 // still in flight (ChatInput.tsx's handleSend awaits the real upload before
@@ -35,6 +44,9 @@ export interface PendingEcho {
     /** Local blob: URL from the composer's pick-time createObjectURL — undefined for audio/document (icon only). */
     previewUrl?: string;
     type: 'audio' | 'image' | 'document';
+    /** Natural pixel dimensions, read from the File at pick time — image only, undefined until the read resolves. */
+    width?: number;
+    height?: number;
   }>;
 }
 import { useChatSession } from '@/services/chat/ui/v1/core/useChatSession';
