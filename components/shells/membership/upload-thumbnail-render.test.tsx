@@ -171,6 +171,7 @@ describe('UploadThumbnail rendering — status drives the overlay, never the ele
     expect(img).toBeInTheDocument();
     expect(img.parentElement?.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
   });
 
   it('renders a static thumbnail once ready, with no shimmer overlay, and opens the lightbox on tap', async () => {
@@ -187,7 +188,11 @@ describe('UploadThumbnail rendering — status drives the overlay, never the ele
     });
 
     const img = await screen.findByAltText('campfire.jpg');
-    expect(img.parentElement?.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+    // Shimmer specifically — not a generic aria-hidden check, since the
+    // persistent ready-checkmark badge below is also legitimately
+    // aria-hidden (decorative) and IS expected to be present here.
+    expect(img.parentElement?.querySelector('.animate-upload-shimmer')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ready-checkmark')).toBeInTheDocument();
 
     expect(screen.queryByRole('dialog', { name: 'campfire.jpg' })).not.toBeInTheDocument();
     fireEvent.click(img);
@@ -215,6 +220,8 @@ describe('UploadThumbnail rendering — status drives the overlay, never the ele
     const retryBadge = await screen.findByRole('button', { name: /Retry —/ });
     expect(retryBadge.getAttribute('aria-label')).not.toMatch(/Deepgram/);
     expect(retryBadge.getAttribute('aria-label')).not.toMatch(/401/);
+    // Mutually exclusive with the ready-checkmark — failed, not ready.
+    expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
   });
 
   it('clicking the retry badge issues POST /api/media/{id}/retry', async () => {
@@ -267,6 +274,7 @@ describe('UploadThumbnail rendering — status drives the overlay, never the ele
     });
 
     const imgDuringProcessing = await screen.findByAltText('campfire.jpg');
+    expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
 
     // Same media item id, new status — mirrors the real Realtime/polling path
     // (addMediaItem upserts by id, see chatStore.tsx). This is the exact
@@ -282,5 +290,83 @@ describe('UploadThumbnail rendering — status drives the overlay, never the ele
 
     const imgAfterReady = await screen.findByAltText('campfire.jpg');
     expect(imgAfterReady).toBe(imgDuringProcessing);
+    expect(screen.getByTestId('ready-checkmark')).toBeInTheDocument();
+  });
+});
+
+describe('UploadThumbnail — persistent ready-checkmark badge (bottom-left, mirrors the failure/retry badge)', () => {
+  it.each([
+    ['pending', mkItem({ id: 'media-1', status: 'pending' })],
+    ['processing', mkItem({ id: 'media-1', status: 'processing' })],
+    ['failed', mkItem({ id: 'media-1', status: 'failed', error_message: 'boom' })],
+  ] as const)('does not render for status: %s', async (status, item) => {
+    render(
+      <ChatProvider>
+        <Harness messages={[CAPTIONLESS_UPLOAD_MESSAGE]} seedItems={[item]} />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText(`seed-${status}`));
+    });
+
+    await screen.findByAltText('campfire.jpg');
+    expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
+  });
+
+  it('renders only for status: ready, and stays present (no fade/timer) — not gated on the isImage branch alone', async () => {
+    render(
+      <ChatProvider>
+        <Harness
+          messages={[CAPTIONLESS_UPLOAD_MESSAGE]}
+          seedItems={[mkItem({ id: 'media-1', status: 'ready' })]}
+        />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText('seed-ready'));
+    });
+
+    await screen.findByAltText('campfire.jpg');
+    const badge = screen.getByTestId('ready-checkmark');
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain('bottom-1.5');
+    expect(badge.className).toContain('left-1.5'); // opposite corner from the failure badge's bottom-1.5 right-1.5
+
+    // Persistent: still present well after mount, no timer/animation class
+    // that would fade or remove it.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByTestId('ready-checkmark')).toBeInTheDocument();
+    expect(badge.className).not.toMatch(/animate-|transition-opacity/);
+  });
+
+  it('the ready-checkmark and the failure/retry badge never render together — mutually exclusive, but independently gated (no shared conditional)', async () => {
+    const { rerender } = render(
+      <ChatProvider>
+        <Harness
+          messages={[CAPTIONLESS_UPLOAD_MESSAGE]}
+          seedItems={[mkItem({ id: 'media-1', status: 'ready' })]}
+        />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText('seed-ready'));
+    });
+    await screen.findByAltText('campfire.jpg');
+    expect(screen.getByTestId('ready-checkmark')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
+
+    rerender(
+      <ChatProvider>
+        <Harness
+          messages={[CAPTIONLESS_UPLOAD_MESSAGE]}
+          seedItems={[mkItem({ id: 'media-1', status: 'failed', error_message: 'boom' })]}
+        />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText('seed-failed'));
+    });
+    expect(await screen.findByRole('button', { name: /Retry/ })).toBeInTheDocument();
+    expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
   });
 });

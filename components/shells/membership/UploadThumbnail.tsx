@@ -37,7 +37,7 @@
  * /api/media/{id}/retry (already exists, already works).
  */
 
-import { Feather, AlertTriangle } from 'lucide-react'
+import { Feather, AlertTriangle, Check } from 'lucide-react'
 import type { MemorySourceKind } from '@/services/chat/ui/v1/useMemories'
 import type { ClientMediaItem } from './chatStore'
 import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds'
@@ -143,6 +143,22 @@ export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: Uploa
           >
             <AlertTriangle size={12} aria-hidden />
           </button>
+        )}
+
+        {/* Persistent — no fade/timer, stays for as long as the thumbnail
+            renders in the 'ready' status. Same size/corner treatment as the
+            failure badge (mirrored to bottom-left), independent of it —
+            the two are mutually exclusive statuses but never share state or
+            a conditional. Not a <button>: unlike the retry badge, this has
+            no action, so it's a decorative, non-focusable confirmation. */}
+        {isReady && (
+          <span
+            aria-hidden="true"
+            data-testid="ready-checkmark"
+            className="absolute bottom-1.5 left-1.5 grid size-6 place-items-center rounded-full bg-green-400 text-white"
+          >
+            <Check size={12} aria-hidden />
+          </span>
         )}
       </div>
     </div>
