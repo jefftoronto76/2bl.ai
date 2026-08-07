@@ -26,6 +26,7 @@ one file per topic, loaded on demand rather than read every session:
 | Shared admin/UI components | `System Docs/Shared Primitives.md` |
 | Admin page routes | `System Docs/Pages.md` |
 | Visitor-facing chat components (Sage, Heirloom) | `System Docs/Public Site.md` |
+| jefflougheed.ca chat widget mechanisms (mobile routing, keyboard/scroll-lock contract, CSS branding cascade, dead/duplicate CSS) | `System Docs/jefflougheed Chat Widget.md` |
 | Middleware, domain routing, multi-tenant admin | `System Docs/App Structure and Routing.md` |
 | jefflougheed.ca-only code/assets | `System Docs/jefflougheed Isolation.md` |
 | Contact-capture design | `System Docs/Contact Capture Architecture.md` |
