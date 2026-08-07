@@ -515,3 +515,55 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   simple pointer fix), then
   `update members m set user_id = u.id from users u where m.clerk_id = u.clerk_id
   and m.user_id is null and m.status not in ('invited', 'waitlist');`.
+
+- **`.stage.engaged .composer-wrap`'s `margin-top` resolves by CSS
+  cascade-order accident, not deliberate breakpoint design — found during
+  the jefflougheed chat widget documentation pass, 2026-08-07.** Four rules
+  across `app/(jefflougheed)/globals.css` set this property, all at the same
+  `.stage.engaged .composer-wrap` selector specificity and all `!important`,
+  so the winner is whichever appears last in the file among the rules
+  matching a given viewport width: `globals.css:294` (base `.composer-wrap`
+  only, lower specificity, `8px`), `globals.css:465` (inside
+  `@media (max-width: 768px)`, `0px` — the original mobile value),
+  `globals.css:499` (**unscoped** — applies at every width including
+  desktop, from a later "Ported from Design Handovers" section, `12px`), and
+  `globals.css:507` (inside `@media (max-width: 640px)`, same ported
+  section, `10px`). Live-verified via Playwright/`getComputedStyle` at a
+  390px mobile viewport (engaged via the `?mode=question` programmatic-focus
+  path — the only way to reach genuine mobile inline-engaged state, see
+  `System Docs/jefflougheed Chat Widget.md`'s §2): computed value is
+  **10px**. Confirmed current values per breakpoint: desktop non-engaged
+  `8px`; 641–768px engaged `12px` (the unscoped rule wins over the original
+  mobile block's `0px`, which is therefore fully shadowed and never actually
+  applies at any width); ≤640px engaged `10px`. **Suggested fix:**
+  consolidate to one rule per intended breakpoint tier, make a deliberate
+  call on whether `0px` should be restored for the original mobile band or
+  the later port's values are the real intent, and comment the tiers
+  explicitly so a future edit can't silently reorder-break the cascade
+  again. **Priority: cosmetic, not urgent** — an 8–12px spacing delta, no
+  functional impact (unlike the three real bugs fixed the same night). Full
+  writeup with the per-rule table: `System Docs/jefflougheed Chat Widget.md`'s §6.
+
+- **Eight dead `.chat-overlay-*` CSS selectors sit interleaved with two live
+  ones in `app/(jefflougheed)/globals.css:552-593` — found during the same
+  documentation pass, 2026-08-07.** Of the ten class selectors under the
+  "Full-screen chat overlay" comment header — `.chat-overlay`,
+  `.chat-overlay-inner`, `.chat-overlay-header`, `.chat-overlay-title`,
+  `.chat-overlay-dot`, `.chat-overlay-actions`, `.chat-overlay-close`,
+  `.chat-overlay-scroll`, `.chat-overlay-greeting`, `.chat-overlay-log`,
+  `.chat-overlay-composer` — only the last two are referenced anywhere in
+  `components/shells/widget/WidgetShell.tsx` (confirmed via grep: one match
+  each; zero for the other eight). The other eight are an earlier,
+  hand-rolled-class implementation of the overlay's chrome (header, close
+  button, greeting text, etc.), superseded when that markup moved to inline
+  Tailwind utilities directly in the JSX — the old CSS was never removed.
+  They're visually indistinguishable from `.chat-overlay-log`/
+  `.chat-overlay-composer`, the two selectors Bug 3's `--color-surface` fix
+  actually touched (2026-08-06/07), which is exactly the kind of place this
+  becomes a real hazard: a future edit restyling "the overlay" via one of
+  the eight dead selectors would silently do nothing. **Suggested fix:**
+  delete the eight dead selectors; keep `.chat-overlay-log`/
+  `.chat-overlay-composer`. **Priority: minor cleanup debt**, not urgent —
+  no functional impact today, purely a maintenance hazard for future edits.
+  Full selector-by-selector accounting: `System Docs/jefflougheed Chat
+  Widget.md`'s §6.
