@@ -169,7 +169,9 @@ not a guess).
 
 `pendingEcho` (`ChatState`, exported type `PendingEcho`) is a purely visual,
 ephemeral placeholder for exactly that window — `{ text, attachments: {
-filename, previewUrl?, type }[] }`. It never has an id and never touches
+filename, previewUrl?, type, width?, height? }[] }` (`width`/`height` added
+2026-08-07, PR #298 — the image-aspect-ratio fix; see
+`System Docs/Public Site.md`'s `UploadThumbnail` row). It never has an id and never touches
 `mediaItems`; it is swapped for the real message, not reconciled with it. Set
 in `ChatInput.tsx`'s `handleSend`, in the attachment branch only (a text-only
 send already calls `sendMessage` with no `await` in front of it, so it
@@ -186,7 +188,16 @@ tick, with no visible gap or flash. Rendered by
 `components/shells/membership/MessageList.tsx`'s own
 `PendingEchoAttachment`/`PendingEchoBubble` — standalone components sharing
 `UploadThumbnail`'s container classes and shimmer treatment, not built by
-reusing `UploadThumbnail.tsx` itself (kept untouched by this change).
+reusing `UploadThumbnail.tsx` itself (kept untouched by this change). As of
+2026-08-07 (PR #298), `PendingEchoAttachment` also duplicates
+`UploadThumbnail`'s `thumbnailBoxSize()` box-sizing math (from the new
+`width`/`height` fields above) so the echo renders the same real-aspect-ratio
+box the real thumbnail will swap into — same duplicated-not-shared
+convention, so this file's own no-shared-code note above still holds.
+`PendingEchoAttachment` has no `status` concept and never reaches `ready` (it
+is always torn down before that could apply — see the swap-timing paragraph
+above), so it has no equivalent of `UploadThumbnail`'s ready-checkmark badge
+(PR #299).
 
 `ChatState.hasStarted` is widened to `messages.length > 0 || pendingEcho !==
 null` (was `messages.length > 0` alone) so the very first message of a

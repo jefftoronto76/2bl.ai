@@ -372,6 +372,35 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   Docs/`, so nothing here pointed at them as current — but anyone opening
   either doc next should know both predate this entry.
 
+- **Thumbnail image dimensions are client-only — not persisted, so a
+  returning visitor/second viewer doesn't get the zero-shift sizing
+  guarantee (2026-08-07, PR #298/#299).** `UploadThumbnail.tsx` used to force
+  every image into a fixed 192×144 crop box (`object-cover`); it now sizes a
+  240×320 bounding box (`max-w-60 max-h-80 object-contain`) from the image's
+  real `width`/`height`, preserving aspect ratio — see `System Docs/Public
+  Site.md`'s `UploadThumbnail` row for the full mechanics. Those dimensions
+  are captured client-side only, in `ChatInput.tsx`'s `addFiles` (a plain
+  `new Image()` decode off the pick-time blob URL, reading
+  `naturalWidth`/`naturalHeight`), threaded through `Attachment` →
+  `PendingEcho.attachments[]` / `ClientMediaItem` — never sent to or stored
+  by the server. That's sufficient for the person who just uploaded (the
+  live case this PR targeted), but on a page reload, or for any other viewer
+  of the same conversation, `item.width`/`height` is simply `undefined` — no
+  cropping either way (still `object-contain`), just without the
+  before-first-paint sizing that avoids a decode-time layout shift.
+  Persisting them server-side was investigated and deliberately deferred: it
+  needs a new `media_items.width`/`height` column pair (`ALTER TABLE
+  media_items ADD COLUMN width integer, ADD COLUMN height integer` — nullable,
+  no default), which is Jeff's Studio call per the division-of-labor
+  convention, not something built around blindly; and it needs a **new**
+  fetch+decode step in `services/media/processor.ts`'s `processImage`, which
+  today never downloads image bytes at all — it hands Anthropic's vision API
+  a signed URL by reference, so there's no existing in-memory decode pass to
+  extend, contrary to what might be assumed from `processDocument`'s
+  (PDF/DOCX/TXT) fetch+`arrayBuffer` pattern in the same file. **Not yet
+  done — Jeff's Studio work, then a follow-up code task once the columns
+  exist.**
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
