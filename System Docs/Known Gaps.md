@@ -434,6 +434,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   done — Jeff's Studio work, then a follow-up code task once the columns
   exist.**
 
+- **Images in chat threads don't reliably reload when scrolling back to
+  them — found 2026-08-08 during live-preview testing of the scroll-to-latest
+  nudge.** Scrolling away from and back to an earlier image attachment in the
+  transcript sometimes shows it failed/blank rather than the image. Not yet
+  root-caused. Candidates worth checking first: browser image caching
+  behavior on the signed Supabase Storage URL (may be short-lived/expiring),
+  whether `MessageList`/`ChatThread` re-mounts or re-fetches anything on
+  scroll-into-view, or a lazy-loading attribute interacting badly with scroll
+  position changes. No fix attempted yet — needs investigation before a fix
+  is scoped.
+
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
   Should be a per-tenant setting stored in `tenants.settings` JSONB with a
@@ -538,21 +549,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     circle, a plain `Check` sits next to "Kept" (a distinct job — confirms
     saved, doesn't repeat the kind), and the rename UI is gone entirely. See
     `System Docs/Public Site.md`'s memory bookmark row.
-  - **Memory panel — Stages A & B shipped 2026-08-08 (PR #302); C, D, E, F
-    not built.** Clicking a saved memory (the row is now a button, `onOpen`
-    prop) opens it in a side panel: `SidebarV2` force-collapses to its
-    existing 48px rail (`forceCollapsed` prop), the chat column narrows, and
-    a third pane renders — currently `MemoryPanelStub`, a deliberately
+  - **Memory panel — Stages A–E shipped 2026-08-08 (PRs #302, #306, #307,
+    #308); F not built.** Clicking a saved memory (the row is now a button,
+    `onOpen` prop) opens it in a side panel: `SidebarV2` force-collapses to
+    its existing 48px rail (`forceCollapsed` prop), the chat column narrows,
+    and a third pane renders — currently `MemoryPanelStub`, a deliberately
     throwaway title/body/close stub, not final card-view content (that's a
     separate, later piece per the handoff's own scoping). Desktop only;
     mobile is unaffected, not broken — `onOpenMemory` is `undefined` there,
     so the receipt stays exactly as inert as it was before this feature.
-    Outstanding, in order: **C** — the chat/panel divider becomes
-    drag-resizable (currently a fixed flex-grow split, no drag at all).
-    **D** — the divider's hover/drag visual treatment (accent line, pill,
-    background wash) from `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx`.
-    **E** — keyboard operability (arrow-key nudge, Home/double-click reset).
-    **F** — mobile: the panel should slide up from the bottom, a genuinely
+    **C, D, E all shipped:** the chat/panel divider is drag-resizable (mouse
+    and keyboard — arrow-key nudge, Home/double-click reset), with the
+    hover/drag visual treatment (accent line, pill, background wash) from
+    `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx` —
+    see the sprint-close pointer below for the short version. **Outstanding:
+    F** — mobile: the panel should slide up from the bottom, a genuinely
     separate code path from the desktop side-split, not yet started. See
     `Design Handovers/design_handoff_memory_panel_layout_2026/README.md` for
     the full spec and `System Docs/Public Site.md`'s `ChatHero` /
@@ -561,6 +572,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     caps the whole app at `clamp(680px,50vw,1120px)` wide, not the full
     viewport, with no `overflow-hidden` anywhere in its ancestry — worth
     knowing before adding more wide content inside it.
+  - **Sprint-close pointer, 2026-08-08 — memory panel resize (Stages A–E) +
+    scroll-to-latest nudge.** PRs #301–#303 and #305–#308 (confirmed via
+    `git log --merges`; #304 falls inside that number range but is an
+    unrelated schema-docs PR, not part of this work). Chat/panel divider is
+    now drag-resizable (mouse + keyboard), with hover/focus visual treatment
+    and a Home/double-click reset that reflects the current window size — see
+    the Memory panel entry above for per-stage detail. Chat transcript also
+    gained a scroll-to-latest button that appears when scrolled away from the
+    bottom (`components/shells/membership/ScrollToLatestButton.tsx`) — **not
+    yet merged**, branch `2026-08-08-scroll-to-latest` pushed 2026-08-08,
+    awaiting Jeff's review, so treat it as pending rather than shipped until
+    it lands on `main`. Stage F (mobile slide-up panel) not yet started —
+    deferred until after the Memory Canvas content track (CardView chrome,
+    photo bookmark, add-to-memory, etc.) lands, per the sequencing decision
+    made the same day.
 - **`members.user_id` left null on some active, Clerk-linked members —
   root-caused and fixed in code 2026-08-06; historical rows need a Studio
   backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
