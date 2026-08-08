@@ -36,6 +36,14 @@ import type { ChatErrorType } from './types'
 export type MemorySourceKind = 'conversation' | 'photo' | 'video' | 'audio' | 'document'
 export type MemoryStatus = 'draft' | 'published'
 
+/** Kept in sync with services/crm/memories.ts's own copy — see that file's doc comment. */
+export interface MemoryBlock {
+  id: string
+  type: 'text' | 'image'
+  content?: string
+  media_item_id?: string
+}
+
 export interface MemoryRow {
   id: string
   session_id: string
@@ -43,6 +51,8 @@ export interface MemoryRow {
   source_kind: MemorySourceKind
   title: string
   body: string
+  /** Null/absent = legacy row, rendered from `body` alone forever (lazy-seed-on-first-edit). */
+  body_blocks?: MemoryBlock[] | null
   status: MemoryStatus
   created_at: string
   updated_at: string
@@ -88,6 +98,14 @@ export interface UseMemoriesReturn {
   discard(memory: MemoryRow): Promise<void>
   /** Title-only correction — the inline edit affordance on MemoryCard/MemorySavedReceipt. */
   rename(memoryId: string, title: string): Promise<void>
+  /**
+   * Replaces the panel's block canvas (Memory Canvas V1). Unlike rename(),
+   * the server derives `body` from `blocks` (reviseMemoryBlocks,
+   * services/crm/memories.ts) — this reads the PATCH response and merges
+   * the server's own body_blocks/body, rather than echoing the blocks
+   * argument back into local state.
+   */
+  reviseBlocks(memoryId: string, blocks: MemoryBlock[]): Promise<void>
 }
 
 /**
@@ -281,5 +299,47 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
-  return { memories, getByAnchor, isPending, getPendingKind, hasError, getErrorType, hasOpenDraft, isLoaded, create, keep, discard, rename }
+  const reviseBlocks = useCallback(async (memoryId: string, blocks: MemoryBlock[]) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch(`/api/sessions/${sid}/memories/${memoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revise_blocks', blocks }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.memory) {
+        console.error('[useMemories] reviseBlocks failed:', res.status)
+        return
+      }
+      // Unlike rename() (title is a field the client fully controls), the
+      // server derives `body` from `blocks` via its own flattening logic
+      // (reviseMemoryBlocks, services/crm/memories.ts) — trusting the
+      // client's own `blocks` argument for local state would leave `body`
+      // stale, silently breaking the shared-state guarantee that a panel
+      // edit shows up immediately in the transcript's MemoryCard/
+      // MemorySavedReceipt (both render `memory.body`, not `body_blocks`).
+      const memory = data.memory as MemoryRow
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, body_blocks: memory.body_blocks, body: memory.body } : m)))
+    } catch (err) {
+      console.error('[useMemories] reviseBlocks threw:', err)
+    }
+  }, [])
+
+  return {
+    memories,
+    getByAnchor,
+    isPending,
+    getPendingKind,
+    hasError,
+    getErrorType,
+    hasOpenDraft,
+    isLoaded,
+    create,
+    keep,
+    discard,
+    rename,
+    reviseBlocks,
+  }
 }

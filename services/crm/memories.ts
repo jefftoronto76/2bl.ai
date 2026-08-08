@@ -43,6 +43,7 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getSessionMessages } from '@/services/crm/sessions'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
+import { getMediaItem, listByChat } from '@/services/media'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
@@ -53,6 +54,20 @@ export type MemoryResult<T> =
 export type MemorySourceKind = 'conversation' | 'photo' | 'video' | 'audio' | 'document'
 export type MemoryStatus = 'draft' | 'published'
 
+/**
+ * A single block in a memory's body-blocks canvas (Memory Canvas V1 — text
+ * and image only; see Design Handovers/handover_canvas_update_notion_08_2026).
+ * `content` only ever means something on a 'text' block; `media_item_id`
+ * only ever means something on an 'image' one — never both populated on the
+ * same block.
+ */
+export interface MemoryBlock {
+  id: string
+  type: 'text' | 'image'
+  content?: string
+  media_item_id?: string
+}
+
 export interface MemoryRow {
   id: string
   session_id: string
@@ -60,12 +75,32 @@ export interface MemoryRow {
   source_kind: MemorySourceKind
   title: string
   body: string
+  /** Null/absent = legacy row, rendered from `body` alone forever (lazy-seed-on-first-edit — see reviseMemoryBlocks). */
+  body_blocks?: MemoryBlock[] | null
   status: MemoryStatus
   created_at: string
   updated_at: string
 }
 
 const ARTIFACT_TYPE = 'memory' as const
+
+const MEMORY_ROW_COLUMNS =
+  'id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at'
+
+/**
+ * listMemories/createDraftMemory/renameMemory/publishMemory deliberately
+ * keep selecting the ORIGINAL column list above, unchanged — body_blocks is
+ * a new column (per Division of Labor, added by Jeff in Studio, not by CC;
+ * see CLAUDE.md) that this backend pass cannot confirm is live yet. Selecting
+ * a nonexistent column errors the whole query, not just omits the field, so
+ * widening every existing read/write to request it now would risk breaking
+ * the ALREADY-SHIPPED memory panel (listMemories backs its initial load) the
+ * moment this deploys, if the column isn't there. reviseMemoryBlocks is the
+ * one genuinely new mutation added in this pass — nothing calls it yet (the
+ * panel UI is a separate, following task), so it's the only place selecting
+ * body_blocks is both necessary and safely inert until that column exists.
+ */
+const MEMORY_ROW_COLUMNS_WITH_BLOCKS = `${MEMORY_ROW_COLUMNS}, body_blocks`
 
 function toMemoryRow(row: Record<string, unknown>): MemoryRow {
   return {
@@ -75,6 +110,7 @@ function toMemoryRow(row: Record<string, unknown>): MemoryRow {
     source_kind: row.source_kind as MemorySourceKind,
     title: row.title as string,
     body: row.body as string,
+    body_blocks: (row.body_blocks as MemoryBlock[] | null | undefined) ?? null,
     status: row.status as MemoryStatus,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
@@ -95,7 +131,7 @@ export async function listMemories(
 
   const { data, error } = await supabase
     .from('artifacts')
-    .select('id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at')
+    .select(MEMORY_ROW_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('session_id', sessionId)
     .eq('type', ARTIFACT_TYPE)
@@ -200,7 +236,7 @@ export async function createDraftMemory(
       body: input.body,
       status: 'draft' as MemoryStatus,
     })
-    .select('id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at')
+    .select(MEMORY_ROW_COLUMNS)
     .single()
 
   if (error || !data) {
@@ -370,7 +406,7 @@ export async function renameMemory(
     .eq('tenant_id', tenantId)
     .eq('session_id', sessionId)
     .eq('type', ARTIFACT_TYPE)
-    .select('id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at')
+    .select(MEMORY_ROW_COLUMNS)
     .maybeSingle()
 
   if (error) {
@@ -383,6 +419,179 @@ export async function renameMemory(
   }
 
   console.log('[memories] renamed:', memoryId)
+  return { ok: true, data: toMemoryRow(data) }
+}
+
+const MAX_BLOCKS = 50
+
+type ValidateBlocksResult =
+  | { ok: true; blocks: MemoryBlock[] }
+  | { ok: false; error: string }
+
+/**
+ * Narrows/validates the raw (untrusted, still `unknown`) `blocks` value from
+ * a revise_blocks PATCH body into a real MemoryBlock[], or a single 400-worthy
+ * error string. Real validation, not just a UI restriction — a client sending
+ * a block type outside 'text'/'image' (e.g. a future video/quote/divider) is
+ * rejected here even though nothing in the V1 UI would ever construct one,
+ * since this is the actual scope boundary, not the UI's.
+ */
+function validateBlocks(blocks: unknown): ValidateBlocksResult {
+  if (!Array.isArray(blocks) || blocks.length === 0) {
+    return { ok: false, error: 'blocks must be a non-empty array' }
+  }
+  if (blocks.length > MAX_BLOCKS) {
+    return { ok: false, error: `blocks must not exceed ${MAX_BLOCKS} items` }
+  }
+
+  const validated: MemoryBlock[] = []
+  for (const raw of blocks) {
+    if (!raw || typeof raw !== 'object') {
+      return { ok: false, error: 'each block must be an object' }
+    }
+    const { id, type, content, media_item_id } = raw as Record<string, unknown>
+    if (typeof id !== 'string' || !id.trim()) {
+      return { ok: false, error: 'each block must have a non-empty id' }
+    }
+    if (type !== 'text' && type !== 'image') {
+      return { ok: false, error: `block ${id} has an invalid type — only 'text' and 'image' are supported` }
+    }
+    if (type === 'text') {
+      if (content !== undefined && typeof content !== 'string') {
+        return { ok: false, error: `block ${id}'s content must be a string` }
+      }
+      validated.push({ id, type, content: typeof content === 'string' ? content : '' })
+    } else {
+      if (typeof media_item_id !== 'string' || !media_item_id.trim()) {
+        return { ok: false, error: `block ${id} (image) requires a media_item_id` }
+      }
+      validated.push({ id, type, media_item_id })
+    }
+  }
+
+  const hasNonEmptyText = validated.some(b => b.type === 'text' && (b.content ?? '').trim().length > 0)
+  if (!hasNonEmptyText) {
+    return { ok: false, error: 'at least one text block must contain non-whitespace content' }
+  }
+
+  return { ok: true, blocks: validated }
+}
+
+/** Joined in array order, blank-line separated — the transcript's read-only `body` mirror of the blocks' text content. */
+function flattenBlocksToBody(blocks: MemoryBlock[]): string {
+  return blocks
+    .filter(b => b.type === 'text' && (b.content ?? '').trim().length > 0)
+    .map(b => (b.content as string).trim())
+    .join('\n\n')
+}
+
+/**
+ * revise_blocks — the panel's block-canvas editing mutation (Memory Canvas
+ * V1). Lazy-seed-on-first-edit: this is the ONLY way a memory ever acquires
+ * body_blocks — nothing seeds it at create time, so a legacy or
+ * never-edited row stays `body_blocks: null` (rendered from `body` alone)
+ * until a member's first edit in the panel calls this. Writes body_blocks
+ * and a flattened `body` in the same update, since `body` remains the
+ * transcript's (MemoryCard/MemorySavedReceipt) read-only source of truth —
+ * validateBlocks's "at least one non-empty text block" rule is what keeps
+ * that flatten from ever going blank.
+ *
+ * Image blocks' media_item_id is resolved server-side (getMediaItem, tenant-
+ * scoped) and checked against this session's own media items (listByChat) —
+ * a client cannot attach another session's or another tenant's photo by
+ * guessing/replaying an id.
+ */
+export async function reviseMemoryBlocks(
+  tenantId: string,
+  sessionId: string,
+  memoryId: string,
+  blocks: unknown,
+): Promise<MemoryResult<MemoryRow>> {
+  const validation = validateBlocks(blocks)
+  if (!validation.ok) {
+    void logEvent({
+      action: AuditAction.MEMORY_BLOCKS_REVISED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      target_id: memoryId,
+      outcome: 'failure',
+      metadata: { error_detail: validation.error },
+    })
+    return { ok: false, status: 400, error: validation.error }
+  }
+
+  const imageMediaItemIds = Array.from(
+    new Set(validation.blocks.filter(b => b.type === 'image').map(b => b.media_item_id as string)),
+  )
+
+  if (imageMediaItemIds.length > 0) {
+    const sessionMediaItems = await listByChat(sessionId, tenantId)
+    const sessionMediaItemIds = new Set(sessionMediaItems.map(item => item.id))
+
+    for (const mediaItemId of imageMediaItemIds) {
+      const item = await getMediaItem(mediaItemId, tenantId)
+      if (!item || !sessionMediaItemIds.has(mediaItemId)) {
+        void logEvent({
+          action: AuditAction.MEMORY_BLOCKS_REVISED,
+          tenant_id: tenantId,
+          target_type: 'memory',
+          target_id: memoryId,
+          outcome: 'failure',
+          metadata: { error_detail: 'media_item_not_in_session', media_item_id: mediaItemId },
+        })
+        return { ok: false, status: 400, error: `media_item_id ${mediaItemId} does not belong to this session` }
+      }
+    }
+  }
+
+  const body = flattenBlocksToBody(validation.blocks)
+
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('artifacts')
+    .update({ body_blocks: validation.blocks, body, updated_at: new Date().toISOString() })
+    .eq('id', memoryId)
+    .eq('tenant_id', tenantId)
+    .eq('session_id', sessionId)
+    .eq('type', ARTIFACT_TYPE)
+    .select(MEMORY_ROW_COLUMNS_WITH_BLOCKS)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[memories] revise_blocks error:', JSON.stringify(error))
+    void logEvent({
+      action: AuditAction.MEMORY_BLOCKS_REVISED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      target_id: memoryId,
+      outcome: 'failure',
+      metadata: { error_detail: error.message },
+    })
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[memories] no memory matched id + tenant + session:', { memoryId, tenantId, sessionId })
+    void logEvent({
+      action: AuditAction.MEMORY_BLOCKS_REVISED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      target_id: memoryId,
+      outcome: 'failure',
+      metadata: { error_detail: 'not_found' },
+    })
+    return { ok: false, status: 404, error: 'Memory not found' }
+  }
+
+  console.log('[memories] revised blocks:', memoryId)
+  void logEvent({
+    action: AuditAction.MEMORY_BLOCKS_REVISED,
+    tenant_id: tenantId,
+    target_type: 'memory',
+    target_id: memoryId,
+    outcome: 'success',
+    metadata: { block_count: validation.blocks.length },
+  })
   return { ok: true, data: toMemoryRow(data) }
 }
 
@@ -405,7 +614,7 @@ export async function publishMemory(
     .eq('tenant_id', tenantId)
     .eq('session_id', sessionId)
     .eq('type', ARTIFACT_TYPE)
-    .select('id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at')
+    .select(MEMORY_ROW_COLUMNS)
     .maybeSingle()
 
   if (error) {
