@@ -241,7 +241,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         </>
       )}
 
-      <div className={`flex flex-col min-w-0 h-full min-h-0 ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'}`}>
+      {/* min-w-0 lets flex shrink below content size — fine on mobile
+          (chat is always flex-1 there), but on desktop with the panel open
+          it let this column shrink past ChatHeader's own fixed-width icon
+          cluster (Share/Fullscreen/Account/Close), which then overflowed
+          past the column's real edge and visually bled into the panel's
+          header (reported on Stage A's first preview). Floored at 380px —
+          the plan's own MIN_CHAT_WIDTH, brought forward from Stage C since
+          even this fixed, non-resizable split needs a real minimum. */}
+      <div
+        className={`flex flex-col h-full min-h-0 ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[380px]'}`}
+      >
         <ChatHeader
           isFullScreen={isFullScreen}
           onToggleFullScreen={onToggleFullScreen}
@@ -277,7 +287,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           after the (untouched-this-stage) sidebar, no animation, no resize.
           Desktop only; Stage F adds the mobile counterpart. */}
       {!isMobile && openMemory && (
-        <div className="h-full min-w-0 flex-[3] overflow-hidden border-l border-border">
+        <div className="h-full min-w-[320px] flex-[3] overflow-hidden border-l border-border">
           <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />
         </div>
       )}
