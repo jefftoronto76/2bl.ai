@@ -86,26 +86,46 @@ export function MemoryErrorLine({ errorType, onRetry }: { errorType: ChatErrorTy
 export interface MemorySavedReceiptProps {
   memory: MemoryRow
   onRetitle: (title: string) => void
+  /**
+   * Opens this memory in the memory panel (Stage A of
+   * Design Handovers/design_handoff_memory_panel_layout_2026/README.md).
+   * Optional so callers that haven't wired a panel yet (none currently) can
+   * still render the receipt inert, same posture as every other optional
+   * handler in this file.
+   */
+  onOpen?: (memory: MemoryRow) => void
 }
 
 /**
  * `saved` state — collapses to a slim receipt. Read-only, no edit affordance
  * (removed 2026-08-08 — see the diff-audit follow-up: inline rename doesn't
- * belong here, and the row is meant to open a memory-canvas panel instead,
- * a separate immediate follow-up task). The outer element deliberately has
- * no onClick yet — wiring it to nothing before that panel exists would just
- * mean rewiring it later. `onRetitle` stays in the prop type because
+ * belong here). The whole row opens the memory panel (added 2026-08-08,
+ * panel-layout Stage A) — `onRetitle` stays in the prop type because
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
 
   return (
     <div className="flex gap-3">
       <span className={RAIL} />
-      <div className="flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px]">
+      <div
+        role={onOpen ? 'button' : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+        onClick={onOpen ? () => onOpen(memory) : undefined}
+        onKeyDown={
+          onOpen
+            ? e => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                onOpen(memory)
+              }
+            : undefined
+        }
+        className={`flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px] ${onOpen ? 'cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-accent' : ''}`}
+      >
         <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
           <Icon size={12} aria-hidden />
         </span>
