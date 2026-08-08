@@ -34,9 +34,14 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
 
   if (!open) return null;
 
-  const isStory = item.target === 'story';
-  const noun = isStory ? 'story' : 'chat';
+  const noun = item.target === 'story' ? 'story' : item.target === 'memory' ? 'memory' : 'chat';
   const title = item.title;
+  // Deleting a conversation or a story cascades to every memory anchored to
+  // it — worth the extra warning line. Deleting a single memory doesn't
+  // cascade to anything else, so it gets its own narrower copy instead of
+  // reusing "and every memory it holds," which would be wrong here (a
+  // memory doesn't hold other memories).
+  const cascadeWarning = item.target === 'memory' ? '' : 'and every memory it holds ';
 
   return (
     // Scrim — anchored to the drawer's relative body (ChatDrawerV2 sets
@@ -72,10 +77,10 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
               <span className="font-display italic text-base text-text-primary">
                 &ldquo;{title}&rdquo;
               </span>{' '}
-              and every memory it holds will be permanently removed. This can&rsquo;t be undone.
+              {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.
             </>
           ) : (
-            <>This {noun} and every memory it holds will be permanently removed. This can&rsquo;t be undone.</>
+            <>This {noun} {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.</>
           )}
         </p>
 

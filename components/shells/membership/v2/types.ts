@@ -23,7 +23,12 @@ export interface WritingPrompt {
   text: string;
 }
 
-export type RowTarget = 'conversation' | 'story';
+// 'memory' isn't a sidebar row target (SidebarV2's kebab only ever produces
+// 'conversation'/'story') — it rides this same union because ChatHero.tsx's
+// pendingDelete state and ConfirmDeleteModal are shared across all three
+// delete flows (memory-panel-layout CardView chrome pass, 2026-08-08),
+// not because a memory row exists in the sidebar.
+export type RowTarget = 'conversation' | 'story' | 'memory';
 export type RowAction =
   | 'star'
   | 'rename'
