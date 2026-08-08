@@ -77,3 +77,42 @@ describe('MemoryPanelDivider — hover/drag visual treatment', () => {
     expect(line.className).toContain('bg-border');
   });
 });
+
+describe('MemoryPanelDivider — keyboard operability (Stage E)', () => {
+  it('is tab-reachable', () => {
+    const { divider } = renderDivider();
+    expect(divider.tabIndex).toBe(0);
+  });
+
+  it('keyboard focus shows the exact same treatment as hover — one state, not a separate focus style', () => {
+    const { divider, line, pill } = renderDivider();
+
+    fireEvent.focus(divider);
+    expect(line.className).toContain('bg-accent');
+    expect(pill.className).toContain('opacity-100');
+    expect(divider.className).toContain('bg-accent/[0.12]');
+
+    fireEvent.blur(divider);
+    expect(line.className).toContain('bg-border');
+    expect(pill.className).toContain('opacity-0');
+  });
+
+  it('ArrowLeft nudges via the same onMove callback drag uses, with delta -16', () => {
+    const { divider, onMove } = renderDivider();
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+    expect(onMove).toHaveBeenCalledWith(400, -16); // onStart() stubbed to 400
+  });
+
+  it('ArrowRight nudges via the same onMove callback drag uses, with delta +16', () => {
+    const { divider, onMove } = renderDivider();
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    expect(onMove).toHaveBeenCalledWith(400, 16);
+  });
+
+  it('other keys are ignored', () => {
+    const { divider, onMove } = renderDivider();
+    fireEvent.keyDown(divider, { key: 'Tab' });
+    fireEvent.keyDown(divider, { key: 'a' });
+    expect(onMove).not.toHaveBeenCalled();
+  });
+});

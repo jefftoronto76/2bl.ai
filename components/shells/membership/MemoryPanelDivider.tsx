@@ -1,30 +1,33 @@
 'use client';
 
 /**
- * MemoryPanelDivider — the draggable boundary between the chat column and
- * the memory panel (memory-panel-layout Stage C interaction, Stage D visual
- * treatment). Adapted from (not copied from) Curtain.tsx in
+ * MemoryPanelDivider — the draggable, keyboard-operable boundary between
+ * the chat column and the memory panel (memory-panel-layout Stage C
+ * interaction, Stage D visual treatment, Stage E keyboard operability).
+ * Adapted from (not copied from) Curtain.tsx in
  * Design Handovers/design_handoff_memory_panel_layout_2026/, which bundles
- * both concerns into one component — pulled apart here across two stages so
- * each stayed reviewable on its own: Stage C shipped the drag math and hit-
- * zone with no visual feedback beyond the cursor; this adds the hover/drag
- * treatment (accent line, pill, background wash) on top of that unchanged
- * interaction shell. No keyboard operability yet either (Stage E): a
- * focusable element with no keyboard handler is worse than one that isn't
- * focusable at all, so no tabIndex until arrow-key/Home handling actually
- * exists — onFocus/onBlur are therefore skipped too (dead handlers on a
- * non-focusable element), unlike Curtain.tsx's version.
+ * all three concerns into one component — pulled apart across stages here
+ * so each stayed reviewable on its own.
+ *
+ * Keyboard shares the exact same width-setting path as drag: an arrow-key
+ * nudge calls the same onMove(base, delta) callback a pointer drag does,
+ * just with a fixed +-16px delta instead of a live pointer delta — no
+ * second width-calculation path.
  */
 
 import { useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
+
+const ARROW_KEY_STEP = 16;
 
 export interface MemoryPanelDividerProps {
-  /** Returns the panel's current width (px) at drag start. */
+  /** Returns the panel's current width (px) at drag/keyboard-nudge start. */
   onStart: () => number;
-  /** Applies a new width given the width at drag start and the pointer's
-   *  horizontal delta since then. Pure math — no DOM reads here, which is
-   *  what makes this trivially unit-testable without real layout. */
+  /** Applies a new width given the width at drag start and a horizontal
+   *  delta since then — a live pointer delta for a drag, a fixed +-16 for
+   *  an arrow-key nudge. Pure math on the caller's side — no DOM reads
+   *  here, which is what makes this trivially unit-testable without real
+   *  layout. */
   onMove: (base: number, delta: number) => void;
   /** Fires true the instant a drag starts, false the instant it ends — lets
    *  the panel suppress its own open/close transition only while actively
@@ -35,11 +38,11 @@ export interface MemoryPanelDividerProps {
 }
 
 export function MemoryPanelDivider({ onStart, onMove, onDragStateChange, label }: MemoryPanelDividerProps) {
-  // hot = hovered, live = actively dragging. Combined below (`on`) so the
-  // treatment doesn't flicker off if a fast drag carries the cursor outside
-  // the 9px hit-zone — window-level pointermove tracks the drag regardless
-  // of where the cursor ends up, so the visual should stay lit for exactly
-  // as long as the drag itself is live, not just while directly hovered.
+  // hot = hovered OR focused, live = actively dragging. Combined below
+  // (`on`) so the treatment doesn't flicker off if a fast drag carries the
+  // cursor outside the 9px hit-zone, and so keyboard focus gets the exact
+  // same visual feedback mouse hover already does — one state, two sources,
+  // not a separate focus style.
   const [hot, setHot] = useState(false);
   const [live, setLive] = useState(false);
   const on = hot || live;
@@ -67,19 +70,36 @@ export function MemoryPanelDivider({ onStart, onMove, onDragStateChange, label }
     document.body.style.userSelect = 'none';
   };
 
+  const handleKeyDown = (e: ReactKeyboardEvent) => {
+    // Same direction convention as drag: moving the divider left widens the
+    // panel (base - delta with a negative delta = base + step), moving it
+    // right narrows it — ArrowLeft/ArrowRight mirror that intuitively.
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      onMove(onStart(), -ARROW_KEY_STEP);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onMove(onStart(), ARROW_KEY_STEP);
+    }
+  };
+
   return (
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
+      tabIndex={0}
       onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
       onMouseEnter={() => setHot(true)}
       onMouseLeave={() => setHot(false)}
-      className={`relative w-[9px] min-w-[9px] shrink-0 cursor-col-resize touch-none self-stretch transition-colors ${on ? 'bg-accent/[0.12]' : ''}`}
+      onFocus={() => setHot(true)}
+      onBlur={() => setHot(false)}
+      className={`relative w-[9px] min-w-[9px] shrink-0 cursor-col-resize touch-none self-stretch outline-none transition-colors ${on ? 'bg-accent/[0.12]' : ''}`}
     >
       {/* The seam itself — was a static border-l on this element in Stage C;
           now a positioned line so it can swap to accent-colored on
-          hover/drag without fighting the hit-zone's own background wash. */}
+          hover/focus/drag without fighting the hit-zone's own background wash. */}
       <span
         className={`absolute inset-y-0 left-1 w-px transition-colors ${on ? 'bg-accent' : 'bg-border'}`}
       />
