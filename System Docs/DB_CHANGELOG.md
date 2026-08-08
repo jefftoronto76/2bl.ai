@@ -1,5 +1,101 @@
 # DB Changelog
 
+## 2026-08-08 — Photo/memory/story many-to-many schema (Memory Canvas prep)
+
+**Documented retroactively.** These four DDL statements ran in Supabase
+Studio 02:13–02:14 UTC on 2026-08-08; the chat session in which they were
+run was deleted before this changelog entry was written. Recovered from a
+Postgres log export (Studio's SQL Editor has no native query history) and
+cross-checked against live Studio queries the same day — see the Notes on
+each entry below for what was, and wasn't, independently reverified.
+
+### Create `artifact_containments` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:** Not recovered beyond the statement type (`CREATE TABLE
+artifact_containments`) — the exact column list wasn't captured in the log
+export reviewed for this entry.
+
+**Purpose:** Self-referencing `artifacts` join table, backing a memory↔story
+many-to-many relationship for
+`Design Handovers/design_handoff_memory_canvas_08_2026`.
+
+**Notes:**
+- **Zero application code references this table as of 2026-08-08**
+  (repo-wide grep confirmed) — the schema exists, but nothing reads or
+  writes it yet. Do not assume this is wired into the app.
+- Column-by-column shape was not independently reverified against Studio in
+  this pass — only the self-referencing parent/child relationship is
+  confirmed. Check Studio directly before relying on exact column names.
+
+### Create `photo_artifacts` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:** Not recovered beyond the statement type (`CREATE TABLE
+photo_artifacts`) — the exact column list wasn't captured in the log export
+reviewed for this entry.
+
+**Purpose:** `media_items`↔`artifacts` bridge table — a proper many-to-many,
+with a unique constraint and indexes. Meant to eventually replace
+`media_items.artifact_id` (a single dormant FK that only supports a
+one-to-many shape).
+
+**Notes:**
+- **Zero application code references this table as of 2026-08-08**
+  (repo-wide grep confirmed) — the schema exists, but nothing reads or
+  writes it yet. Do not assume this is wired into the app.
+- `media_items.artifact_id` is **not yet deprecated** — still present,
+  still dormant, not cut over to this table.
+- Column-by-column shape was not independently reverified against Studio in
+  this pass — only the bridge-table (many-to-many join) shape is confirmed.
+  Check Studio directly before relying on exact column names.
+
+### Add `artifacts.media_item_id`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+ALTER TABLE artifacts ADD COLUMN media_item_id uuid;
+```
+
+**Purpose:** Unclear — likely an earlier-draft leftover. A single FK here
+implies a one-to-many relationship, which doesn't fit the many-to-many shape
+`photo_artifacts` (above) was built to express; the two additions appear to
+represent two different design directions considered in the same session.
+
+**Notes:**
+- **Flagged dead:** 0 rows populated, zero code references (repo-wide grep
+  confirmed) as of 2026-08-08.
+- Not dropped — just flagged. Left for Jeff to decide whether to drop or
+  repurpose.
+
+### Add `media_items.latitude`, `media_items.longitude`
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+ALTER TABLE media_items ADD COLUMN latitude double precision, ADD COLUMN longitude double precision;
+```
+
+**Purpose:** Presumably geolocation for uploaded photos, part of the same
+Memory Canvas prep as the tables above — no EXIF-extraction pipeline exists
+yet to populate them.
+
+**Notes:**
+- **Zero application code references these columns as of 2026-08-08**
+  (repo-wide grep confirmed) — the schema exists, but nothing reads or
+  writes it yet.
+
 ## 2026-07-28
 
 ### Add `chat_sessions.stop_requested_at`
