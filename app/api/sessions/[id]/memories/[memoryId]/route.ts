@@ -1,16 +1,20 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth'
-import { publishMemory, discardMemory, renameMemory } from '@/services/crm/memories'
+import { publishMemory, discardMemory, renameMemory, reviseMemoryBlocks } from '@/services/crm/memories'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
 /**
- * PATCH /api/sessions/[id]/memories/[memoryId] — three actions on a memory:
+ * PATCH /api/sessions/[id]/memories/[memoryId] — four actions on a memory:
  * { action: 'keep' } publishes it, { action: 'discard' } soft-discards it,
  * { action: 'retitle', title } corrects its title (the inline edit
  * affordance on MemoryCard/MemorySavedReceipt — works regardless of
- * draft/published status). Tenant + session scoped, same anonymous-safe
- * trust posture as the sibling feedback/memories routes.
+ * draft/published status), { action: 'revise_blocks', blocks } replaces the
+ * panel's block canvas (Memory Canvas V1 — validation, media_item_id
+ * resolution, and audit logging all live in reviseMemoryBlocks itself, same
+ * placement as createMemoryFromAnchor's, so this route just forwards the raw
+ * `blocks` value and relays the result). Tenant + session scoped, same
+ * anonymous-safe trust posture as the sibling feedback/memories routes.
  */
 export async function PATCH(
   req: Request,
@@ -29,9 +33,9 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { action, title } = body as { action?: unknown; title?: unknown }
-  if (action !== 'keep' && action !== 'discard' && action !== 'retitle') {
-    return NextResponse.json({ error: "action must be 'keep', 'discard', or 'retitle'" }, { status: 400 })
+  const { action, title, blocks } = body as { action?: unknown; title?: unknown; blocks?: unknown }
+  if (action !== 'keep' && action !== 'discard' && action !== 'retitle' && action !== 'revise_blocks') {
+    return NextResponse.json({ error: "action must be 'keep', 'discard', 'retitle', or 'revise_blocks'" }, { status: 400 })
   }
 
   if (action === 'retitle') {
@@ -39,6 +43,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'title is required' }, { status: 400 })
     }
     const result = await renameMemory(tenantId, id, memoryId, title.trim())
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ memory: result.data })
+  }
+
+  if (action === 'revise_blocks') {
+    const result = await reviseMemoryBlocks(tenantId, id, memoryId, blocks)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     return NextResponse.json({ memory: result.data })
   }
