@@ -600,6 +600,33 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     (mobile slide-up panel) not yet started — deferred until after the
     Memory Canvas content track (CardView chrome, photo bookmark,
     add-to-memory, etc.) lands, per the sequencing decision made the same day.
+  - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
+    2026-08-08.** The panel's passage is now editable: `artifacts.body_blocks`
+    (jsonb, nullable, additive), the `revise_blocks` mutation
+    (`reviseMemoryBlocks`, `services/crm/memories.ts`, `Utilities/CRM.md`'s
+    `memories.ts` row), `useMemories.reviseBlocks` (`Utilities/Chat UI.md`),
+    and `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
+    rows for both) — see those files for the mechanics. Deliberately narrower
+    than the fuller canvas the design handover proposed
+    (`Design Handovers/handover_canvas_update_notion_08_2026/`): exactly two
+    block types (text, image — no video/quote/divider/gallery), no
+    drag-to-reorder, no hover-insert-between-blocks, no mobile change.
+    **Lazy-seed-on-first-edit**, not create-time seeding: a memory only ever
+    gets `body_blocks` the first time a member opens the panel's edit pencil
+    and commits — nothing seeds it at create time, so no migration was
+    needed and a memory nobody has touched stays exactly as it rendered
+    before this shipped, permanently. Image blocks reference an existing
+    `media_item_id` only (attach/replace from the session's own already-
+    uploaded photos, via the picker in `BlockCanvas.tsx`) — no new
+    upload/storage path. **Still not built, and not fixed by this:** the
+    per-upload "photo bookmark" work above (a message with several photos
+    still can't become several memories automatically) — image blocks are a
+    manual, member-driven workaround for viewing/attaching a known photo,
+    not a fix for that anchor collision; see the design-doc trail
+    (`Design Handovers/design_handoff_memory_canvas_08_2026/`) for the
+    concrete, still-unbuilt blueprint for that separate fix. Also unaffected:
+    add-to-memory, GPS indicator, memory canvas sorting/filtering, and Stage
+    F (mobile slide-up panel, still blocked on this same sequencing note).
   - **`ScrollToLatestButton`'s 48px visibility threshold and
     `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
     2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
