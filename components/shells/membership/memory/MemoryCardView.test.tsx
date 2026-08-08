@@ -1,12 +1,17 @@
 // Unit coverage for MemoryCardView (memory-panel-layout CardView chrome
-// pass, 2026-08-08) — isolated from ChatHero/MessageList, same convention
-// as MemoryPanelDivider.test.tsx. Integration with the real panel stack
-// (opening from a MemorySavedReceipt click) is covered separately in
-// ChatHero.memoryPanel.test.tsx.
+// pass, 2026-08-08; block canvas / Memory Canvas V1 pass) — isolated from
+// ChatHero/MessageList, same convention as MemoryPanelDivider.test.tsx.
+// Integration with the real panel stack (opening from a MemorySavedReceipt
+// click) is covered separately in ChatHero.memoryPanel.test.tsx.
+// BlockCanvas.tsx's own rendering/interaction details (picker, per-block
+// callbacks) are covered in its own test file — this file's block-canvas
+// tests are about MemoryCardView's OWN logic: the lazy-seed transition, and
+// when a block edit does vs. doesn't reach onReviseBlocks.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { MemoryCardView } from './MemoryCardView';
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
+import type { SessionImage } from './BlockCanvas';
 
 afterEach(cleanup);
 
@@ -18,6 +23,7 @@ function mkMemory(overrides: Partial<MemoryRow> = {}): MemoryRow {
     source_kind: 'conversation',
     title: 'The Lake House',
     body: 'It was a quiet summer by the lake.',
+    body_blocks: null,
     status: 'published',
     created_at: '2026-08-08T00:00:00.000Z',
     updated_at: '2026-08-08T00:00:00.000Z',
@@ -25,16 +31,25 @@ function mkMemory(overrides: Partial<MemoryRow> = {}): MemoryRow {
   };
 }
 
-function renderCard(overrides: Partial<MemoryRow> = {}) {
+function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionImage[] = []) {
   const memory = mkMemory(overrides);
   const onClose = vi.fn();
   const onRetitle = vi.fn();
   const onRemove = vi.fn();
   const onStub = vi.fn();
+  const onReviseBlocks = vi.fn();
   const utils = render(
-    <MemoryCardView memory={memory} onClose={onClose} onRetitle={onRetitle} onRemove={onRemove} onStub={onStub} />,
+    <MemoryCardView
+      memory={memory}
+      onClose={onClose}
+      onRetitle={onRetitle}
+      onRemove={onRemove}
+      onStub={onStub}
+      onReviseBlocks={onReviseBlocks}
+      sessionImages={sessionImages}
+    />,
   );
-  return { memory, onClose, onRetitle, onRemove, onStub, ...utils };
+  return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, ...utils };
 }
 
 describe('MemoryCardView — header', () => {
@@ -44,7 +59,7 @@ describe('MemoryCardView — header', () => {
     expect(screen.getByText('It was a quiet summer by the lake.')).toBeInTheDocument();
   });
 
-  it('the passage is never an editable field — renameMemory() only ever touches title', () => {
+  it('the passage is read-only by default — no textarea until the edit pencil is clicked (lazy-seed-on-first-edit)', () => {
     const { container } = renderCard();
     expect(container.querySelector('textarea')).toBeNull();
   });
@@ -98,14 +113,30 @@ describe('MemoryCardView — header', () => {
     const memory = mkMemory();
     const onRetitle = vi.fn();
     const { rerender } = render(
-      <MemoryCardView memory={memory} onClose={vi.fn()} onRetitle={onRetitle} onRemove={vi.fn()} onStub={vi.fn()} />,
+      <MemoryCardView
+        memory={memory}
+        onClose={vi.fn()}
+        onRetitle={onRetitle}
+        onRemove={vi.fn()}
+        onStub={vi.fn()}
+        onReviseBlocks={vi.fn()}
+        sessionImages={[]}
+      />,
     );
     const input = screen.getByRole('textbox', { name: 'Memory title' });
     fireEvent.change(input, { target: { value: 'half-typed draft' } });
 
     const nextMemory = mkMemory({ id: 'mem-2', title: 'A Different Memory', body: 'Something else entirely.' });
     rerender(
-      <MemoryCardView memory={nextMemory} onClose={vi.fn()} onRetitle={onRetitle} onRemove={vi.fn()} onStub={vi.fn()} />,
+      <MemoryCardView
+        memory={nextMemory}
+        onClose={vi.fn()}
+        onRetitle={onRetitle}
+        onRemove={vi.fn()}
+        onStub={vi.fn()}
+        onReviseBlocks={vi.fn()}
+        sessionImages={[]}
+      />,
     );
     expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('A Different Memory');
   });
@@ -134,6 +165,97 @@ describe('MemoryCardView — media block', () => {
     const { container } = renderCard({ source_kind: 'conversation' });
     expect(screen.queryByText('Photo')).toBeNull();
     expect(container.querySelector('.border-dashed')).toBeNull();
+  });
+});
+
+describe('MemoryCardView — passage: lazy-seed-on-first-edit (body_blocks null)', () => {
+  it('shows a hover-revealed edit pencil next to the read-only passage', () => {
+    renderCard();
+    expect(screen.getByRole('button', { name: 'Edit passage' })).toBeInTheDocument();
+  });
+
+  it('clicking the edit pencil seeds a single text block from the memory body and switches to the block canvas — without persisting anything yet', () => {
+    const { memory, onReviseBlocks } = renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit passage' }));
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue(memory.body);
+    expect(onReviseBlocks).not.toHaveBeenCalled();
+  });
+
+  it('blurring the freshly-seeded block persists it — this is the actual seed moment, not the click', () => {
+    const { memory, onReviseBlocks } = renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit passage' }));
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Text block 1' }));
+    expect(onReviseBlocks).toHaveBeenCalledTimes(1);
+    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: expect.any(String), type: 'text', content: memory.body }]);
+  });
+
+  it('a memory with already-populated body_blocks renders the block canvas immediately — no pencil, no separate edit-mode step', () => {
+    renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Existing paragraph.' }] });
+    expect(screen.queryByRole('button', { name: 'Edit passage' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('Existing paragraph.');
+  });
+});
+
+describe('MemoryCardView — block canvas: text edits commit on blur only', () => {
+  it('typing does not commit until blur', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Old.' }] });
+    const textbox = screen.getByRole('textbox', { name: 'Text block 1' });
+    fireEvent.change(textbox, { target: { value: 'New.' } });
+    expect(onReviseBlocks).not.toHaveBeenCalled();
+    fireEvent.blur(textbox);
+    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: 'b1', type: 'text', content: 'New.' }]);
+  });
+
+  it('emptying the only text block and blurring does NOT commit — reverts to the last server-confirmed content instead (same precedent as the title field)', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Original content.' }] });
+    const textbox = screen.getByRole('textbox', { name: 'Text block 1' });
+    fireEvent.change(textbox, { target: { value: '   ' } });
+    fireEvent.blur(textbox);
+    expect(onReviseBlocks).not.toHaveBeenCalled();
+    expect(textbox).toHaveValue('Original content.');
+  });
+});
+
+describe('MemoryCardView — block canvas: structural edits (add/remove/attach) commit immediately', () => {
+  it('adding a text block commits the whole updated array right away, no separate save step', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'One.' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    expect(onReviseBlocks).toHaveBeenCalledWith([
+      { id: 'b1', type: 'text', content: 'One.' },
+      { id: expect.any(String), type: 'text', content: '' },
+    ]);
+  });
+
+  it('attaching a photo from the picker commits immediately, referencing the chosen media_item_id', () => {
+    const { onReviseBlocks } = renderCard(
+      { body_blocks: [{ id: 'b1', type: 'text', content: 'One.' }] },
+      [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add photo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add photo: a.jpg' }));
+    expect(onReviseBlocks).toHaveBeenCalledWith([
+      { id: 'b1', type: 'text', content: 'One.' },
+      { id: expect.any(String), type: 'image', media_item_id: 'media-1' },
+    ]);
+  });
+
+  it('removing a block commits the remaining array immediately', () => {
+    const { onReviseBlocks } = renderCard({
+      body_blocks: [
+        { id: 'b1', type: 'text', content: 'One.' },
+        { id: 'b2', type: 'image', media_item_id: 'media-1' },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove photo' }));
+    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: 'b1', type: 'text', content: 'One.' }]);
+  });
+
+  it('disables removing the only remaining non-empty text block, so the passage can never be emptied via removal', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Only passage.' }] });
+    const button = screen.getByRole('button', { name: 'Remove text block' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onReviseBlocks).not.toHaveBeenCalled();
   });
 });
 
