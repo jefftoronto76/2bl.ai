@@ -402,7 +402,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 memory={liveOpenMemory}
                 onClose={() => setOpenMemory(null)}
                 onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
-                onRemove={() => void handleRemoveMemory(liveOpenMemory)}
+                onRemove={() => setPendingDelete({ target: 'memory', id: liveOpenMemory.id, title: liveOpenMemory.title })}
                 onStub={handleMemoryStub}
               />
             )}
@@ -422,14 +422,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onClose={() => setPendingDelete(null)}
         onConfirm={() => {
           if (!pendingDelete) return;
-          if (pendingDelete.target === 'story') {
+          if (pendingDelete.target === 'memory') {
+            // Same discard call the panel's Remove button used to fire
+            // directly (memories.discard + count decrement + panel close) —
+            // this dialog only adds the confirmation gate every other
+            // delete in this file already has, not a new mutation path.
+            // liveOpenMemory, not pendingDelete's own id/title-only shape:
+            // handleRemoveMemory needs the full MemoryRow (status,
+            // session_id), and the confirm dialog's scrim blocks every way
+            // to change which memory is open while it's up, so this is
+            // still the same memory pendingDelete was opened for.
+            if (liveOpenMemory) void handleRemoveMemory(liveOpenMemory);
+          } else if (pendingDelete.target === 'story') {
             // No stories backend yet (ephemeral client state — see the
             // stories comment above) — remove locally, no network call.
             setStories(prev => prev.filter(s => s.id !== pendingDelete.id));
+            showToast('Deleted');
           } else {
             void deleteSession(pendingDelete.id);
+            showToast('Deleted');
           }
-          showToast('Deleted');
           setPendingDelete(null);
         }}
       />

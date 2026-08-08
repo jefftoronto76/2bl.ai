@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
@@ -306,6 +306,64 @@ describe('Memory panel — Stage E (keyboard operability)', () => {
     const seededAt1600 = parseFloat(panel.style.flexBasis);
     expect(seededAt1600).not.toBe(seededAt1200);
     expect(seededAt1600).toBeGreaterThan(seededAt1200); // more room -> a wider default split
+  });
+});
+
+describe('Memory panel — Remove confirmation (2026-08-08)', () => {
+  async function openPanel() {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
+  }
+
+  function patchCalls() {
+    return fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+  }
+
+  it('Remove opens the confirmation dialog instead of deleting immediately', async () => {
+    await openPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete memory' });
+    expect(within(dialog).getByText(/The Lake House/)).toBeInTheDocument();
+    // The copy must not say "and every memory it holds" — that's the
+    // conversation/story cascade warning; a single memory doesn't cascade.
+    expect(within(dialog).queryByText(/every memory it holds/)).toBeNull();
+    expect(patchCalls()).toHaveLength(0);
+    // The panel itself is still open behind the dialog, not torn down.
+    expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument();
+  });
+
+  it('Confirming discards the memory and closes the panel', async () => {
+    await openPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete memory' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Memory title' })).toBeNull());
+
+    const discardCall = patchCalls().find(([url]) => String(url).includes('/memories/mem-1'));
+    expect(discardCall).toBeTruthy();
+    expect(JSON.parse(String(discardCall?.[1]?.body))).toEqual({ action: 'discard' });
+  });
+
+  it('Canceling leaves the memory untouched and the panel open', async () => {
+    await openPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete memory' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House');
+    expect(patchCalls()).toHaveLength(0);
   });
 });
 
