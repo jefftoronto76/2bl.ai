@@ -1,6 +1,6 @@
 'use client';
 
-import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
@@ -17,6 +17,7 @@ import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
+import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
@@ -59,7 +60,22 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems } = useChatStore();
+
+  // The memory panel's image-block picker (BlockCanvas.tsx, via
+  // MemoryCardView) only ever offers photos already uploaded in THIS
+  // session, already fetched for the composer's own inline thumbnails —
+  // no separate fetch for the panel. `status: 'ready'` and a resolved `url`
+  // both matter: a still-processing/failed item has nothing to attach, and
+  // `url` (the batch-fetched signed download URL, services/media/display-url.ts)
+  // is what the picker's thumbnail and the committed block's <img> actually render.
+  const sessionImages: SessionImage[] = useMemo(
+    () =>
+      mediaItems
+        .filter((item) => item.type === 'image' && item.status === 'ready' && !!item.url)
+        .map((item) => ({ id: item.id, url: item.url as string, filename: item.original_filename })),
+    [mediaItems],
+  );
 
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
@@ -404,6 +420,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
                 onRemove={() => setPendingDelete({ target: 'memory', id: liveOpenMemory.id, title: liveOpenMemory.title })}
                 onStub={handleMemoryStub}
+                onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
+                sessionImages={sessionImages}
               />
             )}
           </div>
