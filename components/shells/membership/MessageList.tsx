@@ -19,6 +19,7 @@ import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
 import { UploadThumbnail } from './UploadThumbnail';
 import { ImageLightbox } from './ImageLightbox';
 import { useChatOverlayHost } from './v2/ChatOverlayHost';
+import { useScrollAnchor, ScrollToLatestButton } from './ScrollToLatestButton';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
@@ -675,6 +676,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory }: Me
   const { user } = useAuthUser();
   const overlayHost = useChatOverlayHost();
   const [lightbox, setLightbox] = useState<{ src: string; filename: string } | null>(null);
+  const { ref: scrollRef, atBottom, handleScroll, scrollToBottom } = useScrollAnchor();
 
   // SAVE_MEMORY: the guide's own inline signal ("enough has surfaced, write
   // this one up") rather than a manual click — but it triggers the exact same
@@ -804,58 +806,63 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory }: Me
         <ImageLightbox src={lightbox.src} filename={lightbox.filename} onClose={() => setLightbox(null)} />,
         overlayHost,
       )}
-    <div
-      className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-6"
-      role="log"
-      aria-live="polite"
-      aria-label="Conversation"
-      aria-atomic="false"
-      aria-busy={isLoading}
-    >
-      <div className="max-w-2xl mx-auto flex flex-col gap-5">
-        <ChatThread
-          messages={messages}
-          isStreaming={isLoading}
-          errorType={errorType}
-          retry={retry}
-          renderUserMessage={makeRenderUserMessage(
-            isAdmin,
-            mediaItems,
-            retry,
-            editingId,
-            setEditingId,
-            editMessage,
-            resendMessage,
-            memories,
-            keepDisabled,
-            renderMemorySlotFn,
-            (src, filename) => setLightbox({ src, filename }),
-          )}
-          renderAssistantMessage={makeRenderAssistantMessage({
-            isAdmin,
-            inviteToken,
-            visitorName,
-            visitorEmail,
-            visitorPhone,
-            handleAuthSuccess,
-            messages,
-            isStreaming: isLoading,
-            regenerate,
-            setActiveVersion,
-            feedback,
-            memories,
-            keepDisabled,
-            renderMemorySlotFn,
-          })}
-          renderError={renderError}
-          renderStreamingIndicator={renderStreamingIndicator}
-          showStreamingIndicator={isLoading}
-          markdownComponents={membershipMarkdownComponents}
-          scrollBehavior="smooth"
-          scrollDeps={[messages, isLoading, errorType, pendingEcho]}
-        />
-        {pendingEcho && <PendingEchoBubble echo={pendingEcho} />}
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="absolute inset-0 overflow-y-auto overscroll-contain px-4 py-6"
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation"
+        aria-atomic="false"
+        aria-busy={isLoading}
+      >
+        <div className="max-w-2xl mx-auto flex flex-col gap-5">
+          <ChatThread
+            messages={messages}
+            isStreaming={isLoading}
+            errorType={errorType}
+            retry={retry}
+            renderUserMessage={makeRenderUserMessage(
+              isAdmin,
+              mediaItems,
+              retry,
+              editingId,
+              setEditingId,
+              editMessage,
+              resendMessage,
+              memories,
+              keepDisabled,
+              renderMemorySlotFn,
+              (src, filename) => setLightbox({ src, filename }),
+            )}
+            renderAssistantMessage={makeRenderAssistantMessage({
+              isAdmin,
+              inviteToken,
+              visitorName,
+              visitorEmail,
+              visitorPhone,
+              handleAuthSuccess,
+              messages,
+              isStreaming: isLoading,
+              regenerate,
+              setActiveVersion,
+              feedback,
+              memories,
+              keepDisabled,
+              renderMemorySlotFn,
+            })}
+            renderError={renderError}
+            renderStreamingIndicator={renderStreamingIndicator}
+            showStreamingIndicator={isLoading}
+            markdownComponents={membershipMarkdownComponents}
+            scrollBehavior="smooth"
+            scrollDeps={[messages, isLoading, errorType, pendingEcho]}
+          />
+          {pendingEcho && <PendingEchoBubble echo={pendingEcho} />}
+        </div>
       </div>
+      <ScrollToLatestButton visible={!atBottom} onClick={scrollToBottom} />
     </div>
     </>
   );
