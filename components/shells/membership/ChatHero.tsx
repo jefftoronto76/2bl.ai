@@ -202,7 +202,10 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
   return (
-    <section style={surfaceStyle} className="h-full w-full flex flex-col bg-background overflow-hidden">
+    <section
+      style={surfaceStyle}
+      className="h-full w-full min-w-0 flex flex-col bg-background overflow-hidden"
+    >
       {/* Spans the full drawer width, above sidebar|chat|panel — not nested
           inside the chat column. It always rendered inside the chat column
           before the memory panel existed, which was invisible then (chat
@@ -216,8 +219,22 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
       />
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Desktop: docked sidebar */}
+      {/* min-w-0 here (not just on the outer <section>) is load-bearing:
+          ChatHero mounts inside ChatDrawerV2, a drawer capped at
+          clamp(680px,50vw,1120px) — not the full viewport — with no
+          overflow-hidden of its own anywhere in its ancestry. Without
+          min-w-0 on every level between this row and that cap, a flex
+          item's default min-width:auto lets it grow to fit its content's
+          minimum (sidebar + chat's own floor + panel's own floor) even past
+          w-full, and with nothing upstream to clip it, that overflow
+          rendered past the drawer's right edge — off the visible viewport
+          entirely, not just visually cramped. */}
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        {/* Desktop: docked sidebar. forceCollapsed shuts it to its existing
+            48px icon rail while the panel is open — reusing SidebarV2's own
+            already-built collapsed rendering and its existing
+            transition-all duration-300 (no new rail, no new animation code
+            needed here) rather than the handoff's invented 60px rail. */}
         {!isMobile && (
           <SidebarV2
             stories={stories}
@@ -228,6 +245,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             starredConversationIds={starredIds}
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
+            forceCollapsed={!!openMemory}
           />
         )}
 
@@ -255,15 +273,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </>
         )}
 
-        {/* min-w-0 lets flex shrink below content size — fine on mobile
-            (chat is always flex-1 there), but on desktop with the panel open
-            it let this column shrink past content that refuses to shrink
-            further, overflowing past the column's real edge. Floored at
-            380px — the plan's own MIN_CHAT_WIDTH, brought forward from
-            Stage C since even this fixed, non-resizable split needs a real
-            minimum. */}
+        {/* Floored at 260px on desktop (not the plan's original 380px — that
+            number was sized to protect ChatHeader's icon cluster, which no
+            longer lives in this column now that ChatHeader spans the full
+            drawer). The drawer's own floor is 680px and the collapsed
+            sidebar rail is 48px, so the worst case ever available for
+            chat+panel combined is 632px — 260 (chat) + 280 (panel, below)
+            = 540 fits with room for the flex-grow ratio to still do
+            something. min-w-0 on mobile — chat is always flex-1 there,
+            unaffected by any of this. */}
         <div
-          className={`flex flex-col h-full min-h-0 ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[380px]'}`}
+          className={`flex flex-col h-full min-h-0 transition-all duration-300 ease-in-out ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[260px]'}`}
         >
           <div className="flex flex-col flex-1 min-h-0">
             {isGated ? (
@@ -290,12 +310,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         </div>
 
-        {/* Memory panel — Stage A: fixed 40/60 split of the space remaining
-            after the (untouched-this-stage) sidebar, no animation, no
-            resize. Desktop only; Stage F adds the mobile counterpart. */}
-        {!isMobile && openMemory && (
-          <div className="h-full min-w-[320px] flex-[3] overflow-hidden border-l border-border">
-            <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />
+        {/* Memory panel — fixed 40/60 split of the space remaining after the
+            (collapsed, Stage B) sidebar; no drag-resize yet (Stage C). The
+            wrapper stays mounted whenever !isMobile so its width/opacity
+            can transition instead of the pane snapping in/out on mount —
+            content itself still only renders while a memory is open.
+            Desktop only; Stage F adds the mobile counterpart. */}
+        {!isMobile && (
+          <div
+            className={`h-full overflow-hidden transition-all duration-300 ease-in-out ${
+              openMemory
+                ? 'flex-[3] min-w-[280px] border-l border-border opacity-100'
+                : 'flex-[0] min-w-0 border-l-0 opacity-0'
+            }`}
+          >
+            {openMemory && <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />}
           </div>
         )}
       </div>

@@ -91,6 +91,17 @@ export interface SidebarV2Props {
   renamingId?: string;
   /** Called when rename input blurs or Enter is pressed. Empty string = cancel. */
   onRenameCommit?: (id: string, newTitle: string) => void;
+
+  /**
+   * Forces the collapsed icon rail (w-12) regardless of the user's own
+   * expand/collapse preference — used while the memory panel is open
+   * (memory-panel-layout Stage B), where there isn't room for both the full
+   * sidebar and the panel inside the drawer's capped width. Deliberately
+   * does not touch the internal `expanded` state, so the user's own
+   * preference is exactly what they left it at once the panel closes.
+   * Default false.
+   */
+  forceCollapsed?: boolean;
 }
 
 // ── Section label ───────────────────────────────────────────────────────────
@@ -342,6 +353,7 @@ export function SidebarV2({
   onClose,
   renamingId,
   onRenameCommit,
+  forceCollapsed = false,
 }: SidebarV2Props) {
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
@@ -357,6 +369,10 @@ export function SidebarV2({
   // rendered to click. This local flag starts expanded so the conversation
   // list is visible and clickable immediately, on both mobile and desktop.
   const [expanded, setExpanded] = useState(true);
+  // Stage B: every render decision below reads isExpanded, not expanded
+  // directly — forceCollapsed overrides the visible state without touching
+  // the user's own stored preference.
+  const isExpanded = forceCollapsed ? false : expanded;
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`
@@ -399,21 +415,25 @@ export function SidebarV2({
   return (
     <aside
       className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
-        expanded ? 'w-64' : 'w-12'
+        isExpanded ? 'w-64' : 'w-12'
       }`}
     >
-      {/* Collapse toggle */}
-      <div className={`flex items-center px-1.5 mb-2 pt-2 ${expanded ? 'justify-end' : 'justify-center'}`}>
-        <IconButton
-          label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          onClick={() => setExpanded((v) => !v)}
-          className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
-        >
-          <ChevronRight size={16} />
-        </IconButton>
-      </div>
+      {/* Collapse toggle — hidden while forced; there's nothing meaningful
+          to toggle to, since forceCollapsed overrides the rendered width
+          regardless of what the user's own preference says. */}
+      {!forceCollapsed && (
+        <div className={`flex items-center px-1.5 mb-2 pt-2 ${expanded ? 'justify-end' : 'justify-center'}`}>
+          <IconButton
+            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setExpanded((v) => !v)}
+            className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
+        </div>
+      )}
 
-      <SearchField expanded={expanded} revealed={searchRevealed} onSearch={onSearch} />
+      <SearchField expanded={isExpanded} revealed={searchRevealed} onSearch={onSearch} />
 
       {/* Primary nav */}
       <nav className="flex flex-col gap-0.5 px-1.5 pt-1.5">
@@ -421,37 +441,37 @@ export function SidebarV2({
           type="button"
           aria-label="New Chat"
           onClick={() => { newChat(); onClose?.(); }}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
+          {isExpanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
         </button>
         <button
           type="button"
           aria-label="Media"
           onClick={onMedia}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onMedia ? '' : 'opacity-40 pointer-events-none'}`}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onMedia ? '' : 'opacity-40 pointer-events-none'}`}
         >
           <Images size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-sm font-normal truncate">Media</span>}
+          {isExpanded && <span className="font-body text-sm font-normal truncate">Media</span>}
         </button>
         <button
           type="button"
           aria-label="Uploads"
           onClick={onUploads}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
         >
           <Upload size={16} className="flex-shrink-0" />
-          {expanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
+          {isExpanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
         </button>
         <button
           type="button"
           aria-label="Share Heirloom"
           onClick={onShareHeirloom}
-          className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
         >
           <Share2 size={16} className="flex-shrink-0" />
-          {expanded && (
+          {isExpanded && (
             <span className="font-body text-sm font-normal truncate">Share Heirloom</span>
           )}
         </button>
@@ -463,10 +483,10 @@ export function SidebarV2({
             aria-label="Memories"
             aria-expanded={convosOpen}
             onClick={() => setConvosOpen((o) => !o)}
-            className={`${navBtn} ${expanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
+            className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
           >
             <MessageSquare size={16} className="flex-shrink-0" />
-            {expanded && (
+            {isExpanded && (
               <>
                 <span className="font-body text-sm font-normal truncate flex-1 text-left">
                   Memories
@@ -480,7 +500,7 @@ export function SidebarV2({
             )}
           </button>
 
-          {expanded && convosOpen && (
+          {isExpanded && convosOpen && (
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {recentSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
@@ -563,7 +583,7 @@ export function SidebarV2({
       </nav>
 
       {/* Sign-in nudge — anonymous visitors only (v1 Sidebar parity). */}
-      {expanded && !isMember && (
+      {isExpanded && !isMember && (
         <div className="mt-4 px-3">
           <div className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5">
             <LogIn size={13} className="flex-shrink-0 text-text-muted" />
@@ -574,7 +594,7 @@ export function SidebarV2({
         </div>
       )}
 
-      {expanded && (
+      {isExpanded && (
         <div className="flex flex-col gap-6 mt-5 px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
           {/* Stories */}
           <div>
