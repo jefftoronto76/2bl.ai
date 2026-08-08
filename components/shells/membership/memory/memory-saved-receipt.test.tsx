@@ -6,8 +6,8 @@
 // against Design Handovers/design_handoff_memories_08_2026/README.md §5 and
 // README_processing_and_saved_states.md's "Saved state: receipt copy"
 // section.
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { MemorySavedReceipt } from './MemoryCard';
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
 
@@ -64,5 +64,35 @@ describe('MemorySavedReceipt', () => {
     render(<MemorySavedReceipt memory={memory({ title: 'The Lake House' })} onRetitle={() => {}} />);
     expect(screen.getByText('The Lake House').tagName).toBe('SPAN');
     expect(screen.getByText('Kept')).toBeInTheDocument();
+  });
+
+  // memory-panel-layout Stage A: the row opens the memory panel when a
+  // handler is passed, and stays fully inert (no button semantics at all)
+  // when it isn't — same optional-handler posture as every other callback
+  // in this file.
+  it('calls onOpen with the memory on click when a handler is passed', () => {
+    const onOpen = vi.fn();
+    const m = memory();
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} onOpen={onOpen} />);
+
+    fireEvent.click(screen.getByRole('button'));
+    expect(onOpen).toHaveBeenCalledWith(m);
+  });
+
+  it('calls onOpen on Enter and Space, not on other keys', () => {
+    const onOpen = vi.fn();
+    const m = memory();
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} onOpen={onOpen} />);
+    const row = screen.getByRole('button');
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+    fireEvent.keyDown(row, { key: 'Tab' });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('has no button role at all when onOpen is omitted', () => {
+    render(<MemorySavedReceipt memory={memory()} onRetitle={() => {}} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

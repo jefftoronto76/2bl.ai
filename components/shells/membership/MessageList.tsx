@@ -27,6 +27,10 @@ import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/typ
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
+  /** Opens a saved memory in the memory panel (memory-panel-layout Stage A).
+   *  Optional so this stays a non-breaking addition; when omitted, saved
+   *  receipts render inert, same as before this stage. */
+  onOpenMemory?: (memory: MemoryRow) => void;
   /** Classified reason the most recent turn failed, or null when it succeeded. */
   errorType: ChatErrorType | null;
 }
@@ -98,6 +102,7 @@ interface MemorySlotHandlers {
   onKeep: (memory: MemoryRow) => void;
   onDiscard: (memory: MemoryRow) => void;
   onRetitle: (memory: MemoryRow, title: string) => void;
+  onOpen?: (memory: MemoryRow) => void;
 }
 
 /**
@@ -131,7 +136,13 @@ function renderMemorySlot(
     );
   }
   if (memory?.status === 'published') {
-    return <MemorySavedReceipt memory={memory} onRetitle={(title) => handlers.onRetitle(memory, title)} />;
+    return (
+      <MemorySavedReceipt
+        memory={memory}
+        onRetitle={(title) => handlers.onRetitle(memory, title)}
+        onOpen={handlers.onOpen}
+      />
+    );
   }
   const errorType = memories.getErrorType(anchorId);
   if (errorType) {
@@ -645,7 +656,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -727,6 +738,7 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
     // published total, so there's nothing to reconcile in recentSessions here.
     onDiscard: (memory: MemoryRow) => void memories.discard(memory),
     onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
+    onOpen: onOpenMemory,
   };
 
   const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind) =>
