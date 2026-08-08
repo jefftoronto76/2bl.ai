@@ -120,6 +120,116 @@ describe('Memory panel — Stage A (desktop)', () => {
   });
 });
 
+// happy-dom has no real CSS layout engine — panelRowRef.current.clientWidth
+// is always 0 by default (verified directly against happy-dom, not
+// assumed), which would pin every clamp to MIN_PANEL_WIDTH regardless of
+// drag direction. Stubbing it on the row (data-testid="memory-panel-row",
+// added for exactly this) makes the width math exercise real numbers.
+function stubRowWidth(px: number) {
+  const row = screen.getByTestId('memory-panel-row');
+  Object.defineProperty(row, 'clientWidth', { configurable: true, value: px });
+}
+
+describe('Memory panel — Stage C (drag-resize)', () => {
+  it('shows the resize divider only while the panel is open', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+
+    expect(screen.queryByRole('separator', { name: 'Resize the memory panel' })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    await waitFor(() => expect(screen.getByRole('separator', { name: 'Resize the memory panel' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close memory panel' }));
+    await waitFor(() => expect(screen.queryByRole('separator', { name: 'Resize the memory panel' })).toBeNull());
+  });
+
+  it('dragging left widens the panel, dragging right narrows it, and cleans up cursor/user-select on release', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    const seededWidth = parseFloat(panel.style.flexBasis);
+    expect(seededWidth).toBeGreaterThan(0);
+
+    fireEvent.pointerDown(divider, { clientX: 500, button: 0 });
+    expect(document.body.style.cursor).toBe('col-resize');
+    fireEvent.pointerMove(window, { clientX: 400 }); // dragged left 100px — widens the panel
+    fireEvent.pointerUp(window);
+    expect(document.body.style.cursor).toBe('');
+    expect(document.body.style.userSelect).toBe('');
+
+    const widerWidth = parseFloat(panel.style.flexBasis);
+    expect(widerWidth).toBe(seededWidth + 100);
+
+    fireEvent.pointerDown(divider, { clientX: 400, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 550 }); // dragged right 150px — narrows the panel
+    fireEvent.pointerUp(window);
+
+    const narrowerWidth = parseFloat(panel.style.flexBasis);
+    expect(narrowerWidth).toBe(widerWidth - 150);
+  });
+
+  it('stops at MIN_PANEL_WIDTH rather than shrinking past it', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+
+    fireEvent.pointerDown(divider, { clientX: 0, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 5000 }); // drag far past the floor
+    fireEvent.pointerUp(window);
+
+    expect(parseFloat(panel.style.flexBasis)).toBe(280); // MIN_PANEL_WIDTH
+  });
+
+  it('reseeds on reopen rather than remembering the last drag', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    let divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    let panel = divider.nextElementSibling as HTMLElement;
+    const seededWidth = parseFloat(panel.style.flexBasis);
+
+    fireEvent.pointerDown(divider, { clientX: 500, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 400 }); // widen by 100px — within maxPanelWidth(1200)'s headroom from the seed
+    fireEvent.pointerUp(window);
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth + 100);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close memory panel' }));
+    await waitFor(() => expect(screen.queryByRole('separator', { name: 'Resize the memory panel' })).toBeNull());
+
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    panel = divider.nextElementSibling as HTMLElement;
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth);
+  });
+});
+
 // happy-dom's real matchMedia evaluates `(max-width: 768px)` against
 // window.innerWidth — same technique ChatHero.kebabDelete.test.tsx already
 // uses to reach the mobile branch.

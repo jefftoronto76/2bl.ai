@@ -15,6 +15,8 @@ import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
+import { MemoryPanelDivider } from './MemoryPanelDivider';
+import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
 // sidebar's other story affordances are stubbed for the same reason). Copy is
@@ -101,6 +103,27 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // resize down to mobile width while a panel is open simply drops it (see
   // the render guards below), rather than half-rendering a broken layout.
   const [openMemory, setOpenMemory] = useState<MemoryRow | null>(null);
+
+  // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
+  // openMemory transitions from null to a memory (the effect below) — a
+  // drag from a previous open never carries over stale. panelRowRef reads
+  // the row's real clientWidth for the clamp math; isDraggingPanel
+  // suppresses the panel's own open/close CSS transition only while a drag
+  // is actually live, so a resize tracks the cursor instead of animating
+  // 300ms behind it.
+  const panelRowRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState(MIN_PANEL_WIDTH);
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const wasMemoryOpenRef = useRef(false);
+
+  useEffect(() => {
+    const isOpen = !!openMemory;
+    if (isOpen && !wasMemoryOpenRef.current) {
+      const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+      setPanelWidth(seedPanelWidth(total));
+    }
+    wasMemoryOpenRef.current = isOpen;
+  }, [openMemory]);
 
   // Kebab action state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -229,7 +252,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           w-full, and with nothing upstream to clip it, that overflow
           rendered past the drawer's right edge — off the visible viewport
           entirely, not just visually cramped. */}
-      <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+      <div
+        ref={panelRowRef}
+        data-testid="memory-panel-row"
+        className="flex flex-1 min-h-0 min-w-0 overflow-hidden"
+      >
         {/* Desktop: docked sidebar. forceCollapsed shuts it to its existing
             48px icon rail while the panel is open — reusing SidebarV2's own
             already-built collapsed rendering and its existing
@@ -273,17 +300,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </>
         )}
 
-        {/* Floored at 260px on desktop (not the plan's original 380px — that
-            number was sized to protect ChatHeader's icon cluster, which no
-            longer lives in this column now that ChatHeader spans the full
-            drawer). The drawer's own floor is 680px and the collapsed
-            sidebar rail is 48px, so the worst case ever available for
-            chat+panel combined is 632px — 260 (chat) + 280 (panel, below)
-            = 540 fits with room for the flex-grow ratio to still do
-            something. min-w-0 on mobile — chat is always flex-1 there,
-            unaffected by any of this. */}
+        {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
+            width of its own (below), so chat just gets whatever's left; it
+            no longer needs a matching ratio to divide against. Floored at
+            260px on desktop (not the plan's original 380px — that number
+            protected ChatHeader's icon cluster, which no longer lives in
+            this column now that ChatHeader spans the full drawer). Verified
+            safe against the drawer's own 680px floor — see
+            memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
+            mobile — chat is always flex-1 there, unaffected by any of this. */}
         <div
-          className={`flex flex-col h-full min-h-0 transition-all duration-300 ease-in-out ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[260px]'}`}
+          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'}`}
         >
           <div className="flex flex-col flex-1 min-h-0">
             {isGated ? (
@@ -310,19 +337,37 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         </div>
 
-        {/* Memory panel — fixed 40/60 split of the space remaining after the
-            (collapsed, Stage B) sidebar; no drag-resize yet (Stage C). The
-            wrapper stays mounted whenever !isMobile so its width/opacity
-            can transition instead of the pane snapping in/out on mount —
-            content itself still only renders while a memory is open.
-            Desktop only; Stage F adds the mobile counterpart. */}
+        {/* Chat/panel divider — Stage C. Only mounted while the panel is
+            open (nothing to drag otherwise). Its own border-l is what was
+            the panel container's border below — one seam, not two. */}
+        {!isMobile && openMemory && (
+          <MemoryPanelDivider
+            label="Resize the memory panel"
+            onStart={() => panelWidth}
+            onMove={(base, delta) => {
+              const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+              setPanelWidth(clampWidth(base - delta, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+            }}
+            onDragStateChange={setIsDraggingPanel}
+          />
+        )}
+
+        {/* Memory panel. Real drag-resizable pixel width now (Stage C) —
+            flexBasis is inline style since Tailwind can't express a
+            runtime-computed value as a static class; min-w-[280px] stays a
+            class-based floor, redundant with the JS clamp on purpose
+            (defense in depth, costs nothing). Transition suppressed while
+            actively dragging so a live resize tracks the cursor instead of
+            animating 300ms behind it. The wrapper stays mounted whenever
+            !isMobile so open/close can still transition; content itself
+            only renders while a memory is open. Desktop only; Stage F adds
+            the mobile counterpart. */}
         {!isMobile && (
           <div
-            className={`h-full overflow-hidden transition-all duration-300 ease-in-out ${
-              openMemory
-                ? 'flex-[3] min-w-[280px] border-l border-border opacity-100'
-                : 'flex-[0] min-w-0 border-l-0 opacity-0'
+            className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
+              openMemory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
             }`}
+            style={openMemory ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 } : undefined}
           >
             {openMemory && <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />}
           </div>
