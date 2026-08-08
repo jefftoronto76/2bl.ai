@@ -553,9 +553,22 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     #308); F not built.** Clicking a saved memory (the row is now a button,
     `onOpen` prop) opens it in a side panel: `SidebarV2` force-collapses to
     its existing 48px rail (`forceCollapsed` prop), the chat column narrows,
-    and a third pane renders — currently `MemoryPanelStub`, a deliberately
-    throwaway title/body/close stub, not final card-view content (that's a
-    separate, later piece per the handoff's own scoping). Desktop only;
+    and a third pane renders — **`MemoryCardView`, the real chrome, as of
+    PR #312 (2026-08-08)** — the Stage A throwaway `MemoryPanelStub` this
+    entry used to describe no longer exists. The panel now has a live
+    header (editable title, eyebrow/date, stubbed "add to story", close), a
+    scrollable body (per-kind media placeholder + passage), and a
+    persistent icon-only footer (Talk about this / Use as a base stubbed;
+    Remove wired to a real discard, routed through the same
+    delete-confirmation dialog session/story deletes already use). **Title
+    editing is real; passage editing is not** —
+    `renameMemory()` (`services/crm/memories.ts`) only ever updates title,
+    nothing updates body — and this is the ONLY place in the app either
+    kind of editing exists at all: the
+    transcript's own `MemoryCard`/`MemorySavedReceipt` (see the entry
+    above) stay exactly as read-only as they were before this panel shipped,
+    untouched by any of it. See `System Docs/Public Site.md`'s
+    `MemoryCardView` row for the full mechanics. Desktop only;
     mobile is unaffected, not broken — `onOpenMemory` is `undefined` there,
     so the receipt stays exactly as inert as it was before this feature.
     **C, D, E all shipped:** the chat/panel divider is drag-resizable (mouse
