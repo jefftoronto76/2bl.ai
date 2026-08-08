@@ -5,6 +5,39 @@
 Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 `Backlog/SERVICEMIGRATION.md` for the full picture.
 
+- **Memory panel width doesn't reseed if the whole chat drawer closes while
+  a memory is still open — found during Stage C live-preview review,
+  2026-08-08.** `panelWidth` only reseeds on the effect in `ChatHero.tsx`
+  that watches `openMemory` transition `null` → non-`null`. Closing and
+  reopening the memory panel itself (its own Close button) goes through
+  exactly that transition and reseeds correctly, confirmed live. But
+  `ChatDrawerV2` closing (e.g. `ChatHeader`'s Close button) doesn't unmount
+  `ChatHero` or touch `openMemory` — the drawer just slides off-screen — so
+  if the memory panel was open when the drawer closed, `openMemory` is still
+  non-`null` when the drawer reopens, the effect's dependency never
+  re-fires, and `panelWidth` is left exactly wherever it was, rather than
+  reseeding to the usual ~55%-of-remaining-space default. Low visible
+  impact — a stale-but-still-valid width, not a broken one — and not
+  member-facing per Jeff. **Fix if ever done:** also reseed on the drawer's
+  own close → open transition, not just the panel's.
+
+- **Sidebar has no resize of its own, even in full-screen — found during
+  Stage C live-preview review, 2026-08-08.** `SidebarV2` force-collapses to
+  its 48px rail whenever the memory panel is open (Stage B,
+  `forceCollapsed` prop), with no way to widen it back — including in
+  `isFullScreen` mode, where `ChatDrawerV2` is `w-screen` and there's
+  genuinely spare width the rail-collapse doesn't need to reclaim. This is
+  new scope, not part of the memory-panel-layout Stage A–F plan (that plan
+  is the chat/panel divider only — sidebar resize was explicitly ruled out
+  of scope for it, repeatedly, during planning). Would need its own plan,
+  likely gated on `isFullScreen` rather than applying everywhere.
+
+- **No visual distinction between closing the chat drawer and closing the
+  memory panel — found during Stage C live-preview review, 2026-08-08.**
+  Both close actions look and feel similar enough that which one just
+  happened isn't immediately obvious. Cosmetic, not functional — revisit
+  only if real usage shows it's actually confusing, not preemptively.
+
 - **RLS security posture — application-layer enforcement only, not yet
   database-layer (moved here from CLAUDE.md's "Highest Data Security"
   principle, 2026-08-04 split).** Tenant isolation is enforced today via
