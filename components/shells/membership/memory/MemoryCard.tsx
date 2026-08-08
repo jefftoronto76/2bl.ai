@@ -15,12 +15,13 @@
  * inline editing to the passage without a design conversation — it changes
  * the product's posture from "we shaped this for you" to "fill in this form".
  *
- * The TITLE is the one deliberate exception (both here and on
- * MemorySavedReceipt below): whether it came from a guide-emitted
- * [MEMORY_TITLE: ...] marker or the deterministic fallback truncation
- * (services/crm/memories.ts's deriveFallbackMemoryTitle), it's treated as an
- * optimistic guess the member can directly correct — no conversation
- * round-trip required, unlike the passage.
+ * The TITLE is the one deliberate exception, but only on the draft card
+ * below: whether it came from a guide-emitted [MEMORY_TITLE: ...] marker or
+ * the deterministic fallback truncation (services/crm/memories.ts's
+ * deriveFallbackMemoryTitle), it's treated as an optimistic guess the member
+ * can directly correct — no conversation round-trip required, unlike the
+ * passage. MemorySavedReceipt below has no edit affordance at all (removed
+ * 2026-08-08, saved-receipt fixes pass) — its title is plain, read-only text.
  *
  * Only real, confirmed Tailwind tokens are used here (tailwind.config.js):
  * text-primary / text-muted / border / surface / surface-2 / accent /
@@ -32,7 +33,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
+import { Bookmark, Feather, ImagePlus, Pencil } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
@@ -87,77 +88,34 @@ export interface MemorySavedReceiptProps {
   onRetitle: (title: string) => void
 }
 
-/** `saved` state — collapses to a slim receipt. Whole row is a button (inert this pass — the story view doesn't exist yet). */
-export function MemorySavedReceipt({ memory, onRetitle }: MemorySavedReceiptProps) {
+/**
+ * `saved` state — collapses to a slim receipt. Read-only, no edit affordance
+ * (removed 2026-08-08 — see the diff-audit follow-up: inline rename doesn't
+ * belong here, and the row is meant to open a memory-canvas panel instead,
+ * a separate immediate follow-up task). The outer element deliberately has
+ * no onClick yet — wiring it to nothing before that panel exists would just
+ * mean rewiring it later. `onRetitle` stays in the prop type because
+ * MessageList.tsx's call site still passes it (unused here on purpose,
+ * not dead code to clean up outside this file's scope).
+ */
+export function MemorySavedReceipt({ memory }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
-  const [isEditing, setIsEditing] = useState(false)
-  const [draft, setDraft] = useState(memory.title)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!isEditing) return
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [isEditing])
-
-  const save = () => {
-    const trimmed = draft.trim()
-    setIsEditing(false)
-    if (!trimmed || trimmed === memory.title) return
-    onRetitle(trimmed)
-  }
 
   return (
-    <div className="group flex gap-3">
+    <div className="flex gap-3">
       <span className={RAIL} />
       <div className="flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px]">
         <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
-          <Check size={13} />
+          <Icon size={12} aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onBlur={save}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  save()
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setDraft(memory.title)
-                  setIsEditing(false)
-                }
-              }}
-              aria-label="Memory title"
-              className="block w-full truncate bg-transparent font-display text-[15.5px] leading-[1.25] text-text-primary outline-none"
-            />
-          ) : (
-            <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
-          )}
+          <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
           <span className="mt-0.5 flex items-center gap-1 font-mono text-[10.5px] tracking-[0.06em] text-text-muted">
             <Icon size={10} aria-hidden />
             Kept
           </span>
         </span>
-        {!isEditing && (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(memory.title)
-              setIsEditing(true)
-            }}
-            aria-label="Edit title"
-            className="shrink-0 rounded p-1 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-text-primary [@media(hover:none)]:opacity-100"
-          >
-            <Pencil size={12} aria-hidden />
-          </button>
-        )}
       </div>
     </div>
   )
