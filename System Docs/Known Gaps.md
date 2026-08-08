@@ -497,6 +497,37 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     used elsewhere in Heirloom) rather than leaving the visitor stuck.
     Flagged as a real, wanted improvement — explicitly out of scope for PR
     #288, which only made the failure clean and legible, not actionable.
+  - **`MemorySavedReceipt` icon + inline rename (fixed 2026-08-08, PR
+    #301).** The saved-state receipt showed a fixed checkmark instead of the
+    memory's own kind-specific icon, and had a hover-revealed pencil/input
+    rename affordance that didn't belong on a read-only collapsed state. Now
+    the kind icon (matching the running pill and draft card) sits in the
+    circle, a plain `Check` sits next to "Kept" (a distinct job — confirms
+    saved, doesn't repeat the kind), and the rename UI is gone entirely. See
+    `System Docs/Public Site.md`'s memory bookmark row.
+  - **Memory panel — Stages A & B shipped 2026-08-08 (PR #302); C, D, E, F
+    not built.** Clicking a saved memory (the row is now a button, `onOpen`
+    prop) opens it in a side panel: `SidebarV2` force-collapses to its
+    existing 48px rail (`forceCollapsed` prop), the chat column narrows, and
+    a third pane renders — currently `MemoryPanelStub`, a deliberately
+    throwaway title/body/close stub, not final card-view content (that's a
+    separate, later piece per the handoff's own scoping). Desktop only;
+    mobile is unaffected, not broken — `onOpenMemory` is `undefined` there,
+    so the receipt stays exactly as inert as it was before this feature.
+    Outstanding, in order: **C** — the chat/panel divider becomes
+    drag-resizable (currently a fixed flex-grow split, no drag at all).
+    **D** — the divider's hover/drag visual treatment (accent line, pill,
+    background wash) from `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx`.
+    **E** — keyboard operability (arrow-key nudge, Home/double-click reset).
+    **F** — mobile: the panel should slide up from the bottom, a genuinely
+    separate code path from the desktop side-split, not yet started. See
+    `Design Handovers/design_handoff_memory_panel_layout_2026/README.md` for
+    the full spec and `System Docs/Public Site.md`'s `ChatHero` /
+    `ChatDrawerV2` rows for the current implementation, including a real
+    architectural constraint found while building this: `ChatDrawerV2`
+    caps the whole app at `clamp(680px,50vw,1120px)` wide, not the full
+    viewport, with no `overflow-hidden` anywhere in its ancestry — worth
+    knowing before adding more wide content inside it.
 - **`members.user_id` left null on some active, Clerk-linked members —
   root-caused and fixed in code 2026-08-06; historical rows need a Studio
   backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,

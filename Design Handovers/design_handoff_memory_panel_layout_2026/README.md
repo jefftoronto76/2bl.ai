@@ -1,6 +1,11 @@
 # Handoff — Memory panel layout
 
-New piece. Not on main. Covers ONLY the three-pane layout mechanic that happens when a saved
+**Status (2026-08-08):** Stages A & B of a six-stage implementation plan are on `main` (PR #302) —
+click-to-open, the fixed-split panel, and the forced sidebar collapse. Stages C–F (drag-resize,
+the curtain's hover/drag visual treatment, keyboard operability, and the mobile slide-up variant)
+are not yet built. See `System Docs/Known Gaps.md`'s Memories entry for the current breakdown.
+
+Covers ONLY the three-pane layout mechanic that happens when a saved
 memory card is opened — not the card's own content (kept separately, see the note at the bottom).
 
 Source of truth: `chat-widget-canvas.jsx`, loaded by
