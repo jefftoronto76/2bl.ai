@@ -105,6 +105,10 @@ export const AuditAction = {
   MEMORY_CREATED: 'memory.created',
   MEMORY_KEPT: 'memory.kept',
   MEMORY_DISCARDED: 'memory.discarded',
+  // Memory Canvas V1 (Design Handovers/handover_canvas_update_notion_08_2026)
+  // — logged by services/crm/memories.ts's reviseMemoryBlocks, success or
+  // failure, same placement convention as MEMORY_CREATED above.
+  MEMORY_BLOCKS_REVISED: 'memory.blocks_revised',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const

@@ -1,8 +1,9 @@
 // Coverage for the verbatim create path (no model call): title resolution
 // ([MEMORY_TITLE] marker vs. the fallback truncation), verbatim body with
 // every marker stripped, anchor-not-found handling, the title-only rename
-// path, user_id resolution (Bug A), and the audit_events logging added for
-// every previously-silent failure branch (Bug C groundwork / Task 4). Mocks
+// path, user_id resolution (Bug A), the audit_events logging added for
+// every previously-silent failure branch (Bug C groundwork / Task 4), and
+// the revise_blocks mutation (Memory Canvas V1 backend). Mocks
 // @supabase/supabase-js's createClient directly (mirrors sessions.test.ts's
 // own pattern) rather than @/services/auth/supabase-admin — services/crm/
 // memories.ts's getAdminClient() and services/crm/sessions.ts's own LOCAL
@@ -10,7 +11,10 @@
 // shared one) both bottom out in the same @supabase/supabase-js createClient
 // call, so mocking it there is what actually covers both
 // createMemoryFromAnchor's own writes/lookups and its call into
-// getSessionMessages.
+// getSessionMessages. reviseMemoryBlocks's own dependency on
+// services/media's getMediaItem/listByChat is mocked directly instead
+// (that module's own query-building has its own coverage — this file is
+// only testing memories.ts's orchestration of it).
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { AuditAction } from '@/services/audit/types'
 
@@ -22,7 +26,21 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 vi.mock('@/services/audit', () => ({ logEvent: vi.fn() }))
 
-import { createMemoryFromAnchor, renameMemory, deriveFallbackMemoryTitle, createDraftMemory, ACCOUNT_REQUIRED_ERROR } from './memories'
+const mockGetMediaItem = vi.fn()
+const mockListByChat = vi.fn()
+vi.mock('@/services/media', () => ({
+  getMediaItem: (...args: unknown[]) => mockGetMediaItem(...args),
+  listByChat: (...args: unknown[]) => mockListByChat(...args),
+}))
+
+import {
+  createMemoryFromAnchor,
+  renameMemory,
+  reviseMemoryBlocks,
+  deriveFallbackMemoryTitle,
+  createDraftMemory,
+  ACCOUNT_REQUIRED_ERROR,
+} from './memories'
 import { logEvent } from '@/services/audit'
 
 const mockLogEvent = vi.mocked(logEvent)
@@ -111,6 +129,8 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key'
   mockLogEvent.mockClear()
+  mockGetMediaItem.mockReset()
+  mockListByChat.mockReset().mockResolvedValue([])
 })
 
 describe('deriveFallbackMemoryTitle', () => {
@@ -400,6 +420,131 @@ describe('renameMemory', () => {
     adminHolder.client = client
 
     const result = await renameMemory('tenant-1', 's1', 'nope', 'New Title')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(404)
+  })
+})
+
+describe('reviseMemoryBlocks', () => {
+  function mkRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'mem-1',
+      session_id: 's1',
+      anchor_message_id: 'm1',
+      source_kind: 'conversation',
+      title: 'The Lake House',
+      body: '',
+      body_blocks: null,
+      status: 'draft',
+      created_at: 'now',
+      updated_at: 'now',
+      ...overrides,
+    }
+  }
+
+  it('accepts a valid text-only array, flattening body from multiple text blocks (trimmed, blank-line joined, in order)', async () => {
+    const blocks = [
+      { id: 'b1', type: 'text', content: 'First paragraph.' },
+      { id: 'b2', type: 'text', content: '  Second paragraph.  ' },
+    ]
+    const { client, updateCalls } = makeClient({
+      updateResult: { data: mkRow({ body: 'First paragraph.\n\nSecond paragraph.', body_blocks: blocks }), error: null },
+    })
+    adminHolder.client = client
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', blocks)
+
+    expect(result.ok).toBe(true)
+    expect(updateCalls[0].body_blocks).toEqual(blocks)
+    expect(updateCalls[0].body).toBe('First paragraph.\n\nSecond paragraph.')
+    if (result.ok) expect(result.data.body_blocks).toEqual(blocks)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEMORY_BLOCKS_REVISED, outcome: 'success' }),
+    )
+  })
+
+  it('accepts a valid text+image array, resolving the image block\'s media_item_id via getMediaItem + listByChat membership', async () => {
+    const blocks = [
+      { id: 'b1', type: 'text', content: 'A photo from that day.' },
+      { id: 'b2', type: 'image', media_item_id: 'media-1' },
+    ]
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 's1' })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+    const { client } = makeClient({
+      updateResult: { data: mkRow({ body: 'A photo from that day.', body_blocks: blocks }), error: null },
+    })
+    adminHolder.client = client
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', blocks)
+
+    expect(result.ok).toBe(true)
+    expect(mockGetMediaItem).toHaveBeenCalledWith('media-1', 'tenant-1')
+    expect(mockListByChat).toHaveBeenCalledWith('s1', 'tenant-1')
+  })
+
+  it('rejects an unknown block type (400), no update attempted', async () => {
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', [
+      { id: 'b1', type: 'text', content: 'ok' },
+      { id: 'b2', type: 'video', content: 'not supported in V1' },
+    ])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+    expect(mockGetMediaItem).not.toHaveBeenCalled()
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEMORY_BLOCKS_REVISED, outcome: 'failure' }),
+    )
+  })
+
+  it('rejects an image block whose media_item_id does not resolve for this tenant (400)', async () => {
+    mockGetMediaItem.mockResolvedValue(null)
+    mockListByChat.mockResolvedValue([])
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', [
+      { id: 'b1', type: 'text', content: 'Caption' },
+      { id: 'b2', type: 'image', media_item_id: 'someone-elses-media' },
+    ])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it('rejects an image block whose media_item_id belongs to a different session (400)', async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 'other-session' })
+    mockListByChat.mockResolvedValue([]) // this session's own media items — media-1 isn't among them
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', [
+      { id: 'b1', type: 'text', content: 'Caption' },
+      { id: 'b2', type: 'image', media_item_id: 'media-1' },
+    ])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it('rejects an array with no surviving non-empty text block (400) — whitespace-only content does not count', async () => {
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', [{ id: 'b1', type: 'text', content: '   ' }])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it('rejects an array with an image block but no text block at all (400)', async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1' })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'mem-1', [{ id: 'b1', type: 'image', media_item_id: 'media-1' }])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it('404s when no row matches id + tenant + session', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: null } })
+    adminHolder.client = client
+
+    const result = await reviseMemoryBlocks('tenant-1', 's1', 'nope', [{ id: 'b1', type: 'text', content: 'ok' }])
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(404)
