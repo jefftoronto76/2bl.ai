@@ -80,4 +80,4 @@ export function Curtain({
   );
 }
 
-export const clampWidth = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(v)));
+export const clampWidth = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)));
