@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Feather, ImagePlus, Pencil } from 'lucide-react'
+import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
@@ -112,7 +112,7 @@ export function MemorySavedReceipt({ memory }: MemorySavedReceiptProps) {
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
           <span className="mt-0.5 flex items-center gap-1 font-mono text-[10.5px] tracking-[0.06em] text-text-muted">
-            <Icon size={10} aria-hidden />
+            <Check size={10} aria-hidden />
             Kept
           </span>
         </span>

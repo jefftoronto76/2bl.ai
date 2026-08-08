@@ -1,10 +1,11 @@
 // Unit coverage for MemorySavedReceipt (`saved` state) after the 2026-08-08
-// fixes pass: primary-circle icon is kind-specific (not the fixed
-// checkmark it replaced), no inline rename affordance remains, and the
-// subtitle stays exactly "Kept" with its inline kind glyph. Source
-// material: the diff audit against Design Handovers/design_handoff_memories_08_2026/
-// README.md §5 and README_processing_and_saved_states.md's "Saved state:
-// receipt copy" section.
+// fixes pass: primary-circle icon is kind-specific, the small glyph before
+// "Kept" is a checkmark (a distinct job from the kind icon above it, not a
+// redundant copy of it), no inline rename affordance remains, and the
+// subtitle text stays exactly "Kept". Source material: the diff audit
+// against Design Handovers/design_handoff_memories_08_2026/README.md §5 and
+// README_processing_and_saved_states.md's "Saved state: receipt copy"
+// section.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import { MemorySavedReceipt } from './MemoryCard';
@@ -28,17 +29,22 @@ function memory(overrides: Partial<MemoryRow> = {}): MemoryRow {
 }
 
 describe('MemorySavedReceipt', () => {
-  it('renders the kind-specific icon in the primary circle, sized 12 — not the old checkmark', () => {
+  it('renders the kind-specific icon in the primary circle, sized 12', () => {
     const { container } = render(<MemorySavedReceipt memory={memory({ source_kind: 'photo' })} onRetitle={() => {}} />);
 
-    expect(container.querySelector('svg.lucide-check')).toBeNull();
-
-    // Same Icon renders twice: the 22px primary circle and the 10px inline
-    // glyph before "Kept" — both are the kind icon now, not two different ones.
     const kindIcons = container.querySelectorAll('svg.lucide-image');
-    expect(kindIcons.length).toBe(2);
+    expect(kindIcons.length).toBe(1);
     expect(kindIcons[0].getAttribute('width')).toBe('12');
     expect(kindIcons[0].getAttribute('height')).toBe('12');
+  });
+
+  it('renders a checkmark, sized 10, next to "Kept" — a distinct glyph from the kind icon above it', () => {
+    const { container } = render(<MemorySavedReceipt memory={memory({ source_kind: 'photo' })} onRetitle={() => {}} />);
+
+    const checks = container.querySelectorAll('svg.lucide-check');
+    expect(checks.length).toBe(1);
+    expect(checks[0].getAttribute('width')).toBe('10');
+    expect(checks[0].getAttribute('height')).toBe('10');
   });
 
   it('varies the icon by source_kind rather than using one fixed glyph', () => {
