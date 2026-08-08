@@ -573,20 +573,35 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     viewport, with no `overflow-hidden` anywhere in its ancestry — worth
     knowing before adding more wide content inside it.
   - **Sprint-close pointer, 2026-08-08 — memory panel resize (Stages A–E) +
-    scroll-to-latest nudge.** PRs #301–#303 and #305–#308 (confirmed via
-    `git log --merges`; #304 falls inside that number range but is an
-    unrelated schema-docs PR, not part of this work). Chat/panel divider is
-    now drag-resizable (mouse + keyboard), with hover/focus visual treatment
-    and a Home/double-click reset that reflects the current window size — see
-    the Memory panel entry above for per-stage detail. Chat transcript also
-    gained a scroll-to-latest button that appears when scrolled away from the
-    bottom (`components/shells/membership/ScrollToLatestButton.tsx`) — **not
-    yet merged**, branch `2026-08-08-scroll-to-latest` pushed 2026-08-08,
-    awaiting Jeff's review, so treat it as pending rather than shipped until
-    it lands on `main`. Stage F (mobile slide-up panel) not yet started —
-    deferred until after the Memory Canvas content track (CardView chrome,
-    photo bookmark, add-to-memory, etc.) lands, per the sequencing decision
-    made the same day.
+    scroll-to-latest nudge.** PRs #301–#303, #305–#308, and #310 (confirmed
+    via `git log --merges`; #304 falls inside that number range but is an
+    unrelated schema-docs PR, not part of this work; #309 is this pointer's
+    own docs PR). Chat/panel divider is now drag-resizable (mouse + keyboard),
+    with hover/focus visual treatment and a Home/double-click reset that
+    reflects the current window size — see the Memory panel entry above for
+    per-stage detail. Chat transcript also gained a scroll-to-latest button
+    that appears when scrolled away from the bottom
+    (`components/shells/membership/ScrollToLatestButton.tsx`, PR #310,
+    merged) — see `System Docs/Public Site.md`'s row for the mechanics; the
+    threshold-mismatch gap it introduced has its own bullet below. Stage F
+    (mobile slide-up panel) not yet started — deferred until after the
+    Memory Canvas content track (CardView chrome, photo bookmark,
+    add-to-memory, etc.) lands, per the sequencing decision made the same day.
+  - **`ScrollToLatestButton`'s 48px visibility threshold and
+    `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
+    2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
+    and `ChatThread.tsx`'s own near-bottom auto-scroll tracking (a separate,
+    pre-existing `NEAR_BOTTOM_PX = 100` constant, unrelated to this feature)
+    are two independent measures of "has the visitor left the bottom." In
+    the 48–100px window, new content still auto-scrolls the visitor back
+    down even though the button has already appeared — a brief flash, not a
+    stuck state, since the button then correctly hides again once the
+    auto-scroll lands. Low impact, not fixed — previously only documented in
+    PR #310's own description; pulled in here so it doesn't require digging
+    through PR history to find. **Fix if ever done:** either widen the
+    button's threshold to match `ChatThread.tsx`'s 100px, or thread
+    `ChatThread.tsx`'s own near-bottom state out to drive the button instead
+    of a second, independent measurement.
 - **`members.user_id` left null on some active, Clerk-linked members —
   root-caused and fixed in code 2026-08-06; historical rows need a Studio
   backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
