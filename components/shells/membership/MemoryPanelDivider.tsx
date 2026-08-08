@@ -11,8 +11,9 @@
  *
  * Keyboard shares the exact same width-setting path as drag: an arrow-key
  * nudge calls the same onMove(base, delta) callback a pointer drag does,
- * just with a fixed +-16px delta instead of a live pointer delta — no
- * second width-calculation path.
+ * just with a fixed +-16px delta instead of a live pointer delta, and
+ * Home/double-click both call the same onReset — no second
+ * width-calculation path for any of it.
  */
 
 import { useState } from 'react';
@@ -29,6 +30,14 @@ export interface MemoryPanelDividerProps {
    *  here, which is what makes this trivially unit-testable without real
    *  layout. */
   onMove: (base: number, delta: number) => void;
+  /** Resets to the default split — Home key or double-click, same reset,
+   *  not two calculations. The caller (ChatHero.tsx) implements this by
+   *  reusing the identical seedPanelWidth()-against-the-row's-current-
+   *  clientWidth logic its own panel-open effect already runs, so a reset
+   *  reflects the CURRENT window size, not whatever it was when the panel
+   *  first opened. Optional — matches Curtain.tsx's own onReset?: () => void,
+   *  and lets Home/double-click be no-ops if a caller has no default. */
+  onReset?: () => void;
   /** Fires true the instant a drag starts, false the instant it ends — lets
    *  the panel suppress its own open/close transition only while actively
    *  dragging, so a live resize isn't lagged behind the cursor. */
@@ -37,7 +46,7 @@ export interface MemoryPanelDividerProps {
   label: string;
 }
 
-export function MemoryPanelDivider({ onStart, onMove, onDragStateChange, label }: MemoryPanelDividerProps) {
+export function MemoryPanelDivider({ onStart, onMove, onReset, onDragStateChange, label }: MemoryPanelDividerProps) {
   // hot = hovered OR focused, live = actively dragging. Combined below
   // (`on`) so the treatment doesn't flicker off if a fast drag carries the
   // cursor outside the 9px hit-zone, and so keyboard focus gets the exact
@@ -80,6 +89,9 @@ export function MemoryPanelDivider({ onStart, onMove, onDragStateChange, label }
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       onMove(onStart(), ARROW_KEY_STEP);
+    } else if (e.key === 'Home' && onReset) {
+      e.preventDefault();
+      onReset();
     }
   };
 
@@ -91,6 +103,7 @@ export function MemoryPanelDivider({ onStart, onMove, onDragStateChange, label }
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
+      onDoubleClick={onReset}
       onMouseEnter={() => setHot(true)}
       onMouseLeave={() => setHot(false)}
       onFocus={() => setHot(true)}

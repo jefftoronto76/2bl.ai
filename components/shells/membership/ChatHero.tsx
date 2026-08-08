@@ -116,14 +116,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
   const wasMemoryOpenRef = useRef(false);
 
+  // Single reseed path (Stage E): the panel-open effect below and the
+  // divider's Home/double-click reset both call this — not two copies of
+  // the same math. Always reads the row's CURRENT clientWidth, never a
+  // frozen value, so a reset after the browser's been resized reflects the
+  // new size, not whatever it was when the panel first opened.
+  const resetPanelWidth = useCallback(() => {
+    const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+    setPanelWidth(seedPanelWidth(total));
+  }, []);
+
   useEffect(() => {
     const isOpen = !!openMemory;
     if (isOpen && !wasMemoryOpenRef.current) {
-      const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
-      setPanelWidth(seedPanelWidth(total));
+      resetPanelWidth();
     }
     wasMemoryOpenRef.current = isOpen;
-  }, [openMemory]);
+  }, [openMemory, resetPanelWidth]);
 
   // Kebab action state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -348,6 +357,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
               setPanelWidth(clampWidth(base - delta, MIN_PANEL_WIDTH, maxPanelWidth(total)));
             }}
+            onReset={resetPanelWidth}
             onDragStateChange={setIsDraggingPanel}
           />
         )}

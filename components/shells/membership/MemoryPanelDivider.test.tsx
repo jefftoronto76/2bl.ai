@@ -9,21 +9,23 @@ import { MemoryPanelDivider } from './MemoryPanelDivider';
 
 afterEach(cleanup);
 
-function renderDivider() {
+function renderDivider(options: { withReset?: boolean } = {}) {
   const onStart = vi.fn(() => 400);
   const onMove = vi.fn();
+  const onReset = options.withReset === false ? undefined : vi.fn();
   const onDragStateChange = vi.fn();
   render(
     <MemoryPanelDivider
       label="Resize the memory panel"
       onStart={onStart}
       onMove={onMove}
+      onReset={onReset}
       onDragStateChange={onDragStateChange}
     />,
   );
   const divider = screen.getByRole('separator', { name: 'Resize the memory panel' });
   const [line, pill] = Array.from(divider.children) as HTMLSpanElement[];
-  return { divider, line, pill, onMove, onDragStateChange };
+  return { divider, line, pill, onMove, onReset, onDragStateChange };
 }
 
 describe('MemoryPanelDivider — hover/drag visual treatment', () => {
@@ -114,5 +116,23 @@ describe('MemoryPanelDivider — keyboard operability (Stage E)', () => {
     fireEvent.keyDown(divider, { key: 'Tab' });
     fireEvent.keyDown(divider, { key: 'a' });
     expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it('Home resets — via onReset, not a second calculation', () => {
+    const { divider, onReset, onMove } = renderDivider();
+    fireEvent.keyDown(divider, { key: 'Home' });
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(onMove).not.toHaveBeenCalled(); // Home is not an ArrowLeft/Right nudge
+  });
+
+  it('double-click resets — the same onReset Home uses, not a separate reset path', () => {
+    const { divider, onReset } = renderDivider();
+    fireEvent.doubleClick(divider);
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('Home is a safe no-op when onReset is omitted', () => {
+    const { divider } = renderDivider({ withReset: false });
+    expect(() => fireEvent.keyDown(divider, { key: 'Home' })).not.toThrow();
   });
 });
