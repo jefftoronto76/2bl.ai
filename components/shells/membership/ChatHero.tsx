@@ -202,95 +202,103 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
   return (
-    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
-      {/* Desktop: docked sidebar */}
-      {!isMobile && (
-        <SidebarV2
-          stories={stories}
-          writingPrompts={WRITING_PROMPTS}
-          onCreateStory={() => setBeginStoryOpen(true)}
-          onSelectPrompt={handleSelectPrompt}
-          onRowAction={handleRowAction}
-          starredConversationIds={starredIds}
-          renamingId={renamingId ?? undefined}
-          onRenameCommit={handleRenameCommit}
-        />
-      )}
+    <section style={surfaceStyle} className="h-full w-full flex flex-col bg-background overflow-hidden">
+      {/* Spans the full drawer width, above sidebar|chat|panel — not nested
+          inside the chat column. It always rendered inside the chat column
+          before the memory panel existed, which was invisible then (chat
+          WAS the whole remaining width) but became visibly wrong once the
+          panel became a sibling pane: this bar has to sit above the whole
+          row, matching the Story Canvas reference the panel-layout handoff
+          cites as source of truth, not scoped to one pane. */}
+      <ChatHeader
+        isFullScreen={isFullScreen}
+        onToggleFullScreen={onToggleFullScreen}
+        onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
+      />
 
-      {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
-      {isMobile && state.isSidebarExpanded && (
-        <>
-          <div
-            className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
-            aria-hidden="true"
-            onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Desktop: docked sidebar */}
+        {!isMobile && (
+          <SidebarV2
+            stories={stories}
+            writingPrompts={WRITING_PROMPTS}
+            onCreateStory={() => setBeginStoryOpen(true)}
+            onSelectPrompt={handleSelectPrompt}
+            onRowAction={handleRowAction}
+            starredConversationIds={starredIds}
+            renamingId={renamingId ?? undefined}
+            onRenameCommit={handleRenameCommit}
           />
-          <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
-            <SidebarV2
-              stories={stories}
-              writingPrompts={WRITING_PROMPTS}
-              onCreateStory={() => setBeginStoryOpen(true)}
-              onSelectPrompt={handleSelectPrompt}
-              onRowAction={handleRowAction}
-              starredConversationIds={starredIds}
-              renamingId={renamingId ?? undefined}
-              onRenameCommit={handleRenameCommit}
-              onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+        )}
+
+        {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
+        {isMobile && state.isSidebarExpanded && (
+          <>
+            <div
+              className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
+              aria-hidden="true"
+              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
             />
+            <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
+              <SidebarV2
+                stories={stories}
+                writingPrompts={WRITING_PROMPTS}
+                onCreateStory={() => setBeginStoryOpen(true)}
+                onSelectPrompt={handleSelectPrompt}
+                onRowAction={handleRowAction}
+                starredConversationIds={starredIds}
+                renamingId={renamingId ?? undefined}
+                onRenameCommit={handleRenameCommit}
+                onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+              />
+            </div>
+          </>
+        )}
+
+        {/* min-w-0 lets flex shrink below content size — fine on mobile
+            (chat is always flex-1 there), but on desktop with the panel open
+            it let this column shrink past content that refuses to shrink
+            further, overflowing past the column's real edge. Floored at
+            380px — the plan's own MIN_CHAT_WIDTH, brought forward from
+            Stage C since even this fixed, non-resizable split needs a real
+            minimum. */}
+        <div
+          className={`flex flex-col h-full min-h-0 ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[380px]'}`}
+        >
+          <div className="flex flex-col flex-1 min-h-0">
+            {isGated ? (
+              <GateView />
+            ) : (
+              <>
+                {state.hasStarted ? (
+                  <MessageList
+                    messages={state.messages}
+                    isLoading={state.isLoading}
+                    errorType={errorType}
+                    onOpenMemory={isMobile ? undefined : setOpenMemory}
+                  />
+                ) : (
+                  <EmptyState />
+                )}
+
+                <div className="pb-4">
+                  <ChatInput />
+                  <SaveChatCTA />
+                </div>
+              </>
+            )}
           </div>
-        </>
-      )}
-
-      {/* min-w-0 lets flex shrink below content size — fine on mobile
-          (chat is always flex-1 there), but on desktop with the panel open
-          it let this column shrink past ChatHeader's own fixed-width icon
-          cluster (Share/Fullscreen/Account/Close), which then overflowed
-          past the column's real edge and visually bled into the panel's
-          header (reported on Stage A's first preview). Floored at 380px —
-          the plan's own MIN_CHAT_WIDTH, brought forward from Stage C since
-          even this fixed, non-resizable split needs a real minimum. */}
-      <div
-        className={`flex flex-col h-full min-h-0 ${!isMobile && openMemory ? 'flex-[2]' : 'flex-1'} ${isMobile ? 'min-w-0' : 'min-w-[380px]'}`}
-      >
-        <ChatHeader
-          isFullScreen={isFullScreen}
-          onToggleFullScreen={onToggleFullScreen}
-          onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
-        />
-
-        <div className="flex flex-col flex-1 min-h-0">
-          {isGated ? (
-            <GateView />
-          ) : (
-            <>
-              {state.hasStarted ? (
-                <MessageList
-                  messages={state.messages}
-                  isLoading={state.isLoading}
-                  errorType={errorType}
-                  onOpenMemory={isMobile ? undefined : setOpenMemory}
-                />
-              ) : (
-                <EmptyState />
-              )}
-
-              <div className="pb-4">
-                <ChatInput />
-                <SaveChatCTA />
-              </div>
-            </>
-          )}
         </div>
+
+        {/* Memory panel — Stage A: fixed 40/60 split of the space remaining
+            after the (untouched-this-stage) sidebar, no animation, no
+            resize. Desktop only; Stage F adds the mobile counterpart. */}
+        {!isMobile && openMemory && (
+          <div className="h-full min-w-[320px] flex-[3] overflow-hidden border-l border-border">
+            <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />
+          </div>
+        )}
       </div>
-
-      {/* Memory panel — Stage A: fixed 40/60 split of the space remaining
-          after the (untouched-this-stage) sidebar, no animation, no resize.
-          Desktop only; Stage F adds the mobile counterpart. */}
-      {!isMobile && openMemory && (
-        <div className="h-full min-w-[320px] flex-[3] overflow-hidden border-l border-border">
-          <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />
-        </div>
-      )}
 
       {/* absolute inset-0 — resolves to the drawer's relative body (this
           section is static), so modals overlay the whole drawer. */}
