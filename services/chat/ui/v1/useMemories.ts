@@ -112,30 +112,52 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
   const [memories, setMemories] = useState<MemoryRow[]>([])
   const [pendingAnchors, setPendingAnchors] = useState<Record<string, MemorySourceKind>>({})
   const [erroredAnchors, setErroredAnchors] = useState<Record<string, ChatErrorType>>({})
-  // No session yet -> nothing to load, so start "loaded" (there's nothing an
-  // automatic trigger could race against). A real sessionId starts unloaded
-  // until its fetch below settles.
-  const [isLoaded, setIsLoaded] = useState(!sessionId)
+  // isLoaded is DERIVED — loadedForSessionId is the last sessionId this hook
+  // finished resolving (successfully or not), and isLoaded is just whether
+  // that matches the CURRENT sessionId. This used to be its own `useState`,
+  // flipped inside the effect below (setIsLoaded(false) then, once the
+  // fetch settles, setIsLoaded(true)) — correct in isolation, but it has a
+  // one-commit blind spot whenever sessionId itself changes: React commits
+  // the new sessionId to this hook's caller in the same render that a CHILD
+  // component can newly mount and read this hook's (still-stale, from
+  // BEFORE the change) isLoaded value — a stored isLoaded lags one effect
+  // pass behind the sessionId that produced it, because "reset to false"
+  // only happens inside an effect, which runs after commit, and a child's
+  // own effect can run first (React flushes child effects before parent
+  // effects). Concretely: ChatHero.tsx mounts this hook before any session
+  // exists (sessionId=null), which sets isLoaded=true (correctly — nothing
+  // to load yet). The instant a real session loads, sessionId AND
+  // state.hasStarted flip together — MessageList mounts for the first time
+  // in that exact commit and reads memories.isLoaded before this hook's own
+  // sessionId-effect has run to reset it, seeing the STALE true from the
+  // null-session case with an EMPTY memories array — exactly the race
+  // save-memory-marker.test.tsx caught live (an auto-save fires against a
+  // memory that already exists, because the "does it already exist" check
+  // ran against an array that hadn't loaded yet). A derived comparison has
+  // no such lag: the moment sessionId changes, `loadedForSessionId ===
+  // sessionId` is false in the SAME render, synchronously, before any
+  // effect — no child can ever observe a stale true.
+  const [loadedForSessionId, setLoadedForSessionId] = useState<string | null>(null)
+  const isLoaded = loadedForSessionId === sessionId
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
 
   useEffect(() => {
     if (!sessionId) {
-      setIsLoaded(true)
+      setLoadedForSessionId(null)
       return
     }
-    setIsLoaded(false)
     fetch(`/api/sessions/${sessionId}/memories`)
       .then(r => r.json())
       .then((data: { memories?: MemoryRow[] }) => {
         if (Array.isArray(data.memories)) setMemories(data.memories)
       })
       .catch(err => console.error('[useMemories] fetch failed:', err))
-      // Flip to loaded on failure too — matches this hook's existing
-      // fail-open posture elsewhere (log and carry on with best-known
-      // state) rather than blocking every automatic trigger forever on one
-      // network hiccup.
-      .finally(() => setIsLoaded(true))
+      // Marks this sessionId resolved on failure too — matches this hook's
+      // existing fail-open posture elsewhere (log and carry on with
+      // best-known state) rather than blocking every automatic trigger
+      // forever on one network hiccup.
+      .finally(() => setLoadedForSessionId(sessionId))
   }, [sessionId])
 
   const getByAnchor = useCallback(

@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { ChatProvider, useChatStore, type ClientMediaItem, type PendingEcho } from './chatStore';
 import { MessageList } from './MessageList';
+import { useMemories } from '@/services/chat/ui/v1/useMemories';
 import { ChatOverlayProvider } from './v2/ChatOverlayHost';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 
@@ -128,7 +129,8 @@ function Harness({
   seedItems?: ClientMediaItem[];
   seedEcho?: PendingEcho;
 }) {
-  const { addMediaItem, setPendingEcho } = useChatStore();
+  const { addMediaItem, setPendingEcho, state } = useChatStore();
+  const memories = useMemories(state.sessionId);
   const [overlayHost, setOverlayHost] = useState<HTMLDivElement | null>(null);
   return (
     <div ref={setOverlayHost} className="relative">
@@ -141,7 +143,7 @@ function Harness({
         {seedEcho && (
           <button onClick={() => setPendingEcho(seedEcho)}>seed-echo</button>
         )}
-        <MessageList messages={messages} isLoading={false} errorType={null} />
+        <MessageList messages={messages} isLoading={false} errorType={null} memories={memories} />
       </ChatOverlayProvider>
     </div>
   );

@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { ChatProvider, useChatStore, type ClientMediaItem } from './chatStore';
 import { MessageList } from './MessageList';
+import { useMemories } from '@/services/chat/ui/v1/useMemories';
 import { ChatOverlayProvider } from './v2/ChatOverlayHost';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 
@@ -137,7 +138,8 @@ function Harness({
   messages: typeof CAPTIONLESS_UPLOAD_MESSAGE[];
   seedItems?: ClientMediaItem[];
 }) {
-  const { addMediaItem } = useChatStore();
+  const { addMediaItem, state } = useChatStore();
+  const memories = useMemories(state.sessionId);
   const [overlayHost, setOverlayHost] = useState<HTMLDivElement | null>(null);
   return (
     <div ref={setOverlayHost} className="relative">
@@ -147,7 +149,7 @@ function Harness({
             {`seed-${item.status}`}
           </button>
         ))}
-        <MessageList messages={messages} isLoading={false} errorType={null} />
+        <MessageList messages={messages} isLoading={false} errorType={null} memories={memories} />
       </ChatOverlayProvider>
     </div>
   );

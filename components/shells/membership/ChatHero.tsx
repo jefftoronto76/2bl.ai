@@ -2,7 +2,7 @@
 
 import { CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { Check, X } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
@@ -11,11 +11,12 @@ import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { useChatStore } from './chatStore';
-import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
+import { useMemories, type MemoryRow } from '@/services/chat/ui/v1/useMemories';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
+import { MemoryCardView } from './memory/MemoryCardView';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
@@ -51,36 +52,6 @@ function EmptyState() {
   );
 }
 
-/**
- * Stage A placeholder content for the memory panel (memory-panel-layout
- * plan, Design Handovers/design_handoff_memory_panel_layout_2026/). The
- * handoff explicitly scopes the panel's own card content as a separate
- * piece ("a single scrollable container is all this layout requires of
- * it") — this stub proves the panel shell opens/closes/shows the right
- * memory; it is not the eventual card-view design.
- */
-function MemoryPanelStub({ memory, onClose }: { memory: MemoryRow; onClose: () => void }) {
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-muted">Memory</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close memory panel"
-          className="rounded p-1 text-text-muted hover:text-text-primary"
-        >
-          <X size={16} aria-hidden />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <h3 className="m-0 font-display text-lg font-medium text-text-primary">{memory.title}</h3>
-        <p className="mt-2 font-body text-sm leading-relaxed text-text-muted">{memory.body}</p>
-      </div>
-    </div>
-  );
-}
-
 export interface ChatHeroProps {
   /** Drawer width state — passed through to ChatHeader's expand toggle. */
   isFullScreen?: boolean;
@@ -88,7 +59,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount } = useChatStore();
 
   // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
   // no stories backend yet (schema is Studio work), so created stories live for
@@ -98,11 +69,28 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
 
+  // One useMemories(sessionId) instance, owned here and passed down to
+  // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
+  // consumer. The panel (below) and the transcript's own MemorySavedReceipt
+  // rows both read/write the same memory, so a rename or a remove from the
+  // panel has to be visible in the transcript immediately, not just after a
+  // reload; two independent hook instances would each hold their own stale
+  // copy of the same server state.
+  const memories = useMemories(state.sessionId);
+
   // Memory panel (memory-panel-layout plan, Stage A). Desktop only through
   // Stage E — Stage F is the dedicated mobile counterpart; until then a
   // resize down to mobile width while a panel is open simply drops it (see
   // the render guards below), rather than half-rendering a broken layout.
+  // `openMemory` is which anchor is open (kept even if the underlying row
+  // hasn't loaded yet); `liveOpenMemory` re-derives the actual row to render
+  // from the shared `memories` list on every render, so a title rename made
+  // through the panel itself (below) shows up immediately without a second
+  // sync step.
   const [openMemory, setOpenMemory] = useState<MemoryRow | null>(null);
+  const liveOpenMemory = openMemory
+    ? memories.memories.find(m => m.id === openMemory.id) ?? openMemory
+    : null;
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
   // openMemory transitions from null to a memory (the effect below) — a
@@ -190,6 +178,35 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       // moveToChapter, removeFromChapter, invite: deferred — deliberate no-op
     }
   }, [recentSessions, stories, starSession, showToast]);
+
+  // CardView chrome (memory-panel-layout, 2026-08-08) — Remove is the one
+  // footer action with real backend support (discardMemory via the shared
+  // memories.discard, same PATCH .../memories/[memoryId] action: 'discard'
+  // the draft card's own Discard already uses). Fires the count decrement
+  // unconditionally alongside the discard call, mirroring MessageList.tsx's
+  // onKeep (which bumps +1 the same way, without waiting on the response) —
+  // this is the first path that can ever discard a PUBLISHED memory (the
+  // draft card's Discard only ever targets a draft, which was never counted
+  // toward the total), so without this the sidebar's memory badge would
+  // drift upward every time Remove is used. Closes the panel unconditionally
+  // once the call settles, matching this hook's existing silent-fail posture
+  // for keep/discard/rename elsewhere in this feature — no error UI exists
+  // for those today either.
+  const handleRemoveMemory = useCallback(async (memory: MemoryRow) => {
+    await memories.discard(memory);
+    if (memory.status === 'published') bumpMemoryCount(memory.session_id, -1);
+    setOpenMemory(null);
+  }, [memories, bumpMemoryCount]);
+
+  // "+" / "Talk about this" / "Use as a base" — none have any backend
+  // implementation in this codebase yet (see MemoryCardView.tsx's own doc
+  // comment). Same shared toast every other not-yet-built type-specific
+  // memory action already uses (MemoryCard.tsx's kind.extra buttons) —
+  // visible, non-silent feedback rather than a button that looks live but
+  // does nothing.
+  const handleMemoryStub = useCallback((message: string) => {
+    showToast(message);
+  }, [showToast]);
 
   const handleCreateStory = (name: string, description: string) => {
     setStories((prev) => [
@@ -332,6 +349,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                     isLoading={state.isLoading}
                     errorType={errorType}
                     onOpenMemory={isMobile ? undefined : setOpenMemory}
+                    memories={memories}
                   />
                 ) : (
                   <EmptyState />
@@ -379,7 +397,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             }`}
             style={openMemory ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 } : undefined}
           >
-            {openMemory && <MemoryPanelStub memory={openMemory} onClose={() => setOpenMemory(null)} />}
+            {liveOpenMemory && (
+              <MemoryCardView
+                memory={liveOpenMemory}
+                onClose={() => setOpenMemory(null)}
+                onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
+                onRemove={() => void handleRemoveMemory(liveOpenMemory)}
+                onStub={handleMemoryStub}
+              />
+            )}
           </div>
         )}
       </div>

@@ -111,7 +111,7 @@ describe('Memory panel — Stage A (desktop)', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
 
-    await waitFor(() => expect(screen.getByRole('heading', { level: 3, name: 'The Lake House' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
     expect(screen.getByText('It was a quiet summer by the lake.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close memory panel' }));

@@ -13,7 +13,7 @@ import { MessageActions } from '@/components/chat/MessageActions';
 import { UserMessageActions } from '@/components/chat/UserMessageActions';
 import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
-import { useMemories, type UseMemoriesReturn, type MemoryRow, type MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
+import type { UseMemoriesReturn, MemoryRow, MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
 import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
 import { UploadThumbnail } from './UploadThumbnail';
@@ -34,6 +34,13 @@ interface MessageListProps {
   onOpenMemory?: (memory: MemoryRow) => void;
   /** Classified reason the most recent turn failed, or null when it succeeded. */
   errorType: ChatErrorType | null;
+  /** Owned by ChatHero.tsx (memory-panel-layout CardView chrome pass,
+   *  2026-08-08) — one useMemories(state.sessionId) instance shared with the
+   *  memory panel, not a second one instantiated here. Renaming or removing
+   *  a memory from the panel needs to be reflected in this transcript's own
+   *  MemorySavedReceipt rows immediately, not just after a reload; two
+   *  independent hook instances would each hold their own stale copy. */
+  memories: UseMemoriesReturn;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -657,7 +664,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType, onOpenMemory }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -672,7 +679,6 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory }: Me
     state,
   } = useChatStore();
   const feedback = useMessageFeedback(state.sessionId);
-  const memories = useMemories(state.sessionId);
   const { user } = useAuthUser();
   const overlayHost = useChatOverlayHost();
   const [lightbox, setLightbox] = useState<{ src: string; filename: string } | null>(null);

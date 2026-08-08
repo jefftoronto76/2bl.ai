@@ -16,6 +16,7 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 import { ChatProvider, useChatStore } from './chatStore';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
+import { useMemories } from '@/services/chat/ui/v1/useMemories';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 import { __resetPersistenceForTests } from '@/services/chat/ui/v1/persistence';
 
@@ -129,10 +130,11 @@ afterEach(() => {
 // (pendingEcho !== null also counts) is exercised for real, not assumed.
 function Harness() {
   const { state } = useChatStore();
+  const memories = useMemories(state.sessionId);
   return (
     <div>
       {state.hasStarted ? (
-        <MessageList messages={state.messages} isLoading={state.isLoading} errorType={null} />
+        <MessageList messages={state.messages} isLoading={state.isLoading} errorType={null} memories={memories} />
       ) : (
         <div data-testid="empty-state">empty</div>
       )}
