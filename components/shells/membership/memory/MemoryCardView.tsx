@@ -48,8 +48,12 @@ export interface MemoryCardViewProps {
   onStub: (message: string) => void
 }
 
+// Icon-only, not icon+label (fixed 2026-08-08 — see the footer's own doc
+// comment below for why): a fixed 36px square comfortably fits three of
+// these even at MIN_PANEL_WIDTH (280px, memoryPanelWidth.ts), where the
+// original label+icon version needed ~401px and got clipped.
 const footerBtn =
-  'inline-flex items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-border bg-transparent px-[13px] py-2 font-body text-[12.5px] font-medium text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]'
+  'grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-border bg-transparent text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:h-11 [@media(hover:none)]:w-11'
 
 export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub }: MemoryCardViewProps) {
   const kind = memoryKindOf(memory.source_kind)
@@ -166,36 +170,42 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub }:
       </div>
 
       {/* Footer — persistent action bar, always visible, no overflow menu.
-          overflow-x-auto is a defensive floor, not a designed interaction:
-          three full-label buttons don't fit MIN_PANEL_WIDTH (280px,
-          memoryPanelWidth.ts) without it — the design handoff itself flags
-          "CardView's footer actions assume desktop width... not verified at
-          narrow panel widths" (README §2) as an open question. Scrolling
-          beats clipping/wrapping until that gets a real design pass. */}
-      <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto border-t border-border bg-surface px-4 py-3">
+          Icon-only (fixed 2026-08-08): the original icon+label version's
+          three buttons needed ~401px and got clipped at the panel's default
+          seeded width on a typical browser window (confirmed live —
+          ChatDrawerV2's own w-[clamp(680px,50vw,1120px)] floor seeds the
+          panel to ~359px on anything under a ~1360px-wide viewport, which is
+          most laptops, not an edge case). Icon-only fits comfortably down to
+          MIN_PANEL_WIDTH (280px) with room to spare — no overflow handling
+          needed. aria-label + title carry the accessible name/tooltip now
+          that there's no visible text. */}
+      <div className="flex flex-shrink-0 items-center gap-2 border-t border-border bg-surface px-4 py-3">
         <button
           type="button"
           onClick={() => onStub('Coming soon')}
+          aria-label="Talk about this"
+          title="Talk about this"
           className={footerBtn}
         >
-          <MessageCircle size={14} aria-hidden />
-          Talk about this
+          <MessageCircle size={16} aria-hidden />
         </button>
         <button
           type="button"
           onClick={() => onStub('Coming soon')}
+          aria-label="Use as a base"
+          title="Use as a base"
           className={footerBtn}
         >
-          <GitFork size={14} aria-hidden />
-          Use as a base
+          <GitFork size={16} aria-hidden />
         </button>
         <button
           type="button"
           onClick={onRemove}
+          aria-label="Remove"
+          title="Remove"
           className={`${footerBtn} ml-auto hover:border-border hover:text-red-400`}
         >
-          <Trash2 size={14} aria-hidden />
-          Remove
+          <Trash2 size={16} aria-hidden />
         </button>
       </div>
     </div>
