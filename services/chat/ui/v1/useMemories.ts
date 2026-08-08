@@ -98,7 +98,13 @@ export interface UseMemoriesReturn {
   discard(memory: MemoryRow): Promise<void>
   /** Title-only correction — the inline edit affordance on MemoryCard/MemorySavedReceipt. */
   rename(memoryId: string, title: string): Promise<void>
-  /** Replaces the panel's block canvas (Memory Canvas V1) — same shape as rename(), just a different action/field. */
+  /**
+   * Replaces the panel's block canvas (Memory Canvas V1). Unlike rename(),
+   * the server derives `body` from `blocks` (reviseMemoryBlocks,
+   * services/crm/memories.ts) — this reads the PATCH response and merges
+   * the server's own body_blocks/body, rather than echoing the blocks
+   * argument back into local state.
+   */
   reviseBlocks(memoryId: string, blocks: MemoryBlock[]): Promise<void>
 }
 
@@ -302,11 +308,20 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'revise_blocks', blocks }),
       })
-      if (!res.ok) {
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.memory) {
         console.error('[useMemories] reviseBlocks failed:', res.status)
         return
       }
-      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, body_blocks: blocks } : m)))
+      // Unlike rename() (title is a field the client fully controls), the
+      // server derives `body` from `blocks` via its own flattening logic
+      // (reviseMemoryBlocks, services/crm/memories.ts) — trusting the
+      // client's own `blocks` argument for local state would leave `body`
+      // stale, silently breaking the shared-state guarantee that a panel
+      // edit shows up immediately in the transcript's MemoryCard/
+      // MemorySavedReceipt (both render `memory.body`, not `body_blocks`).
+      const memory = data.memory as MemoryRow
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, body_blocks: memory.body_blocks, body: memory.body } : m)))
     } catch (err) {
       console.error('[useMemories] reviseBlocks threw:', err)
     }

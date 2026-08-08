@@ -1,10 +1,15 @@
 // Covers useMemories's reviseBlocks — the block-canvas mutation (Memory
 // Canvas V1 backend). Mirrors useMediaUpload.test.ts's renderHook/fetch-mock
-// convention. reviseBlocks is deliberately structured identically to
-// rename() (see that function's own shape): no pre-emptive optimistic
-// mutation, local state is merged from the argument only on a 2xx response,
-// and a failure just logs and leaves state exactly as it was — there is
-// nothing to "roll back" because nothing was changed ahead of the request.
+// convention. reviseBlocks follows rename()'s shape for failure handling (no
+// pre-emptive optimistic mutation — a failure just logs and leaves state
+// exactly as it was, since nothing was changed ahead of the request to roll
+// back), but NOT for its success path: unlike title (a field the client
+// fully controls), the server derives `body` from `blocks` via its own
+// flattening logic (reviseMemoryBlocks, services/crm/memories.ts), so
+// success must parse and trust the response body rather than echoing the
+// client's own arguments (a real bug, found in review — see this file's git
+// history) — the first test below is written specifically to fail if that
+// regresses.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useMemories, type MemoryRow } from './useMemories'
@@ -55,11 +60,23 @@ async function renderLoaded() {
 }
 
 describe('useMemories.reviseBlocks', () => {
-  it('PATCHes action: revise_blocks with the memory id and blocks, and merges body_blocks into local state on success', async () => {
+  it('PATCHes action: revise_blocks with the memory id and blocks, and merges the SERVER RESPONSE (not the client argument) into local state on success', async () => {
     const result = await renderLoaded()
-    fetchMock.mockImplementationOnce(async () => jsonResponse({ memory: { ...SEEDED_MEMORY, body_blocks: [] } }))
+    // The client sends unflattened, padded content — reviseMemoryBlocks
+    // (services/crm/memories.ts) stores blocks verbatim but computes a
+    // freshly trimmed/flattened `body` server-side. The mocked response's
+    // `body` is deliberately NOT what the old buggy implementation would
+    // have left in place (SEEDED_MEMORY.body, untouched) — if reviseBlocks
+    // ever regresses to echoing the client's own arguments instead of
+    // reading this response, `body` below stays stale and this test fails.
+    const serverMemory = {
+      ...SEEDED_MEMORY,
+      body_blocks: [{ id: 'b1', type: 'text', content: '  Revised passage.  ' }],
+      body: 'Revised passage.',
+    }
+    fetchMock.mockImplementationOnce(async () => jsonResponse({ memory: serverMemory }))
 
-    const blocks = [{ id: 'b1', type: 'text' as const, content: 'Revised passage.' }]
+    const blocks = [{ id: 'b1', type: 'text' as const, content: '  Revised passage.  ' }]
     await act(() => result.current.reviseBlocks('mem-1', blocks))
 
     const [, patchCall] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]
@@ -69,7 +86,9 @@ describe('useMemories.reviseBlocks', () => {
     )
     expect(JSON.parse((patchCall as RequestInit).body as string)).toEqual({ action: 'revise_blocks', blocks })
 
-    expect(result.current.memories.find(m => m.id === 'mem-1')?.body_blocks).toEqual(blocks)
+    const updated = result.current.memories.find(m => m.id === 'mem-1')
+    expect(updated?.body_blocks).toEqual(serverMemory.body_blocks)
+    expect(updated?.body).toBe('Revised passage.') // the server's flattened body, not the stale seed and not a client-side re-derivation
     // The other memory is untouched.
     expect(result.current.memories.find(m => m.id === 'mem-2')).toEqual(OTHER_MEMORY)
   })
