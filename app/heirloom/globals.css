@@ -77,6 +77,9 @@
 @keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+@keyframes hl-sheet-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.hl-animate-sheet-right { animation: hl-sheet-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 /* ── Landing scroll-reveal (matches .hl-reveal in LandingPage.tsx) ────────── */
 .hl-reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .hl-reveal.hl-visible { opacity: 1; transform: translateY(0); }
@@ -84,6 +87,7 @@
 @media (prefers-reduced-motion: reduce) {
   .hl-animate-sheet,
   .hl-animate-sheet-left,
+  .hl-animate-sheet-right,
   .hl-animate-fade,
   .hl-animate-modal { animation: none !important; }
   .hl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }

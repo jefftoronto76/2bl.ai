@@ -29,6 +29,11 @@ interface MessageListProps {
   isLoading: boolean;
   /** Classified reason the most recent turn failed, or null when it succeeded. */
   errorType: ChatErrorType | null;
+  /** Fired the instant "Keep this" is clicked on a draft card — lets the
+   *  memory canvas panel auto-open in card view for it. Optimistic, same as
+   *  this same handler's existing bumpMemoryCount call just below it: fired
+   *  alongside the keep() call, not gated on its resolution. */
+  onMemoryKept?: (memory: MemoryRow) => void;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -645,7 +650,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onMemoryKept }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -721,6 +726,12 @@ export function MessageList({ messages, isLoading, errorType }: MessageListProps
       // /api/sessions refetch. Server truth (services/crm/sessions.ts's bulk
       // count) is unaffected either way.
       bumpMemoryCount(memory.session_id, 1);
+      // Same optimism as the bump above — the memory canvas panel's own
+      // separate useMemories instance may not have this row (or its
+      // about-to-be-published status) yet, so it's passed along directly
+      // as MemoryCanvasMode's seedMemory rather than making the panel wait
+      // on its own fetch to catch up.
+      onMemoryKept?.({ ...memory, status: 'published' });
     },
     // Discard is only ever reachable from the draft card (MemorySavedReceipt
     // has no Discard action) — a discarded memory never counted toward the

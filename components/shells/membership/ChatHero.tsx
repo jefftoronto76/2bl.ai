@@ -14,6 +14,16 @@ import { useChatStore } from './chatStore';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
+import { MemoryCanvasPanel } from './memory-canvas/MemoryCanvasPanel';
+import type { MemoryCanvasMode } from './memory-canvas/types';
+import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
+
+// Canvas panel share of the chat+panel split when open, clamped by the
+// divider drag — desktop only. Sidebar collapses to its icon rail alongside
+// this (SidebarV2's forceCollapsed) so three columns never fight for room.
+const CANVAS_DEFAULT_WIDTH_PCT = 60;
+const CANVAS_MIN_WIDTH_PCT = 30;
+const CANVAS_MAX_WIDTH_PCT = 70;
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
 // sidebar's other story affordances are stubbed for the same reason). Copy is
@@ -84,6 +94,52 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   const showToast = useCallback((message: string) => {
     setToast({ message, key: ++toastKeyRef.current });
+  }, []);
+
+  // Memory canvas panel. 'closed' is a real state (not a separate boolean)
+  // so open/view can never disagree — see memory-canvas/types.ts.
+  const [canvasMode, setCanvasMode] = useState<MemoryCanvasMode>({ view: 'closed' });
+  const isCanvasOpen = canvasMode.view !== 'closed';
+  const handleToggleCanvas = useCallback(() => {
+    setCanvasMode(m => (m.view === 'closed' ? { view: 'list' } : { view: 'closed' }));
+  }, []);
+  // Auto-opens the panel in card view the instant "Keep this" is clicked
+  // (README §1: "Card view ... opened automatically after a memory is
+  // kept"), seeded so it doesn't have to wait on its own separate
+  // useMemories fetch to catch up — see MemoryCanvasMode.seedMemory.
+  const handleMemoryKept = useCallback((memory: MemoryRow) => {
+    setCanvasMode({ view: 'card', memoryId: memory.id, seedMemory: memory });
+  }, []);
+  // No stories backend yet (see the stories comment above) — this only
+  // confirms the action locally, same as every other story-adjacent stub in
+  // this file (BeginStoryModal's onCreate, the Stories row in SidebarV2).
+  const handleMoveToStory = useCallback((storyId: string) => {
+    const story = stories.find(s => s.id === storyId);
+    showToast(story ? `Added to ${story.name}` : 'Added to story');
+  }, [stories, showToast]);
+
+  // Resizable chat/panel divider — desktop only, reset every session (Known
+  // Unknowns #7: no persistence). Percent is the CANVAS panel's own share;
+  // the chat column takes the remainder.
+  const [canvasWidthPct, setCanvasWidthPct] = useState(CANVAS_DEFAULT_WIDTH_PCT);
+  const sectionRef = useRef<HTMLElement>(null);
+  const draggingRef = useRef(false);
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    const onMove = (ev: MouseEvent) => {
+      if (!draggingRef.current || !sectionRef.current) return;
+      const rect = sectionRef.current.getBoundingClientRect();
+      const pct = ((rect.right - ev.clientX) / rect.width) * 100;
+      setCanvasWidthPct(Math.min(CANVAS_MAX_WIDTH_PCT, Math.max(CANVAS_MIN_WIDTH_PCT, pct)));
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }, []);
 
   const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
@@ -165,8 +221,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [isMobile, state.isSidebarExpanded, dispatch]);
 
   return (
-    <section style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
-      {/* Desktop: docked sidebar */}
+    <section ref={sectionRef} style={surfaceStyle} className="h-full w-full flex bg-background overflow-hidden">
+      {/* Desktop: docked sidebar — forced to its icon rail while the memory
+          canvas panel is open, so three columns never fight for room. */}
       {!isMobile && (
         <SidebarV2
           stories={stories}
@@ -177,6 +234,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           starredConversationIds={starredIds}
           renamingId={renamingId ?? undefined}
           onRenameCommit={handleRenameCommit}
+          forceCollapsed={isCanvasOpen}
         />
       )}
 
@@ -204,11 +262,20 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         </>
       )}
 
-      <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
+      <div
+        className="flex flex-col min-w-0 h-full min-h-0"
+        style={
+          isCanvasOpen && !isMobile
+            ? { flex: `0 0 ${100 - canvasWidthPct}%` }
+            : { flex: '1 1 0%' }
+        }
+      >
         <ChatHeader
           isFullScreen={isFullScreen}
           onToggleFullScreen={onToggleFullScreen}
           onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
+          isCanvasOpen={isCanvasOpen}
+          onToggleCanvas={handleToggleCanvas}
         />
 
         <div className="flex flex-col flex-1 min-h-0">
@@ -217,7 +284,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           ) : (
             <>
               {state.hasStarted ? (
-                <MessageList messages={state.messages} isLoading={state.isLoading} errorType={errorType} />
+                <MessageList
+                  messages={state.messages}
+                  isLoading={state.isLoading}
+                  errorType={errorType}
+                  onMemoryKept={handleMemoryKept}
+                />
               ) : (
                 <EmptyState />
               )}
@@ -230,6 +302,54 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           )}
         </div>
       </div>
+
+      {/* Desktop: docked memory canvas panel + drag divider. Mobile renders
+          its own full-screen overlay variant below instead. */}
+      {!isMobile && isCanvasOpen && (
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize memory canvas"
+            onMouseDown={handleDividerMouseDown}
+            className="w-1 flex-shrink-0 cursor-col-resize bg-border transition-colors hover:bg-accent"
+          />
+          <div className="flex h-full min-h-0 flex-col border-l border-border" style={{ flex: `0 0 ${canvasWidthPct}%` }}>
+            <MemoryCanvasPanel
+              sessionId={state.sessionId}
+              mode={canvasMode}
+              onModeChange={setCanvasMode}
+              onClose={() => setCanvasMode({ view: 'closed' })}
+              stories={stories}
+              onMoveToStory={handleMoveToStory}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Mobile: full-screen overlay, same slide-over treatment as the
+          sidebar drawer above (backdrop + sheet), sliding in from the right
+          since this panel lives on the opposite side. */}
+      {isMobile && isCanvasOpen && (
+        <>
+          <div
+            className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
+            aria-hidden="true"
+            onClick={() => setCanvasMode({ view: 'closed' })}
+          />
+          <div className="hl-animate-sheet-right absolute inset-y-0 right-0 z-30 w-full">
+            <MemoryCanvasPanel
+              sessionId={state.sessionId}
+              mode={canvasMode}
+              onModeChange={setCanvasMode}
+              onClose={() => setCanvasMode({ view: 'closed' })}
+              stories={stories}
+              onMoveToStory={handleMoveToStory}
+              compact
+            />
+          </div>
+        </>
+      )}
 
       {/* absolute inset-0 — resolves to the drawer's relative body (this
           section is static), so modals overlay the whole drawer. */}

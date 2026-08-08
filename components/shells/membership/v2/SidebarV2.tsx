@@ -63,6 +63,13 @@ export interface SidebarV2Props {
   /** Render the Stories section inert: actions disabled, "soon" tag on the
    *  header. The section stays visible. Default false. */
   storiesDisabled?: boolean;
+  /** Forces the icon-rail (collapsed) width regardless of the sidebar's own
+   *  collapse toggle — used by ChatHero to make room for the memory canvas
+   *  panel when it's open. The internal toggle still updates its own state
+   *  while forced (so it un-collapses correctly once this flag clears), it
+   *  just has no visible effect until then. Default false (normal, toggle-
+   *  driven behavior). */
+  forceCollapsed?: boolean;
 
   // Nav actions (New Chat + the conversation list come from the store)
   onMedia?: () => void;
@@ -329,6 +336,7 @@ export function SidebarV2({
   starredConversationIds = [],
   starredStoryIds = [],
   storiesDisabled = false,
+  forceCollapsed = false,
   onMedia,
   onUploads,
   onShareHeirloom,
@@ -356,7 +364,12 @@ export function SidebarV2({
   // chevron: clicking a conversation "did nothing" because there was nothing
   // rendered to click. This local flag starts expanded so the conversation
   // list is visible and clickable immediately, on both mobile and desktop.
-  const [expanded, setExpanded] = useState(true);
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  // forceCollapsed wins over the internal toggle (but doesn't reset it) — the
+  // toggle still tracks the visitor's own preference underneath, so un-forcing
+  // (canvas panel closes) restores whatever they'd chosen before.
+  const expanded = forceCollapsed ? false : internalExpanded;
+  const setExpanded = setInternalExpanded;
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`

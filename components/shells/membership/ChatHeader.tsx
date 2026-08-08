@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
+  Bookmark,
   ChevronDown,
   CircleUser as UserCircle,
   LayoutDashboard,
@@ -34,9 +35,14 @@ export interface ChatHeaderProps {
   /** When provided, renders a hamburger button (mobile-only via md:hidden)
    *  to the left of the title. Desktop passes undefined — no button rendered. */
   onMenuOpen?: () => void;
+  /** Whether the memory canvas panel is currently open — drives the bookmark
+   *  toggle's active state. Omit (with onToggleCanvas) to hide the button
+   *  entirely — same optional-prop pattern as onToggleFullScreen. */
+  isCanvasOpen?: boolean;
+  onToggleCanvas?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, isCanvasOpen = false, onToggleCanvas }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -187,6 +193,18 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </IconButton>
+        )}
+
+        {onToggleCanvas && (
+          <IconButton
+            label={isCanvasOpen ? 'Close memories' : 'Open memories'}
+            aria-pressed={isCanvasOpen}
+            active={isCanvasOpen}
+            onClick={onToggleCanvas}
+            className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+          >
+            <Bookmark size={16} fill={isCanvasOpen ? 'currentColor' : 'none'} />
           </IconButton>
         )}
 
