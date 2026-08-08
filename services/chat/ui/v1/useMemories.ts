@@ -36,6 +36,14 @@ import type { ChatErrorType } from './types'
 export type MemorySourceKind = 'conversation' | 'photo' | 'video' | 'audio' | 'document'
 export type MemoryStatus = 'draft' | 'published'
 
+/** Kept in sync with services/crm/memories.ts's own copy — see that file's doc comment. */
+export interface MemoryBlock {
+  id: string
+  type: 'text' | 'image'
+  content?: string
+  media_item_id?: string
+}
+
 export interface MemoryRow {
   id: string
   session_id: string
@@ -43,6 +51,8 @@ export interface MemoryRow {
   source_kind: MemorySourceKind
   title: string
   body: string
+  /** Null/absent = legacy row, rendered from `body` alone forever (lazy-seed-on-first-edit). */
+  body_blocks?: MemoryBlock[] | null
   status: MemoryStatus
   created_at: string
   updated_at: string
@@ -88,6 +98,8 @@ export interface UseMemoriesReturn {
   discard(memory: MemoryRow): Promise<void>
   /** Title-only correction — the inline edit affordance on MemoryCard/MemorySavedReceipt. */
   rename(memoryId: string, title: string): Promise<void>
+  /** Replaces the panel's block canvas (Memory Canvas V1) — same shape as rename(), just a different action/field. */
+  reviseBlocks(memoryId: string, blocks: MemoryBlock[]): Promise<void>
 }
 
 /**
@@ -281,5 +293,38 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
-  return { memories, getByAnchor, isPending, getPendingKind, hasError, getErrorType, hasOpenDraft, isLoaded, create, keep, discard, rename }
+  const reviseBlocks = useCallback(async (memoryId: string, blocks: MemoryBlock[]) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch(`/api/sessions/${sid}/memories/${memoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revise_blocks', blocks }),
+      })
+      if (!res.ok) {
+        console.error('[useMemories] reviseBlocks failed:', res.status)
+        return
+      }
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, body_blocks: blocks } : m)))
+    } catch (err) {
+      console.error('[useMemories] reviseBlocks threw:', err)
+    }
+  }, [])
+
+  return {
+    memories,
+    getByAnchor,
+    isPending,
+    getPendingKind,
+    hasError,
+    getErrorType,
+    hasOpenDraft,
+    isLoaded,
+    create,
+    keep,
+    discard,
+    rename,
+    reviseBlocks,
+  }
 }
