@@ -230,6 +230,85 @@ describe('Memory panel — Stage C (drag-resize)', () => {
   });
 });
 
+describe('Memory panel — Stage E (keyboard operability)', () => {
+  it('ArrowLeft/ArrowRight nudge the panel through the real ChatHero stack', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    const seededWidth = parseFloat(panel.style.flexBasis);
+
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth + 16);
+
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth - 16);
+  });
+
+  it('Home and double-click both reset to the same default the panel seeded at on open', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    const seededWidth = parseFloat(panel.style.flexBasis);
+
+    fireEvent.pointerDown(divider, { clientX: 500, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 300 }); // widen well away from the seed
+    fireEvent.pointerUp(window);
+    expect(parseFloat(panel.style.flexBasis)).not.toBe(seededWidth);
+
+    fireEvent.keyDown(divider, { key: 'Home' });
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth);
+
+    // Drag away again, then confirm double-click resets identically.
+    fireEvent.pointerDown(divider, { clientX: 500, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 300 });
+    fireEvent.pointerUp(window);
+    expect(parseFloat(panel.style.flexBasis)).not.toBe(seededWidth);
+
+    fireEvent.doubleClick(divider);
+    expect(parseFloat(panel.style.flexBasis)).toBe(seededWidth);
+  });
+
+  it('Home reflects the CURRENT row width, not the width when the panel first opened', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    stubRowWidth(1200);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    const seededAt1200 = parseFloat(panel.style.flexBasis);
+
+    // Simulate a browser resize after the panel opened.
+    stubRowWidth(1600);
+    fireEvent.keyDown(divider, { key: 'Home' });
+
+    const seededAt1600 = parseFloat(panel.style.flexBasis);
+    expect(seededAt1600).not.toBe(seededAt1200);
+    expect(seededAt1600).toBeGreaterThan(seededAt1200); // more room -> a wider default split
+  });
+});
+
 // happy-dom's real matchMedia evaluates `(max-width: 768px)` against
 // window.innerWidth — same technique ChatHero.kebabDelete.test.tsx already
 // uses to reach the mobile branch.
