@@ -1,12 +1,13 @@
 // Unit coverage for MemoryCardView (memory-panel-layout CardView chrome
-// pass, 2026-08-08; block canvas / Memory Canvas V1 pass) — isolated from
-// ChatHero/MessageList, same convention as MemoryPanelDivider.test.tsx.
-// Integration with the real panel stack (opening from a MemorySavedReceipt
-// click) is covered separately in ChatHero.memoryPanel.test.tsx.
-// BlockCanvas.tsx's own rendering/interaction details (picker, per-block
-// callbacks) are covered in its own test file — this file's block-canvas
-// tests are about MemoryCardView's OWN logic: the lazy-seed transition, and
-// when a block edit does vs. doesn't reach onReviseBlocks.
+// pass, 2026-08-08; block canvas / Memory Canvas V1 pass; Text+Image Scope
+// Handover pass) — isolated from ChatHero/MessageList, same convention as
+// MemoryPanelDivider.test.tsx. Integration with the real panel stack
+// (opening from a MemorySavedReceipt click) is covered separately in
+// ChatHero.memoryPanel.test.tsx. BlockCanvas.tsx's own rendering/
+// interaction details (the inserter popover, per-block callbacks) are
+// covered in its own test file — this file's block-canvas tests are about
+// MemoryCardView's OWN logic: deriving default blocks on open, and what
+// exactly gets sent to onReviseBlocks for each kind of edit.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { MemoryCardView } from './MemoryCardView';
@@ -50,6 +51,11 @@ function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionIm
     />,
   );
   return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, ...utils };
+}
+
+/** Clicks the inserter at `slotIndex` among all "Add a block" slots, then "Add text"/"Add image" within its popover. */
+function openInserter(slotIndex: number) {
+  fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[slotIndex]);
 }
 
 describe('MemoryCardView — header', () => {
@@ -104,7 +110,7 @@ describe('MemoryCardView — header', () => {
     expect(onRetitle).not.toHaveBeenCalled();
   });
 
-  it('switching to a different open memory resets any uncommitted draft', () => {
+  it('switching to a different open memory resets any uncommitted title draft', () => {
     const memory = mkMemory();
     const onRetitle = vi.fn();
     const { rerender } = render(
@@ -134,6 +140,8 @@ describe('MemoryCardView — header', () => {
       />,
     );
     expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('A Different Memory');
+    // The passage default-seeds fresh from the new memory too, not the old one.
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('Something else entirely.');
   });
 
   it('"+" fires the stub callback, not a story-move popover', () => {
@@ -171,9 +179,24 @@ describe('MemoryCardView — passage: block canvas renders immediately, no penci
   });
 
   it('a memory with already-populated body_blocks renders those blocks directly, in order', () => {
-    renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Existing paragraph.' }] });
+    renderCard({
+      body_blocks: [
+        { id: 'b1', type: 'text', content: 'First.' },
+        { id: 'b2', type: 'image', media_item_id: 'media-1' },
+      ],
+    });
     expect(screen.queryByRole('button', { name: 'Edit passage' })).toBeNull();
-    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('Existing paragraph.');
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('First.');
+    expect(screen.getByRole('button', { name: 'Remove photo' })).toBeInTheDocument();
+  });
+
+  it('never renders a plain read-only <p> passage — the canvas is the only presentation', () => {
+    const { container } = renderCard();
+    // The old lazy-seed fallback rendered the passage as a <p>; that path is gone entirely.
+    const passageParagraphs = Array.from(container.querySelectorAll('p')).filter((p) =>
+      p.textContent?.includes('It was a quiet summer by the lake.'),
+    );
+    expect(passageParagraphs).toHaveLength(0);
   });
 });
 
@@ -204,22 +227,40 @@ describe('MemoryCardView — block canvas: text content commits on every keystro
   });
 });
 
-describe('MemoryCardView — block canvas: structural edits (add/remove/attach) commit immediately', () => {
-  it('adding a text block commits the whole updated array right away, no separate save step', () => {
+describe('MemoryCardView — block canvas: structural edits (insert/remove/attach) commit immediately', () => {
+  it('inserting a text block from the TOP inserter (before the first block) commits the whole updated array at the right position', () => {
     const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'One.' }] });
+    openInserter(0); // the top slot, before block 0
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    expect(onReviseBlocks).toHaveBeenCalledWith([
+      { id: expect.any(String), type: 'text', content: '' },
+      { id: 'b1', type: 'text', content: 'One.' },
+    ]);
+  });
+
+  it('inserting a text block from the inserter AFTER a block commits it at that position, not the end', () => {
+    const { onReviseBlocks } = renderCard({
+      body_blocks: [
+        { id: 'b1', type: 'text', content: 'One.' },
+        { id: 'b2', type: 'text', content: 'Two.' },
+      ],
+    });
+    openInserter(1); // between block 0 and block 1
     fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
     expect(onReviseBlocks).toHaveBeenCalledWith([
       { id: 'b1', type: 'text', content: 'One.' },
       { id: expect.any(String), type: 'text', content: '' },
+      { id: 'b2', type: 'text', content: 'Two.' },
     ]);
   });
 
-  it('attaching a photo from the picker commits immediately, referencing the chosen media_item_id', () => {
+  it('attaching a photo from an inserter\'s picker commits immediately, referencing the chosen media_item_id at that position', () => {
     const { onReviseBlocks } = renderCard(
       { body_blocks: [{ id: 'b1', type: 'text', content: 'One.' }] },
       [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Add photo' }));
+    openInserter(1); // the bottom slot, after the only block
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add photo: a.jpg' }));
     expect(onReviseBlocks).toHaveBeenCalledWith([
       { id: 'b1', type: 'text', content: 'One.' },

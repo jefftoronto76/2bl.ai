@@ -4,10 +4,12 @@
 // job, covered in its own test file). Isolated render, no ChatProvider —
 // same convention as MemoryCardView.test.tsx.
 //
-// Save behavior changed per the Text+Image Scope Handover (Design Handovers/
-// handover_memory edit panel_08_2026/): text content commits on every
-// keystroke now (onContentChange only) — there is no more onContentCommit/
-// blur step, a deliberate reversal of this feature's first same-day attempt.
+// Insert control and save behavior both changed per the Text+Image Scope
+// Handover (Design Handovers/handover_memory edit panel_08_2026/): a
+// BlockInserter "+" sits before the first block and after every block (N
+// blocks -> N+1 slots), replacing the old bottom-only "Add text"/"Add
+// photo" buttons; text content commits on every keystroke (onContentChange
+// only — there is no onContentCommit/blur step anymore).
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { BlockCanvas, type SessionImage } from './BlockCanvas';
@@ -103,39 +105,82 @@ describe('BlockCanvas — remove', () => {
   });
 });
 
-describe('BlockCanvas — add controls', () => {
-  it('"Add text" fires onAddText', () => {
-    const { onAddText } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
-    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
-    expect(onAddText).toHaveBeenCalledTimes(1);
+describe('BlockCanvas — insert control (BlockInserter, before-first + after-every-block)', () => {
+  it('renders exactly one more inserter slot than there are blocks — top, between, and bottom for a 2-block memory', () => {
+    renderCanvas([
+      { id: 'b1', type: 'text', content: 'One' },
+      { id: 'b2', type: 'image', media_item_id: 'media-1' },
+    ]);
+    expect(screen.getAllByRole('button', { name: 'Add a block' })).toHaveLength(3);
   });
 
-  it('"Add photo" opens a picker of the session\'s own images; picking one fires onAddImage and closes the picker', () => {
+  it('a single-block memory still gets both a top and a bottom inserter', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'Only one.' }]);
+    expect(screen.getAllByRole('button', { name: 'Add a block' })).toHaveLength(2);
+  });
+
+  it('clicking "+" reveals exactly 2 options — text and image, not the reference\'s 6-type picker', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    expect(screen.getByRole('button', { name: 'Add text' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add image' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /gallery|video|quote|divider/i })).toBeNull();
+  });
+
+  it('picking "text" from the TOP inserter fires onAddText(-1) — insert before the first block', () => {
+    const { onAddText } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    expect(onAddText).toHaveBeenCalledWith(-1);
+  });
+
+  it('picking "text" from the inserter AFTER a block fires onAddText with that block\'s index', () => {
+    const { onAddText } = renderCanvas([
+      { id: 'b1', type: 'text', content: 'One' },
+      { id: 'b2', type: 'text', content: 'Two' },
+    ]);
+    // Slots: [0]=top, [1]=after block 0, [2]=after block 1 (bottom).
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    expect(onAddText).toHaveBeenCalledWith(0);
+  });
+
+  it('picking "image" expands into the session\'s own photo picker rather than inserting directly; picking a photo fires onAddImage with the position and media id', () => {
     const { onAddImage } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }], {
       sessionImages: [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add photo' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
+    expect(onAddImage).not.toHaveBeenCalled(); // choosing "image" alone doesn't insert anything yet
     const thumb = screen.getByRole('button', { name: 'Add photo: a.jpg' });
     fireEvent.click(thumb);
-    expect(onAddImage).toHaveBeenCalledWith('media-1');
-    expect(screen.queryByRole('button', { name: 'Add photo: a.jpg' })).toBeNull();
+    expect(onAddImage).toHaveBeenCalledWith(-1, 'media-1');
+    expect(screen.queryByRole('button', { name: 'Add photo: a.jpg' })).toBeNull(); // closed after picking
   });
 
   it('shows an empty-state message rather than an empty grid when there are no session images', () => {
     renderCanvas([{ id: 'b1', type: 'text', content: 'One' }], { sessionImages: [] });
-    fireEvent.click(screen.getByRole('button', { name: 'Add photo' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
     expect(screen.getByText('No photos in this conversation yet.')).toBeInTheDocument();
+  });
+
+  it('clicking "+" again closes it', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    const inserter = screen.getAllByRole('button', { name: 'Add a block' })[0];
+    fireEvent.click(inserter);
+    expect(screen.getByRole('button', { name: 'Add text' })).toBeInTheDocument();
+    fireEvent.click(inserter);
+    expect(screen.queryByRole('button', { name: 'Add text' })).toBeNull();
   });
 });
 
 describe('BlockCanvas — locked V1 scope guards', () => {
-  it('never renders a drag handle or a between-block insert control', () => {
+  it('never renders a drag handle', () => {
     const { container } = renderCanvas([
       { id: 'b1', type: 'text', content: 'One' },
       { id: 'b2', type: 'text', content: 'Two' },
     ]);
     expect(container.querySelector('[draggable="true"]')).toBeNull();
-    // Only the two "Add text"/"Add photo" buttons at the end — no per-gap inserter.
-    expect(screen.getAllByRole('button', { name: /^Add /i })).toHaveLength(2);
   });
 });

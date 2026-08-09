@@ -157,12 +157,16 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
     commitBlocks(blocksDraft.map((b) => (b.id === blockId ? { ...b, content } : b)))
   }
 
-  const handleAddText = () => {
-    commitBlocks([...blocksDraft, { id: newBlockId(), type: 'text', content: '' }])
+  const handleAddText = (afterIndex: number) => {
+    const next = [...blocksDraft]
+    next.splice(afterIndex + 1, 0, { id: newBlockId(), type: 'text', content: '' })
+    commitBlocks(next)
   }
 
-  const handleAddImage = (mediaItemId: string) => {
-    commitBlocks([...blocksDraft, { id: newBlockId(), type: 'image', media_item_id: mediaItemId }])
+  const handleAddImage = (afterIndex: number, mediaItemId: string) => {
+    const next = [...blocksDraft]
+    next.splice(afterIndex + 1, 0, { id: newBlockId(), type: 'image', media_item_id: mediaItemId })
+    commitBlocks(next)
   }
 
   const handleRemoveBlock = (blockId: string) => {

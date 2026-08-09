@@ -601,28 +601,45 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     Memory Canvas content track (CardView chrome, photo bookmark,
     add-to-memory, etc.) lands, per the sequencing decision made the same day.
   - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
-    2026-08-08.** The panel's passage is now editable: `artifacts.body_blocks`
-    (jsonb, nullable, additive), the `revise_blocks` mutation
-    (`reviseMemoryBlocks`, `services/crm/memories.ts`, `Utilities/CRM.md`'s
-    `memories.ts` row), `useMemories.reviseBlocks` (`Utilities/Chat UI.md`),
-    and `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
-    rows for both) — see those files for the mechanics. Deliberately narrower
-    than the fuller canvas the design handover proposed
-    (`Design Handovers/handover_canvas_update_notion_08_2026/`): exactly two
-    block types (text, image — no video/quote/divider/gallery), no
-    drag-to-reorder, no hover-insert-between-blocks, no mobile change.
-    **Lazy-seed-on-first-edit**, not create-time seeding: a memory only ever
-    gets `body_blocks` the first time a member opens the panel's edit pencil
-    and commits — nothing seeds it at create time, so no migration was
-    needed and a memory nobody has touched stays exactly as it rendered
-    before this shipped, permanently. Image blocks reference an existing
-    `media_item_id` only (attach/replace from the session's own already-
-    uploaded photos, via the picker in `BlockCanvas.tsx`) — no new
-    upload/storage path. **Still not built, and not fixed by this:** the
-    per-upload "photo bookmark" work above (a message with several photos
-    still can't become several memories automatically) — image blocks are a
-    manual, member-driven workaround for viewing/attaching a known photo,
-    not a fix for that anchor collision; see the design-doc trail
+    2026-08-08, revised same day per the Text+Image Scope Handover
+    (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
+    passage is now editable: `artifacts.body_blocks` (jsonb, nullable,
+    additive), the `revise_blocks` mutation (`reviseMemoryBlocks`,
+    `services/crm/memories.ts`, `Utilities/CRM.md`'s `memories.ts` row),
+    `useMemories.reviseBlocks` (`Utilities/Chat UI.md`), and
+    `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
+    rows for both) — see those files for the mechanics. Deliberately
+    narrower than the fuller canvas the design handover proposed: exactly
+    two block types (text, image — no video/quote/divider/gallery), no
+    drag-to-reorder, no mobile change. **The block canvas renders
+    immediately on open** — no pencil, no separate "Edit mode": a memory
+    with `body_blocks: null` gets a default single text block derived from
+    `memory.body` (`buildDefaultBlocks()`, matching the reference
+    prototype), and text content commits on **every keystroke** (not
+    blur-gated — a deliberate, confirmed reversal of the first same-day
+    attempt at this, which used blur-gating and a pencil-gated lazy seed;
+    both were corrected once the handover confirmed the reference's actual
+    behavior). Insert control: a "+" ("BlockInserter") sits before the first
+    block and after every block (N blocks → N+1 slots) — independent of
+    reordering, which stays out of scope — expanding to exactly 2 icon
+    options (text, image) rather than the reference's 6-type picker; picking
+    "image" opens a picker of the session's own ready photos rather than
+    inserting an unattached block. Every keystroke round-trips through
+    `reviseMemoryBlocks`'s full validation and a DB write (the media-item
+    ownership check in particular) — an accepted, explicit cost, not an
+    oversight; a short debounce was flagged as a possible future
+    optimization, not implemented. Image blocks reference an existing
+    `media_item_id` only (attach from the session's own already-uploaded
+    photos) — no new upload/storage path. A default image-block-first
+    ordering for a "linked photo" is implemented structurally
+    (`getLinkedMediaItemId()`) but has no live trigger — no field on
+    `MemoryRow` represents a linked photo yet (that's the still-unbuilt
+    photo-bookmark work below), and none was invented to force it.
+    **Still not built, and not fixed by this:** the per-upload "photo
+    bookmark" work above (a message with several photos still can't become
+    several memories automatically) — image blocks are a manual,
+    member-driven workaround for viewing/attaching a known photo, not a fix
+    for that anchor collision; see the design-doc trail
     (`Design Handovers/design_handoff_memory_canvas_08_2026/`) for the
     concrete, still-unbuilt blueprint for that separate fix. Also unaffected:
     add-to-memory, GPS indicator, memory canvas sorting/filtering, and Stage

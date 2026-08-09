@@ -1,28 +1,31 @@
 'use client'
 
 /**
- * BlockCanvas — the block-canvas body for a memory whose `body_blocks` is
- * populated (Memory Canvas V1, two block types only: text, image). Fully
- * controlled/presentational: MemoryCardView.tsx owns all state (the blocks
- * array, when to persist via revise_blocks) — this component only renders
- * `blocks` and reports user intent through callbacks. Kept separate from
- * MemoryCardView.tsx so each stays independently testable, same convention
- * as memoryKinds.ts being its own file.
+ * BlockCanvas — the block-canvas body for a memory (Memory Canvas V1, two
+ * block types only: text, image). Fully controlled/presentational:
+ * MemoryCardView.tsx owns all state (the blocks array, when/whether a
+ * change persists) — this component only renders `blocks` and reports user
+ * intent through callbacks. Kept separate from MemoryCardView.tsx so each
+ * stays independently testable, same convention as memoryKinds.ts being
+ * its own file.
  *
- * Text content commits on every keystroke (onContentChange) — matching the
- * reference prototype's own `patchBlock`/`commit()` exactly, per the
- * Text+Image Scope Handover (Design Handovers/handover_memory edit panel_08_2026/),
- * a deliberate reversal of this same feature's first same-day attempt,
- * which blur-gated the commit.
+ * Insert control (per the Text+Image Scope Handover,
+ * Design Handovers/handover_memory edit panel_08_2026/) — a `BlockInserter`
+ * "+" sits before the first block AND after every block (N blocks → N+1
+ * inserter slots), independent of reordering, which stays out of scope.
+ * Clicking "+" reveals exactly 2 icon buttons (text, image) — not the
+ * reference prototype's 6-type picker; picking "image" expands into the
+ * session's own ready-photo grid rather than inserting an unattached block,
+ * since an image block always needs a real media_item_id.
  *
- * Deliberately absent, per the locked V1 scope: no drag-to-reorder, no
- * video/quote/divider/gallery block types. The only structural affordances
- * are "Add text" / "Add photo" appended after the last block, and a
- * per-block remove.
+ * Text content commits on every keystroke (onContentChange), matching the
+ * reference prototype exactly — no blur-gating. Deliberately absent, per
+ * the locked V1 scope: no drag-to-reorder, no video/quote/divider/gallery
+ * block types.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { ImagePlus, Type, X } from 'lucide-react'
+import { ImagePlus, Plus, Type, X } from 'lucide-react'
 import type { MemoryBlock } from '@/services/chat/ui/v1/useMemories'
 
 export interface SessionImage {
@@ -37,8 +40,10 @@ export interface BlockCanvasProps {
   sessionImages: SessionImage[]
   /** Every keystroke on a text block — the caller persists on every call (no separate blur/commit step). */
   onContentChange: (blockId: string, content: string) => void
-  onAddText: () => void
-  onAddImage: (mediaItemId: string) => void
+  /** Inserts a new empty text block right after `afterIndex` (-1 = before the first block). */
+  onAddText: (afterIndex: number) => void
+  /** Inserts a new image block referencing `mediaItemId` right after `afterIndex`. */
+  onAddImage: (afterIndex: number, mediaItemId: string) => void
   onRemove: (blockId: string) => void
   /** Purely presentational — disables removal on the one block that would leave the passage empty. */
   canRemove: (blockId: string) => boolean
@@ -93,48 +98,87 @@ function ImageBlockRow({ block, sessionImages }: { block: MemoryBlock; sessionIm
   )
 }
 
-/** "Add text" / "Add photo" — appended once, after the last block. The photo option expands into a picker of this session's own ready images; no upload UI (locked V1 scope — media_item_id references an existing upload only). */
-function AddBlockControls({ sessionImages, onAddText, onAddImage }: { sessionImages: SessionImage[]; onAddText: () => void; onAddImage: (mediaItemId: string) => void }) {
+/**
+ * A single "+" slot — the line-with-centered-button treatment from the
+ * reference prototype's BlockInserter, this app's own tokens instead of
+ * hardcoded CSS custom properties. Clicking "+" reveals 2 icon buttons
+ * (text, image); "image" expands into a picker of the session's own ready
+ * photos rather than inserting directly, since an image block always needs
+ * a real media_item_id — no upload UI here (locked V1 scope).
+ */
+function BlockInserter({
+  afterIndex,
+  sessionImages,
+  onAddText,
+  onAddImage,
+}: {
+  afterIndex: number
+  sessionImages: SessionImage[]
+  onAddText: (afterIndex: number) => void
+  onAddImage: (afterIndex: number, mediaItemId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  return (
-    <div className="mt-1">
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onAddText}
-          className="inline-flex items-center gap-1.5 rounded-[9px] border border-border px-[11px] py-[7px] font-body text-xs font-medium text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]"
-        >
-          <Type size={13} aria-hidden />
-          Add text
-        </button>
-        <button
-          type="button"
-          onClick={() => setPickerOpen((v) => !v)}
-          aria-expanded={pickerOpen}
-          className="inline-flex items-center gap-1.5 rounded-[9px] border border-border px-[11px] py-[7px] font-body text-xs font-medium text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]"
-        >
-          <ImagePlus size={13} aria-hidden />
-          Add photo
-        </button>
-      </div>
+  const close = () => {
+    setOpen(false)
+    setPickerOpen(false)
+  }
 
-      {pickerOpen && (
-        <div className="mt-2 rounded-[10px] border border-border bg-surface-2 p-2.5">
-          {sessionImages.length === 0 ? (
-            <span className="font-body text-xs text-text-muted">No photos in this conversation yet.</span>
+  return (
+    <div className="relative my-0.5 flex h-[22px] items-center">
+      <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
+      <button
+        type="button"
+        onClick={() => (open ? close() : setOpen(true))}
+        aria-label="Add a block"
+        aria-expanded={open}
+        className={`grid size-[22px] shrink-0 place-items-center rounded-full border border-border bg-surface text-text-muted transition-opacity hover:text-text-primary hover:opacity-100 ${open ? 'opacity-100' : 'opacity-35'}`}
+      >
+        <Plus size={13} aria-hidden />
+      </button>
+      <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
+
+      {open && (
+        <div className="absolute left-1/2 top-full z-10 mt-1.5 -translate-x-1/2 rounded-[11px] border border-border bg-surface-2 p-1.5 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+          {!pickerOpen ? (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onAddText(afterIndex)
+                  close()
+                }}
+                aria-label="Add text"
+                title="Text"
+                className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
+              >
+                <Type size={15} aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                aria-label="Add image"
+                title="Image"
+                className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
+              >
+                <ImagePlus size={15} aria-hidden />
+              </button>
+            </div>
+          ) : sessionImages.length === 0 ? (
+            <span className="block max-w-[160px] px-1 py-1 font-body text-xs text-text-muted">No photos in this conversation yet.</span>
           ) : (
-            <div className="flex flex-wrap gap-[7px]">
+            <div className="flex max-w-[220px] flex-wrap gap-[7px]">
               {sessionImages.map((img) => (
                 <button
                   key={img.id}
                   type="button"
                   onClick={() => {
-                    onAddImage(img.id)
-                    setPickerOpen(false)
+                    onAddImage(afterIndex, img.id)
+                    close()
                   }}
                   aria-label={`Add photo: ${img.filename}`}
-                  className="grid size-14 place-items-center overflow-hidden rounded-[10px] border border-border bg-surface transition-colors hover:border-accent"
+                  className="grid size-12 place-items-center overflow-hidden rounded-[8px] border border-border bg-surface transition-colors hover:border-accent"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element -- thumbnail of a signed URL, same as ImageBlockRow above */}
                   <img src={img.url} alt={img.filename} className="size-full object-cover" />
@@ -152,35 +196,37 @@ export function BlockCanvas({ blocks, sessionImages, onContentChange, onAddText,
   let textIndex = -1
   return (
     <div>
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
-        {blocks.map((block) => {
+      <BlockInserter afterIndex={-1} sessionImages={sessionImages} onAddText={onAddText} onAddImage={onAddImage} />
+      <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+        {blocks.map((block, index) => {
           if (block.type === 'text') textIndex += 1
           const removable = canRemove(block.id)
           return (
-            <li key={block.id} className="group/block relative">
-              <div className="pr-7">
-                {block.type === 'text' ? (
-                  <TextBlockRow block={block} index={textIndex} onChange={(content) => onContentChange(block.id, content)} />
-                ) : (
-                  <ImageBlockRow block={block} sessionImages={sessionImages} />
-                )}
+            <li key={block.id}>
+              <div className="group/block relative">
+                <div className="pr-7">
+                  {block.type === 'text' ? (
+                    <TextBlockRow block={block} index={textIndex} onChange={(content) => onContentChange(block.id, content)} />
+                  ) : (
+                    <ImageBlockRow block={block} sessionImages={sessionImages} />
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(block.id)}
+                  disabled={!removable}
+                  aria-label={block.type === 'text' ? 'Remove text block' : 'Remove photo'}
+                  title={!removable ? 'A memory needs at least one line of text' : undefined}
+                  className="absolute right-0 top-0 grid size-6 shrink-0 place-items-center rounded-md border-none bg-transparent text-text-muted opacity-0 transition-opacity hover:text-red-400 group-hover/block:opacity-100 disabled:cursor-not-allowed disabled:opacity-0 [@media(hover:none)]:opacity-100 [@media(hover:none)]:disabled:opacity-30"
+                >
+                  <X size={14} aria-hidden />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => onRemove(block.id)}
-                disabled={!removable}
-                aria-label={block.type === 'text' ? 'Remove text block' : 'Remove photo'}
-                title={!removable ? 'A memory needs at least one line of text' : undefined}
-                className="absolute right-0 top-0 grid size-6 shrink-0 place-items-center rounded-md border-none bg-transparent text-text-muted opacity-0 transition-opacity hover:text-red-400 group-hover/block:opacity-100 disabled:cursor-not-allowed disabled:opacity-0 [@media(hover:none)]:opacity-100 [@media(hover:none)]:disabled:opacity-30"
-              >
-                <X size={14} aria-hidden />
-              </button>
+              <BlockInserter afterIndex={index} sessionImages={sessionImages} onAddText={onAddText} onAddImage={onAddImage} />
             </li>
           )
         })}
       </ul>
-
-      <AddBlockControls sessionImages={sessionImages} onAddText={onAddText} onAddImage={onAddImage} />
     </div>
   )
 }
