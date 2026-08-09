@@ -29,7 +29,7 @@ export function sanitizeFailureReason(raw: string | null): string {
   }
   if (
     message.includes('Anthropic vision error') ||
-    message.includes('No text block returned from Anthropic vision')
+    message.includes('Vision tool call returned no usable output')
   ) {
     return "the image couldn't be analyzed"
   }
