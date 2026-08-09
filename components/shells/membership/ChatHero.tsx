@@ -17,6 +17,7 @@ import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
+import { MediaGallery } from './MediaGallery';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
@@ -29,6 +30,11 @@ const WRITING_PROMPTS: WritingPrompt[] = [
   { id: 'wp-3', text: 'What did your first home look like?' },
   { id: 'wp-4', text: 'Who taught you something you still carry?' },
 ];
+
+// Media pane has no drag-resize (unlike the memory panel) — a fixed width is
+// enough; MIN_PANEL_WIDTH (memoryPanelWidth.ts) is scoped to the resizable
+// panel's clamp math and isn't reused here.
+const MEDIA_PANEL_WIDTH = 400;
 
 function EmptyState() {
   const { invitedName, hasInviteToken } = useChatStore();
@@ -107,6 +113,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const liveOpenMemory = openMemory
     ? memories.memories.find(m => m.id === openMemory.id) ?? openMemory
     : null;
+
+  // Media pane — no "which item" concept (MediaGallery fetches its own full
+  // list from /api/media), so a plain boolean is enough here, unlike
+  // openMemory's MemoryRow | null. Mutually exclusive with the memory panel
+  // via the wrapping handlers below, not a shared enum — keeps this additive
+  // rather than touching openMemory's existing call sites.
+  const [mediaOpen, setMediaOpen] = useState(false);
+
+  const handleOpenMedia = useCallback(() => {
+    setMediaOpen(true);
+    setOpenMemory(null);
+  }, []);
+
+  const handleOpenMemory = useCallback((row: MemoryRow | null) => {
+    setOpenMemory(row);
+    if (row) setMediaOpen(false);
+  }, []);
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
   // openMemory transitions from null to a memory (the effect below) — a
@@ -314,7 +337,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             starredConversationIds={starredIds}
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
-            forceCollapsed={!!openMemory}
+            onMedia={handleOpenMedia}
+            forceCollapsed={!!openMemory || mediaOpen}
           />
         )}
 
@@ -337,9 +361,28 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
                 onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+                onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMedia(); }}
               />
             </div>
           </>
+        )}
+
+        {/* Mobile: Media opens as a bottom sheet — no third-pane host exists
+            on mobile (unlike desktop), so this reuses the same hl-animate-sheet
+            bottom-sheet pattern already used by SourceMenu/SaveChatCTA rather
+            than inventing a new mechanism. z-40 clears the drawer's own
+            z-20/z-30 in case its close animation is still resolving. */}
+        {isMobile && mediaOpen && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Media">
+            <div
+              className="hl-animate-fade absolute inset-0 bg-black/45"
+              aria-hidden="true"
+              onClick={() => setMediaOpen(false)}
+            />
+            <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
+              <MediaGallery onClose={() => setMediaOpen(false)} />
+            </div>
+          </div>
         )}
 
         {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
@@ -364,7 +407,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                     messages={state.messages}
                     isLoading={state.isLoading}
                     errorType={errorType}
-                    onOpenMemory={isMobile ? undefined : setOpenMemory}
+                    onOpenMemory={isMobile ? undefined : handleOpenMemory}
                     memories={memories}
                     onStub={handleMemoryStub}
                     sessionImages={sessionImages}
@@ -398,22 +441,33 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           />
         )}
 
-        {/* Memory panel. Real drag-resizable pixel width now (Stage C) —
-            flexBasis is inline style since Tailwind can't express a
+        {/* Memory panel / media pane — shared third-pane wrapper since
+            openMemory and mediaOpen are mutually exclusive by construction
+            (handleOpenMedia/handleOpenMemory above). Real drag-resizable
+            pixel width now (Stage C) for memory; media gets a fixed
+            MEDIA_PANEL_WIDTH instead (no resize needed) — flexBasis is
+            inline style either way since Tailwind can't express a
             runtime-computed value as a static class; min-w-[280px] stays a
             class-based floor, redundant with the JS clamp on purpose
             (defense in depth, costs nothing). Transition suppressed while
             actively dragging so a live resize tracks the cursor instead of
             animating 300ms behind it. The wrapper stays mounted whenever
             !isMobile so open/close can still transition; content itself
-            only renders while a memory is open. Desktop only; Stage F adds
-            the mobile counterpart. */}
+            only renders while a memory or media is open. Desktop only —
+            mobile media uses its own bottom sheet above; Stage F would add
+            a mobile memory-panel counterpart if ever built. */}
         {!isMobile && (
           <div
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
-              openMemory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
-            }`}
-            style={openMemory ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 } : undefined}
+              openMemory || mediaOpen ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen ? 'border-l border-border' : ''}`}
+            style={
+              openMemory
+                ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
+                : mediaOpen
+                ? { flexBasis: MEDIA_PANEL_WIDTH, flexGrow: 0, flexShrink: 0 }
+                : undefined
+            }
           >
             {liveOpenMemory && (
               <MemoryCardView
@@ -426,6 +480,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 sessionImages={sessionImages}
               />
             )}
+            {mediaOpen && <MediaGallery onClose={() => setMediaOpen(false)} />}
           </div>
         )}
       </div>
