@@ -786,6 +786,126 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   functional impact (unlike the three real bugs fixed the same night). Full
   writeup with the per-rule table: `System Docs/jefflougheed Chat Widget.md`'s §6.
 
+- **Full System Docs audit found doc-vs-code drift across six files —
+  2026-08-09, recorded here but not fixed (only the one gap directly caused
+  by that day's earlier marker-pattern-unification work was fixed in the
+  same pass — see `System Docs/Utilities/Chat UI.md`'s `registry.ts` row).**
+  Three parallel research passes compared `Database Schema.md`,
+  `API Routes.md`, `Pages.md`, `Shared Primitives.md`, `Design System.md`,
+  and `Marker Syntax.md` against the actual code. None of these are
+  functional bugs — every item below is a documentation-accuracy gap, not a
+  runtime one — but each is detailed enough here that picking one up later
+  doesn't require re-running the audit.
+  1. **`Database Schema.md`:**
+     - `prompt_conversations` has no documented table row despite active use
+       (`services/prompt/conversations.ts`'s list/create/get/update/delete,
+       all `.from('prompt_conversations')`) — only mentioned in passing as an
+       FK target on the `blocks` and `prompt_sets` rows.
+     - `chat_sessions.title`/`starred` are documented (line 23) as *"no
+       application code reads or writes this column yet"* — false. Both are
+       actively read/written (`services/crm/sessions.ts`,
+       `app/api/sessions/[id]/route.ts`, and
+       `app/api/sessions/[id]/title/route.ts`'s AI session-title generator).
+       **`API Routes.md` already documents this correctly** (its
+       `/api/sessions/[id]` PATCH row explicitly says "Also accepts `title`
+       and `starred`, written straight to their like-named `chat_sessions`
+       columns") — the two docs directly contradict each other;
+       `Database Schema.md` is the stale side.
+     - `do_not_engage` has zero code references anywhere (confirmed via
+       repo-wide search) but isn't flagged as orphaned the way
+       `tenant_features`/`session_tokens` are on the same page.
+  2. **`API Routes.md`:** roughly 20 real `route.ts` files are undocumented,
+     including the entire member-chat media API (`app/api/media/**` —
+     `upload-url`, `[id]/url`, `[id]/retry`, the base GET), `.../feedback`,
+     `.../conversion-events`, `.../title`, `.../memories/[memoryId]`,
+     `app/api/webhooks/media-process`, `app/api/events/media`,
+     `app/api/transcribe`, `app/api/members/sync`, `app/api/auth/magic-link`,
+     the appearance/branding admin API (`app/api/admin/appearance` +
+     `.../history`), `app/api/admin/prompt-chat`,
+     `app/api/admin/members/search`, `app/api/admin/sessions/[id]/transfer`,
+     `app/api/admin/prompt/preview`, both `.../prompt-sets/[id]/compiled`
+     routes (admin + platform), `app/api/platform/prompt-types`, and the
+     entire platform tenant-management API (`app/api/platform/tenants` +
+     `[id]`). No documented route was found missing its file.
+  3. **`Pages.md`:** only 3 of the 10 real `app/admin/**/page.tsx` files are
+     listed (Settings, Members, Blocks). Undocumented: `app/admin/page.tsx`
+     (the Inbound Chats dashboard), `app/admin/prompt-builder/page.tsx` (the
+     Composer editor), `app/admin/prompt/page.tsx` (the legacy editor), and
+     all three `app/admin/prompt-studio/{assets,history,prompt}/page.tsx`
+     files, plus `app/admin/sessions/[id]/page.tsx`.
+  4. **`Shared Primitives.md`:**
+     - States `app/admin/members/page.tsx` lacks the sticky header/scroll-body
+       split that `app/admin/page.tsx`/platform members has — it's since
+       been added (`HEADER_FRAME_STYLE`/`SCROLL_AREA_STYLE`, `pt={0}` scroll
+       `Box`; the code's own comment says it mirrors the other two pages).
+     - `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell.tsx`) —
+       the component actually wrapping every admin/platform page
+       (`app/admin/layout.tsx`, `app/(platform)/layout.tsx`) — isn't
+       documented under any name; the doc's companion (`Admin Overview.md`)
+       still references a deleted `components/admin/layout/AdminShell`
+       (confirmed gone from the filesystem).
+  5. **`Design System.md`:**
+     - The text-muted token is documented as `rgba(26,25,23,0.55)`; the
+       actual value in `app/(jefflougheed)/globals.css` is `0.70`.
+     - The documented selector `html[data-palette="inkwell"]` doesn't exist
+       anywhere in code (confirmed: zero `.tsx` matches repo-wide) — the real
+       selector actually used throughout `app/(jefflougheed)/globals.css` is
+       `html[data-brand="jefflougheed"]`.
+     - A fourth brand, "Legacy" (the `app/legacy/` storefront, with its own
+       `--lg-*` token set in `tailwind.config.js`/`app/legacy/globals.css`),
+       isn't mentioned at all — the doc covers only jefflougheed/inkwell,
+       SBL, and Heirloom.
+  6. **`Marker Syntax.md`:**
+     - The EMAIL section (line 59) attributes marker emission to
+       `DEFAULT_SYSTEM_PROMPT` (`services/prompt/sage-prompt.ts`) — that
+       constant is now just a one-line generic fallback string ("You are a
+       helpful assistant... experiencing a brief technical issue...") with no
+       marker instructions at all. The real mechanism is
+       `member-context.ts`'s `markerInstruction` (`getMemberContext`, gated
+       on `isFirstTurn`) — which this same doc describes correctly two
+       sections later under MEMBER CONTEXT, so this is a
+       **self-contradiction within the file**, not just staleness against
+       code.
+     - The retired-CONTACT section (line 169) claims the claim-session
+       infrastructure (`POST /api/sessions/[id]/claim`, `claimSession`,
+       `ensureClerkUser`) is "client-orphaned — no surface calls it." False:
+       `MessageList.tsx`'s `handleAuthSuccess` (wired as `MagicLinkCard`'s
+       `onSuccess`) calls `claimCurrentSession()` (`chatStore.tsx`), which
+       hits that exact route — it's the live path behind `[ACCOUNT_CREATE:]`
+       → `MagicLinkCard`. **The identical stale "client-orphaned" claim also
+       appears in `API Routes.md`'s own `/api/sessions/[id]/claim` row** —
+       so fixing this needs both docs touched, not just `Marker Syntax.md`.
+
+- **Hardcoded hex color values found in shipped code — 2026-08-09, found
+  during the same docs audit, NOT fixed. A real code violation, not
+  documentation drift — tracked as its own entry, distinct from the
+  doc-drift entry above.** CLAUDE.md's design-quality principle and
+  `System Docs/Admin Overview.md`'s explicit rule ("No hardcoded hex
+  values — all visual values flow through Mantine's theme system") are both
+  violated in shipped files:
+  - **Admin/Mantine side** (should flow through
+    `components/admin/theme/mantine-theme.ts`): `app/admin/page.tsx:17`,
+    `app/admin/members/page.tsx:28`,
+    `app/(platform)/platform/members/page.tsx:26`,
+    `app/admin/prompt-studio/blocks/page.tsx:18`,
+    `app/admin/prompt-builder/page.tsx:1030-1031` (all `background: '#fff'`);
+    `app/admin/settings/ThemePreview.tsx:132`,
+    `app/admin/settings/AdminPreview.tsx:67,82,99,114` (`color: '#fff'`);
+    `components/admin/lib/badges.tsx` (confirmed 40 raw hex occurrences
+    across the file, e.g. `#2d6a4f`/`#1c7ed6`/`#fa5252` as Mantine badge
+    colors).
+  - **Public/Tailwind side** (should reference the jefflougheed CSS vars,
+    e.g. `var(--color-accent)`): `components/shells/widget/sage/BookingCard.tsx:92,97,99,117`
+    (`bg-[#2d6a4f]`, `text-[#1a1917]` ×3) and
+    `components/shells/widget/WidgetShell.tsx:366` (`background: '#2d6a4f'`)
+    — both hardcode the literal value that happens to match the documented
+    jefflougheed accent/text tokens instead of referencing them, defeating
+    the token indirection `Design System.md` describes.
+  Not fixed in this pass — recorded as backlog per explicit scope
+  instruction. The fix itself is mechanical (swap each literal for its
+  Mantine theme color / CSS var) but touches ~10 files across both design
+  systems, so it's its own task, not a drive-by.
+
 - **Eight dead `.chat-overlay-*` CSS selectors sit interleaved with two live
   ones in `app/(jefflougheed)/globals.css:552-593` — found during the same
   documentation pass, 2026-08-07.** Of the ten class selectors under the
