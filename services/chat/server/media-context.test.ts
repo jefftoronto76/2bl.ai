@@ -207,8 +207,8 @@ describe('sanitizeFailureReason', () => {
     expect(reason).not.toContain('Anthropic')
   })
 
-  it('maps the missing-text-block vision error to the same image-analysis reason', () => {
-    expect(sanitizeFailureReason('No text block returned from Anthropic vision')).toBe(
+  it('maps the no-usable-tool_use-output vision error to the same image-analysis reason', () => {
+    expect(sanitizeFailureReason('Vision tool call returned no usable output')).toBe(
       "the image couldn't be analyzed",
     )
   })

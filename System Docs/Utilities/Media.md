@@ -55,11 +55,16 @@ that didn't exist yet.
 2. **Vision analysis** — `callVisionTool<VisionAnalysis>` (see below) asks
    Claude Haiku for `caption`/`classification`/`extracted_text`. A
    non-`null` result is used directly; a `null` result (the tool-use call's
-   own graceful-degradation edge case) falls back to a fixed safe
-   placeholder (`caption: 'A photo.'`) rather than failing the item — an
-   empty `derived_content` would make `createPhotoMemoryFromMedia`
-   (`services/crm/memories.ts`) treat the photo as still-processing and
-   permanently unbookmarkable.
+   own graceful-degradation edge case) throws
+   (`'Vision tool call returned no usable output'`) and fails the whole
+   item — a photo's caption is core content the member sees directly, so
+   this is a real failure, not something to paper over with a placeholder.
+   A failed item isn't stuck: `POST /api/media/[id]/retry`
+   (`app/api/media/[id]/retry/route.ts`) resets it to `'pending'` and
+   re-runs this whole pipeline from scratch. (An earlier version of this
+   pipeline soft-degraded this case behind a placeholder caption instead,
+   reasoning that a failed item was permanently stuck — that premise was
+   wrong given the retry route already existed; see `Known Gaps.md`.)
 3. Writes `status: 'ready'`, `derived_content` (caption + extracted text,
    joined), `classification`, `latitude`/`longitude` to the row.
 
@@ -125,13 +130,16 @@ Error handling is two-tiered, for both wrappers:
   best-effort.
 - A response that comes back `ok` but without a matching `tool_use` block
   is an API-level edge case with forced `tool_choice`, not the common
-  path — neither wrapper throws for this. As defense-in-depth only, the
-  shared core looks for a `text` block and retries the old
-  fence-stripped-`JSON.parse()` recovery; if that also fails, or there's no
-  text block, it resolves to `null`. Callers must handle `null` explicitly
-  — `processImage`'s `null` branch is exactly the old JSON-parse-failure
-  fallback, reused; `processDocument`'s treats it the same as an ordinary
-  "response ok but no usable word" outcome, keeping the default.
+  path — neither wrapper itself throws for this; the shared core resolves
+  to `null` after also trying the fence-stripped-`JSON.parse()` fallback
+  described above. Callers must handle `null` explicitly, and the two
+  callers today handle it differently, deliberately: `processImage`
+  **throws** on `null` (a photo's caption is core member-facing content —
+  a real failure with a working retry path beats a silently-wrong
+  placeholder); `processDocument`'s classification pass treats `null` as
+  an ordinary "response ok but no usable word" outcome and keeps its
+  `'document'` default (a one-word label is a reasonable thing to
+  soft-degrade, unlike a photo's caption).
 
 **This is the intended pattern for any future "backend job needs
 structured output from a model, with no ongoing conversation" case in this

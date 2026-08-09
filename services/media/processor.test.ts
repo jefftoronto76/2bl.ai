@@ -417,8 +417,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('falls back to a safe placeholder — never the raw response verbatim — when no tool_use block comes back and the fallback text is still not valid JSON, and logs without leaking the raw text', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('fails the item when no tool_use block comes back and the fallback text is still not valid JSON — no placeholder, a real failure with a retry path', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     mockImageFetch(jsonResponse({ content: [{ type: 'text', text: 'not json at all' }] }))
 
@@ -426,23 +425,11 @@ describe('processMediaItem — image pipeline (processImage)', () => {
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
-      // Never the raw model text ("not json at all") — a fixed, safe
-      // placeholder instead, and still non-empty (createPhotoMemoryFromMedia's
-      // 409 "not ready" gate treats an empty derived_content as unprocessed).
-      expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
+      expect.objectContaining({ status: 'failed', error_message: 'Vision tool call returned no usable output' }),
     )
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[media/processor] vision tool call returned no usable output',
-      expect.objectContaining({ media_item_id: 'item-1' }),
-    )
-    // The raw text itself must never reach the log.
-    const loggedMetadata = consoleErrorSpy.mock.calls[0][1] as Record<string, unknown>
-    expect(JSON.stringify(loggedMetadata)).not.toContain('not json at all')
-    consoleErrorSpy.mockRestore()
   })
 
-  it('degrades gracefully to a safe placeholder — item still succeeds, not failed — when the response has neither a tool_use block nor a text block', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('fails the item — flowing through processMediaItem\'s outer catch as MEDIA_PROCESS_FAILED with pipeline_step: claude_vision — when the response has neither a tool_use block nor a text block', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     mockImageFetch(jsonResponse({ content: [{ type: 'image' }] }))
 
@@ -450,13 +437,17 @@ describe('processMediaItem — image pipeline (processImage)', () => {
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
-      expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
+      expect.objectContaining({ status: 'failed', error_message: 'Vision tool call returned no usable output' }),
     )
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[media/processor] vision tool call returned no usable output',
-      expect.objectContaining({ media_item_id: 'item-1' }),
+    expect(mockLogMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_PROCESS_FAILED,
+        metadata: expect.objectContaining({
+          pipeline_step: 'claude_vision',
+          error_message: 'Vision tool call returned no usable output',
+        }),
+      }),
     )
-    consoleErrorSpy.mockRestore()
   })
 })
 

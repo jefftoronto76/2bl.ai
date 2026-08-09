@@ -354,35 +354,23 @@ async function processImage(
     throw err
   }
 
-  let caption: string
-  let classification: string
-  let extracted_text: string
-  if (result) {
-    caption = result.caption ?? ''
-    classification = result.classification ?? 'photo'
-    extracted_text = result.extracted_text ?? ''
-  } else {
+  if (!result) {
     // callVisionTool already tried its own fence-stripped-JSON fallback
     // internally and still came back empty — an API-level edge case (the
     // model ignored the forced tool_choice AND returned no recoverable
-    // text), not the common path. The old fallback here stored the ENTIRE
-    // raw response verbatim as the caption — this is a memory's actual
-    // title/body once bookmarked (createPhotoMemoryFromMedia,
-    // services/crm/memories.ts), so a member would see broken output as
-    // their own memory's passage. A fixed, safe placeholder is better than
-    // that, and — unlike an empty string — still non-empty, since
-    // createPhotoMemoryFromMedia's 409 "not ready" gate treats an empty
-    // derived_content as not-yet-processed and would otherwise leave this
-    // photo permanently unbookmarkable. No raw model text is available at
-    // this layer to log even if we wanted to (CLAUDE.md's audit-logging
-    // rule) — callVisionTool never surfaces it back on this path.
-    console.error('[media/processor] vision tool call returned no usable output', {
-      media_item_id: item.id,
-    })
-    caption = 'A photo.'
-    classification = 'photo'
-    extracted_text = ''
+    // text), not the common path. This is a genuine failure, not a
+    // soft-degrade: a photo's caption is core content the member sees
+    // directly, and unlike a stuck item, a failed one already has a
+    // working recovery path (POST /api/media/[id]/retry re-runs this
+    // whole pipeline from scratch). Distinguishable message from the
+    // non-ok-HTTP throw above ('Anthropic vision error: ...') — different
+    // failure mode, different wording.
+    throw new Error('Vision tool call returned no usable output')
   }
+
+  const caption = result.caption ?? ''
+  const classification = result.classification ?? 'photo'
+  const extracted_text = result.extracted_text ?? ''
 
   if (isMediaAuditEnabled()) {
     await logAiMediaEvent({

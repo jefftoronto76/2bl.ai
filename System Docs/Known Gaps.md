@@ -967,3 +967,32 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   Behavior preserved exactly: still best-effort, still defaults to
   `'document'` on any failure, never a hard-failure path for this
   sub-call.
+
+- **RESOLVED 2026-08-09 — `processImage`'s no-tool-use-block edge case
+  was wrongly treated as a soft-degrade instead of a real failure;
+  reversed the same day.** When `callVisionTool` returns `null` (no
+  `tool_use` block, and its own internal fence-stripped-JSON fallback also
+  failed — a genuine API-level anomaly), `processImage` initially fell
+  back to a fixed placeholder caption (`'A photo.'`) and still marked the
+  item `status: 'ready'`, deliberately avoiding a `'failed'` status. The
+  reasoning: `createPhotoMemoryFromMedia`'s 409 "not ready" gate treats
+  empty `derived_content` as still-processing, so an empty caption would
+  make the photo permanently unbookmarkable. That premise was wrong —
+  `POST /api/media/[id]/retry` (`app/api/media/[id]/retry/route.ts`)
+  already existed and re-runs the whole pipeline, including this vision
+  call, from scratch, so a `'failed'` item was never actually stuck. The
+  real, and only, problem the placeholder was guarding against was "ready
+  with empty content forever," which correctly failing the item does not
+  recreate. Hiding the failure behind a placeholder was worse than the
+  alternative: the member got a memory with a generic, silently-wrong
+  caption forever, with no signal anything went wrong and no prompt to
+  retry. **Fix:** the `null` branch now throws
+  (`'Vision tool call returned no usable output'`) and flows through the
+  same failure path (`processMediaItem`'s outer catch → `status:
+  'failed'`, `MEDIA_PROCESS_FAILED` with `pipeline_step: 'claude_vision'`)
+  every other failure in this function already uses.
+  `processDocument`'s classification `null` handling is unchanged and
+  intentionally different — a missing one-word classification staying at
+  the `'document'` default remains a reasonable soft-degrade, since it
+  isn't core content the member sees directly the way a photo's caption
+  is.
