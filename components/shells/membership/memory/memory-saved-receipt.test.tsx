@@ -96,3 +96,23 @@ describe('MemorySavedReceipt', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 });
+
+// "+" (add to a story) — same stub pattern as MemoryCardView's own header
+// "+", added 2026-08-08 alongside the photo-bookmark feature.
+describe('MemorySavedReceipt — "+" (add to a story) stub', () => {
+  it('renders "+" and fires the stub toast without opening the memory panel', () => {
+    const onOpen = vi.fn();
+    const onStub = vi.fn();
+    const m = memory();
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} onOpen={onOpen} onStub={onStub} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
+    expect(onStub).toHaveBeenCalledWith('Coming soon');
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('does not render "+" when onStub is omitted', () => {
+    render(<MemorySavedReceipt memory={memory()} onRetitle={() => {}} onOpen={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Add to a story' })).toBeNull();
+  });
+});

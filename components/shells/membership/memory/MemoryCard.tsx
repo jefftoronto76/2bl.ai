@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
+import { Bookmark, Check, Feather, ImagePlus, Pencil, Plus } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
@@ -94,6 +94,14 @@ export interface MemorySavedReceiptProps {
    * handler in this file.
    */
   onOpen?: (memory: MemoryRow) => void
+  /**
+   * Fires the shared "coming soon" toast for the "+" below — same stub
+   * pattern as MemoryCardView's own header "+" (add to a story; stories
+   * aren't a buildable concept yet). Optional so a caller that hasn't wired
+   * a toast (none currently outside ChatHero.tsx) renders the receipt with
+   * no "+" at all rather than a silently-broken one.
+   */
+  onStub?: (message: string) => void
 }
 
 /**
@@ -104,7 +112,7 @@ export interface MemorySavedReceiptProps {
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen, onStub }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
 
@@ -136,6 +144,24 @@ export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) 
             Kept
           </span>
         </span>
+        {onStub && (
+          <button
+            type="button"
+            onClick={e => {
+              // Stop this from also bubbling into the row's own onClick
+              // (which opens the memory panel) — a "+" click means "add to
+              // a story", not "open this memory".
+              e.stopPropagation()
+              onStub('Coming soon')
+            }}
+            onKeyDown={e => e.stopPropagation()}
+            aria-label="Add to a story"
+            title="Adding to a story is coming soon"
+            className="grid size-6 shrink-0 place-items-center rounded-md border-none bg-transparent text-text-muted transition-colors hover:text-text-primary"
+          >
+            <Plus size={13} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   )
