@@ -435,10 +435,39 @@ async function processImage(
   }
 }
 
+/**
+ * The tool processDocument's classification pass forces via callTextTool
+ * (services/media/vision-tool.ts) — replaces the old free-text "Classify
+ * this document in one word..." instruction. Single required field,
+ * matching the prior prompt's guidance exactly.
+ */
+interface DocumentClassification {
+  classification: string
+}
+
+const DOCUMENT_CLASSIFICATION_TOOL: AnthropicTool = {
+  name: 'record_document_classification',
+  description: 'Record a single-word classification for the provided document text.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      classification: {
+        type: 'string',
+        description:
+          'A single-word classification for the document (e.g. letter, memoir, journal, article, report, recipe, legal, photo_album, other).',
+      },
+    },
+    required: ['classification'],
+  },
+}
+
 // ---------------------------------------------------------------------------
 // Document extraction + classification via extractText (PDF/DOCX/TXT).
 // extractText() uses direct fetch to Anthropic for PDF and mammoth for DOCX —
-// both are headless-safe in a background function context.
+// both are headless-safe in a background function context. The
+// classification pass below uses forced tool-use (callTextTool) for the
+// same reason processImage's vision call does — see that function's
+// banner comment and vision-tool.ts's doc comments.
 // ---------------------------------------------------------------------------
 async function processDocument(
   item: MediaItem,
@@ -566,62 +595,30 @@ async function processDocument(
   }
 
   try {
-    const classRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: HAIKU_MODEL,
-        max_tokens: 64,
-        messages: [
-          {
-            role: 'user',
-            content: `Classify this document in one word (e.g. letter, memoir, journal, article, report, recipe, legal, photo_album, other). Respond with only the single classification word.\n\n${rawText.slice(0, 2000)}`,
-          },
-        ],
-      }),
-    })
-    if (classRes.ok) {
-      const classData = await classRes.json()
-      const word = classData.content?.[0]?.text?.trim().toLowerCase()
-      if (word) classification = word
-      if (isMediaAuditEnabled()) {
-        await logAiMediaEvent({
-          tenant_id: item.tenant_id,
-          member_id: item.member_id,
-          media_item_id: item.id,
-          action: AuditAction.AI_MEDIA_RESPONSE_RECEIVED,
-          outcome: 'success',
-          correlation_id: correlationId,
-          metadata: {
-            model: HAIKU_MODEL,
-            latency_ms: Date.now() - classStart,
-            classification,
-            timestamp: new Date().toISOString(),
-          },
-        })
-      }
-    } else {
-      if (isMediaAuditEnabled()) {
-        await logAiMediaEvent({
-          tenant_id: item.tenant_id,
-          member_id: item.member_id,
-          media_item_id: item.id,
-          action: AuditAction.AI_MEDIA_REQUEST_FAILED,
-          outcome: 'failure',
-          correlation_id: correlationId,
-          metadata: {
-            model: HAIKU_MODEL,
-            error_message: `Classification HTTP ${classRes.status}`,
-            timestamp: new Date().toISOString(),
-          },
-        })
-      }
+    const result = await callTextTool<DocumentClassification>(
+      rawText.slice(0, 2000),
+      DOCUMENT_CLASSIFICATION_TOOL,
+      apiKey,
+      { model: HAIKU_MODEL, maxTokens: 64 },
+    )
+    if (result?.classification) classification = result.classification.trim().toLowerCase()
+    if (isMediaAuditEnabled()) {
+      await logAiMediaEvent({
+        tenant_id: item.tenant_id,
+        member_id: item.member_id,
+        media_item_id: item.id,
+        action: AuditAction.AI_MEDIA_RESPONSE_RECEIVED,
+        outcome: 'success',
+        correlation_id: correlationId,
+        metadata: {
+          model: HAIKU_MODEL,
+          latency_ms: Date.now() - classStart,
+          classification,
+          timestamp: new Date().toISOString(),
+        },
+      })
     }
-  } catch {
+  } catch (err) {
     // classification pass is best-effort; continue with 'document' default
     if (isMediaAuditEnabled()) {
       await logAiMediaEvent({
@@ -633,7 +630,7 @@ async function processDocument(
         correlation_id: correlationId,
         metadata: {
           model: HAIKU_MODEL,
-          error_message: 'Classification request threw',
+          error_message: err instanceof Error ? err.message : String(err),
           timestamp: new Date().toISOString(),
         },
       })

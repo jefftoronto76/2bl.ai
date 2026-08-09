@@ -678,13 +678,37 @@ describe('processMediaItem — document pipeline (processDocument)', () => {
   it('uses the Haiku classification and the extracted text on the happy path', async () => {
     mockGetMediaItem.mockResolvedValue(makeDocItem())
     mockExtractText.mockResolvedValue('Dear diary, ...')
-    routeFetch(() => jsonResponse({ content: [{ text: 'journal_entry' }] }))
+    routeFetch(() =>
+      jsonResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'record_document_classification',
+            input: { classification: 'journal_entry' },
+          },
+        ],
+      }),
+    )
 
     await processMediaItem(makeDocItem())
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
       expect.objectContaining({ status: 'ready', derived_content: 'Dear diary, ...', classification: 'journal_entry' }),
+    )
+  })
+
+  it('falls back to "document" classification — item still succeeds — when the response has neither a tool_use block nor a parseable text block', async () => {
+    mockGetMediaItem.mockResolvedValue(makeDocItem())
+    mockExtractText.mockResolvedValue('Dear diary, ...')
+    routeFetch(() => jsonResponse({ content: [{ type: 'text', text: 'not a classification word or json' }] }))
+
+    await processMediaItem(makeDocItem())
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', derived_content: 'Dear diary, ...', classification: 'document' }),
     )
   })
 
