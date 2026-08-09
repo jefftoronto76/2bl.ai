@@ -170,6 +170,14 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     fireEvent.click(within(groupA).getByRole('button', { name: 'Bookmark as a memory' }));
     await waitFor(() => expect(within(groupA).getByRole('button', { name: 'Keep this' })).toBeInTheDocument());
 
+    // The draft card shows the REAL photo, not the dashed placeholder —
+    // sessionImages now reaches MessageList.tsx/MemoryCard.tsx too, same
+    // lookup already applied to BlockCanvas/MemoryCardView. Two "a.jpg"
+    // images now render in this group: the upload thumbnail, and the
+    // draft card's own real photo.
+    expect(within(groupA).getAllByAltText('a.jpg').length).toBe(2);
+    expect(within(groupA).queryByText('Photo')).toBeNull();
+
     expect(postMemoryCalls).toEqual([{ anchor_message_id: 'm1', source_kind: 'photo', media_item_id: 'media-a' }]);
     // Photo B is completely untouched by photo A's bookmark.
     expect(within(groupB).getByRole('button', { name: 'Bookmark as a memory' })).toBeInTheDocument();

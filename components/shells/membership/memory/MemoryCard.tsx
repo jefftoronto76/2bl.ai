@@ -38,6 +38,7 @@ import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
+import type { SessionImage } from './BlockCanvas'
 
 /** Aligns every card/pill/receipt with the assistant avatar rail (w-8) they sit below. */
 const RAIL = 'w-8 shrink-0'
@@ -172,11 +173,26 @@ export interface MemoryCardProps {
   onKeep: () => void
   onDiscard: () => void
   onRetitle: (title: string) => void
+  /**
+   * The session's own ready image media items — same lookup pattern as
+   * BlockCanvas.tsx's ImageBlockRow (`sessionImages.find((img) => img.id
+   * === ...)`), already applied to the panel's block canvas and the memory
+   * panel's own hero. A DRAFT photo memory already has a real
+   * `media_item_id` at create time (createPhotoMemoryFromMedia sets it
+   * before Keep, not after), so this card can show the real photo instead
+   * of the placeholder below, same as the saved/panel states already do.
+   * Defaults to `[]` — a memory with no media_item_id, or one that doesn't
+   * resolve (stale/removed/no-longer-accessible), falls back to the
+   * existing placeholder exactly as before, same graceful-degradation
+   * posture as every other application of this pattern.
+   */
+  sessionImages?: SessionImage[]
 }
 
 /** `draft` state — the full card. Order: header -> media (if any) -> title -> passage -> photo slots (if any) -> footer. */
-export function MemoryCard({ memory, onKeep, onDiscard, onRetitle }: MemoryCardProps) {
+export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages = [] }: MemoryCardProps) {
   const kind = memoryKindOf(memory.source_kind)
+  const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const [toast, setToast] = useState<string | null>(null)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -216,14 +232,21 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle }: MemoryCardP
 
         <div className="px-[18px] pb-[18px] pt-4">
           {kind.media && (
-            <div className="mb-4 flex h-32 items-center justify-center rounded-[10px] border border-dashed border-border bg-surface-2">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
-                {kind.media === 'still' && 'Photo'}
-                {kind.media === 'video' && 'Video'}
-                {kind.media === 'audio' && 'Recording'}
-                {kind.media === 'page' && 'Document'}
-              </span>
-            </div>
+            linkedImage ? (
+              <div className="mb-4 overflow-hidden rounded-[10px] border border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow / UploadThumbnail.tsx, a signed URL that changes shape/expiry too often to benefit from next/image */}
+                <img src={linkedImage.url} alt={linkedImage.filename} className="block max-h-80 w-full object-contain" />
+              </div>
+            ) : (
+              <div className="mb-4 flex h-32 items-center justify-center rounded-[10px] border border-dashed border-border bg-surface-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
+                  {kind.media === 'still' && 'Photo'}
+                  {kind.media === 'video' && 'Video'}
+                  {kind.media === 'audio' && 'Recording'}
+                  {kind.media === 'page' && 'Document'}
+                </span>
+              </div>
+            )
           )}
 
           <div className="group flex items-start gap-2">

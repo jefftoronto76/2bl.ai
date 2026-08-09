@@ -16,6 +16,7 @@ import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/ch
 import type { UseMemoriesReturn, MemoryRow, MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
 import { PhotoUploadActions } from './memory/PhotoUploadActions';
+import type { SessionImage } from './memory/BlockCanvas';
 import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
 import { UploadThumbnail } from './UploadThumbnail';
 import { ImageLightbox } from './ImageLightbox';
@@ -49,6 +50,19 @@ interface MessageListProps {
    *  addition; when omitted, those "+" buttons simply don't render (see
    *  MemorySavedReceipt's own optional-onStub posture). */
   onStub?: (message: string) => void;
+  /**
+   * The session's own ready image media items — same array BlockCanvas.tsx's
+   * ImageBlockRow and the memory panel already resolve a linked photo
+   * against. Sourced from useChatStore().mediaItems by ChatHero.tsx, same as
+   * the copy already threaded to MemoryCardView. Lets a DRAFT photo memory's
+   * MemoryCard (media_item_id populated at create time by
+   * createPhotoMemoryFromMedia, before Keep) show its real photo instead of
+   * always falling back to the placeholder. Optional (defaults to `[]`) so
+   * this stays a non-breaking addition for existing call sites/tests that
+   * mount MessageList directly without it — a memory simply falls back to
+   * the placeholder in that case, same graceful-degradation posture as
+   * every other application of this lookup pattern. */
+  sessionImages?: SessionImage[];
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -144,6 +158,7 @@ function renderMemorySlot(
   memories: UseMemoriesReturn,
   handlers: MemorySlotHandlers,
   mediaItemId?: string,
+  sessionImages: SessionImage[] = [],
 ): ReactNode {
   if (memories.isPending(anchorId, mediaItemId)) {
     const kind = memories.getPendingKind(anchorId, mediaItemId);
@@ -157,6 +172,7 @@ function renderMemorySlot(
         onKeep={() => handlers.onKeep(memory)}
         onDiscard={() => handlers.onDiscard(memory)}
         onRetitle={(title) => handlers.onRetitle(memory, title)}
+        sessionImages={sessionImages}
       />
     );
   }
@@ -711,7 +727,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [] }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -798,7 +814,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
   };
 
   const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind, mediaItemId?: string) =>
-    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers, mediaItemId);
+    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers, mediaItemId, sessionImages);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
   // streaming or *that specific anchor's (and, for a photo bookmark, that

@@ -367,6 +367,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                     onOpenMemory={isMobile ? undefined : setOpenMemory}
                     memories={memories}
                     onStub={handleMemoryStub}
+                    sessionImages={sessionImages}
                   />
                 ) : (
                   <EmptyState />

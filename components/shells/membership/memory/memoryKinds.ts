@@ -37,7 +37,14 @@ export interface MemoryKindSpec {
   eyebrow: string
   /** copy shown beside the pulsing icon in the running state. */
   running: string
-  /** which media block to render above the title, if any. Every media block is a placeholder this pass — no upload, no real thumbnail/waveform. */
+  /**
+   * which media block to render above the title, if any. Still a
+   * placeholder for video/audio/document — no waveform/still-frame exists.
+   * 'still' (photo) is the one exception (2026-08-08, Photo Bookmark): when
+   * the memory's own media_item_id resolves in the caller's sessionImages,
+   * MemoryCard/MemoryCardView render the real photo instead — see either
+   * component's own media-block logic, not this table.
+   */
   media: null | 'still' | 'video' | 'audio' | 'page'
   /** whether the "add photos later" slots appear — false where media IS the hero. */
   slots: boolean
