@@ -338,16 +338,56 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('falls back to the raw text as caption when the response is not valid JSON', async () => {
+  it('strips a ```json ... ``` markdown code fence before parsing — a real, observed vision-model failure mode', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
-    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'text', text: 'not json' }] }))
+    const fenced = '```json\n' + JSON.stringify({ caption: 'A dog', classification: 'photo', extracted_text: '' }) + '\n```'
+    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'text', text: fenced }] }))
 
     await processMediaItem(makeItem({ type: 'image' }))
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
-      expect.objectContaining({ status: 'ready', derived_content: 'not json', classification: 'photo' }),
+      expect.objectContaining({ status: 'ready', derived_content: 'A dog', classification: 'photo' }),
     )
+  })
+
+  it('strips a plain ``` ... ``` fence (no "json" language tag) the same way', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    const fenced = '```\n' + JSON.stringify({ caption: 'A cat', classification: 'photo', extracted_text: '' }) + '\n```'
+    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'text', text: fenced }] }))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', derived_content: 'A cat', classification: 'photo' }),
+    )
+  })
+
+  it('falls back to a safe placeholder — never the raw response verbatim — when the text is still not valid JSON after fence-stripping, and logs why without leaking the raw text', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'text', text: 'not json at all' }] }))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      // Never the raw model text ("not json at all") — a fixed, safe
+      // placeholder instead, and still non-empty (createPhotoMemoryFromMedia's
+      // 409 "not ready" gate treats an empty derived_content as unprocessed).
+      expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
+    )
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[media/processor] vision response was not valid JSON, even after fence-stripping',
+      expect.objectContaining({ media_item_id: 'item-1', error_type: 'SyntaxError', raw_text_length: 'not json at all'.length }),
+    )
+    // Length/presence only — the raw text itself must never reach the log.
+    // (JSON.parse's own SyntaxError message embeds a snippet of the invalid
+    // input verbatim — this asserts the fix doesn't log err.message either.)
+    const loggedMetadata = consoleErrorSpy.mock.calls[0][1] as Record<string, unknown>
+    expect(JSON.stringify(loggedMetadata)).not.toContain('not json at all')
+    consoleErrorSpy.mockRestore()
   })
 
   it('fails the item when no text block is returned', async () => {

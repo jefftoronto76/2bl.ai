@@ -180,6 +180,20 @@ async function processAudio(
   }
 }
 
+/**
+ * Strips a ```json ... ``` (or plain ``` ... ```) markdown code fence that
+ * Claude sometimes wraps its response in, despite the "Return JSON only"
+ * instruction below — a real, observed failure mode: JSON.parse throws on
+ * the fence markers themselves, since ` ```json\n{...}\n``` ` isn't valid
+ * JSON on its own. Returns the input unchanged when no fence is present, so
+ * this is always safe to run before parsing regardless of which shape the
+ * model actually returned.
+ */
+function stripCodeFence(text: string): string {
+  const fenced = text.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return fenced ? fenced[1] : text
+}
+
 // ---------------------------------------------------------------------------
 // Image analysis via Claude Haiku vision.
 // ---------------------------------------------------------------------------
@@ -289,12 +303,34 @@ async function processImage(
   let classification = 'photo'
   let extracted_text = ''
   try {
-    const parsed = JSON.parse(textBlock.text)
+    const parsed = JSON.parse(stripCodeFence(textBlock.text))
     caption = parsed.caption ?? ''
     classification = parsed.classification ?? 'photo'
     extracted_text = parsed.extracted_text ?? ''
-  } catch {
-    caption = textBlock.text
+  } catch (err) {
+    // Still not parseable JSON even after stripping a markdown fence — the
+    // model returned something genuinely malformed, not just fenced. The old
+    // fallback stored the ENTIRE raw response (braces, field names, fence
+    // markers, everything) verbatim as the caption — this is a memory's
+    // actual title/body once bookmarked (createPhotoMemoryFromMedia,
+    // services/crm/memories.ts), so a member would see broken JSON as their
+    // own memory's passage. A fixed, safe placeholder is better than that,
+    // and — unlike an empty string — still non-empty, since
+    // createPhotoMemoryFromMedia's 409 "not ready" gate treats an empty
+    // derived_content as not-yet-processed and would otherwise leave this
+    // photo permanently unbookmarkable. Length/presence only in the log,
+    // never the raw model text (CLAUDE.md's audit-logging rule) — deliberately
+    // NOT err.message: JSON.parse's own SyntaxError embeds a snippet of the
+    // invalid input verbatim (e.g. `Unexpected token 'o', "not json..." is
+    // not valid JSON`), so logging it would leak the very content this is
+    // trying to keep out of the logs. error_type (the constructor name) is
+    // still useful for debugging without that risk.
+    console.error('[media/processor] vision response was not valid JSON, even after fence-stripping', {
+      media_item_id: item.id,
+      error_type: err instanceof Error ? err.name : typeof err,
+      raw_text_length: textBlock.text.length,
+    })
+    caption = 'A photo.'
   }
 
   if (isMediaAuditEnabled()) {
