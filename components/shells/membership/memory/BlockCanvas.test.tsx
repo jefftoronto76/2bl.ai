@@ -175,6 +175,77 @@ describe('BlockCanvas — insert control (BlockInserter, before-first + after-ev
   });
 });
 
+describe('BlockCanvas — insert control dismissal (backdrop + Escape)', () => {
+  it('clicking outside the open popover (the backdrop) closes it, from the text/image choice state', () => {
+    const { container } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    expect(screen.getByRole('button', { name: 'Add text' })).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector('[data-testid="block-inserter-backdrop"]')!);
+    expect(screen.queryByRole('button', { name: 'Add text' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add image' })).toBeNull();
+  });
+
+  it('clicking outside closes it cleanly from the photo-picker sub-state too, not just the first', () => {
+    const { container } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }], {
+      sessionImages: [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
+    expect(screen.getByRole('button', { name: 'Add photo: a.jpg' })).toBeInTheDocument();
+
+    fireEvent.click(container.querySelector('[data-testid="block-inserter-backdrop"]')!);
+    expect(screen.queryByRole('button', { name: 'Add photo: a.jpg' })).toBeNull();
+
+    // And it re-opens fresh at the text/image choice step, not stuck mid-picker.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    expect(screen.getByRole('button', { name: 'Add text' })).toBeInTheDocument();
+  });
+
+  it('Escape closes it from the text/image choice state', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    expect(screen.getByRole('button', { name: 'Add text' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Add text' })).toBeNull();
+  });
+
+  it('Escape closes it from the photo-picker sub-state too', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }], {
+      sessionImages: [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
+    expect(screen.getByRole('button', { name: 'Add photo: a.jpg' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Add photo: a.jpg' })).toBeNull();
+  });
+
+  it('the backdrop does not swallow a real option click — picking "Add text" still fires onAddText normally', () => {
+    const { onAddText } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    expect(onAddText).toHaveBeenCalledWith(-1);
+  });
+
+  it('the backdrop does not swallow a real photo pick either', () => {
+    const { onAddImage } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }], {
+      sessionImages: [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a block' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add image' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add photo: a.jpg' }));
+    expect(onAddImage).toHaveBeenCalledWith(-1, 'media-1');
+  });
+
+  it('no backdrop renders while the popover is closed', () => {
+    const { container } = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    expect(container.querySelector('[data-testid="block-inserter-backdrop"]')).toBeNull();
+  });
+});
+
 describe('BlockCanvas — locked V1 scope guards', () => {
   it('never renders a drag handle', () => {
     const { container } = renderCanvas([

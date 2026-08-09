@@ -105,6 +105,13 @@ function ImageBlockRow({ block, sessionImages }: { block: MemoryBlock; sessionIm
  * (text, image); "image" expands into a picker of the session's own ready
  * photos rather than inserting directly, since an image block always needs
  * a real media_item_id — no upload UI here (locked V1 scope).
+ *
+ * Dismissal — matches the reference's own BlockInserter exactly: a fixed,
+ * full-viewport, invisible backdrop behind the popover (lower z-index)
+ * closes it on any outside click, plus an Escape handler for the same
+ * dismiss while keyboard-driven. Both apply from either popover state (the
+ * text/image choice, or the photo picker once "image" is picked) — close()
+ * always resets both.
  */
 function BlockInserter({
   afterIndex,
@@ -125,6 +132,16 @@ function BlockInserter({
     setPickerOpen(false)
   }
 
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close() closes over stable setState setters only; re-attaching on every render isn't needed, just on open toggling
+  }, [open])
+
   return (
     <div className="relative my-0.5 flex h-[22px] items-center">
       <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
@@ -140,53 +157,62 @@ function BlockInserter({
       <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
 
       {open && (
-        <div className="absolute left-1/2 top-full z-10 mt-1.5 -translate-x-1/2 rounded-[11px] border border-border bg-surface-2 p-1.5 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
-          {!pickerOpen ? (
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  onAddText(afterIndex)
-                  close()
-                }}
-                aria-label="Add text"
-                title="Text"
-                className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
-              >
-                <Type size={15} aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                aria-label="Add image"
-                title="Image"
-                className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
-              >
-                <ImagePlus size={15} aria-hidden />
-              </button>
-            </div>
-          ) : sessionImages.length === 0 ? (
-            <span className="block max-w-[160px] px-1 py-1 font-body text-xs text-text-muted">No photos in this conversation yet.</span>
-          ) : (
-            <div className="flex max-w-[220px] flex-wrap gap-[7px]">
-              {sessionImages.map((img) => (
+        <>
+          {/* Full-viewport, invisible click-catcher — lower z-index than the
+              popover below, so a real option click still lands on the
+              option, not this. Matches the reference's own backdrop
+              exactly, just this app's z-index convention (bg-black/40
+              mobile-sidebar-overlay pattern, ChatHero.tsx) instead of a
+              hardcoded zIndex number. */}
+          <div onClick={close} aria-hidden="true" data-testid="block-inserter-backdrop" className="fixed inset-0 z-10" />
+          <div className="absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 rounded-[11px] border border-border bg-surface-2 p-1.5 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+            {!pickerOpen ? (
+              <div className="flex gap-1">
                 <button
-                  key={img.id}
                   type="button"
                   onClick={() => {
-                    onAddImage(afterIndex, img.id)
+                    onAddText(afterIndex)
                     close()
                   }}
-                  aria-label={`Add photo: ${img.filename}`}
-                  className="grid size-12 place-items-center overflow-hidden rounded-[8px] border border-border bg-surface transition-colors hover:border-accent"
+                  aria-label="Add text"
+                  title="Text"
+                  className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- thumbnail of a signed URL, same as ImageBlockRow above */}
-                  <img src={img.url} alt={img.filename} className="size-full object-cover" />
+                  <Type size={15} aria-hidden />
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  aria-label="Add image"
+                  title="Image"
+                  className="grid size-8 place-items-center rounded-lg text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
+                >
+                  <ImagePlus size={15} aria-hidden />
+                </button>
+              </div>
+            ) : sessionImages.length === 0 ? (
+              <span className="block max-w-[160px] px-1 py-1 font-body text-xs text-text-muted">No photos in this conversation yet.</span>
+            ) : (
+              <div className="flex max-w-[220px] flex-wrap gap-[7px]">
+                {sessionImages.map((img) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => {
+                      onAddImage(afterIndex, img.id)
+                      close()
+                    }}
+                    aria-label={`Add photo: ${img.filename}`}
+                    className="grid size-12 place-items-center overflow-hidden rounded-[8px] border border-border bg-surface transition-colors hover:border-accent"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- thumbnail of a signed URL, same as ImageBlockRow above */}
+                    <img src={img.url} alt={img.filename} className="size-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
