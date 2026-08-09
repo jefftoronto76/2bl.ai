@@ -103,6 +103,16 @@ export interface MemorySavedReceiptProps {
    * no "+" at all rather than a silently-broken one.
    */
   onStub?: (message: string) => void
+  /**
+   * The session's own ready image media items — same lookup pattern as
+   * BlockCanvas.tsx's ImageBlockRow, already applied to MemoryCard's own
+   * draft state and the memory panel. When memory.media_item_id resolves
+   * here, the icon circle below is REPLACED by a real thumbnail (not shown
+   * alongside it) — no match, or no media_item_id, keeps the icon circle
+   * exactly as before. Defaults to `[]` — non-breaking for any caller that
+   * hasn't wired this yet.
+   */
+  sessionImages?: SessionImage[]
 }
 
 /**
@@ -113,9 +123,10 @@ export interface MemorySavedReceiptProps {
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory, onOpen, onStub }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
+  const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
 
   return (
     <div className="flex gap-3">
@@ -135,9 +146,16 @@ export function MemorySavedReceipt({ memory, onOpen, onStub }: MemorySavedReceip
         }
         className={`flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px] ${onOpen ? 'cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-accent' : ''}`}
       >
-        <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
-          <Icon size={12} aria-hidden />
-        </span>
+        {linkedImage ? (
+          <span className="block size-[34px] shrink-0 overflow-hidden rounded-[9px] border border-border">
+            {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow, a signed URL that changes shape/expiry too often to benefit from next/image */}
+            <img src={linkedImage.url} alt={linkedImage.filename} className="block size-full object-cover" />
+          </span>
+        ) : (
+          <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
+            <Icon size={12} aria-hidden />
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
           <span className="mt-0.5 flex items-center gap-1 font-mono text-[10.5px] tracking-[0.06em] text-text-muted">

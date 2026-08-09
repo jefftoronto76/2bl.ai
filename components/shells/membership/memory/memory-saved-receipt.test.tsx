@@ -116,3 +116,76 @@ describe('MemorySavedReceipt — "+" (add to a story) stub', () => {
     expect(screen.queryByRole('button', { name: 'Add to a story' })).toBeNull();
   });
 });
+
+// Real photo thumbnail (2026-08-08) — same sessionImages lookup pattern
+// already applied to BlockCanvas.tsx's ImageBlockRow, MemoryCard's own
+// draft state, and the memory panel's block canvas.
+describe('MemorySavedReceipt — real photo thumbnail replaces the icon circle', () => {
+  it('renders a real 34px thumbnail instead of the icon circle when media_item_id resolves in sessionImages', () => {
+    const { container } = render(
+      <MemorySavedReceipt
+        memory={memory({ media_item_id: 'media-1' })}
+        onRetitle={() => {}}
+        sessionImages={[{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }]}
+      />,
+    );
+
+    const img = screen.getByAltText('a.jpg');
+    expect(img).toBeInTheDocument();
+    expect(img.className).toContain('object-cover');
+    // The wrapping thumbnail box, not the icon circle.
+    expect(img.closest('span')?.className).toContain('size-[34px]');
+    expect(img.closest('span')?.className).toContain('rounded-[9px]');
+    // The icon circle (kind-specific glyph) is gone, replaced, not alongside.
+    expect(container.querySelector('svg.lucide-image')).toBeNull();
+  });
+
+  it('falls back to the icon circle when media_item_id does not resolve in sessionImages', () => {
+    const { container } = render(
+      <MemorySavedReceipt
+        memory={memory({ media_item_id: 'media-missing' })}
+        onRetitle={() => {}}
+        sessionImages={[{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }]}
+      />,
+    );
+
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(container.querySelector('svg.lucide-image')).not.toBeNull();
+  });
+
+  it('falls back to the icon circle when there is no media_item_id at all — non-photo memories completely unaffected', () => {
+    const { container } = render(
+      <MemorySavedReceipt
+        memory={memory({ source_kind: 'audio', media_item_id: null })}
+        onRetitle={() => {}}
+        sessionImages={[{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }]}
+      />,
+    );
+
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(container.querySelector('svg.lucide-mic')).not.toBeNull();
+  });
+
+  it('defaults sessionImages to [] when the prop is omitted — non-breaking for existing callers', () => {
+    const { container } = render(<MemorySavedReceipt memory={memory({ media_item_id: 'media-1' })} onRetitle={() => {}} />);
+
+    expect(screen.queryByRole('img')).toBeNull();
+    expect(container.querySelector('svg.lucide-image')).not.toBeNull();
+  });
+
+  it('a real thumbnail does not interfere with opening the memory panel', () => {
+    const onOpen = vi.fn();
+    const m = memory({ media_item_id: 'media-1' });
+    render(
+      <MemorySavedReceipt
+        memory={m}
+        onRetitle={() => {}}
+        onOpen={onOpen}
+        sessionImages={[{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+    expect(onOpen).toHaveBeenCalledWith(m);
+  });
+});

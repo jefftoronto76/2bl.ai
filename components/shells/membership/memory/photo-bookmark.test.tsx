@@ -200,6 +200,11 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     await waitFor(() => expect(within(groupA).getByRole('button', { name: 'Add to a story' })).toBeInTheDocument());
     expect(within(groupB).getByRole('button', { name: 'Keep this' })).toBeInTheDocument();
 
+    // The saved receipt shows the real photo thumbnail, not the icon circle
+    // — the draft card unmounted on Keep, so exactly two "a.jpg" images
+    // remain in this group: the upload thumbnail, and the receipt's own.
+    expect(within(groupA).getAllByAltText('a.jpg').length).toBe(2);
+
     fireEvent.click(within(groupA).getByRole('button', { name: 'Add to a story' }));
     await waitFor(() => expect(screen.getByText('Coming soon')).toBeInTheDocument());
   });

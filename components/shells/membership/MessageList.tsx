@@ -183,6 +183,7 @@ function renderMemorySlot(
         onRetitle={(title) => handlers.onRetitle(memory, title)}
         onOpen={handlers.onOpen}
         onStub={handlers.onStub}
+        sessionImages={sessionImages}
       />
     );
   }
