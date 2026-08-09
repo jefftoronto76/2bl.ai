@@ -30,7 +30,13 @@
  * expiry — set synchronously at attach time in ChatInput.tsx) over
  * item.url (the batch-fetched signed URL from GET /api/media, 60s expiry —
  * services/media/storage.ts's generateSignedDownloadUrl). Same fallback
- * order the deleted InlineImage used; not something this pass changes.
+ * order the deleted InlineImage used. When localPreviewUrl isn't available —
+ * a page reload, or loading a session's history where no local blob ever
+ * existed — item.url's 60s expiry becomes a real bug, so that fallback path
+ * runs through useFreshImageUrl (services/media/useFreshImageUrl.ts) to
+ * re-resolve it at display time, same mechanism as the memory panel's
+ * BlockCanvas.tsx. The hook is only fed a mediaItemId when localPreviewUrl
+ * is absent, so a live local blob never triggers a wasted re-fetch.
  *
  * No Discard — not in the reference spec this was built to. A failed item
  * has one control: the retry badge, calling the real POST
@@ -42,6 +48,7 @@ import type { MemorySourceKind } from '@/services/chat/ui/v1/useMemories'
 import type { ClientMediaItem } from './chatStore'
 import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds'
 import { sanitizeFailureReason } from '@/services/media/errorCopy'
+import { useFreshImageUrl } from '@/services/media/useFreshImageUrl'
 
 // 1x1 transparent PNG — keeps the <img> element itself always present (never
 // swapped for a placeholder <div>) even before a real src resolves.
@@ -78,7 +85,9 @@ export function UploadThumbnail({ item, sourceKind, filename, onEnlarge }: Uploa
   const isUploading = !item || item.status === 'pending' || item.status === 'processing'
   const isFailed = item?.status === 'failed'
   const isReady = item?.status === 'ready'
-  const src = item?.localPreviewUrl ?? item?.url ?? null
+  const hasLocalPreview = !!item?.localPreviewUrl
+  const { url: freshUrl } = useFreshImageUrl(hasLocalPreview ? undefined : item?.id, item?.url ?? undefined)
+  const src = item?.localPreviewUrl ?? freshUrl ?? null
   const canEnlarge = isImage && isReady && !!src && !!onEnlarge
   // Historical items loaded on reload never carry width/height (client-only,
   // not persisted — see Design Handovers note in the plan this ships from),
