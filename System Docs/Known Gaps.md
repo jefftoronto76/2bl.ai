@@ -608,10 +608,12 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     that appears when scrolled away from the bottom
     (`components/shells/membership/ScrollToLatestButton.tsx`, PR #310,
     merged) — see `System Docs/Public Site.md`'s row for the mechanics; the
-    threshold-mismatch gap it introduced has its own bullet below. Stage F
-    (mobile slide-up panel) not yet started — deferred until after the
-    Memory Canvas content track (CardView chrome, photo bookmark,
-    add-to-memory, etc.) lands, per the sequencing decision made the same day.
+    threshold-mismatch gap it introduced has its own bullet below.
+    **Stage F (mobile memory panel) — resolved 2026-08-09.** Tapping a saved
+    memory on mobile now opens the panel as a full-screen overlay
+    (`inset-0`/`h-[100dvh]`, no rounding, no scrim — distinct from the
+    Media pane's partial `85vh` sheet added the same week); see
+    `System Docs/Public Site.md`'s `ChatHero` row for the mechanics.
   - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
     2026-08-08, revised same day per the Text+Image Scope Handover
     (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
@@ -654,8 +656,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     duplicate of, the photo bookmark's own creation path. Still unaffected
     by: add-to-memory (`PhotoUploadActions.tsx`'s "+" and
     `MemorySavedReceipt`'s own "+" are both stubs — no `photo_artifacts`
-    write path exists), memory canvas sorting/filtering, and Stage F (mobile
-    slide-up panel, still blocked on this same sequencing note). **GPS
+    write path exists) and memory canvas sorting/filtering — both still
+    unbuilt. Stage F (mobile slide-up panel) is no longer blocked on this
+    note; it shipped 2026-08-09, see the sprint-close pointer entry above.
+    **GPS
     indicator — no longer a gap, closed same night via GPS Extraction (PR
     #316):** the badge's structural support referenced here is no longer
     just structural — `media_items.latitude`/`longitude` are now live-written
