@@ -12,32 +12,51 @@
  *     anywhere creates or lists one) — renders in the reference's chrome
  *     position, fires the shared "coming soon" toast instead of opening a
  *     story-move popover.
- *   - Passage editing: renameMemory() (services/crm/memories.ts) only ever
- *     updates title — nothing updates body. Passage stays read-only, same
- *     as the stub it replaces, not the reference's editable <textarea>.
  *   - Date editing: no route action updates created_at at all. Read-only
  *     text, not the reference's editable date input.
  *   - "Talk about this" / "Use as a base": no backend implementation
  *     anywhere in this codebase. Same "coming soon" toast as "+".
- *   - "Remove": the one action that DOES have real backend support
+ *   - "Remove": the one footer action that DOES have real backend support
  *     (discardMemory via PATCH .../memories/[memoryId], action: 'discard')
  *     — wired for real.
  *
  * Title IS live-editable: the PATCH route's `retitle` action
  * (renameMemory()) already backs the inline title-edit affordance on
  * MemorySavedReceipt/MemoryCard elsewhere in this feature, so this reuses
- * the same real write. Unlike the reference's per-keystroke
- * onChange={onTitleChange}, this commits on blur/Enter only (mirroring
- * MemoryCard.tsx's own draft-card title edit) — firing a PATCH on every
- * keystroke would spam the network and race concurrent writes against each
- * other for no benefit.
+ * the same real write. Title still commits on blur/Enter only (mirroring
+ * MemoryCard.tsx's own draft-card title edit) — this is unchanged and
+ * distinct from the passage's own save behavior below.
+ *
+ * Passage editing (Memory Canvas V1 — text + image blocks only; see the
+ * Text+Image Scope Handover, Design Handovers/handover_memory edit panel_08_2026/)
+ * — the block canvas (BlockCanvas.tsx) renders IMMEDIATELY on open, no
+ * separate "Edit mode," no pencil affordance: `buildDefaultBlocks()` derives
+ * a default text block from `memory.body` when `body_blocks` is null,
+ * matching the reference prototype's own `buildDefaultBlocks(mem, K)`.
+ * Text-block content commits on EVERY KEYSTROKE (onReviseBlocks fires per
+ * change, matching the reference's `patchBlock`'s inline `commit()` call
+ * exactly) — a deliberate, confirmed choice despite the real cost (every
+ * keystroke round-trips through reviseMemoryBlocks's full validation +
+ * a DB write, services/crm/memories.ts). Structural edits (add/remove/
+ * attach-photo) also commit immediately. `blocksDraft` resets from
+ * `memory.body_blocks` only when `memory.id` itself changes (switching to
+ * a different open memory) — NOT on every `memory.body_blocks` change, since
+ * with per-keystroke commits a slower-resolving earlier PATCH response
+ * would otherwise clobber faster-typed, not-yet-confirmed local keystrokes
+ * (the reference has the same shape: its own reset effect is keyed on
+ * `[mem.id, mem.version]`, not on `mem.passage` changing).
+ * The in-transcript draft card (MemoryCard.tsx) and saved receipt
+ * (MemorySavedReceipt) are unaffected by any of this — still read-only,
+ * exactly as before; this panel remains the only surface where a memory's
+ * content is ever editable.
  */
 
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { X, Plus, MessageCircle, GitFork, Trash2, Feather } from 'lucide-react'
-import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
+import type { MemoryBlock, MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
+import { BlockCanvas, type SessionImage } from './BlockCanvas'
 
 export interface MemoryCardViewProps {
   memory: MemoryRow
@@ -46,6 +65,50 @@ export interface MemoryCardViewProps {
   onRemove: () => void
   /** Fires the shared toast for every stubbed action ("+", Talk about this, Use as a base) — one message, no separate behavior per button. */
   onStub: (message: string) => void
+  /** Persists the block canvas (Memory Canvas V1) — PATCH .../memories/[memoryId], action: 'revise_blocks'. */
+  onReviseBlocks: (blocks: MemoryBlock[]) => void
+  /** The session's own ready image media items, for the image-block attach picker (BlockCanvas.tsx). Sourced from useChatStore().mediaItems by ChatHero.tsx — this component never fetches anything itself. */
+  sessionImages: SessionImage[]
+}
+
+/** Not crypto.randomUUID() directly — Node/jsdom test environments don't always polyfill it, and this only needs to be locally unique within one open panel's session, never persisted as a lookup key beyond that. */
+function newBlockId(): string {
+  return `blk-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+/**
+ * No real signal exists yet for "this memory has a linked photo" —
+ * artifacts.media_item_id is a flagged-dead column (0 rows, 0 code
+ * references — System Docs/Database Schema.md) and MemoryRow carries
+ * nothing usable in its place; that's the still-unbuilt photo-bookmark
+ * work (System Docs/Known Gaps.md's Memories entry), a separate track from
+ * this one. Always returns undefined today — deliberately not synthesized
+ * from source_kind, since constructing an image block without a real
+ * media_item_id would fail reviseMemoryBlocks's own validation on the very
+ * first keystroke into the text block (every commit sends the whole
+ * array), making the passage silently uneditable for exactly the memories
+ * this was meant to help.
+ */
+function getLinkedMediaItemId(_memory: MemoryRow): string | undefined {
+  return undefined
+}
+
+/**
+ * Builds the default block set for a memory whose body_blocks is null —
+ * mirrors the reference's buildDefaultBlocks(mem, K): a linked photo (if
+ * any) renders first, the passage always renders as the text block after
+ * it. No live trigger for the photo-first case today (see
+ * getLinkedMediaItemId) — this returns just the text block in practice,
+ * structured so wiring a real linked photo in later is additive.
+ */
+function buildDefaultBlocks(memory: MemoryRow): MemoryBlock[] {
+  const blocks: MemoryBlock[] = []
+  const linkedMediaItemId = getLinkedMediaItemId(memory)
+  if (linkedMediaItemId) {
+    blocks.push({ id: newBlockId(), type: 'image', media_item_id: linkedMediaItemId })
+  }
+  blocks.push({ id: newBlockId(), type: 'text', content: memory.body })
+  return blocks
 }
 
 // Icon-only, not icon+label (fixed 2026-08-08 — see the footer's own doc
@@ -55,7 +118,7 @@ export interface MemoryCardViewProps {
 const footerBtn =
   'grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-border bg-transparent text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:h-11 [@media(hover:none)]:w-11'
 
-export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub }: MemoryCardViewProps) {
+export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, sessionImages }: MemoryCardViewProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
 
@@ -67,6 +130,57 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub }:
   useEffect(() => setTitleDraft(memory.title), [memory.id, memory.title])
 
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // The block canvas's local state — always a real array now (no lazy-seed
+  // gate): seeded from memory.body_blocks when populated, else derived via
+  // buildDefaultBlocks(). Resets ONLY when memory.id changes (switching to a
+  // different open memory) — deliberately NOT keyed on memory.body_blocks,
+  // since with per-keystroke commits a slower-resolving earlier PATCH
+  // response landing after a faster later keystroke would otherwise
+  // overwrite that not-yet-confirmed local edit (see this file's doc
+  // comment for the reference's own matching behavior).
+  const [blocksDraft, setBlocksDraft] = useState<MemoryBlock[]>(() =>
+    memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : buildDefaultBlocks(memory),
+  )
+  useEffect(() => {
+    setBlocksDraft(memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : buildDefaultBlocks(memory))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately memory.id only, see the comment above
+  }, [memory.id])
+
+  /** Every block change — content edit or structural (add/remove/attach-photo) — commits immediately, no separate save step. Matches the reference's own per-keystroke commit exactly (Text+Image Scope Handover). */
+  const commitBlocks = (next: MemoryBlock[]) => {
+    setBlocksDraft(next)
+    onReviseBlocks(next)
+  }
+
+  const handleContentChange = (blockId: string, content: string) => {
+    commitBlocks(blocksDraft.map((b) => (b.id === blockId ? { ...b, content } : b)))
+  }
+
+  const handleAddText = (afterIndex: number) => {
+    const next = [...blocksDraft]
+    next.splice(afterIndex + 1, 0, { id: newBlockId(), type: 'text', content: '' })
+    commitBlocks(next)
+  }
+
+  const handleAddImage = (afterIndex: number, mediaItemId: string) => {
+    const next = [...blocksDraft]
+    next.splice(afterIndex + 1, 0, { id: newBlockId(), type: 'image', media_item_id: mediaItemId })
+    commitBlocks(next)
+  }
+
+  const handleRemoveBlock = (blockId: string) => {
+    commitBlocks(blocksDraft.filter((b) => b.id !== blockId))
+  }
+
+  /** A block can always be removed UNLESS it's the one remaining non-empty text block — removing it would leave the passage with nothing, which reviseMemoryBlocks rejects. */
+  const canRemoveBlock = (blockId: string) => {
+    const block = blocksDraft.find((b) => b.id === blockId)
+    if (!block) return false
+    if (block.type !== 'text' || !(block.content ?? '').trim()) return true
+    const nonEmptyTextCount = blocksDraft.filter((b) => b.type === 'text' && (b.content ?? '').trim().length > 0).length
+    return nonEmptyTextCount > 1
+  }
 
   const commitTitle = () => {
     const trimmed = titleDraft.trim()
@@ -160,12 +274,18 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub }:
               </span>
             </div>
           )}
-          {/* Passage — read-only. renameMemory() only ever updates title;
-              nothing updates body, so there is no revision path to wire
-              here (same as MemoryCard.tsx's own Rewrite-is-unwired note). */}
-          <p className="m-0 text-pretty font-body text-[15.5px] leading-[1.75] text-text-primary/90 whitespace-pre-wrap">
-            {memory.body}
-          </p>
+          {/* Passage — block canvas (Memory Canvas V1), always. No
+              separate "Edit mode," no pencil affordance — matches the
+              reference prototype's always-editable presentation. */}
+          <BlockCanvas
+            blocks={blocksDraft}
+            sessionImages={sessionImages}
+            onContentChange={handleContentChange}
+            onAddText={handleAddText}
+            onAddImage={handleAddImage}
+            onRemove={handleRemoveBlock}
+            canRemove={canRemoveBlock}
+          />
         </div>
       </div>
 

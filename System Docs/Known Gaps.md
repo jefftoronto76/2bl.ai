@@ -600,6 +600,50 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     (mobile slide-up panel) not yet started — deferred until after the
     Memory Canvas content track (CardView chrome, photo bookmark,
     add-to-memory, etc.) lands, per the sequencing decision made the same day.
+  - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
+    2026-08-08, revised same day per the Text+Image Scope Handover
+    (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
+    passage is now editable: `artifacts.body_blocks` (jsonb, nullable,
+    additive), the `revise_blocks` mutation (`reviseMemoryBlocks`,
+    `services/crm/memories.ts`, `Utilities/CRM.md`'s `memories.ts` row),
+    `useMemories.reviseBlocks` (`Utilities/Chat UI.md`), and
+    `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
+    rows for both) — see those files for the mechanics. Deliberately
+    narrower than the fuller canvas the design handover proposed: exactly
+    two block types (text, image — no video/quote/divider/gallery), no
+    drag-to-reorder, no mobile change. **The block canvas renders
+    immediately on open** — no pencil, no separate "Edit mode": a memory
+    with `body_blocks: null` gets a default single text block derived from
+    `memory.body` (`buildDefaultBlocks()`, matching the reference
+    prototype), and text content commits on **every keystroke** (not
+    blur-gated — a deliberate, confirmed reversal of the first same-day
+    attempt at this, which used blur-gating and a pencil-gated lazy seed;
+    both were corrected once the handover confirmed the reference's actual
+    behavior). Insert control: a "+" ("BlockInserter") sits before the first
+    block and after every block (N blocks → N+1 slots) — independent of
+    reordering, which stays out of scope — expanding to exactly 2 icon
+    options (text, image) rather than the reference's 6-type picker; picking
+    "image" opens a picker of the session's own ready photos rather than
+    inserting an unattached block. Every keystroke round-trips through
+    `reviseMemoryBlocks`'s full validation and a DB write (the media-item
+    ownership check in particular) — an accepted, explicit cost, not an
+    oversight; a short debounce was flagged as a possible future
+    optimization, not implemented. Image blocks reference an existing
+    `media_item_id` only (attach from the session's own already-uploaded
+    photos) — no new upload/storage path. A default image-block-first
+    ordering for a "linked photo" is implemented structurally
+    (`getLinkedMediaItemId()`) but has no live trigger — no field on
+    `MemoryRow` represents a linked photo yet (that's the still-unbuilt
+    photo-bookmark work below), and none was invented to force it.
+    **Still not built, and not fixed by this:** the per-upload "photo
+    bookmark" work above (a message with several photos still can't become
+    several memories automatically) — image blocks are a manual,
+    member-driven workaround for viewing/attaching a known photo, not a fix
+    for that anchor collision; see the design-doc trail
+    (`Design Handovers/design_handoff_memory_canvas_08_2026/`) for the
+    concrete, still-unbuilt blueprint for that separate fix. Also unaffected:
+    add-to-memory, GPS indicator, memory canvas sorting/filtering, and Stage
+    F (mobile slide-up panel, still blocked on this same sequencing note).
   - **`ScrollToLatestButton`'s 48px visibility threshold and
     `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
     2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
