@@ -7,6 +7,7 @@ import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem, type PendingEcho } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
+import { MEDIA_UPLOAD_PATTERN_SOURCE, MEDIA_UPLOAD_FAILED_PATTERN_SOURCE } from '@/services/chat/ui/v1/mediaMarkerPatterns';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
@@ -89,8 +90,12 @@ function DebugPill({ raw }: { raw: string }) {
 
 // ── Media parsing ─────────────────────────────────────────────────────────────
 
-const MEDIA_UPLOAD_RE = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]/g;
-const MEDIA_FAILED_RE = /\[MEDIA_UPLOAD_FAILED:\s*([^\]]+?)\s*\]/g;
+// Pattern source is canonical in mediaMarkerPatterns.ts, shared with
+// registry.ts's MEDIA_UPLOAD_MARKER/MEDIA_UPLOAD_FAILED_MARKER — each
+// consumer builds its own RegExp instance so `.lastIndex` state never leaks
+// between the two.
+const MEDIA_UPLOAD_RE = new RegExp(MEDIA_UPLOAD_PATTERN_SOURCE, 'g');
+const MEDIA_FAILED_RE = new RegExp(MEDIA_UPLOAD_FAILED_PATTERN_SOURCE, 'g');
 
 interface ParsedUserMessage {
   uploads: Array<{ filename: string; mediaItemId: string; type: string }>;
