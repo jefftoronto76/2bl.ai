@@ -368,11 +368,18 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('parses a valid JSON response into caption/classification/extracted_text', async () => {
+  it('returns the tool_use input directly into caption/classification/extracted_text — no JSON.parse needed', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     mockImageFetch(
       jsonResponse({
-        content: [{ type: 'text', text: JSON.stringify({ caption: 'A dog', classification: 'photo', extracted_text: '' }) }],
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'record_image_analysis',
+            input: { caption: 'A dog', classification: 'photo', extracted_text: '' },
+          },
+        ],
       }),
     )
 
@@ -384,7 +391,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('strips a ```json ... ``` markdown code fence before parsing — a real, observed vision-model failure mode', async () => {
+  it('defense-in-depth: recovers a ```json ... ``` fenced response when the model ignores forced tool_choice and returns text instead of a tool_use block', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     const fenced = '```json\n' + JSON.stringify({ caption: 'A dog', classification: 'photo', extracted_text: '' }) + '\n```'
     mockImageFetch(jsonResponse({ content: [{ type: 'text', text: fenced }] }))
@@ -397,7 +404,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('strips a plain ``` ... ``` fence (no "json" language tag) the same way', async () => {
+  it('defense-in-depth: recovers a plain ``` ... ``` fenced response (no "json" language tag) the same way', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     const fenced = '```\n' + JSON.stringify({ caption: 'A cat', classification: 'photo', extracted_text: '' }) + '\n```'
     mockImageFetch(jsonResponse({ content: [{ type: 'text', text: fenced }] }))
@@ -410,7 +417,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('falls back to a safe placeholder — never the raw response verbatim — when the text is still not valid JSON after fence-stripping, and logs why without leaking the raw text', async () => {
+  it('falls back to a safe placeholder — never the raw response verbatim — when no tool_use block comes back and the fallback text is still not valid JSON, and logs without leaking the raw text', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     mockImageFetch(jsonResponse({ content: [{ type: 'text', text: 'not json at all' }] }))
@@ -425,18 +432,17 @@ describe('processMediaItem — image pipeline (processImage)', () => {
       expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
     )
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[media/processor] vision response was not valid JSON, even after fence-stripping',
-      expect.objectContaining({ media_item_id: 'item-1', error_type: 'SyntaxError', raw_text_length: 'not json at all'.length }),
+      '[media/processor] vision tool call returned no usable output',
+      expect.objectContaining({ media_item_id: 'item-1' }),
     )
-    // Length/presence only — the raw text itself must never reach the log.
-    // (JSON.parse's own SyntaxError message embeds a snippet of the invalid
-    // input verbatim — this asserts the fix doesn't log err.message either.)
+    // The raw text itself must never reach the log.
     const loggedMetadata = consoleErrorSpy.mock.calls[0][1] as Record<string, unknown>
     expect(JSON.stringify(loggedMetadata)).not.toContain('not json at all')
     consoleErrorSpy.mockRestore()
   })
 
-  it('fails the item when no text block is returned', async () => {
+  it('degrades gracefully to a safe placeholder — item still succeeds, not failed — when the response has neither a tool_use block nor a text block', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
     mockImageFetch(jsonResponse({ content: [{ type: 'image' }] }))
 
@@ -444,8 +450,13 @@ describe('processMediaItem — image pipeline (processImage)', () => {
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
-      expect.objectContaining({ status: 'failed', error_message: 'No text block returned from Anthropic vision' }),
+      expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
     )
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[media/processor] vision tool call returned no usable output',
+      expect.objectContaining({ media_item_id: 'item-1' }),
+    )
+    consoleErrorSpy.mockRestore()
   })
 })
 
@@ -460,7 +471,14 @@ describe('processMediaItem — GPS extraction (extractGpsCoordinates, via proces
   })
 
   const VISION_OK = jsonResponse({
-    content: [{ type: 'text', text: JSON.stringify({ caption: 'A view', classification: 'photo', extracted_text: '' }) }],
+    content: [
+      {
+        type: 'tool_use',
+        id: 'toolu_1',
+        name: 'record_image_analysis',
+        input: { caption: 'A view', classification: 'photo', extracted_text: '' },
+      },
+    ],
   })
 
   it('extracts real GPS EXIF data and writes correct decimal-degree lat/lng — proves extraction AND DMS-to-decimal conversion against a real fixture with known coordinates', async () => {
@@ -660,13 +678,37 @@ describe('processMediaItem — document pipeline (processDocument)', () => {
   it('uses the Haiku classification and the extracted text on the happy path', async () => {
     mockGetMediaItem.mockResolvedValue(makeDocItem())
     mockExtractText.mockResolvedValue('Dear diary, ...')
-    routeFetch(() => jsonResponse({ content: [{ text: 'journal_entry' }] }))
+    routeFetch(() =>
+      jsonResponse({
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'record_document_classification',
+            input: { classification: 'journal_entry' },
+          },
+        ],
+      }),
+    )
 
     await processMediaItem(makeDocItem())
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
       expect.objectContaining({ status: 'ready', derived_content: 'Dear diary, ...', classification: 'journal_entry' }),
+    )
+  })
+
+  it('falls back to "document" classification — item still succeeds — when the response has neither a tool_use block nor a parseable text block', async () => {
+    mockGetMediaItem.mockResolvedValue(makeDocItem())
+    mockExtractText.mockResolvedValue('Dear diary, ...')
+    routeFetch(() => jsonResponse({ content: [{ type: 'text', text: 'not a classification word or json' }] }))
+
+    await processMediaItem(makeDocItem())
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', derived_content: 'Dear diary, ...', classification: 'document' }),
     )
   })
 
