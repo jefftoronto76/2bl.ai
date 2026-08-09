@@ -48,6 +48,8 @@ export interface MemoryRow {
   id: string
   session_id: string
   anchor_message_id: string
+  /** One-to-one photo-bookmark disambiguator — null for every non-photo memory. See services/crm/memories.ts's own copy for the full doc. */
+  media_item_id?: string | null
   source_kind: MemorySourceKind
   title: string
   body: string
@@ -60,28 +62,38 @@ export interface MemoryRow {
 
 export interface UseMemoriesReturn {
   memories: MemoryRow[]
-  getByAnchor(anchorMessageId: string): MemoryRow | undefined
-  /** True while a create call is actually in flight for this anchor — the running pill. */
-  isPending(anchorMessageId: string): boolean
+  /**
+   * mediaItemId is the composite key's second component (see composeAnchorKey
+   * below) — omit it for the ordinary whole-message bookmark (matches only
+   * the memory whose own media_item_id is null); pass it for a per-photo
+   * bookmark (PhotoUploadActions.tsx) so two photos on the same chat message
+   * resolve to two independent memories instead of colliding on
+   * anchor_message_id alone. Every method below takes the same optional
+   * second parameter, for the same reason.
+   */
+  getByAnchor(anchorMessageId: string, mediaItemId?: string): MemoryRow | undefined
+  /** True while a create call is actually in flight for this anchor(+photo) — the running pill. */
+  isPending(anchorMessageId: string, mediaItemId?: string): boolean
   /**
    * The source kind to show on the running pill while pending — known
    * client-side even before the row exists. Null when not pending.
    */
-  getPendingKind(anchorMessageId: string): MemorySourceKind | null
-  /** True if this anchor's most recent create call failed — stays true until the next attempt. */
-  hasError(anchorMessageId: string): boolean
-  /** The classified reason this anchor's most recent create call failed, or null if it didn't. */
-  getErrorType(anchorMessageId: string): ChatErrorType | null
+  getPendingKind(anchorMessageId: string, mediaItemId?: string): MemorySourceKind | null
+  /** True if this anchor(+photo)'s most recent create call failed — stays true until the next attempt. */
+  hasError(anchorMessageId: string, mediaItemId?: string): boolean
+  /** The classified reason this anchor(+photo)'s most recent create call failed, or null if it didn't. */
+  getErrorType(anchorMessageId: string, mediaItemId?: string): ChatErrorType | null
   /**
-   * Per-anchor suppression flag for the manual bookmark, per the handoff's
-   * state rules: never nag, never go dead — suppressed only while a draft is
-   * open for *this specific anchor* (streaming suppression is the caller's
-   * own isStreaming, combined separately). Scoped per-anchor rather than
-   * session-wide: one stale/open draft on another message must never disable
-   * this anchor's bookmark (see the Memories entry in
-   * System Docs/Known Gaps.md and handoff §6 rule #3).
+   * Per-anchor(+photo) suppression flag for the manual bookmark, per the
+   * handoff's state rules: never nag, never go dead — suppressed only while
+   * a draft is open for *this specific anchor (and, for a photo bookmark,
+   * this specific photo)* (streaming suppression is the caller's own
+   * isStreaming, combined separately). Scoped per-anchor rather than
+   * session-wide: one stale/open draft on another message — or another photo
+   * on the SAME message — must never disable this one's bookmark (see the
+   * Memories entry in System Docs/Known Gaps.md and handoff §6 rule #3).
    */
-  hasOpenDraft(anchorMessageId: string): boolean
+  hasOpenDraft(anchorMessageId: string, mediaItemId?: string): boolean
   /**
    * False until the initial GET for this session has settled (success or
    * failure). Load-bearing for any *automatic* trigger (e.g. the SAVE_MEMORY
@@ -93,7 +105,8 @@ export interface UseMemoriesReturn {
    * applies uniformly now that both paths share it.
    */
   isLoaded: boolean
-  create(anchorMessageId: string, sourceKind: MemorySourceKind): Promise<void>
+  /** mediaItemId, when passed, both scopes local pending/error state to this specific photo AND is sent to the server as media_item_id — routing the POST to createPhotoMemoryFromMedia instead of createMemoryFromAnchor (services/crm/memories.ts). */
+  create(anchorMessageId: string, sourceKind: MemorySourceKind, mediaItemId?: string): Promise<void>
   keep(memory: MemoryRow): Promise<void>
   discard(memory: MemoryRow): Promise<void>
   /** Title-only correction — the inline edit affordance on MemoryCard/MemorySavedReceipt. */
@@ -124,6 +137,38 @@ function classifyCreateFailure(res: Response, data: { memory?: unknown } | null)
   }
   // res.ok but data.memory is missing/malformed — a 2xx contract mismatch.
   return 'invalid_response'
+}
+
+/**
+ * Composite key for the local pendingAnchors/erroredAnchors Records —
+ * `${anchorMessageId}:${mediaItemId ?? ''}`. A plain anchor_message_id alone
+ * collides the instant a single chat message carries two photo uploads (a
+ * real case — see MessageList.tsx's userMsg.uploads array): both photos'
+ * Bookmark clicks would set/read the exact same pendingAnchors[msg.id] entry,
+ * so the second bookmark's running pill would show as the first's, and a
+ * failure on one would show as a failure on both. The empty-string suffix on
+ * an omitted mediaItemId keeps every existing (non-photo) call site's key
+ * stable — `composeAnchorKey('m1')` === `composeAnchorKey('m1', undefined)`
+ * always, so this is purely additive for callers that never pass the second
+ * argument.
+ */
+function composeAnchorKey(anchorMessageId: string, mediaItemId?: string): string {
+  return `${anchorMessageId}:${mediaItemId ?? ''}`
+}
+
+/**
+ * Matches a fetched MemoryRow against an (anchorMessageId, mediaItemId)
+ * lookup — the array-side counterpart to composeAnchorKey above. A row with
+ * no media_item_id (every non-photo memory, and every legacy row) only
+ * matches when the lookup itself omits mediaItemId; a photo-bookmarked row
+ * only matches the exact media_item_id it was created from. Without this,
+ * a whole-message lookup (mediaItemId omitted) on a message that ALSO has
+ * one or more photo bookmarks would ambiguously match whichever one came
+ * first in the array.
+ */
+function matchesAnchor(memory: MemoryRow, anchorMessageId: string, mediaItemId?: string): boolean {
+  if (memory.anchor_message_id !== anchorMessageId) return false
+  return mediaItemId === undefined ? !memory.media_item_id : memory.media_item_id === mediaItemId
 }
 
 export function useMemories(sessionId: string | null): UseMemoriesReturn {
@@ -179,51 +224,60 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
   }, [sessionId])
 
   const getByAnchor = useCallback(
-    (anchorMessageId: string) => memories.find(m => m.anchor_message_id === anchorMessageId),
+    (anchorMessageId: string, mediaItemId?: string) => memories.find(m => matchesAnchor(m, anchorMessageId, mediaItemId)),
     [memories],
   )
-  const isPending = useCallback((anchorMessageId: string) => pendingAnchors[anchorMessageId] !== undefined, [pendingAnchors])
+  const isPending = useCallback(
+    (anchorMessageId: string, mediaItemId?: string) => pendingAnchors[composeAnchorKey(anchorMessageId, mediaItemId)] !== undefined,
+    [pendingAnchors],
+  )
   const getPendingKind = useCallback(
-    (anchorMessageId: string) => pendingAnchors[anchorMessageId] ?? null,
+    (anchorMessageId: string, mediaItemId?: string) => pendingAnchors[composeAnchorKey(anchorMessageId, mediaItemId)] ?? null,
     [pendingAnchors],
   )
   const hasError = useCallback(
-    (anchorMessageId: string) => erroredAnchors[anchorMessageId] !== undefined,
+    (anchorMessageId: string, mediaItemId?: string) => erroredAnchors[composeAnchorKey(anchorMessageId, mediaItemId)] !== undefined,
     [erroredAnchors],
   )
   const getErrorType = useCallback(
-    (anchorMessageId: string) => erroredAnchors[anchorMessageId] ?? null,
+    (anchorMessageId: string, mediaItemId?: string) => erroredAnchors[composeAnchorKey(anchorMessageId, mediaItemId)] ?? null,
     [erroredAnchors],
   )
   const hasOpenDraft = useCallback(
-    (anchorMessageId: string) => memories.some(m => m.anchor_message_id === anchorMessageId && m.status === 'draft'),
+    (anchorMessageId: string, mediaItemId?: string) =>
+      memories.some(m => matchesAnchor(m, anchorMessageId, mediaItemId) && m.status === 'draft'),
     [memories],
   )
 
-  const setPending = (anchorId: string, kind: MemorySourceKind | null) =>
-    setPendingAnchors(prev => (kind ? { ...prev, [anchorId]: kind } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId))))
+  const setPending = (key: string, kind: MemorySourceKind | null) =>
+    setPendingAnchors(prev => (kind ? { ...prev, [key]: kind } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key))))
 
-  const setAnchorError = (anchorId: string, errorType: ChatErrorType | null) =>
+  const setAnchorError = (key: string, errorType: ChatErrorType | null) =>
     setErroredAnchors(prev =>
       errorType
-        ? { ...prev, [anchorId]: errorType }
-        : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== anchorId)),
+        ? { ...prev, [key]: errorType }
+        : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)),
     )
 
-  const create = useCallback(async (anchorMessageId: string, sourceKind: MemorySourceKind) => {
+  const create = useCallback(async (anchorMessageId: string, sourceKind: MemorySourceKind, mediaItemId?: string) => {
     const sid = sessionIdRef.current
     if (!sid) return
-    setAnchorError(anchorMessageId, null)
-    setPending(anchorMessageId, sourceKind)
+    const key = composeAnchorKey(anchorMessageId, mediaItemId)
+    setAnchorError(key, null)
+    setPending(key, sourceKind)
     try {
       const res = await fetch(`/api/sessions/${sid}/memories`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anchor_message_id: anchorMessageId, source_kind: sourceKind }),
+        body: JSON.stringify({
+          anchor_message_id: anchorMessageId,
+          source_kind: sourceKind,
+          ...(mediaItemId ? { media_item_id: mediaItemId } : {}),
+        }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.memory) {
-        setAnchorError(anchorMessageId, classifyCreateFailure(res, data))
+        setAnchorError(key, classifyCreateFailure(res, data))
         return
       }
       const memory = data.memory as MemoryRow
@@ -236,9 +290,9 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
       })
     } catch (err) {
       console.error('[useMemories] create call failed:', err)
-      setAnchorError(anchorMessageId, 'network')
+      setAnchorError(key, 'network')
     } finally {
-      setPending(anchorMessageId, null)
+      setPending(key, null)
     }
   }, [])
 
