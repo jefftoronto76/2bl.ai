@@ -148,16 +148,16 @@ function BlockInserter({
   }, [open])
 
   return (
-    <div className="relative my-0.5 flex h-[22px] items-center">
+    <div className="relative my-0.5 flex h-[30px] items-center">
       <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
       <button
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
         aria-label="Add a block"
         aria-expanded={open}
-        className={`grid size-[22px] shrink-0 place-items-center rounded-full border border-border bg-surface text-text-muted transition-opacity hover:text-text-primary hover:opacity-100 ${open ? 'opacity-100' : 'opacity-35'}`}
+        className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border-none bg-accent text-background transition-opacity hover:opacity-100 ${open ? 'opacity-100' : 'opacity-35'}`}
       >
-        <Plus size={13} aria-hidden />
+        <Plus size={16} aria-hidden />
       </button>
       <div className={`h-px flex-1 transition-colors ${open ? 'bg-border' : 'bg-transparent'}`} />
 

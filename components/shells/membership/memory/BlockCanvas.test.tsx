@@ -286,3 +286,38 @@ describe('BlockCanvas — locked V1 scope guards', () => {
     expect(container.querySelector('[draggable="true"]')).toBeNull();
   });
 });
+
+// Restyled 2026-08-09 to match MemoryCardView's header "add to story"
+// button (30px filled accent circle, no border) instead of the old 22px
+// outlined ghost circle — global change, not gated by viewport (BlockCanvas
+// has no isMobile/matchMedia branching anywhere in this file).
+describe('BlockCanvas — BlockInserter restyle (matches header "add to story" button)', () => {
+  it('renders the 30px filled accent circle, not the old outlined ghost treatment', () => {
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    const inserter = screen.getAllByRole('button', { name: 'Add a block' })[0];
+    expect(inserter.className).toContain('h-[30px]');
+    expect(inserter.className).toContain('w-[30px]');
+    expect(inserter.className).toContain('bg-accent');
+    expect(inserter.className).toContain('text-background');
+    expect(inserter.className).toContain('border-none');
+    expect(inserter.className).not.toContain('border-border');
+    expect(inserter.className).not.toContain('bg-surface');
+  });
+
+  it('renders the identical className at mobile and desktop widths — no viewport branching', () => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+    const mobile = renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    const mobileClassName = screen.getAllByRole('button', { name: 'Add a block' })[0].className;
+    mobile.unmount();
+
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 1024,
+    });
+    renderCanvas([{ id: 'b1', type: 'text', content: 'One' }]);
+    const desktopClassName = screen.getAllByRole('button', { name: 'Add a block' })[0].className;
+
+    expect(mobileClassName).toBe(desktopClassName);
+  });
+});
