@@ -147,6 +147,12 @@ session's genuine first assistant turn, not repeatedly.
   per-photo Bookmark, `PhotoUploadActions.tsx`) left the raw
   `[MEDIA_UPLOAD: ...]` bracket text sitting in that memory's title and
   body, ahead of the person's own typed caption.
+- The two parsers used to define this syntax as two independent regexes,
+  correct only because nobody had changed either one. As of 2026-08-09 the
+  regex source is canonical in `services/chat/ui/v1/mediaMarkerPatterns.ts`
+  — both `MessageList.tsx`'s parser and `registry.ts`'s two `MarkerDefinition`s
+  construct their own `RegExp` from that one shared source string, so the
+  syntax can only be changed in one place.
 
 ### `[CONTACT: phone]` — **retired**
 
