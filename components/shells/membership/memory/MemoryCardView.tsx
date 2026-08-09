@@ -23,25 +23,28 @@
  * Title IS live-editable: the PATCH route's `retitle` action
  * (renameMemory()) already backs the inline title-edit affordance on
  * MemorySavedReceipt/MemoryCard elsewhere in this feature, so this reuses
- * the same real write. Unlike the reference's per-keystroke
- * onChange={onTitleChange}, this commits on blur/Enter only (mirroring
- * MemoryCard.tsx's own draft-card title edit) — firing a PATCH on every
- * keystroke would spam the network and race concurrent writes against each
- * other for no benefit.
+ * the same real write. Title still commits on blur/Enter only (mirroring
+ * MemoryCard.tsx's own draft-card title edit) — this is unchanged and
+ * distinct from the passage's own save behavior below.
  *
- * Passage editing (Memory Canvas V1 — text + image blocks only) — the
- * design decided in this session, NOT the reference's always-editable
- * <textarea>: **lazy-seed-on-first-edit**. Every memory (new or legacy)
- * starts with `body_blocks: null` and renders exactly as before — a plain
- * read-only paragraph — until a member clicks the hover-revealed pencil
- * next to it, which seeds a single local text block from `memory.body` and
- * switches this one row into the block canvas (BlockCanvas.tsx). Nothing
- * persists until that first edit actually commits (revise_blocks,
- * services/crm/memories.ts's `reviseMemoryBlocks`) — so a memory nobody has
- * ever opened this affordance on is genuinely unaffected, permanently, not
- * just at launch. Once `body_blocks` is populated, the block canvas renders
- * unconditionally (no separate "enter edit mode" step) — blocks are always
- * in their editable form, matching the design reference's own presentation.
+ * Passage editing (Memory Canvas V1 — text + image blocks only; see the
+ * Text+Image Scope Handover, Design Handovers/handover_memory edit panel_08_2026/)
+ * — the block canvas (BlockCanvas.tsx) renders IMMEDIATELY on open, no
+ * separate "Edit mode," no pencil affordance: `buildDefaultBlocks()` derives
+ * a default text block from `memory.body` when `body_blocks` is null,
+ * matching the reference prototype's own `buildDefaultBlocks(mem, K)`.
+ * Text-block content commits on EVERY KEYSTROKE (onReviseBlocks fires per
+ * change, matching the reference's `patchBlock`'s inline `commit()` call
+ * exactly) — a deliberate, confirmed choice despite the real cost (every
+ * keystroke round-trips through reviseMemoryBlocks's full validation +
+ * a DB write, services/crm/memories.ts). Structural edits (add/remove/
+ * attach-photo) also commit immediately. `blocksDraft` resets from
+ * `memory.body_blocks` only when `memory.id` itself changes (switching to
+ * a different open memory) — NOT on every `memory.body_blocks` change, since
+ * with per-keystroke commits a slower-resolving earlier PATCH response
+ * would otherwise clobber faster-typed, not-yet-confirmed local keystrokes
+ * (the reference has the same shape: its own reset effect is keyed on
+ * `[mem.id, mem.version]`, not on `mem.passage` changing).
  * The in-transcript draft card (MemoryCard.tsx) and saved receipt
  * (MemorySavedReceipt) are unaffected by any of this — still read-only,
  * exactly as before; this panel remains the only surface where a memory's
@@ -50,7 +53,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { X, Plus, MessageCircle, GitFork, Trash2, Feather, Pencil } from 'lucide-react'
+import { X, Plus, MessageCircle, GitFork, Trash2, Feather } from 'lucide-react'
 import type { MemoryBlock, MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
 import { BlockCanvas, type SessionImage } from './BlockCanvas'
@@ -73,9 +76,39 @@ function newBlockId(): string {
   return `blk-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-/** Seeds the very first block from a memory's existing flat body — the one-time transition a legacy/never-edited row makes into the block canvas. */
-function seedBlocksFromBody(body: string): MemoryBlock[] {
-  return [{ id: newBlockId(), type: 'text', content: body }]
+/**
+ * No real signal exists yet for "this memory has a linked photo" —
+ * artifacts.media_item_id is a flagged-dead column (0 rows, 0 code
+ * references — System Docs/Database Schema.md) and MemoryRow carries
+ * nothing usable in its place; that's the still-unbuilt photo-bookmark
+ * work (System Docs/Known Gaps.md's Memories entry), a separate track from
+ * this one. Always returns undefined today — deliberately not synthesized
+ * from source_kind, since constructing an image block without a real
+ * media_item_id would fail reviseMemoryBlocks's own validation on the very
+ * first keystroke into the text block (every commit sends the whole
+ * array), making the passage silently uneditable for exactly the memories
+ * this was meant to help.
+ */
+function getLinkedMediaItemId(_memory: MemoryRow): string | undefined {
+  return undefined
+}
+
+/**
+ * Builds the default block set for a memory whose body_blocks is null —
+ * mirrors the reference's buildDefaultBlocks(mem, K): a linked photo (if
+ * any) renders first, the passage always renders as the text block after
+ * it. No live trigger for the photo-first case today (see
+ * getLinkedMediaItemId) — this returns just the text block in practice,
+ * structured so wiring a real linked photo in later is additive.
+ */
+function buildDefaultBlocks(memory: MemoryRow): MemoryBlock[] {
+  const blocks: MemoryBlock[] = []
+  const linkedMediaItemId = getLinkedMediaItemId(memory)
+  if (linkedMediaItemId) {
+    blocks.push({ id: newBlockId(), type: 'image', media_item_id: linkedMediaItemId })
+  }
+  blocks.push({ id: newBlockId(), type: 'text', content: memory.body })
+  return blocks
 }
 
 // Icon-only, not icon+label (fixed 2026-08-08 — see the footer's own doc
@@ -98,67 +131,46 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
 
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // The block canvas's local draft — null means "not currently in the block
-  // canvas," which covers both a legacy row nobody's touched AND a brand-new
-  // memory nobody's opened the edit affordance on yet (lazy-seed-on-first-
-  // edit, see this file's doc comment). Resets from the canonical
-  // memory.body_blocks whenever the OPEN memory changes OR the server
-  // confirms a write (memory.body_blocks itself changes) — same pattern as
-  // titleDraft above, just one level removed: while a not-yet-committed
-  // local seed is in flight, memory.body_blocks hasn't changed yet, so this
-  // effect doesn't fire and clobber it.
-  const [blocksDraft, setBlocksDraft] = useState<MemoryBlock[] | null>(
-    memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : null,
+  // The block canvas's local state — always a real array now (no lazy-seed
+  // gate): seeded from memory.body_blocks when populated, else derived via
+  // buildDefaultBlocks(). Resets ONLY when memory.id changes (switching to a
+  // different open memory) — deliberately NOT keyed on memory.body_blocks,
+  // since with per-keystroke commits a slower-resolving earlier PATCH
+  // response landing after a faster later keystroke would otherwise
+  // overwrite that not-yet-confirmed local edit (see this file's doc
+  // comment for the reference's own matching behavior).
+  const [blocksDraft, setBlocksDraft] = useState<MemoryBlock[]>(() =>
+    memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : buildDefaultBlocks(memory),
   )
   useEffect(() => {
-    setBlocksDraft(memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : null)
-  }, [memory.id, memory.body_blocks])
+    setBlocksDraft(memory.body_blocks && memory.body_blocks.length > 0 ? memory.body_blocks : buildDefaultBlocks(memory))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately memory.id only, see the comment above
+  }, [memory.id])
 
-  const startEditingPassage = () => setBlocksDraft(seedBlocksFromBody(memory.body))
-
-  /** Structural changes (add/remove/attach-photo) — commit immediately, no separate save step (matches onKeep/onDiscard's own posture elsewhere in this feature). */
+  /** Every block change — content edit or structural (add/remove/attach-photo) — commits immediately, no separate save step. Matches the reference's own per-keystroke commit exactly (Text+Image Scope Handover). */
   const commitBlocks = (next: MemoryBlock[]) => {
     setBlocksDraft(next)
     onReviseBlocks(next)
   }
 
   const handleContentChange = (blockId: string, content: string) => {
-    setBlocksDraft((prev) => (prev ? prev.map((b) => (b.id === blockId ? { ...b, content } : b)) : prev))
-  }
-
-  const handleContentCommit = (blockId: string) => {
-    if (!blocksDraft) return
-    const hasNonEmptyText = blocksDraft.some((b) => b.type === 'text' && (b.content ?? '').trim().length > 0)
-    if (!hasNonEmptyText) {
-      // Same "don't save blank" precedent as the title field above (commitTitle),
-      // applied per-block: revert to the last server-confirmed content for
-      // this id rather than sending an array the server would reject anyway
-      // (reviseMemoryBlocks requires at least one non-empty text block).
-      const lastCommitted = memory.body_blocks?.find((b) => b.id === blockId)
-      setBlocksDraft((prev) => (prev ? prev.map((b) => (b.id === blockId ? { ...b, content: lastCommitted?.content ?? '' } : b)) : prev))
-      return
-    }
-    commitBlocks(blocksDraft)
+    commitBlocks(blocksDraft.map((b) => (b.id === blockId ? { ...b, content } : b)))
   }
 
   const handleAddText = () => {
-    if (!blocksDraft) return
     commitBlocks([...blocksDraft, { id: newBlockId(), type: 'text', content: '' }])
   }
 
   const handleAddImage = (mediaItemId: string) => {
-    if (!blocksDraft) return
     commitBlocks([...blocksDraft, { id: newBlockId(), type: 'image', media_item_id: mediaItemId }])
   }
 
   const handleRemoveBlock = (blockId: string) => {
-    if (!blocksDraft) return
     commitBlocks(blocksDraft.filter((b) => b.id !== blockId))
   }
 
   /** A block can always be removed UNLESS it's the one remaining non-empty text block — removing it would leave the passage with nothing, which reviseMemoryBlocks rejects. */
   const canRemoveBlock = (blockId: string) => {
-    if (!blocksDraft) return false
     const block = blocksDraft.find((b) => b.id === blockId)
     if (!block) return false
     if (block.type !== 'text' || !(block.content ?? '').trim()) return true
@@ -258,36 +270,18 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
               </span>
             </div>
           )}
-          {/* Passage — block canvas (Memory Canvas V1) once body_blocks
-              exists; otherwise the plain read-only paragraph plus a hover
-              pencil that seeds the first block on click (lazy-seed-on-
-              first-edit, see this file's doc comment). */}
-          {blocksDraft ? (
-            <BlockCanvas
-              blocks={blocksDraft}
-              sessionImages={sessionImages}
-              onContentChange={handleContentChange}
-              onContentCommit={handleContentCommit}
-              onAddText={handleAddText}
-              onAddImage={handleAddImage}
-              onRemove={handleRemoveBlock}
-              canRemove={canRemoveBlock}
-            />
-          ) : (
-            <div className="group/passage relative">
-              <p className="m-0 text-pretty font-body text-[15.5px] leading-[1.75] text-text-primary/90 whitespace-pre-wrap">
-                {memory.body}
-              </p>
-              <button
-                type="button"
-                onClick={startEditingPassage}
-                aria-label="Edit passage"
-                className="absolute -top-1 right-0 rounded p-1 text-text-muted opacity-0 transition-opacity hover:text-text-primary group-hover/passage:opacity-100 [@media(hover:none)]:opacity-100"
-              >
-                <Pencil size={13} aria-hidden />
-              </button>
-            </div>
-          )}
+          {/* Passage — block canvas (Memory Canvas V1), always. No
+              separate "Edit mode," no pencil affordance — matches the
+              reference prototype's always-editable presentation. */}
+          <BlockCanvas
+            blocks={blocksDraft}
+            sessionImages={sessionImages}
+            onContentChange={handleContentChange}
+            onAddText={handleAddText}
+            onAddImage={handleAddImage}
+            onRemove={handleRemoveBlock}
+            canRemove={canRemoveBlock}
+          />
         </div>
       </div>
 

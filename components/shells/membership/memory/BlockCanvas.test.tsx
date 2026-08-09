@@ -3,6 +3,11 @@
 // reported to the callbacks, not persistence (that's MemoryCardView.tsx's
 // job, covered in its own test file). Isolated render, no ChatProvider —
 // same convention as MemoryCardView.test.tsx.
+//
+// Save behavior changed per the Text+Image Scope Handover (Design Handovers/
+// handover_memory edit panel_08_2026/): text content commits on every
+// keystroke now (onContentChange only) — there is no more onContentCommit/
+// blur step, a deliberate reversal of this feature's first same-day attempt.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { BlockCanvas, type SessionImage } from './BlockCanvas';
@@ -12,7 +17,6 @@ afterEach(cleanup);
 
 function renderCanvas(blocks: MemoryBlock[], overrides: Partial<{ sessionImages: SessionImage[]; canRemove: (id: string) => boolean }> = {}) {
   const onContentChange = vi.fn();
-  const onContentCommit = vi.fn();
   const onAddText = vi.fn();
   const onAddImage = vi.fn();
   const onRemove = vi.fn();
@@ -22,14 +26,13 @@ function renderCanvas(blocks: MemoryBlock[], overrides: Partial<{ sessionImages:
       blocks={blocks}
       sessionImages={overrides.sessionImages ?? []}
       onContentChange={onContentChange}
-      onContentCommit={onContentCommit}
       onAddText={onAddText}
       onAddImage={onAddImage}
       onRemove={onRemove}
       canRemove={canRemove}
     />,
   );
-  return { onContentChange, onContentCommit, onAddText, onAddImage, onRemove, ...utils };
+  return { onContentChange, onAddText, onAddImage, onRemove, ...utils };
 }
 
 describe('BlockCanvas — text blocks', () => {
@@ -38,17 +41,18 @@ describe('BlockCanvas — text blocks', () => {
     expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('First paragraph.');
   });
 
-  it('typing fires onContentChange with the block id and new content, not onContentCommit', () => {
-    const { onContentChange, onContentCommit } = renderCanvas([{ id: 'b1', type: 'text', content: 'Old' }]);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Text block 1' }), { target: { value: 'New' } });
-    expect(onContentChange).toHaveBeenCalledWith('b1', 'New');
-    expect(onContentCommit).not.toHaveBeenCalled();
-  });
-
-  it('blur fires onContentCommit with the block id', () => {
-    const { onContentCommit } = renderCanvas([{ id: 'b1', type: 'text', content: 'Old' }]);
-    fireEvent.blur(screen.getByRole('textbox', { name: 'Text block 1' }));
-    expect(onContentCommit).toHaveBeenCalledWith('b1');
+  it('typing fires onContentChange with the block id and new content, on every keystroke (no blur/commit step)', () => {
+    const { onContentChange } = renderCanvas([{ id: 'b1', type: 'text', content: 'Old' }]);
+    const textbox = screen.getByRole('textbox', { name: 'Text block 1' });
+    fireEvent.change(textbox, { target: { value: 'N' } });
+    fireEvent.change(textbox, { target: { value: 'Ne' } });
+    fireEvent.change(textbox, { target: { value: 'New' } });
+    expect(onContentChange).toHaveBeenCalledTimes(3);
+    expect(onContentChange).toHaveBeenNthCalledWith(1, 'b1', 'N');
+    expect(onContentChange).toHaveBeenNthCalledWith(3, 'b1', 'New');
+    // Blurring fires nothing at all — there is no separate commit step to trigger.
+    fireEvent.blur(textbox);
+    expect(onContentChange).toHaveBeenCalledTimes(3);
   });
 
   it('labels multiple text blocks by their position among text blocks only, skipping image blocks', () => {

@@ -53,18 +53,13 @@ function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionIm
 }
 
 describe('MemoryCardView — header', () => {
-  it('shows the title in an editable input and the passage as plain read-only text', () => {
+  it('shows the title in an editable input, and the passage as an editable text block right away', () => {
     renderCard();
     expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House');
-    expect(screen.getByText('It was a quiet summer by the lake.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('It was a quiet summer by the lake.');
   });
 
-  it('the passage is read-only by default — no textarea until the edit pencil is clicked (lazy-seed-on-first-edit)', () => {
-    const { container } = renderCard();
-    expect(container.querySelector('textarea')).toBeNull();
-  });
-
-  it('title commits on blur only when changed, not on every keystroke', () => {
+  it('title commits on blur only when changed, not on every keystroke — unchanged, distinct from the passage\'s own save behavior', () => {
     const { onRetitle } = renderCard();
     const input = screen.getByRole('textbox', { name: 'Memory title' });
     fireEvent.change(input, { target: { value: 'The Cabin' } });
@@ -168,51 +163,44 @@ describe('MemoryCardView — media block', () => {
   });
 });
 
-describe('MemoryCardView — passage: lazy-seed-on-first-edit (body_blocks null)', () => {
-  it('shows a hover-revealed edit pencil next to the read-only passage', () => {
-    renderCard();
-    expect(screen.getByRole('button', { name: 'Edit passage' })).toBeInTheDocument();
-  });
-
-  it('clicking the edit pencil seeds a single text block from the memory body and switches to the block canvas — without persisting anything yet', () => {
-    const { memory, onReviseBlocks } = renderCard();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit passage' }));
+describe('MemoryCardView — passage: block canvas renders immediately, no pencil, ever', () => {
+  it('a legacy/never-edited memory (body_blocks null) gets a default single text block seeded from memory.body, with no edit affordance to click first', () => {
+    const { memory } = renderCard();
+    expect(screen.queryByRole('button', { name: 'Edit passage' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue(memory.body);
-    expect(onReviseBlocks).not.toHaveBeenCalled();
   });
 
-  it('blurring the freshly-seeded block persists it — this is the actual seed moment, not the click', () => {
-    const { memory, onReviseBlocks } = renderCard();
-    fireEvent.click(screen.getByRole('button', { name: 'Edit passage' }));
-    fireEvent.blur(screen.getByRole('textbox', { name: 'Text block 1' }));
-    expect(onReviseBlocks).toHaveBeenCalledTimes(1);
-    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: expect.any(String), type: 'text', content: memory.body }]);
-  });
-
-  it('a memory with already-populated body_blocks renders the block canvas immediately — no pencil, no separate edit-mode step', () => {
+  it('a memory with already-populated body_blocks renders those blocks directly, in order', () => {
     renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Existing paragraph.' }] });
     expect(screen.queryByRole('button', { name: 'Edit passage' })).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('Existing paragraph.');
   });
 });
 
-describe('MemoryCardView — block canvas: text edits commit on blur only', () => {
-  it('typing does not commit until blur', () => {
-    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Old.' }] });
+describe('MemoryCardView — block canvas: text content commits on every keystroke (Text+Image Scope Handover)', () => {
+  it('fires onReviseBlocks once per keystroke, not once on blur', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Old' }] });
     const textbox = screen.getByRole('textbox', { name: 'Text block 1' });
-    fireEvent.change(textbox, { target: { value: 'New.' } });
-    expect(onReviseBlocks).not.toHaveBeenCalled();
-    fireEvent.blur(textbox);
-    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: 'b1', type: 'text', content: 'New.' }]);
+    fireEvent.change(textbox, { target: { value: 'N' } });
+    fireEvent.change(textbox, { target: { value: 'Ne' } });
+    fireEvent.change(textbox, { target: { value: 'New' } });
+    expect(onReviseBlocks).toHaveBeenCalledTimes(3);
+    expect(onReviseBlocks).toHaveBeenNthCalledWith(1, [{ id: 'b1', type: 'text', content: 'N' }]);
+    expect(onReviseBlocks).toHaveBeenNthCalledWith(3, [{ id: 'b1', type: 'text', content: 'New' }]);
   });
 
-  it('emptying the only text block and blurring does NOT commit — reverts to the last server-confirmed content instead (same precedent as the title field)', () => {
+  it('blurring alone fires nothing — there is no separate commit step', () => {
+    const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Old' }] });
+    fireEvent.blur(screen.getByRole('textbox', { name: 'Text block 1' }));
+    expect(onReviseBlocks).not.toHaveBeenCalled();
+  });
+
+  it('emptying the only text block via typing still commits unconditionally — no client-side revert-on-blur guard anymore (server-side validation is the only backstop)', () => {
     const { onReviseBlocks } = renderCard({ body_blocks: [{ id: 'b1', type: 'text', content: 'Original content.' }] });
     const textbox = screen.getByRole('textbox', { name: 'Text block 1' });
-    fireEvent.change(textbox, { target: { value: '   ' } });
-    fireEvent.blur(textbox);
-    expect(onReviseBlocks).not.toHaveBeenCalled();
-    expect(textbox).toHaveValue('Original content.');
+    fireEvent.change(textbox, { target: { value: '' } });
+    expect(onReviseBlocks).toHaveBeenCalledWith([{ id: 'b1', type: 'text', content: '' }]);
+    expect(textbox).toHaveValue(''); // no revert — the reference has no such guard for typing
   });
 });
 

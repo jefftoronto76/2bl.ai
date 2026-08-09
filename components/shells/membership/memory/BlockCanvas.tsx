@@ -4,17 +4,21 @@
  * BlockCanvas — the block-canvas body for a memory whose `body_blocks` is
  * populated (Memory Canvas V1, two block types only: text, image). Fully
  * controlled/presentational: MemoryCardView.tsx owns all state (the blocks
- * array, when to persist via revise_blocks, the "does this commit violate
- * the server's own invariant" checks) — this component only renders `blocks`
- * and reports user intent through callbacks. Kept separate from
+ * array, when to persist via revise_blocks) — this component only renders
+ * `blocks` and reports user intent through callbacks. Kept separate from
  * MemoryCardView.tsx so each stays independently testable, same convention
  * as memoryKinds.ts being its own file.
  *
- * Deliberately absent, per the locked V1 scope (see the handover in
- * Design Handovers/handover_canvas_update_notion_08_2026/): no drag-to-
- * reorder, no hover-insert-between-blocks, no video/quote/divider/gallery
- * block types. The only structural affordances are "Add text" / "Add
- * photo" appended after the last block, and a per-block remove.
+ * Text content commits on every keystroke (onContentChange) — matching the
+ * reference prototype's own `patchBlock`/`commit()` exactly, per the
+ * Text+Image Scope Handover (Design Handovers/handover_memory edit panel_08_2026/),
+ * a deliberate reversal of this same feature's first same-day attempt,
+ * which blur-gated the commit.
+ *
+ * Deliberately absent, per the locked V1 scope: no drag-to-reorder, no
+ * video/quote/divider/gallery block types. The only structural affordances
+ * are "Add text" / "Add photo" appended after the last block, and a
+ * per-block remove.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -31,10 +35,8 @@ export interface BlockCanvasProps {
   blocks: MemoryBlock[]
   /** The session's own ready image media items, for the image-block attach picker. Sourced from useChatStore().mediaItems by the caller (ChatHero.tsx) — this component never fetches anything itself. */
   sessionImages: SessionImage[]
-  /** Every keystroke on a text block — local draft only, never fired at the network (see MemoryCardView.tsx). */
+  /** Every keystroke on a text block — the caller persists on every call (no separate blur/commit step). */
   onContentChange: (blockId: string, content: string) => void
-  /** Blur on a text block — the caller decides whether this is safe to persist. */
-  onContentCommit: (blockId: string) => void
   onAddText: () => void
   onAddImage: (mediaItemId: string) => void
   onRemove: (blockId: string) => void
@@ -46,12 +48,10 @@ function TextBlockRow({
   block,
   index,
   onChange,
-  onCommit,
 }: {
   block: MemoryBlock
   index: number
   onChange: (content: string) => void
-  onCommit: () => void
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -66,7 +66,6 @@ function TextBlockRow({
       ref={taRef}
       value={block.content ?? ''}
       onChange={(e) => onChange(e.target.value)}
-      onBlur={onCommit}
       placeholder="Write something…"
       aria-label={`Text block ${index + 1}`}
       rows={3}
@@ -149,7 +148,7 @@ function AddBlockControls({ sessionImages, onAddText, onAddImage }: { sessionIma
   )
 }
 
-export function BlockCanvas({ blocks, sessionImages, onContentChange, onContentCommit, onAddText, onAddImage, onRemove, canRemove }: BlockCanvasProps) {
+export function BlockCanvas({ blocks, sessionImages, onContentChange, onAddText, onAddImage, onRemove, canRemove }: BlockCanvasProps) {
   let textIndex = -1
   return (
     <div>
@@ -161,12 +160,7 @@ export function BlockCanvas({ blocks, sessionImages, onContentChange, onContentC
             <li key={block.id} className="group/block relative">
               <div className="pr-7">
                 {block.type === 'text' ? (
-                  <TextBlockRow
-                    block={block}
-                    index={textIndex}
-                    onChange={(content) => onContentChange(block.id, content)}
-                    onCommit={() => onContentCommit(block.id)}
-                  />
+                  <TextBlockRow block={block} index={textIndex} onChange={(content) => onContentChange(block.id, content)} />
                 ) : (
                   <ImageBlockRow block={block} sessionImages={sessionImages} />
                 )}
