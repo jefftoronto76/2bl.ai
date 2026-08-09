@@ -10,8 +10,8 @@
 // blocks -> N+1 slots), replacing the old bottom-only "Add text"/"Add
 // photo" buttons; text content commits on every keystroke (onContentChange
 // only — there is no onContentCommit/blur step anymore).
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, fireEvent, screen } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { BlockCanvas, type SessionImage } from './BlockCanvas';
 import type { MemoryBlock } from '@/services/chat/ui/v1/useMemories';
 
@@ -81,6 +81,37 @@ describe('BlockCanvas — image blocks', () => {
     renderCanvas([{ id: 'b1', type: 'image', media_item_id: 'gone' }], { sessionImages: [] });
     expect(screen.getByText('Photo unavailable')).toBeInTheDocument();
     expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  describe('re-resolving an expired sessionImages url (useFreshImageUrl)', () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input.toString();
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    beforeEach(() => {
+      fetchMock.mockClear();
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    it('shows the stale sessionImages url immediately, then swaps the <img> src to the freshly-fetched one', async () => {
+      fetchMock.mockImplementation(async (input) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url === '/api/media/media-1/url') {
+          return { ok: true, status: 200, json: async () => ({ url: 'https://example.test/fresh.jpg' }) } as Response;
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+
+      renderCanvas([{ id: 'b1', type: 'image', media_item_id: 'media-1' }], {
+        sessionImages: [{ id: 'media-1', url: 'https://example.test/stale.jpg', filename: 'lake.jpg' }],
+      });
+
+      const img = screen.getByAltText('lake.jpg');
+      expect(img).toHaveAttribute('src', 'https://example.test/stale.jpg');
+
+      await waitFor(() => expect(img).toHaveAttribute('src', 'https://example.test/fresh.jpg'));
+    });
   });
 });
 

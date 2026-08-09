@@ -437,13 +437,25 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 - **Images in chat threads don't reliably reload when scrolling back to
   them — found 2026-08-08 during live-preview testing of the scroll-to-latest
   nudge.** Scrolling away from and back to an earlier image attachment in the
-  transcript sometimes shows it failed/blank rather than the image. Not yet
-  root-caused. Candidates worth checking first: browser image caching
-  behavior on the signed Supabase Storage URL (may be short-lived/expiring),
-  whether `MessageList`/`ChatThread` re-mounts or re-fetches anything on
-  scroll-into-view, or a lazy-loading attribute interacting badly with scroll
-  position changes. No fix attempted yet — needs investigation before a fix
-  is scoped.
+  transcript sometimes shows it failed/blank rather than the image.
+  **Root cause confirmed 2026-08-09**, while fixing the same symptom in the
+  memory panel: every `sessionImages`/`mediaItems` `url` is a signed Supabase
+  Storage URL (`generateSignedDownloadUrl`, `services/media/storage.ts`)
+  issued with a **60-second expiry**, fetched once at session load
+  (`services/media/display-url.ts`'s batch `withDisplayUrl`) or on a Realtime
+  update, and never refreshed — any `<img>` rendered off that value more than
+  a minute later is broken. The fix is `services/media/useFreshImageUrl.ts`,
+  a hook that re-resolves a specific `media_item_id`'s url via the existing
+  `GET /api/media/[id]/url` right at display time, showing the possibly-stale
+  value immediately as a fallback while the fresh fetch resolves. Applied
+  2026-08-09 to the memory panel's four photo-display spots
+  (`BlockCanvas.tsx`'s `ImageBlockRow`, `MemoryCard.tsx`'s draft-state image
+  and `MemorySavedReceipt`'s thumbnail — `MemoryCardView.tsx`'s hero image
+  renders through `ImageBlockRow` too, so it's covered by the same edit).
+  **Still open here**: `MessageList`/`ChatThread`'s chat-transcript image
+  attachments read `mediaItems`/`sessionImages` the same way and hit the same
+  60s expiry — wiring `useFreshImageUrl` into that render spot the same way
+  should close this entry, but hasn't been done yet.
 
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
