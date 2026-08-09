@@ -100,15 +100,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // copy of the same server state.
   const memories = useMemories(state.sessionId);
 
-  // Memory panel (memory-panel-layout plan, Stage A). Desktop only through
-  // Stage E — Stage F is the dedicated mobile counterpart; until then a
-  // resize down to mobile width while a panel is open simply drops it (see
-  // the render guards below), rather than half-rendering a broken layout.
-  // `openMemory` is which anchor is open (kept even if the underlying row
-  // hasn't loaded yet); `liveOpenMemory` re-derives the actual row to render
-  // from the shared `memories` list on every render, so a title rename made
-  // through the panel itself (below) shows up immediately without a second
-  // sync step.
+  // Memory panel (memory-panel-layout plan, Stages A-E desktop; Stage F
+  // 2026-08-09 adds mobile as a full-screen overlay — see the render guards
+  // below). `openMemory` is which anchor is open (kept even if the
+  // underlying row hasn't loaded yet); `liveOpenMemory` re-derives the
+  // actual row to render from the shared `memories` list on every render,
+  // so a title rename made through the panel itself (below) shows up
+  // immediately without a second sync step.
   const [openMemory, setOpenMemory] = useState<MemoryRow | null>(null);
   const liveOpenMemory = openMemory
     ? memories.memories.find(m => m.id === openMemory.id) ?? openMemory
@@ -385,6 +383,34 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         )}
 
+        {/* Mobile: memory panel is a full-screen overlay (Stage F,
+            2026-08-09) — distinct from Media's partial sheet above.
+            inset-0/h-[100dvh], no rounding, no border-t: unlike Media's
+            85vh sheet there's no exposed background around the edges to
+            dim or round off. No scrim either, for the same reason — a
+            fully opaque inset-0 overlay leaves nothing behind it to dim or
+            catch a dismiss-tap on (Media's scrim earns its keep on the
+            visible strip above its 85vh sheet; this has no such strip).
+            Reuses hl-animate-sheet as-is rather than a slower one-off
+            duration, keeping one motion system app-wide. */}
+        {isMobile && openMemory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Memory">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              {liveOpenMemory && (
+                <MemoryCardView
+                  memory={liveOpenMemory}
+                  onClose={() => setOpenMemory(null)}
+                  onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
+                  onRemove={() => setPendingDelete({ target: 'memory', id: liveOpenMemory.id, title: liveOpenMemory.title })}
+                  onStub={handleMemoryStub}
+                  onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
+                  sessionImages={sessionImages}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
             width of its own (below), so chat just gets whatever's left; it
             no longer needs a matching ratio to divide against. Floored at
@@ -407,7 +433,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                     messages={state.messages}
                     isLoading={state.isLoading}
                     errorType={errorType}
-                    onOpenMemory={isMobile ? undefined : handleOpenMemory}
+                    onOpenMemory={handleOpenMemory}
                     memories={memories}
                     onStub={handleMemoryStub}
                     sessionImages={sessionImages}
@@ -454,8 +480,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             animating 300ms behind it. The wrapper stays mounted whenever
             !isMobile so open/close can still transition; content itself
             only renders while a memory or media is open. Desktop only —
-            mobile media uses its own bottom sheet above; Stage F would add
-            a mobile memory-panel counterpart if ever built. */}
+            mobile media and mobile memory (Stage F) both use their own
+            full-screen/sheet overlays above instead of this shared
+            resizable wrapper. */}
         {!isMobile && (
           <div
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${

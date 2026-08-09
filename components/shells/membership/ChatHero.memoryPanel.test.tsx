@@ -367,30 +367,7 @@ describe('Memory panel — Remove confirmation (2026-08-08)', () => {
   });
 });
 
-// happy-dom's real matchMedia evaluates `(max-width: 768px)` against
-// window.innerWidth — same technique ChatHero.kebabDelete.test.tsx already
-// uses to reach the mobile branch.
-describe('Memory panel — Stage A is desktop-only (390px)', () => {
-  beforeEach(() => {
-    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
-      width: 390,
-    });
-  });
-
-  afterEach(() => {
-    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
-      width: 1024,
-    });
-  });
-
-  it('the saved receipt has no button role at mobile widths — nothing to click yet', async () => {
-    render(
-      <ChatProvider>
-        <ChatHero />
-      </ChatProvider>,
-    );
-
-    await waitFor(() => expect(screen.getAllByText('The Lake House').length).toBeGreaterThan(0));
-    expect(screen.queryByRole('button', { name: /The Lake House/i })).toBeNull();
-  });
-});
+// Mobile coverage (the receipt IS clickable at mobile widths, opening the
+// full-screen panel) lives in ChatHero.mobileMemoryPanel.test.tsx as of
+// Stage F (2026-08-09) — this file used to assert the opposite ("no button
+// role at mobile widths"), which Stage F makes false by design.
