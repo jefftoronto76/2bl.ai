@@ -11,6 +11,7 @@ import {
   type MediaItem,
 } from './index'
 import { generateLongLivedSignedUrl, generateSignedDownloadUrl, objectExists } from './storage'
+import { callVisionTool, type VisionTool } from './vision-tool'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL = 'claude-sonnet-4-6'
@@ -182,17 +183,41 @@ async function processAudio(
 }
 
 /**
- * Strips a ```json ... ``` (or plain ``` ... ```) markdown code fence that
- * Claude sometimes wraps its response in, despite the "Return JSON only"
- * instruction below — a real, observed failure mode: JSON.parse throws on
- * the fence markers themselves, since ` ```json\n{...}\n``` ` isn't valid
- * JSON on its own. Returns the input unchanged when no fence is present, so
- * this is always safe to run before parsing regardless of which shape the
- * model actually returned.
+ * The tool `processImage`'s vision call forces via callVisionTool
+ * (services/media/vision-tool.ts) — its input_schema is what constrains
+ * the model's output now, replacing the old "Return JSON only: {...}" text
+ * instruction. Exactly the three fields the prior prompt asked for; do not
+ * add or drop fields here without also updating what processImage reads
+ * off the result.
  */
-function stripCodeFence(text: string): string {
-  const fenced = text.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
-  return fenced ? fenced[1] : text
+interface VisionAnalysis {
+  caption: string
+  classification: string
+  extracted_text: string
+}
+
+const VISION_ANALYSIS_TOOL: VisionTool = {
+  name: 'record_image_analysis',
+  description:
+    'Record a description of the provided image, a short classification for it, and any text visible within it.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      caption: {
+        type: 'string',
+        description: 'A description of the image.',
+      },
+      classification: {
+        type: 'string',
+        description: 'A short classification label for the image (e.g. photo, screenshot, document, receipt).',
+      },
+      extracted_text: {
+        type: 'string',
+        description: 'Any text visible in the image. Empty string if none.',
+      },
+    },
+    required: ['caption', 'classification', 'extracted_text'],
+  },
 }
 
 interface GpsCoordinates {
@@ -243,7 +268,11 @@ async function extractGpsCoordinates(signedUrl: string, item: MediaItem): Promis
 }
 
 // ---------------------------------------------------------------------------
-// Image analysis via Claude Haiku vision.
+// Image analysis via Claude Haiku vision, using forced tool-use
+// (callVisionTool, services/media/vision-tool.ts) for structured output —
+// see that file's doc comment for why. Anthropic's structured-output tool
+// contract guarantees the input already matches VISION_ANALYSIS_TOOL's
+// schema, so no parsing happens here on the happy path.
 // ---------------------------------------------------------------------------
 async function processImage(
   item: MediaItem,
@@ -300,37 +329,13 @@ async function processImage(
     })
   }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
+  let result: VisionAnalysis | null
+  try {
+    result = await callVisionTool<VisionAnalysis>(signedUrl, VISION_ANALYSIS_TOOL, apiKey, {
       model: HAIKU_MODEL,
-      max_tokens: 512,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'url', url: signedUrl },
-            },
-            {
-              type: 'text',
-              text: 'Describe this image, classify it, and extract any visible text. Return JSON only: {"caption": "...", "classification": "...", "extracted_text": "..."}',
-            },
-          ],
-        },
-      ],
-    }),
-  })
-
-  if (!res.ok) {
-    const body = await res.text()
-    const errorMessage = `Anthropic vision error: ${res.status} ${body}`
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
     if (isMediaAuditEnabled()) {
       await logAiMediaEvent({
         tenant_id: item.tenant_id,
@@ -346,45 +351,37 @@ async function processImage(
         },
       })
     }
-    throw new Error(errorMessage)
+    throw err
   }
 
-  const data = await res.json()
-  const textBlock = data.content?.find((b: { type: string }) => b.type === 'text')
-  if (!textBlock?.text) throw new Error('No text block returned from Anthropic vision')
-
-  let caption = ''
-  let classification = 'photo'
-  let extracted_text = ''
-  try {
-    const parsed = JSON.parse(stripCodeFence(textBlock.text))
-    caption = parsed.caption ?? ''
-    classification = parsed.classification ?? 'photo'
-    extracted_text = parsed.extracted_text ?? ''
-  } catch (err) {
-    // Still not parseable JSON even after stripping a markdown fence — the
-    // model returned something genuinely malformed, not just fenced. The old
-    // fallback stored the ENTIRE raw response (braces, field names, fence
-    // markers, everything) verbatim as the caption — this is a memory's
-    // actual title/body once bookmarked (createPhotoMemoryFromMedia,
-    // services/crm/memories.ts), so a member would see broken JSON as their
-    // own memory's passage. A fixed, safe placeholder is better than that,
-    // and — unlike an empty string — still non-empty, since
+  let caption: string
+  let classification: string
+  let extracted_text: string
+  if (result) {
+    caption = result.caption ?? ''
+    classification = result.classification ?? 'photo'
+    extracted_text = result.extracted_text ?? ''
+  } else {
+    // callVisionTool already tried its own fence-stripped-JSON fallback
+    // internally and still came back empty — an API-level edge case (the
+    // model ignored the forced tool_choice AND returned no recoverable
+    // text), not the common path. The old fallback here stored the ENTIRE
+    // raw response verbatim as the caption — this is a memory's actual
+    // title/body once bookmarked (createPhotoMemoryFromMedia,
+    // services/crm/memories.ts), so a member would see broken output as
+    // their own memory's passage. A fixed, safe placeholder is better than
+    // that, and — unlike an empty string — still non-empty, since
     // createPhotoMemoryFromMedia's 409 "not ready" gate treats an empty
     // derived_content as not-yet-processed and would otherwise leave this
-    // photo permanently unbookmarkable. Length/presence only in the log,
-    // never the raw model text (CLAUDE.md's audit-logging rule) — deliberately
-    // NOT err.message: JSON.parse's own SyntaxError embeds a snippet of the
-    // invalid input verbatim (e.g. `Unexpected token 'o', "not json..." is
-    // not valid JSON`), so logging it would leak the very content this is
-    // trying to keep out of the logs. error_type (the constructor name) is
-    // still useful for debugging without that risk.
-    console.error('[media/processor] vision response was not valid JSON, even after fence-stripping', {
+    // photo permanently unbookmarkable. No raw model text is available at
+    // this layer to log even if we wanted to (CLAUDE.md's audit-logging
+    // rule) — callVisionTool never surfaces it back on this path.
+    console.error('[media/processor] vision tool call returned no usable output', {
       media_item_id: item.id,
-      error_type: err instanceof Error ? err.name : typeof err,
-      raw_text_length: textBlock.text.length,
     })
     caption = 'A photo.'
+    classification = 'photo'
+    extracted_text = ''
   }
 
   if (isMediaAuditEnabled()) {
