@@ -635,15 +635,43 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     (`getLinkedMediaItemId()`) but has no live trigger — no field on
     `MemoryRow` represents a linked photo yet (that's the still-unbuilt
     photo-bookmark work below), and none was invented to force it.
-    **Still not built, and not fixed by this:** the per-upload "photo
-    bookmark" work above (a message with several photos still can't become
-    several memories automatically) — image blocks are a manual,
-    member-driven workaround for viewing/attaching a known photo, not a fix
-    for that anchor collision; see the design-doc trail
-    (`Design Handovers/design_handoff_memory_canvas_08_2026/`) for the
-    concrete, still-unbuilt blueprint for that separate fix. Also unaffected:
-    add-to-memory, GPS indicator, memory canvas sorting/filtering, and Stage
-    F (mobile slide-up panel, still blocked on this same sequencing note).
+    **The per-upload "photo bookmark" gap this left is now fixed — see the
+    Photo Bookmark entry directly below, shipped later the same day.** Image
+    blocks in this panel remain a separate, manual workaround for
+    viewing/attaching an already-known photo — unaffected by, and not a
+    duplicate of, the photo bookmark's own creation path. Still unaffected
+    by either: add-to-memory (`PhotoUploadActions.tsx`'s "+" and
+    `MemorySavedReceipt`'s own "+" are both stubs — no `photo_artifacts`
+    write path exists), GPS indicator (no GPS-extraction pipeline exists;
+    the badge's structural support is in place and simply never fires),
+    memory canvas sorting/filtering, and Stage F (mobile slide-up panel,
+    still blocked on this same sequencing note).
+  - **Photo Bookmark shipped 2026-08-08 (same day as Memory Canvas V1
+    above, later in the day).** `PhotoUploadActions.tsx` renders a Bookmark +
+    "+" action row below every ready photo thumbnail in the transcript
+    (`MessageList.tsx`'s upload map) — placement corrected mid-build from an
+    overlay-on-the-photo spec (`Design Handovers/design_handoff_memory_canvas_08_2026/PhotoUploadActions.tsx`)
+    to a separate row below it, per a second, more recent reference
+    (`chat-widget-canvas.jsx`'s `UploadThumb`). Bookmark calls a new
+    creation path, `createPhotoMemoryFromMedia` (`services/crm/memories.ts`,
+    `Utilities/CRM.md`'s `memories.ts` row) — sibling to
+    `createMemoryFromAnchor`, not a branch inside it — which titles/bodies
+    the memory from the photo's own AI-generated caption
+    (`media_items.derived_content`, never trusted from the client) rather
+    than the anchor message's text, fixing the standing gap where a
+    caption-less photo message had no bookmark control anywhere (the old
+    whole-message bookmark only rendered alongside caption text). This also
+    fixes the **anchor-collision bug** the "still not built" note above
+    flagged: `artifacts.media_item_id` (see `Database Schema.md`'s
+    `artifacts` row — corrected the same day from a wrong "likely leftover"
+    guess once this wired it up for real) is now populated alongside
+    `anchor_message_id`, and `useMemories.ts` composes both into a lookup
+    key, so two photos on the same chat message resolve to two independent
+    memories instead of colliding. "+" (add to a memory) on the photo row,
+    and a new stubbed "+" on `MemorySavedReceipt` (add to a story, same
+    pattern as `MemoryCardView`'s own header "+"), both fire the existing
+    "coming soon" toast — neither is real; `photo_artifacts` (the actual
+    many-to-many write path either would need) is still unbuilt.
   - **`ScrollToLatestButton`'s 48px visibility threshold and
     `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
     2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
