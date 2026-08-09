@@ -254,21 +254,18 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
       {/* Body — scrolls independently of the fixed header and footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="px-[18px] pb-8 pt-4">
-          {/* Media block — a placeholder box per kind, same convention as
-              MemoryCard.tsx's draft card (no real thumbnail/waveform exists
-              anywhere in this codebase yet — see memoryKinds.ts's own doc
-              comment). Omitted entirely for kinds with no media (e.g. a
-              plain conversation memory) — no empty box, no layout gap. */}
-          {kind.media && (
-            <div className="mb-4 flex h-32 items-center justify-center rounded-[13px] border border-dashed border-border bg-surface-2">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
-                {kind.media === 'still' && 'Photo'}
-                {kind.media === 'video' && 'Video'}
-                {kind.media === 'audio' && 'Recording'}
-                {kind.media === 'page' && 'Document'}
-              </span>
-            </div>
-          )}
+          {/* No separate media placeholder here (removed 2026-08-08, Photo
+              Bookmark pass) — the block canvas below is the single source
+              of truth for a memory's media. It used to render its own
+              dashed "Photo"/"Video"/"Recording"/"Document" box per
+              memoryKinds.ts's kind.media unconditionally, alongside the
+              canvas — harmless while getLinkedMediaItemId always returned
+              undefined (no image block ever rendered to duplicate), but a
+              real photo-bookmarked memory now gets a real image block
+              first via buildDefaultBlocks(), which would have shown BOTH
+              the old placeholder AND the real photo. MemoryCard.tsx's
+              draft-card equivalent is untouched — it has no block canvas
+              to duplicate against. */}
           {/* Passage — block canvas (Memory Canvas V1), always. No
               separate "Edit mode," no pencil affordance — matches the
               reference prototype's always-editable presentation. */}

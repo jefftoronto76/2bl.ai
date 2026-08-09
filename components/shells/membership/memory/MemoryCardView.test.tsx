@@ -158,13 +158,27 @@ describe('MemoryCardView — header', () => {
   });
 });
 
-describe('MemoryCardView — media block', () => {
-  it('renders a placeholder box for a photo-kind memory', () => {
-    renderCard({ source_kind: 'photo' });
-    expect(screen.getByText('Photo')).toBeInTheDocument();
+describe('MemoryCardView — media block removed (2026-08-08, Photo Bookmark pass)', () => {
+  it('never renders the old dashed media placeholder for a photo-kind memory — the block canvas is the only media presentation now', () => {
+    const { container } = renderCard({ source_kind: 'photo' });
+    expect(screen.queryByText('Photo')).toBeNull();
+    expect(container.querySelector('.border-dashed')).toBeNull();
   });
 
-  it('renders nothing for a conversation-kind memory — no empty box', () => {
+  it('a photo-bookmarked memory (media_item_id populated) renders its real photo ONCE, via the block canvas — no duplicate placeholder alongside it', () => {
+    const { container } = renderCard(
+      { source_kind: 'photo', media_item_id: 'media-1', body_blocks: null },
+      [{ id: 'media-1', url: 'https://example.test/a.jpg', filename: 'a.jpg' }],
+    );
+    // The real photo, via BlockCanvas's ImageBlockRow — not a placeholder box.
+    expect(screen.getByAltText('a.jpg')).toBeInTheDocument();
+    expect(screen.queryByText('Photo')).toBeNull();
+    expect(container.querySelector('.border-dashed')).toBeNull();
+    // Passage still renders as the text block after it, per buildDefaultBlocks.
+    expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('It was a quiet summer by the lake.');
+  });
+
+  it('renders nothing for a conversation-kind memory — unaffected, same as before', () => {
     const { container } = renderCard({ source_kind: 'conversation' });
     expect(screen.queryByText('Photo')).toBeNull();
     expect(container.querySelector('.border-dashed')).toBeNull();
