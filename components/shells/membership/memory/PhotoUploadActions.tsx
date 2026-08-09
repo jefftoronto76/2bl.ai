@@ -16,10 +16,12 @@
  * with the [@media(hover:none)] fallback kept, same convention as every
  * other hover-gated action in this app tonight (BlockCanvas.tsx's remove
  * button, MemoryCard.tsx's title-edit pencil). GPS is a STATUS, not an
- * action: renders first, never hover-gated, no onClick. Nothing in this
- * codebase sets gpsFound (no GPS-extraction pipeline exists yet) — it never
- * actually renders — but the structural support stays a real prop rather
- * than being hardcoded away, so wiring a real signal in later is additive.
+ * action: renders first, never hover-gated, no onClick. Wired to a real
+ * signal (2026-08-08, GPS Extraction) — MessageList.tsx passes
+ * `mediaItem.latitude`/`.longitude` (services/media/processor.ts's
+ * extractGpsCoordinates) — so this renders whenever the photo's own EXIF
+ * actually carried GPS data; most photos won't (screenshots, downloads,
+ * location services off), so it stays absent for the common case.
  *
  * Icon hit targets are 28px (h-7 w-7) circular, per the design spec.
  */

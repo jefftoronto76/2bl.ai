@@ -563,6 +563,7 @@ function makeRenderUserMessage(
                 onAddToMemory={() => onStub?.('Coming soon')}
                 hasMemory={!!memories.getByAnchor(msg.id, u.mediaItemId)}
                 keepDisabled={keepDisabled(msg.id, u.mediaItemId)}
+                gpsFound={typeof mediaItem?.latitude === 'number' && typeof mediaItem?.longitude === 'number'}
               />
               {renderMemorySlotFn(msg.id, 'photo', u.mediaItemId)}
             </div>

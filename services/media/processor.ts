@@ -1,3 +1,4 @@
+import { gps as exifrGps } from 'exifr'
 import { AuditAction } from '@/services/audit/types'
 import { extractText, type MediaAuditContext } from '@/services/content/assets'
 import {
@@ -194,6 +195,53 @@ function stripCodeFence(text: string): string {
   return fenced ? fenced[1] : text
 }
 
+interface GpsCoordinates {
+  latitude: number | null
+  longitude: number | null
+}
+
+/**
+ * GPS Extraction (2026-08-08) — downloads the photo's own bytes (same
+ * fetch-the-signed-url-directly pattern processDocument uses below, not
+ * exifr's own Node URL-polyfill, so this is mockable/testable the same way
+ * every other network call in this file already is) and reads its EXIF GPS
+ * tags via `exifr.gps()`, which parses just the GPS IFD (a fast, targeted
+ * read, not a full EXIF parse) and already converts the EXIF GPS block's
+ * raw degrees/minutes/seconds triplet to a single signed decimal-degree
+ * value itself — no separate DMS-to-decimal conversion is needed here
+ * (verified against a real fixture with known GPS EXIF,
+ * services/media/processor.test.ts).
+ *
+ * Most photos carry NO GPS data at all — screenshots, downloads, a member
+ * with location services off — so `exifr.gps()` resolving to `undefined`
+ * is the expected COMMON case, not a failure: this returns null/null
+ * silently, no log, no audit event. A genuine failure (the download itself
+ * failing, corrupt/truncated EXIF, an unsupported format) is caught here
+ * and ALSO degrades to null/null — this must never throw, and must never
+ * block or fail the vision step that follows it, or the upload itself.
+ * Logged via console.error (not audit_events), same precedent as this
+ * file's own vision-JSON-parse-failure handling just below — length/type
+ * only, never raw EXIF bytes.
+ */
+async function extractGpsCoordinates(signedUrl: string, item: MediaItem): Promise<GpsCoordinates> {
+  try {
+    const res = await fetch(signedUrl)
+    if (!res.ok) throw new Error(`Failed to download file for GPS extraction: ${res.status}`)
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const gps = await exifrGps(buffer)
+    if (!gps || typeof gps.latitude !== 'number' || typeof gps.longitude !== 'number') {
+      return { latitude: null, longitude: null }
+    }
+    return { latitude: gps.latitude, longitude: gps.longitude }
+  } catch (err) {
+    console.error('[media/processor] GPS extraction failed, continuing without coordinates', {
+      media_item_id: item.id,
+      error_type: err instanceof Error ? err.name : typeof err,
+    })
+    return { latitude: null, longitude: null }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Image analysis via Claude Haiku vision.
 // ---------------------------------------------------------------------------
@@ -224,6 +272,12 @@ async function processImage(
     }
     throw err
   }
+
+  // GPS extraction runs first, off the same signed URL, while it's freshest
+  // (60s expiry, generateSignedDownloadUrl) — independent of and never
+  // blocking the vision call below; see extractGpsCoordinates's own doc
+  // comment for why a miss or a parse failure both just resolve to null.
+  const { latitude, longitude } = await extractGpsCoordinates(signedUrl, item)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
@@ -357,6 +411,8 @@ async function processImage(
     derived_content: derived || caption,
     classification,
     processed_at: new Date().toISOString(),
+    latitude,
+    longitude,
   })
 
   if (isMediaAuditEnabled()) {
@@ -375,6 +431,8 @@ async function processImage(
         type: item.type,
         classification,
         derived_content_length: derived.length,
+        // Presence only, never the raw coordinates (CLAUDE.md's audit-logging rule).
+        gps_found: latitude !== null,
       },
     })
   }
