@@ -809,3 +809,29 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   no functional impact today, purely a maintenance hazard for future edits.
   Full selector-by-selector accounting: `System Docs/jefflougheed Chat
   Widget.md`'s §6.
+
+- **RESOLVED 2026-08-09 — `processDocument`'s classification pass was
+  vulnerable to the same class of risk as the image-vision fence-wrapping
+  bug, identified and fixed the same day.** `services/media/processor.ts`
+  used to ask Claude Haiku to classify extracted document text in one word
+  via a plain free-text instruction (`'Classify this document in one word
+  (e.g. letter, memoir, ...). Respond with only the single classification
+  word.'`), then stored `content[0].text.trim().toLowerCase()` directly as
+  `media_items.classification` — no validation, nothing stripping a
+  markdown fence or extra prose the model might prepend. It never hit the
+  exact bug the image-vision call did (no `JSON.parse()` involved, so
+  nothing threw), but the underlying exposure was the same: an
+  unconstrained free-text response with no defense before being persisted
+  verbatim. Found while documenting `callVisionTool` (the fix for the
+  image-vision bug, see `System Docs/Utilities/Media.md`'s tool-use
+  section) as a candidate second caller, then confirmed and fixed same-day
+  rather than left as a flagged-but-unaddressed note — the recurrence of
+  the same risk class was the signal this was worth generalizing and
+  closing immediately, not deferring. **Fix:** migrated the classification
+  call to the same forced-tool-use mechanism, via a new `callTextTool`
+  wrapper (`services/media/vision-tool.ts`) sharing its internal fetch/
+  parse/fallback core with `callVisionTool` — the response schema now
+  constrains the model's output at the API level, same as the image path.
+  Behavior preserved exactly: still best-effort, still defaults to
+  `'document'` on any failure, never a hard-failure path for this
+  sub-call.

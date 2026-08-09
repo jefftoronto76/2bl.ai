@@ -13,7 +13,7 @@ INSERTs the `media_items` row, which itself fires the processing webhook
 | File | Exports | Purpose |
 |------|---------|---------|
 | `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS` | The pipeline itself — see "The pipeline" below. |
-| `vision-tool.ts` | `callVisionTool`, `VisionTool` | Generic forced-tool-use helper for structured model output. See "The tool-use pattern" below. |
+| `vision-tool.ts` | `callVisionTool`, `callTextTool`, `AnthropicTool` | Generic forced-tool-use helpers for structured model output — image input and text input respectively, sharing one internal fetch/parse/fallback core. See "The tool-use pattern" below. |
 | `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent` (+ types) | `media_items` CRUD and the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape). `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
 | `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request, as the basis for `waitForStorageObject`'s retry loop. |
 | `useMediaUpload.ts` | client hook | Drives the client-side upload flow (signed URL request → direct PUT → `media_items` row creation), content-hash dedup. |
@@ -81,8 +81,10 @@ call.
 `extractText` (`services/content/assets.ts` — Anthropic document API for
 PDF, mammoth for DOCX, plain Buffer read for TXT; only the PDF path emits
 AI audit events), then a second, separate Haiku call classifies the
-extracted text in one word (still a free-text prompt, not tool-use — see
-below for why this hasn't been migrated).
+extracted text in one word via `callTextTool` (see below) — a best-effort
+pass: a missing `tool_use` block or a thrown error both fall back to the
+`'document'` default rather than failing the item, same as before this
+call was migrated to tool-use.
 
 ---
 
@@ -97,37 +99,52 @@ characters, and the item fell back to a degraded placeholder. A stopgap
 (strip the fence before parsing) shipped first; this was the structural
 fix.
 
-`callVisionTool<T>(imageUrl, tool, apiKey, options)` sends the image plus a
-**forced** `tool_choice` (`{ type: 'tool', name: tool.name }`) instead of
-a text instruction. The tool's `input_schema` (JSON Schema) constrains the
-model's output at the API level, not the prompt level — the model has no
-free-text channel available to wrap a fence around, and a `tool_use`
-block's `.input` arrives already parsed, so there is no `JSON.parse()` on
-the happy path at all. `processImage` defines the one tool in use today —
-`VISION_ANALYSIS_TOOL` in `processor.ts`, with `caption`/`classification`/
-`extracted_text` fields matching the original prompt exactly.
+Both `callVisionTool<T>(imageUrl, tool, apiKey, options)` and
+`callTextTool<T>(text, tool, apiKey, options)` send a **forced**
+`tool_choice` (`{ type: 'tool', name: tool.name }`) instead of a text
+instruction — they're thin wrappers (image input vs. text input
+respectively) around one shared internal function that does the actual
+fetch, `tool_use`-block extraction, and fallback logic. The tool's
+`input_schema` (JSON Schema) constrains the model's output at the API
+level, not the prompt level — the model has no free-text channel available
+to wrap a fence around (or pad with extra prose, for a plain-word
+response like a classification), and a `tool_use` block's `.input` arrives
+already parsed, so there is no `JSON.parse()` on the happy path at all.
+Two tools exist today: `VISION_ANALYSIS_TOOL` in `processor.ts`
+(`caption`/`classification`/`extracted_text`, used via `callVisionTool` by
+`processImage`) and `DOCUMENT_CLASSIFICATION_TOOL` (single
+`classification` field, used via `callTextTool` by `processDocument`'s
+classification pass) — both match their respective original prompts'
+guidance exactly.
 
-Error handling is two-tiered:
-- A non-ok HTTP response is a hard failure and throws — the caller (today,
-  `processImage`) decides what that means (failing the whole item).
+Error handling is two-tiered, for both wrappers:
+- A non-ok HTTP response is a hard failure and throws — the caller decides
+  what that means. `processImage` lets it fail the whole item;
+  `processDocument`'s classification pass catches it and falls back to the
+  `'document'` default instead, since that call has always been
+  best-effort.
 - A response that comes back `ok` but without a matching `tool_use` block
   is an API-level edge case with forced `tool_choice`, not the common
-  path — `callVisionTool` does not throw for this. As defense-in-depth
-  only, it looks for a `text` block and retries the old
+  path — neither wrapper throws for this. As defense-in-depth only, the
+  shared core looks for a `text` block and retries the old
   fence-stripped-`JSON.parse()` recovery; if that also fails, or there's no
   text block, it resolves to `null`. Callers must handle `null` explicitly
   — `processImage`'s `null` branch is exactly the old JSON-parse-failure
-  fallback, reused.
+  fallback, reused; `processDocument`'s treats it the same as an ordinary
+  "response ok but no usable word" outcome, keeping the default.
 
 **This is the intended pattern for any future "backend job needs
 structured output from a model, with no ongoing conversation" case in this
-codebase.** `callVisionTool` is generic over `T` and takes an arbitrary
-`VisionTool` definition (`name`, `description`, `input_schema`) — a second
-caller defines its own tool and schema and calls the same function; nothing
-in it is media-specific beyond living in this directory today.
-`processDocument`'s classification call (see above) is a candidate for this
-same migration but was left as free text — out of scope for the change
-that introduced this pattern.
+codebase.** Both wrappers are generic over `T` and take an arbitrary
+`AnthropicTool` definition (`name`, `description`, `input_schema`) — a
+third caller defines its own tool and schema and calls whichever wrapper
+matches its input shape (or, if neither image nor plain text fits, extends
+the shared internal function with a new thin wrapper the same way
+`callTextTool` was added); nothing here is media-specific beyond living in
+this directory today. `processDocument`'s classification call was the
+first non-image caller and the reason the shared core was extracted from
+`callVisionTool` in the first place — extracted on this second real
+caller, not preemptively.
 
 ### Not the marker system
 
@@ -141,8 +158,10 @@ different situations:
   visitor or member is having with the AI. The registry detects and strips
   them from the displayed text while the conversation continues around
   them.
-- **Tool-use (`callVisionTool`)** is for a **standalone backend job** — no
-  conversation is happening, and no prose response is wanted at all, ever.
-  `processImage` classifying an uploaded photo is the only caller today.
+- **Tool-use (`callVisionTool`/`callTextTool`)** is for a **standalone
+  backend job** — no conversation is happening, and no prose response is
+  wanted at all, ever. `processImage` classifying an uploaded photo and
+  `processDocument` classifying extracted document text are the two
+  callers today.
 
 Neither pattern replaces the other.
