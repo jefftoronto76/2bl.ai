@@ -640,12 +640,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     blocks in this panel remain a separate, manual workaround for
     viewing/attaching an already-known photo — unaffected by, and not a
     duplicate of, the photo bookmark's own creation path. Still unaffected
-    by either: add-to-memory (`PhotoUploadActions.tsx`'s "+" and
+    by: add-to-memory (`PhotoUploadActions.tsx`'s "+" and
     `MemorySavedReceipt`'s own "+" are both stubs — no `photo_artifacts`
-    write path exists), GPS indicator (no GPS-extraction pipeline exists;
-    the badge's structural support is in place and simply never fires),
-    memory canvas sorting/filtering, and Stage F (mobile slide-up panel,
-    still blocked on this same sequencing note).
+    write path exists), memory canvas sorting/filtering, and Stage F (mobile
+    slide-up panel, still blocked on this same sequencing note). **GPS
+    indicator — no longer a gap, closed same night via GPS Extraction (PR
+    #316):** the badge's structural support referenced here is no longer
+    just structural — `media_items.latitude`/`longitude` are now live-written
+    on every photo upload (`services/media/processor.ts`'s
+    `extractGpsCoordinates`, see `System Docs/Database Schema.md`'s
+    `media_items` row) and the badge genuinely renders whenever a photo's own
+    EXIF carried GPS data (`MessageList.tsx`'s `gpsFound` prop into
+    `PhotoUploadActions.tsx`) — absent only for the common case of a photo
+    with no GPS EXIF (screenshots, downloads, location services off), not
+    because the pipeline is missing.
   - **Photo Bookmark shipped 2026-08-08 (same day as Memory Canvas V1
     above, later in the day).** `PhotoUploadActions.tsx` renders a Bookmark +
     "+" action row below every ready photo thumbnail in the transcript
