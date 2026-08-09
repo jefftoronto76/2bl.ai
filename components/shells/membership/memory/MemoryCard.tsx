@@ -39,6 +39,7 @@ import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
 import type { SessionImage } from './BlockCanvas'
+import { useFreshImageUrl } from '@/services/media/useFreshImageUrl'
 
 /** Aligns every card/pill/receipt with the assistant avatar rail (w-8) they sit below. */
 const RAIL = 'w-8 shrink-0'
@@ -127,6 +128,9 @@ export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] 
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
+  // sessionImages' url expires 60s after it was fetched — re-resolve it
+  // right at display time (see services/media/useFreshImageUrl.ts).
+  const { url: freshImageUrl } = useFreshImageUrl(linkedImage?.id, linkedImage?.url)
 
   return (
     <div className="flex gap-3">
@@ -149,7 +153,7 @@ export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] 
         {linkedImage ? (
           <span className="block size-[34px] shrink-0 overflow-hidden rounded-[9px] border border-border">
             {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow, a signed URL that changes shape/expiry too often to benefit from next/image */}
-            <img src={linkedImage.url} alt={linkedImage.filename} className="block size-full object-cover" />
+            <img src={freshImageUrl} alt={linkedImage.filename} className="block size-full object-cover" />
           </span>
         ) : (
           <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
@@ -211,6 +215,9 @@ export interface MemoryCardProps {
 export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages = [] }: MemoryCardProps) {
   const kind = memoryKindOf(memory.source_kind)
   const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
+  // sessionImages' url expires 60s after it was fetched — re-resolve it
+  // right at display time (see services/media/useFreshImageUrl.ts).
+  const { url: freshImageUrl } = useFreshImageUrl(linkedImage?.id, linkedImage?.url)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const [toast, setToast] = useState<string | null>(null)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -253,7 +260,7 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages
             linkedImage ? (
               <div className="mb-4 overflow-hidden rounded-[10px] border border-border">
                 {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow / UploadThumbnail.tsx, a signed URL that changes shape/expiry too often to benefit from next/image */}
-                <img src={linkedImage.url} alt={linkedImage.filename} className="block max-h-80 w-full object-contain" />
+                <img src={freshImageUrl} alt={linkedImage.filename} className="block max-h-80 w-full object-contain" />
               </div>
             ) : (
               <div className="mb-4 flex h-32 items-center justify-center rounded-[10px] border border-dashed border-border bg-surface-2">

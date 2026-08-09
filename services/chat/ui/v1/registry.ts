@@ -18,6 +18,7 @@ import type {
   MarkerRegistry,
   ParsedMarker,
 } from './types'
+import { MEDIA_UPLOAD_PATTERN_SOURCE, MEDIA_UPLOAD_FAILED_PATTERN_SOURCE } from './mediaMarkerPatterns'
 
 /** The BOOKING marker — `[BOOKING: label | description | cta_label | url]`. */
 export const BOOKING_MARKER: MarkerDefinition = {
@@ -125,13 +126,14 @@ export const MEMORY_TITLE_MARKER: MarkerDefinition = {
  * memory's title/body — the bug this was added to fix, 2026-08-08 (a photo
  * message bookmarked via the whole-message "Keep this as a memory" button
  * showed raw `[MEDIA_UPLOAD: ...]` text as the memory's title and body,
- * since this marker had never been registered here). The two parsers match
- * the same real syntax independently — keep them in sync if the upload
- * marker's shape ever changes.
+ * since this marker had never been registered here). The pattern itself is
+ * defined once in `mediaMarkerPatterns.ts` — both this registration and
+ * `MessageList.tsx`'s parser build their own RegExp off that shared source,
+ * so the two parsers can no longer drift out of sync.
  */
 export const MEDIA_UPLOAD_MARKER: MarkerDefinition = {
   type: 'MEDIA_UPLOAD',
-  pattern: /\[MEDIA_UPLOAD:\s*([^|\]]*)\|\s*([^|\]]*)\|\s*([^\]]*)\]/g,
+  pattern: new RegExp(MEDIA_UPLOAD_PATTERN_SOURCE, 'g'),
   fieldCount: 3,
   dispatch: 'client',
 }
@@ -143,10 +145,12 @@ export const MEDIA_UPLOAD_MARKER: MarkerDefinition = {
  * 'client' (MessageList.tsx's own `MEDIA_FAILED_RE` is the real consumer,
  * rendering `FailedUploadChip`) — registered here purely so it strips
  * cleanly from prose everywhere else, rather than leaking raw bracket text.
+ * Pattern source is shared with that parser via `mediaMarkerPatterns.ts`,
+ * same as MEDIA_UPLOAD_MARKER above.
  */
 export const MEDIA_UPLOAD_FAILED_MARKER: MarkerDefinition = {
   type: 'MEDIA_UPLOAD_FAILED',
-  pattern: /\[MEDIA_UPLOAD_FAILED:\s*([^\]]*)\]/g,
+  pattern: new RegExp(MEDIA_UPLOAD_FAILED_PATTERN_SOURCE, 'g'),
   fieldCount: 1,
   dispatch: 'client',
 }

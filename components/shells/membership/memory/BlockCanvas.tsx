@@ -27,6 +27,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, Plus, Type, X } from 'lucide-react'
 import type { MemoryBlock } from '@/services/chat/ui/v1/useMemories'
+import { useFreshImageUrl } from '@/services/media/useFreshImageUrl'
 
 export interface SessionImage {
   id: string
@@ -81,6 +82,10 @@ function TextBlockRow({
 
 function ImageBlockRow({ block, sessionImages }: { block: MemoryBlock; sessionImages: SessionImage[] }) {
   const image = sessionImages.find((img) => img.id === block.media_item_id)
+  // sessionImages' url expires 60s after it was fetched (see
+  // services/media/useFreshImageUrl.ts) — re-resolve it right at display
+  // time rather than trusting whatever was fetched at session load.
+  const { url } = useFreshImageUrl(image?.id, image?.url)
   if (!image) {
     // A stale/removed media item, or one this member no longer has access
     // to — graceful degradation (CLAUDE.md), not a broken <img>.
@@ -93,7 +98,7 @@ function ImageBlockRow({ block, sessionImages }: { block: MemoryBlock; sessionIm
   return (
     <div className="overflow-hidden rounded-[13px] border border-border">
       {/* eslint-disable-next-line @next/next/no-img-element -- same convention as UploadThumbnail.tsx, which also renders a signed URL that changes shape/expiry too often to benefit from next/image */}
-      <img src={image.url} alt={image.filename} className="block max-h-80 w-full object-contain" />
+      <img src={url} alt={image.filename} className="block max-h-80 w-full object-contain" />
     </div>
   )
 }
