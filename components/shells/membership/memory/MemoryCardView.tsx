@@ -211,7 +211,7 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
   })
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col bg-background">
       {/* Header — title + eyebrow/date meta. Two actions: add to a story (stubbed), close. */}
       <header className="flex-shrink-0 border-b border-border px-[18px] py-[14px]">
         <div className="flex items-center gap-2">
