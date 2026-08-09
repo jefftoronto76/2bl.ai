@@ -11,7 +11,7 @@ import {
   type MediaItem,
 } from './index'
 import { generateLongLivedSignedUrl, generateSignedDownloadUrl, objectExists } from './storage'
-import { callVisionTool, type VisionTool } from './vision-tool'
+import { callVisionTool, callTextTool, type AnthropicTool } from './vision-tool'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL = 'claude-sonnet-4-6'
@@ -196,7 +196,7 @@ interface VisionAnalysis {
   extracted_text: string
 }
 
-const VISION_ANALYSIS_TOOL: VisionTool = {
+const VISION_ANALYSIS_TOOL: AnthropicTool = {
   name: 'record_image_analysis',
   description:
     'Record a description of the provided image, a short classification for it, and any text visible within it.',
