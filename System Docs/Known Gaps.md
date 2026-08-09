@@ -672,6 +672,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     pattern as `MemoryCardView`'s own header "+"), both fire the existing
     "coming soon" toast — neither is real; `photo_artifacts` (the actual
     many-to-many write path either would need) is still unbuilt.
+    **Found and fixed same day, live-preview testing:** the pre-existing
+    whole-message bookmark was never gated off for a message that also has
+    a photo — it still renders right alongside the new per-photo Bookmark
+    on any photo message with caption text, by design (confirmed with
+    Jeff — both stay). Clicking it (rather than the per-photo one) routes
+    to `createMemoryFromAnchor`, which used to leave the raw
+    `[MEDIA_UPLOAD: ...]` marker sitting in that memory's title and body,
+    since the shared marker registry had never learned that marker type —
+    fixed by registering it (`MEDIA_UPLOAD_MARKER`/
+    `MEDIA_UPLOAD_FAILED_MARKER`, `services/chat/ui/v1/registry.ts`; see
+    `System Docs/Marker Syntax.md`'s own entry). `getLinkedMediaItemId`,
+    `buildDefaultBlocks`, `BlockCanvas`, `PhotoUploadActions`, and
+    `createPhotoMemoryFromMedia` were all confirmed correct in isolation —
+    the bug was entirely upstream, in what a message's raw content still
+    contained by the time the OLD path read it.
   - **`ScrollToLatestButton`'s 48px visibility threshold and
     `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
     2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)

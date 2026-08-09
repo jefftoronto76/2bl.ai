@@ -9,6 +9,8 @@ import {
   ACCOUNT_CREATE_MARKER,
   SAVE_MEMORY_MARKER,
   MEMORY_TITLE_MARKER,
+  MEDIA_UPLOAD_MARKER,
+  MEDIA_UPLOAD_FAILED_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -211,13 +213,66 @@ describe('MEMORY_TITLE_MARKER definition', () => {
   })
 })
 
+describe('MEDIA_UPLOAD_MARKER definition', () => {
+  it('is a three-field client-dispatch marker', () => {
+    expect(MEDIA_UPLOAD_MARKER.type).toBe('MEDIA_UPLOAD')
+    expect(MEDIA_UPLOAD_MARKER.fieldCount).toBe(3)
+    expect(MEDIA_UPLOAD_MARKER.dispatch).toBe('client')
+  })
+
+  it('extracts a [MEDIA_UPLOAD: filename | media_item_id | type] marker and strips it from prose', () => {
+    const r = createMarkerRegistry()
+    r.register(MEDIA_UPLOAD_MARKER)
+    const { prose, markers } = r.parse(
+      '[MEDIA_UPLOAD: Jeff_L.jpeg | c6791970-5a98-4681-a20c-32867de9d153 | image] This is a picture of me.',
+    )
+    expect(prose).toBe('This is a picture of me.')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toEqual({
+      type: 'MEDIA_UPLOAD',
+      fields: ['Jeff_L.jpeg', 'c6791970-5a98-4681-a20c-32867de9d153', 'image'],
+      raw: '[MEDIA_UPLOAD: Jeff_L.jpeg | c6791970-5a98-4681-a20c-32867de9d153 | image]',
+    })
+  })
+
+  it('strips multiple MEDIA_UPLOAD markers from the same message (several photos, one caption)', () => {
+    const r = createMarkerRegistry()
+    r.register(MEDIA_UPLOAD_MARKER)
+    const { prose, markers } = r.parse(
+      '[MEDIA_UPLOAD: a.jpg | media-a | image] [MEDIA_UPLOAD: b.jpg | media-b | image] Two photos.',
+    )
+    expect(prose).toBe('Two photos.')
+    expect(markers).toHaveLength(2)
+    expect(markers.map(m => m.fields[1])).toEqual(['media-a', 'media-b'])
+  })
+})
+
+describe('MEDIA_UPLOAD_FAILED_MARKER definition', () => {
+  it('is a single-field client-dispatch marker', () => {
+    expect(MEDIA_UPLOAD_FAILED_MARKER.type).toBe('MEDIA_UPLOAD_FAILED')
+    expect(MEDIA_UPLOAD_FAILED_MARKER.fieldCount).toBe(1)
+    expect(MEDIA_UPLOAD_FAILED_MARKER.dispatch).toBe('client')
+  })
+
+  it('extracts a [MEDIA_UPLOAD_FAILED: filename] marker and strips it from prose', () => {
+    const r = createMarkerRegistry()
+    r.register(MEDIA_UPLOAD_FAILED_MARKER)
+    const { prose, markers } = r.parse('[MEDIA_UPLOAD_FAILED: broken.jpg] Oops.')
+    expect(prose).toBe('Oops.')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toEqual({ type: 'MEDIA_UPLOAD_FAILED', fields: ['broken.jpg'], raw: '[MEDIA_UPLOAD_FAILED: broken.jpg]' })
+  })
+})
+
 describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, SAVE_MEMORY, and MEMORY_TITLE', () => {
+  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, SAVE_MEMORY, MEMORY_TITLE, MEDIA_UPLOAD, and MEDIA_UPLOAD_FAILED', () => {
     const defs = createDefaultRegistry().getDefinitions()
     expect(defs.map(d => d.type).sort()).toEqual([
       'ACCOUNT_CREATE',
       'BOOKING',
       'EMAIL',
+      'MEDIA_UPLOAD',
+      'MEDIA_UPLOAD_FAILED',
       'MEMORY_TITLE',
       'NAME',
       'PHONE',
@@ -298,5 +353,26 @@ describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexist
     )
     expect(prose).toBe('Hi Sam.')
     expect(markers.map(m => m.type).sort()).toEqual(['BOOKING', 'EMAIL', 'NAME', 'PHONE'])
+  })
+
+  // Regression: a photo message bookmarked via the whole-message "Keep this
+  // as a memory" button (createMemoryFromAnchor, services/crm/memories.ts)
+  // used to show this exact raw marker text as the memory's title AND body,
+  // since MEDIA_UPLOAD was never registered here — see MEDIA_UPLOAD_MARKER's
+  // own doc comment (registry.ts).
+  it('strips [MEDIA_UPLOAD: ...] from a visitor upload message, leaving only the typed caption', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse(
+      '[MEDIA_UPLOAD: Jeff_L.jpeg | c6791970-5a98-4681-a20c-32867de9d153 | image] This is a picture of me.',
+    )
+    expect(prose).toBe('This is a picture of me.')
+    expect(markers.map(m => m.type)).toEqual(['MEDIA_UPLOAD'])
+  })
+
+  it('strips [MEDIA_UPLOAD_FAILED: ...] the same way', () => {
+    const r = createDefaultRegistry()
+    const { prose, markers } = r.parse('[MEDIA_UPLOAD_FAILED: broken.jpg] Sorry, try again?')
+    expect(prose).toBe('Sorry, try again?')
+    expect(markers.map(m => m.type)).toEqual(['MEDIA_UPLOAD_FAILED'])
   })
 })

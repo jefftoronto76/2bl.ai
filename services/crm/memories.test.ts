@@ -204,6 +204,43 @@ describe('createMemoryFromAnchor', () => {
     expect(insertCalls[0].user_id).toBe('user-1')
   })
 
+  // Regression (2026-08-08): bookmarking a photo message via the
+  // whole-message "Keep this as a memory" button (as opposed to
+  // PhotoUploadActions.tsx's per-photo Bookmark) used to leave the raw
+  // [MEDIA_UPLOAD: ...] marker in both the fallback title and the body,
+  // since the marker registry never learned this marker type — see
+  // services/chat/ui/v1/registry.ts's MEDIA_UPLOAD_MARKER. This is the
+  // exact anchor content shape a photo-with-caption user message has.
+  it("strips a [MEDIA_UPLOAD: ...] marker from the anchor content, leaving only the person's own typed caption", async () => {
+    const { client, insertCalls } = makeClient({
+      sessionMessages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: '[MEDIA_UPLOAD: Jeff_L.jpeg | c6791970-5a98-4681-a20c-32867de9d153 | image] This is a picture of me.',
+        },
+      ],
+      memberResult: LINKED_MEMBER_RESULT,
+    })
+    adminHolder.client = client
+
+    const result = await createMemoryFromAnchor('tenant-1', {
+      sessionId: 's1',
+      anchorMessageId: 'm1',
+      memberId: 'member-1',
+      sourceKind: 'photo',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(insertCalls[0].body).toBe('This is a picture of me.')
+    expect(insertCalls[0].title).toBe('This is a picture of me.')
+    expect(insertCalls[0].body).not.toContain('MEDIA_UPLOAD')
+    expect(insertCalls[0].title).not.toContain('MEDIA_UPLOAD')
+    // No media_item_id — this creation path never attaches one; only
+    // createPhotoMemoryFromMedia does (see that function's own tests below).
+    expect(insertCalls[0].media_item_id).toBe(null)
+  })
+
   it('returns a 400 when the anchor message id has no match in the session, and logs the failure', async () => {
     const { client } = makeClient({ sessionMessages: [{ id: 'other', role: 'assistant', content: 'hi' }] })
     adminHolder.client = client

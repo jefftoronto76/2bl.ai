@@ -212,3 +212,123 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     expect(postMemoryCalls).toEqual([]);
   });
 });
+
+// Regression coverage for the root cause found in live-preview testing
+// (2026-08-08): a photo message that ALSO has caption text renders BOTH
+// the new per-photo Bookmark (PhotoUploadActions) AND the pre-existing
+// whole-message "Keep this as a memory" (UserMessageActions) side by
+// side — the latter was never gated off when the feature above shipped.
+// Clicking the whole-message one sends no media_item_id at all, routing
+// to createMemoryFromAnchor (services/crm/memories.ts), which used to
+// leave the raw [MEDIA_UPLOAD: ...] marker in the memory's title/body
+// (fixed by registering MEDIA_UPLOAD in the shared marker registry,
+// services/chat/ui/v1/registry.ts — see that fix's own unit coverage in
+// registry.test.ts and memories.test.ts for the actual stripping logic).
+// This test proves the two controls still coexist (by design, confirmed
+// with Jeff) and that the whole-message path's mocked response — standing
+// in for the now-fixed server, which this harness's fetch mock doesn't
+// itself execute — renders as a clean draft card, not raw marker text.
+describe('Photo bookmark — whole-message bookmark still reachable on a photo-with-caption message', () => {
+  const CAPTION = 'This is a picture of me.';
+  const SESSION_WITH_CAPTION = {
+    id: 'sess-caption',
+    messages: [
+      {
+        id: 'm1',
+        role: 'user',
+        content: `[MEDIA_UPLOAD: Jeff_L.jpeg | media-a | image] ${CAPTION}`,
+        timestamp: 1,
+      },
+    ],
+    updated_at: '2026-08-08T00:00:00.000Z',
+    visitor_name: null,
+    title: 'Captioned photo session',
+    starred: false,
+    memory_count: 0,
+  };
+
+  let postMemoryCalls: Array<Record<string, unknown>>;
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+    if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: [SESSION_WITH_CAPTION] });
+    if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
+    if (url.startsWith('/api/media')) return jsonResponse({ items: [readyMediaItem('media-a', 'Jeff_L.jpeg')] });
+    if (url.endsWith('/memories') && method === 'GET') return jsonResponse({ memories: [] });
+    if (url.endsWith('/memories') && method === 'POST') {
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      postMemoryCalls.push(body);
+      if (body.media_item_id) {
+        // The per-photo path — createPhotoMemoryFromMedia, unaffected by this fix.
+        return jsonResponse({
+          memory: {
+            id: 'mem-photo', session_id: 'sess-caption', anchor_message_id: 'm1', media_item_id: body.media_item_id,
+            source_kind: 'photo', title: 'A photo of Jeff', body: 'A photo of Jeff',
+            status: 'draft', created_at: '2026-08-08T00:00:00.000Z', updated_at: '2026-08-08T00:00:00.000Z',
+          },
+        });
+      }
+      // The whole-message path — createMemoryFromAnchor. Stands in for the
+      // now-fixed server: title/body are the caption ALONE, no marker text
+      // (before the fix, both would have been the raw marker + caption).
+      return jsonResponse({
+        memory: {
+          id: 'mem-whole', session_id: 'sess-caption', anchor_message_id: 'm1',
+          source_kind: 'photo', title: CAPTION, body: CAPTION,
+          status: 'draft', created_at: '2026-08-08T00:00:00.000Z', updated_at: '2026-08-08T00:00:00.000Z',
+        },
+      });
+    }
+    return jsonResponse({ ok: true });
+  });
+
+  beforeEach(() => {
+    postMemoryCalls = [];
+    fetchMock.mockClear();
+    __clearSingletonRegistry();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('both bookmark controls render on a photo-with-caption message, and the whole-message one produces a clean draft card — no marker text anywhere', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByAltText('Jeff_L.jpeg').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(CAPTION).length).toBeGreaterThan(0));
+
+    // Both controls coexist, confirmed by design (per the investigation).
+    expect(screen.getByRole('button', { name: 'Keep this as a memory' })).toBeInTheDocument();
+    const photoGroupEl = screen.getAllByAltText('Jeff_L.jpeg')[0].closest('.group') as HTMLElement;
+    expect(within(photoGroupEl).getByRole('button', { name: 'Bookmark as a memory' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep this as a memory' }));
+
+    expect(await screen.findByText(CAPTION, { selector: 'p' })).toBeInTheDocument();
+    expect(postMemoryCalls).toEqual([{ anchor_message_id: 'm1', source_kind: 'photo' }]); // no media_item_id
+    // Never the raw marker text, anywhere in the rendered draft card.
+    expect(screen.queryByText(/MEDIA_UPLOAD/)).not.toBeInTheDocument();
+
+    // The per-photo control is untouched and still independently usable —
+    // this fix doesn't collapse the two paths into one.
+    fireEvent.click(within(photoGroupEl).getByRole('button', { name: 'Bookmark as a memory' }));
+    await waitFor(() =>
+      expect(postMemoryCalls).toEqual([
+        { anchor_message_id: 'm1', source_kind: 'photo' },
+        { anchor_message_id: 'm1', source_kind: 'photo', media_item_id: 'media-a' },
+      ]),
+    );
+    expect(screen.queryByText(/MEDIA_UPLOAD/)).not.toBeInTheDocument();
+  });
+});

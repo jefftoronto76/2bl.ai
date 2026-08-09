@@ -127,6 +127,27 @@ session's genuine first assistant turn, not repeatedly.
   `deriveFallbackMemoryTitle()` derives one from the passage itself (60-char
   cap, breaks at the last full word).
 
+### `[MEDIA_UPLOAD: filename | media_item_id | type]` / `[MEDIA_UPLOAD_FAILED: filename]` — dispatch `client`
+
+- The one exception to this page's "Sage emits" framing: these are written
+  into a **visitor** message's own stored content by the client-side upload
+  flow (`ChatInput.tsx`), one per attachment, not emitted by the AI at all.
+  The real consumer is `components/shells/membership/MessageList.tsx`'s own
+  separate, purpose-built `MEDIA_UPLOAD_RE`/`MEDIA_FAILED_RE` parser
+  (`parseUserMessage`), which extracts a structured `uploads`/`failures`
+  array to drive thumbnail/failure-chip rendering — registering these in
+  the shared registry does not replace that parser.
+- Registered here (2026-08-08, `MEDIA_UPLOAD_MARKER`/`MEDIA_UPLOAD_FAILED_MARKER`,
+  `services/chat/ui/v1/registry.ts`) purely so every OTHER consumer of the
+  shared registry strips them from prose the same way every other marker
+  is stripped. Fixes a real bug: `services/crm/memories.ts`'s
+  `createMemoryFromAnchor` reads a message's raw stored content verbatim,
+  and before this marker was registered, bookmarking a photo message via
+  the whole-message "Keep this as a memory" button (as opposed to the
+  per-photo Bookmark, `PhotoUploadActions.tsx`) left the raw
+  `[MEDIA_UPLOAD: ...]` bracket text sitting in that memory's title and
+  body, ahead of the person's own typed caption.
+
 ### `[CONTACT: phone]` — **retired**
 
 - The `[CONTACT:]` marker, its `'CONTACT'` `MarkerType` member, and the entire
