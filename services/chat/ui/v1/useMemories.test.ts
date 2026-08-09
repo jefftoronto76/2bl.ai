@@ -127,3 +127,78 @@ describe('useMemories.reviseBlocks', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+// The actual bug this task exists to fix: today's bookmark is keyed by
+// anchor_message_id alone, so two photo uploads on the SAME chat message
+// would collide — the second photo's Bookmark click would read/write the
+// exact same pending/error/getByAnchor state as the first. These tests
+// exercise create()/isPending()/getByAnchor() with two distinct
+// mediaItemIds on one anchor and assert neither the local in-flight state
+// nor the fetched memory rows ever cross-contaminate.
+describe('useMemories — two photos on one message resolve independently (no anchor_message_id collision)', () => {
+  it("create() sends media_item_id, and the two photos' pending/error state never collide", async () => {
+    const result = await renderLoaded()
+
+    // Photo A's create() resolves as a failure first, fully settled.
+    fetchMock.mockImplementationOnce(async () => jsonResponse({ error: 'boom' }, false, 500))
+    await act(() => result.current.create('m1', 'photo', 'media-a'))
+
+    expect(result.current.hasError('m1', 'media-a')).toBe(true)
+    expect(result.current.isPending('m1', 'media-a')).toBe(false)
+    const [, firstCall] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]
+    expect(JSON.parse((firstCall as RequestInit).body as string)).toEqual({
+      anchor_message_id: 'm1',
+      source_kind: 'photo',
+      media_item_id: 'media-a',
+    })
+
+    // Photo B's create() starts on the SAME anchor while photo A's failure
+    // is still recorded — this must not touch photo A's error state, and
+    // must show its own pending state independently.
+    let resolveSecond!: (v: Response) => void
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(r => { resolveSecond = r }))
+    act(() => {
+      void result.current.create('m1', 'photo', 'media-b')
+    })
+    await waitFor(() => expect(result.current.isPending('m1', 'media-b')).toBe(true))
+    expect(result.current.hasError('m1', 'media-a')).toBe(true) // untouched by B starting
+    expect(result.current.hasError('m1', 'media-b')).toBe(false)
+    // A whole-message (non-photo) lookup on the same anchor is unaffected by either.
+    expect(result.current.isPending('m1')).toBe(false)
+    expect(result.current.hasError('m1')).toBe(false)
+
+    const memoryB = { ...SEEDED_MEMORY, id: 'mem-b', anchor_message_id: 'm1', media_item_id: 'media-b', source_kind: 'photo' as const }
+    act(() => resolveSecond(jsonResponse({ memory: memoryB })))
+
+    await waitFor(() => expect(result.current.getByAnchor('m1', 'media-b')?.id).toBe('mem-b'))
+    expect(result.current.isPending('m1', 'media-b')).toBe(false)
+    expect(result.current.hasError('m1', 'media-b')).toBe(false)
+    // Photo A's failure is still exactly as it was — B's success didn't clear it.
+    expect(result.current.hasError('m1', 'media-a')).toBe(true)
+    expect(result.current.getByAnchor('m1', 'media-a')).toBeUndefined()
+
+    const [, secondCall] = fetchMock.mock.calls[fetchMock.mock.calls.length - 1]
+    expect(JSON.parse((secondCall as RequestInit).body as string)).toEqual({
+      anchor_message_id: 'm1',
+      source_kind: 'photo',
+      media_item_id: 'media-b',
+    })
+  })
+
+  it('getByAnchor/hasOpenDraft distinguish two already-fetched photo memories on the same anchor by media_item_id', async () => {
+    const photoA = { ...SEEDED_MEMORY, id: 'mem-photo-a', anchor_message_id: 'm3', media_item_id: 'media-a', source_kind: 'photo' as const, status: 'draft' as const }
+    const photoB = { ...SEEDED_MEMORY, id: 'mem-photo-b', anchor_message_id: 'm3', media_item_id: 'media-b', source_kind: 'photo' as const, status: 'published' as const }
+    fetchMock.mockImplementationOnce(async () => jsonResponse({ memories: [photoA, photoB] }))
+    const { result } = renderHook(() => useMemories('sess-1'))
+    await waitFor(() => expect(result.current.isLoaded).toBe(true))
+
+    expect(result.current.getByAnchor('m3', 'media-a')?.id).toBe('mem-photo-a')
+    expect(result.current.getByAnchor('m3', 'media-b')?.id).toBe('mem-photo-b')
+    // A whole-message lookup (no mediaItemId) on this anchor matches neither
+    // photo row — both have a real media_item_id, so it correctly finds nothing.
+    expect(result.current.getByAnchor('m3')).toBeUndefined()
+
+    expect(result.current.hasOpenDraft('m3', 'media-a')).toBe(true) // photoA is still a draft
+    expect(result.current.hasOpenDraft('m3', 'media-b')).toBe(false) // photoB is already published
+  })
+})

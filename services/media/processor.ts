@@ -1,3 +1,4 @@
+import { gps as exifrGps } from 'exifr'
 import { AuditAction } from '@/services/audit/types'
 import { extractText, type MediaAuditContext } from '@/services/content/assets'
 import {
@@ -180,6 +181,67 @@ async function processAudio(
   }
 }
 
+/**
+ * Strips a ```json ... ``` (or plain ``` ... ```) markdown code fence that
+ * Claude sometimes wraps its response in, despite the "Return JSON only"
+ * instruction below — a real, observed failure mode: JSON.parse throws on
+ * the fence markers themselves, since ` ```json\n{...}\n``` ` isn't valid
+ * JSON on its own. Returns the input unchanged when no fence is present, so
+ * this is always safe to run before parsing regardless of which shape the
+ * model actually returned.
+ */
+function stripCodeFence(text: string): string {
+  const fenced = text.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return fenced ? fenced[1] : text
+}
+
+interface GpsCoordinates {
+  latitude: number | null
+  longitude: number | null
+}
+
+/**
+ * GPS Extraction (2026-08-08) — downloads the photo's own bytes (same
+ * fetch-the-signed-url-directly pattern processDocument uses below, not
+ * exifr's own Node URL-polyfill, so this is mockable/testable the same way
+ * every other network call in this file already is) and reads its EXIF GPS
+ * tags via `exifr.gps()`, which parses just the GPS IFD (a fast, targeted
+ * read, not a full EXIF parse) and already converts the EXIF GPS block's
+ * raw degrees/minutes/seconds triplet to a single signed decimal-degree
+ * value itself — no separate DMS-to-decimal conversion is needed here
+ * (verified against a real fixture with known GPS EXIF,
+ * services/media/processor.test.ts).
+ *
+ * Most photos carry NO GPS data at all — screenshots, downloads, a member
+ * with location services off — so `exifr.gps()` resolving to `undefined`
+ * is the expected COMMON case, not a failure: this returns null/null
+ * silently, no log, no audit event. A genuine failure (the download itself
+ * failing, corrupt/truncated EXIF, an unsupported format) is caught here
+ * and ALSO degrades to null/null — this must never throw, and must never
+ * block or fail the vision step that follows it, or the upload itself.
+ * Logged via console.error (not audit_events), same precedent as this
+ * file's own vision-JSON-parse-failure handling just below — length/type
+ * only, never raw EXIF bytes.
+ */
+async function extractGpsCoordinates(signedUrl: string, item: MediaItem): Promise<GpsCoordinates> {
+  try {
+    const res = await fetch(signedUrl)
+    if (!res.ok) throw new Error(`Failed to download file for GPS extraction: ${res.status}`)
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const gps = await exifrGps(buffer)
+    if (!gps || typeof gps.latitude !== 'number' || typeof gps.longitude !== 'number') {
+      return { latitude: null, longitude: null }
+    }
+    return { latitude: gps.latitude, longitude: gps.longitude }
+  } catch (err) {
+    console.error('[media/processor] GPS extraction failed, continuing without coordinates', {
+      media_item_id: item.id,
+      error_type: err instanceof Error ? err.name : typeof err,
+    })
+    return { latitude: null, longitude: null }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Image analysis via Claude Haiku vision.
 // ---------------------------------------------------------------------------
@@ -210,6 +272,12 @@ async function processImage(
     }
     throw err
   }
+
+  // GPS extraction runs first, off the same signed URL, while it's freshest
+  // (60s expiry, generateSignedDownloadUrl) — independent of and never
+  // blocking the vision call below; see extractGpsCoordinates's own doc
+  // comment for why a miss or a parse failure both just resolve to null.
+  const { latitude, longitude } = await extractGpsCoordinates(signedUrl, item)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
@@ -289,12 +357,34 @@ async function processImage(
   let classification = 'photo'
   let extracted_text = ''
   try {
-    const parsed = JSON.parse(textBlock.text)
+    const parsed = JSON.parse(stripCodeFence(textBlock.text))
     caption = parsed.caption ?? ''
     classification = parsed.classification ?? 'photo'
     extracted_text = parsed.extracted_text ?? ''
-  } catch {
-    caption = textBlock.text
+  } catch (err) {
+    // Still not parseable JSON even after stripping a markdown fence — the
+    // model returned something genuinely malformed, not just fenced. The old
+    // fallback stored the ENTIRE raw response (braces, field names, fence
+    // markers, everything) verbatim as the caption — this is a memory's
+    // actual title/body once bookmarked (createPhotoMemoryFromMedia,
+    // services/crm/memories.ts), so a member would see broken JSON as their
+    // own memory's passage. A fixed, safe placeholder is better than that,
+    // and — unlike an empty string — still non-empty, since
+    // createPhotoMemoryFromMedia's 409 "not ready" gate treats an empty
+    // derived_content as not-yet-processed and would otherwise leave this
+    // photo permanently unbookmarkable. Length/presence only in the log,
+    // never the raw model text (CLAUDE.md's audit-logging rule) — deliberately
+    // NOT err.message: JSON.parse's own SyntaxError embeds a snippet of the
+    // invalid input verbatim (e.g. `Unexpected token 'o', "not json..." is
+    // not valid JSON`), so logging it would leak the very content this is
+    // trying to keep out of the logs. error_type (the constructor name) is
+    // still useful for debugging without that risk.
+    console.error('[media/processor] vision response was not valid JSON, even after fence-stripping', {
+      media_item_id: item.id,
+      error_type: err instanceof Error ? err.name : typeof err,
+      raw_text_length: textBlock.text.length,
+    })
+    caption = 'A photo.'
   }
 
   if (isMediaAuditEnabled()) {
@@ -321,6 +411,8 @@ async function processImage(
     derived_content: derived || caption,
     classification,
     processed_at: new Date().toISOString(),
+    latitude,
+    longitude,
   })
 
   if (isMediaAuditEnabled()) {
@@ -339,6 +431,8 @@ async function processImage(
         type: item.type,
         classification,
         derived_content_length: derived.length,
+        // Presence only, never the raw coordinates (CLAUDE.md's audit-logging rule).
+        gps_found: latitude !== null,
       },
     })
   }

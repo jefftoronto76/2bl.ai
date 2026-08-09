@@ -33,11 +33,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
+import { Bookmark, Check, Feather, ImagePlus, Pencil, Plus } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
+import type { SessionImage } from './BlockCanvas'
 
 /** Aligns every card/pill/receipt with the assistant avatar rail (w-8) they sit below. */
 const RAIL = 'w-8 shrink-0'
@@ -94,6 +95,24 @@ export interface MemorySavedReceiptProps {
    * handler in this file.
    */
   onOpen?: (memory: MemoryRow) => void
+  /**
+   * Fires the shared "coming soon" toast for the "+" below — same stub
+   * pattern as MemoryCardView's own header "+" (add to a story; stories
+   * aren't a buildable concept yet). Optional so a caller that hasn't wired
+   * a toast (none currently outside ChatHero.tsx) renders the receipt with
+   * no "+" at all rather than a silently-broken one.
+   */
+  onStub?: (message: string) => void
+  /**
+   * The session's own ready image media items — same lookup pattern as
+   * BlockCanvas.tsx's ImageBlockRow, already applied to MemoryCard's own
+   * draft state and the memory panel. When memory.media_item_id resolves
+   * here, the icon circle below is REPLACED by a real thumbnail (not shown
+   * alongside it) — no match, or no media_item_id, keeps the icon circle
+   * exactly as before. Defaults to `[]` — non-breaking for any caller that
+   * hasn't wired this yet.
+   */
+  sessionImages?: SessionImage[]
 }
 
 /**
@@ -104,9 +123,10 @@ export interface MemorySavedReceiptProps {
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
+  const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
 
   return (
     <div className="flex gap-3">
@@ -126,9 +146,16 @@ export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) 
         }
         className={`flex min-w-0 flex-1 items-center gap-[11px] rounded-[13px] border border-border bg-surface px-[14px] py-[11px] ${onOpen ? 'cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-accent' : ''}`}
       >
-        <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
-          <Icon size={12} aria-hidden />
-        </span>
+        {linkedImage ? (
+          <span className="block size-[34px] shrink-0 overflow-hidden rounded-[9px] border border-border">
+            {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow, a signed URL that changes shape/expiry too often to benefit from next/image */}
+            <img src={linkedImage.url} alt={linkedImage.filename} className="block size-full object-cover" />
+          </span>
+        ) : (
+          <span className="grid size-[22px] shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
+            <Icon size={12} aria-hidden />
+          </span>
+        )}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-[15.5px] leading-[1.25] text-text-primary">{memory.title}</span>
           <span className="mt-0.5 flex items-center gap-1 font-mono text-[10.5px] tracking-[0.06em] text-text-muted">
@@ -136,6 +163,24 @@ export function MemorySavedReceipt({ memory, onOpen }: MemorySavedReceiptProps) 
             Kept
           </span>
         </span>
+        {onStub && (
+          <button
+            type="button"
+            onClick={e => {
+              // Stop this from also bubbling into the row's own onClick
+              // (which opens the memory panel) — a "+" click means "add to
+              // a story", not "open this memory".
+              e.stopPropagation()
+              onStub('Coming soon')
+            }}
+            onKeyDown={e => e.stopPropagation()}
+            aria-label="Add to a story"
+            title="Adding to a story is coming soon"
+            className="grid size-6 shrink-0 place-items-center rounded-md border-none bg-transparent text-text-muted transition-colors hover:text-text-primary"
+          >
+            <Plus size={13} aria-hidden />
+          </button>
+        )}
       </div>
     </div>
   )
@@ -146,11 +191,26 @@ export interface MemoryCardProps {
   onKeep: () => void
   onDiscard: () => void
   onRetitle: (title: string) => void
+  /**
+   * The session's own ready image media items — same lookup pattern as
+   * BlockCanvas.tsx's ImageBlockRow (`sessionImages.find((img) => img.id
+   * === ...)`), already applied to the panel's block canvas and the memory
+   * panel's own hero. A DRAFT photo memory already has a real
+   * `media_item_id` at create time (createPhotoMemoryFromMedia sets it
+   * before Keep, not after), so this card can show the real photo instead
+   * of the placeholder below, same as the saved/panel states already do.
+   * Defaults to `[]` — a memory with no media_item_id, or one that doesn't
+   * resolve (stale/removed/no-longer-accessible), falls back to the
+   * existing placeholder exactly as before, same graceful-degradation
+   * posture as every other application of this pattern.
+   */
+  sessionImages?: SessionImage[]
 }
 
 /** `draft` state — the full card. Order: header -> media (if any) -> title -> passage -> photo slots (if any) -> footer. */
-export function MemoryCard({ memory, onKeep, onDiscard, onRetitle }: MemoryCardProps) {
+export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages = [] }: MemoryCardProps) {
   const kind = memoryKindOf(memory.source_kind)
+  const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const [toast, setToast] = useState<string | null>(null)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -190,14 +250,21 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle }: MemoryCardP
 
         <div className="px-[18px] pb-[18px] pt-4">
           {kind.media && (
-            <div className="mb-4 flex h-32 items-center justify-center rounded-[10px] border border-dashed border-border bg-surface-2">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
-                {kind.media === 'still' && 'Photo'}
-                {kind.media === 'video' && 'Video'}
-                {kind.media === 'audio' && 'Recording'}
-                {kind.media === 'page' && 'Document'}
-              </span>
-            </div>
+            linkedImage ? (
+              <div className="mb-4 overflow-hidden rounded-[10px] border border-border">
+                {/* eslint-disable-next-line @next/next/no-img-element -- same convention as BlockCanvas.tsx's ImageBlockRow / UploadThumbnail.tsx, a signed URL that changes shape/expiry too often to benefit from next/image */}
+                <img src={linkedImage.url} alt={linkedImage.filename} className="block max-h-80 w-full object-contain" />
+              </div>
+            ) : (
+              <div className="mb-4 flex h-32 items-center justify-center rounded-[10px] border border-dashed border-border bg-surface-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
+                  {kind.media === 'still' && 'Photo'}
+                  {kind.media === 'video' && 'Video'}
+                  {kind.media === 'audio' && 'Recording'}
+                  {kind.media === 'page' && 'Document'}
+                </span>
+              </div>
+            )
           )}
 
           <div className="group flex items-start gap-2">

@@ -124,8 +124,27 @@ export interface UIMessage {
 
 // ── Marker contract ───────────────────────────────────────────────────────
 
-/** Known structured markers the AI may emit in an assistant message. */
-export type MarkerType = 'BOOKING' | 'NAME' | 'EMAIL' | 'ARTIFACT' | 'PHONE' | 'ACCOUNT_CREATE' | 'SAVE_MEMORY' | 'MEMORY_TITLE'
+/**
+ * Known structured markers the registry strips from prose. Most are
+ * AI-emitted in an assistant message; MEDIA_UPLOAD/MEDIA_UPLOAD_FAILED are
+ * the exception — written into a VISITOR message's own stored content by
+ * the client-side upload flow (ChatInput.tsx), registered here (2026-08-08)
+ * purely so any OTHER consumer of the shared registry (e.g.
+ * createMemoryFromAnchor, services/crm/memories.ts) strips them from prose
+ * instead of leaking raw bracket text — see MEDIA_UPLOAD_MARKER's own doc
+ * comment (registry.ts) for the bug this fixed.
+ */
+export type MarkerType =
+  | 'BOOKING'
+  | 'NAME'
+  | 'EMAIL'
+  | 'ARTIFACT'
+  | 'PHONE'
+  | 'ACCOUNT_CREATE'
+  | 'SAVE_MEMORY'
+  | 'MEMORY_TITLE'
+  | 'MEDIA_UPLOAD'
+  | 'MEDIA_UPLOAD_FAILED'
 
 /**
  * Parsed data for an ACCOUNT_CREATE marker — `[ACCOUNT_CREATE: reason]`.

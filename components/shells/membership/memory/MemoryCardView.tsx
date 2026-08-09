@@ -77,29 +77,24 @@ function newBlockId(): string {
 }
 
 /**
- * No real signal exists yet for "this memory has a linked photo" —
- * artifacts.media_item_id is a flagged-dead column (0 rows, 0 code
- * references — System Docs/Database Schema.md) and MemoryRow carries
- * nothing usable in its place; that's the still-unbuilt photo-bookmark
- * work (System Docs/Known Gaps.md's Memories entry), a separate track from
- * this one. Always returns undefined today — deliberately not synthesized
- * from source_kind, since constructing an image block without a real
- * media_item_id would fail reviseMemoryBlocks's own validation on the very
- * first keystroke into the text block (every commit sends the whole
- * array), making the passage silently uneditable for exactly the memories
- * this was meant to help.
+ * "This memory has a linked photo" now has a real signal: artifacts.media_item_id,
+ * populated by createPhotoMemoryFromMedia (services/crm/memories.ts, Photo
+ * Bookmark, 2026-08-08) — no longer the flagged-dead column this function
+ * used to stub around. `?? undefined` narrows MemoryRow's `string | null`
+ * to the `string | undefined` buildDefaultBlocks/MemoryBlock already expect
+ * (a null media_item_id, the ordinary non-photo case, must still omit the
+ * image block below, not construct one with a null id).
  */
-function getLinkedMediaItemId(_memory: MemoryRow): string | undefined {
-  return undefined
+function getLinkedMediaItemId(memory: MemoryRow): string | undefined {
+  return memory.media_item_id ?? undefined
 }
 
 /**
  * Builds the default block set for a memory whose body_blocks is null —
  * mirrors the reference's buildDefaultBlocks(mem, K): a linked photo (if
  * any) renders first, the passage always renders as the text block after
- * it. No live trigger for the photo-first case today (see
- * getLinkedMediaItemId) — this returns just the text block in practice,
- * structured so wiring a real linked photo in later is additive.
+ * it. A photo-bookmarked memory (media_item_id populated) now hits the
+ * photo-first branch for real — see getLinkedMediaItemId above.
  */
 function buildDefaultBlocks(memory: MemoryRow): MemoryBlock[] {
   const blocks: MemoryBlock[] = []
@@ -259,21 +254,18 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
       {/* Body — scrolls independently of the fixed header and footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="px-[18px] pb-8 pt-4">
-          {/* Media block — a placeholder box per kind, same convention as
-              MemoryCard.tsx's draft card (no real thumbnail/waveform exists
-              anywhere in this codebase yet — see memoryKinds.ts's own doc
-              comment). Omitted entirely for kinds with no media (e.g. a
-              plain conversation memory) — no empty box, no layout gap. */}
-          {kind.media && (
-            <div className="mb-4 flex h-32 items-center justify-center rounded-[13px] border border-dashed border-border bg-surface-2">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-text-muted">
-                {kind.media === 'still' && 'Photo'}
-                {kind.media === 'video' && 'Video'}
-                {kind.media === 'audio' && 'Recording'}
-                {kind.media === 'page' && 'Document'}
-              </span>
-            </div>
-          )}
+          {/* No separate media placeholder here (removed 2026-08-08, Photo
+              Bookmark pass) — the block canvas below is the single source
+              of truth for a memory's media. It used to render its own
+              dashed "Photo"/"Video"/"Recording"/"Document" box per
+              memoryKinds.ts's kind.media unconditionally, alongside the
+              canvas — harmless while getLinkedMediaItemId always returned
+              undefined (no image block ever rendered to duplicate), but a
+              real photo-bookmarked memory now gets a real image block
+              first via buildDefaultBlocks(), which would have shown BOTH
+              the old placeholder AND the real photo. MemoryCard.tsx's
+              draft-card equivalent is untouched — it has no block canvas
+              to duplicate against. */}
           {/* Passage — block canvas (Memory Canvas V1), always. No
               separate "Edit mode," no pencil affordance — matches the
               reference prototype's always-editable presentation. */}

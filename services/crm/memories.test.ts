@@ -35,6 +35,7 @@ vi.mock('@/services/media', () => ({
 
 import {
   createMemoryFromAnchor,
+  createPhotoMemoryFromMedia,
   renameMemory,
   reviseMemoryBlocks,
   deriveFallbackMemoryTitle,
@@ -203,6 +204,43 @@ describe('createMemoryFromAnchor', () => {
     expect(insertCalls[0].user_id).toBe('user-1')
   })
 
+  // Regression (2026-08-08): bookmarking a photo message via the
+  // whole-message "Keep this as a memory" button (as opposed to
+  // PhotoUploadActions.tsx's per-photo Bookmark) used to leave the raw
+  // [MEDIA_UPLOAD: ...] marker in both the fallback title and the body,
+  // since the marker registry never learned this marker type — see
+  // services/chat/ui/v1/registry.ts's MEDIA_UPLOAD_MARKER. This is the
+  // exact anchor content shape a photo-with-caption user message has.
+  it("strips a [MEDIA_UPLOAD: ...] marker from the anchor content, leaving only the person's own typed caption", async () => {
+    const { client, insertCalls } = makeClient({
+      sessionMessages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: '[MEDIA_UPLOAD: Jeff_L.jpeg | c6791970-5a98-4681-a20c-32867de9d153 | image] This is a picture of me.',
+        },
+      ],
+      memberResult: LINKED_MEMBER_RESULT,
+    })
+    adminHolder.client = client
+
+    const result = await createMemoryFromAnchor('tenant-1', {
+      sessionId: 's1',
+      anchorMessageId: 'm1',
+      memberId: 'member-1',
+      sourceKind: 'photo',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(insertCalls[0].body).toBe('This is a picture of me.')
+    expect(insertCalls[0].title).toBe('This is a picture of me.')
+    expect(insertCalls[0].body).not.toContain('MEDIA_UPLOAD')
+    expect(insertCalls[0].title).not.toContain('MEDIA_UPLOAD')
+    // No media_item_id — this creation path never attaches one; only
+    // createPhotoMemoryFromMedia does (see that function's own tests below).
+    expect(insertCalls[0].media_item_id).toBe(null)
+  })
+
   it('returns a 400 when the anchor message id has no match in the session, and logs the failure', async () => {
     const { client } = makeClient({ sessionMessages: [{ id: 'other', role: 'assistant', content: 'hi' }] })
     adminHolder.client = client
@@ -293,6 +331,133 @@ describe('createMemoryFromAnchor', () => {
         metadata: expect.objectContaining({ error_detail: 'empty_body_after_marker_strip' }),
       }),
     )
+  })
+})
+
+describe('createPhotoMemoryFromMedia', () => {
+  const baseInput = {
+    sessionId: 's1',
+    anchorMessageId: 'm1',
+    mediaItemId: 'media-1',
+    memberId: 'member-1',
+  }
+
+  it("creates a draft memory from the photo's own derived_content caption, with anchor_message_id AND media_item_id both populated", async () => {
+    mockGetMediaItem.mockResolvedValue({
+      id: 'media-1',
+      tenant_id: 'tenant-1',
+      chat_id: 's1',
+      status: 'ready',
+      derived_content: 'A quiet afternoon by the lake.',
+    })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+    const { client, insertCalls } = makeClient({ memberResult: LINKED_MEMBER_RESULT })
+    adminHolder.client = client
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(true)
+    expect(insertCalls[0].anchor_message_id).toBe('m1')
+    expect(insertCalls[0].media_item_id).toBe('media-1')
+    expect(insertCalls[0].source_kind).toBe('photo')
+    expect(insertCalls[0].title).toBe('A quiet afternoon by the lake.')
+    expect(insertCalls[0].body).toBe('A quiet afternoon by the lake.')
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEMORY_CREATED, outcome: 'success' }),
+    )
+  })
+
+  it('truncates a long caption via deriveFallbackMemoryTitle, same as every other fallback-titled memory', async () => {
+    const longCaption =
+      'This is a much longer caption than sixty characters that should get truncated cleanly for the title'
+    mockGetMediaItem.mockResolvedValue({
+      id: 'media-1',
+      tenant_id: 'tenant-1',
+      chat_id: 's1',
+      status: 'ready',
+      derived_content: longCaption,
+    })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+    const { client, insertCalls } = makeClient({ memberResult: LINKED_MEMBER_RESULT })
+    adminHolder.client = client
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(true)
+    expect(insertCalls[0].title).toBe(deriveFallbackMemoryTitle(longCaption))
+    expect(insertCalls[0].title).not.toBe(longCaption)
+  })
+
+  it('409s (not 400) when the media item has not finished processing yet, with no insert attempted — the server-side race guard behind the client\'s own ready gate', async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 's1', status: 'processing', derived_content: null })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+    const { client, insertCalls } = makeClient({})
+    adminHolder.client = client
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(409)
+    expect(insertCalls.length).toBe(0)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'media_item_not_ready' }),
+      }),
+    )
+  })
+
+  it("409s when the item is ready but derived_content is still null (the AI caption pass hasn't landed yet)", async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 's1', status: 'ready', derived_content: null })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(409)
+  })
+
+  it('400s when the media item does not resolve for this tenant at all', async () => {
+    mockGetMediaItem.mockResolvedValue(null)
+    mockListByChat.mockResolvedValue([])
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_CREATED,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ error_detail: 'media_item_not_in_session' }),
+      }),
+    )
+  })
+
+  it('400s when the media item belongs to a different session (tenant matches, but not a member of this chat)', async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 'other-session', status: 'ready', derived_content: 'caption' })
+    mockListByChat.mockResolvedValue([]) // this session's own media items — media-1 isn't among them
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', baseInput)
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it("propagates createDraftMemory's own 401 account-required rejection for an anonymous visitor", async () => {
+    mockGetMediaItem.mockResolvedValue({ id: 'media-1', tenant_id: 'tenant-1', chat_id: 's1', status: 'ready', derived_content: 'caption' })
+    mockListByChat.mockResolvedValue([{ id: 'media-1' }])
+    const { client } = makeClient({})
+    adminHolder.client = client
+
+    const result = await createPhotoMemoryFromMedia('tenant-1', { ...baseInput, memberId: null })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(401)
+      expect(result.error).toBe(ACCOUNT_REQUIRED_ERROR)
+    }
   })
 })
 

@@ -15,6 +15,8 @@ import { EditableUserBubble } from '@/components/chat/EditableUserBubble';
 import { useMessageFeedback, type UseMessageFeedbackReturn } from '@/services/chat/ui/v1/useMessageFeedback';
 import type { UseMemoriesReturn, MemoryRow, MemorySourceKind } from '@/services/chat/ui/v1/useMemories';
 import { MemoryCard, MemoryRunningPill, MemorySavedReceipt, MemoryErrorLine } from './memory/MemoryCard';
+import { PhotoUploadActions } from './memory/PhotoUploadActions';
+import type { SessionImage } from './memory/BlockCanvas';
 import { memoryKindOf, KIND_ICONS } from './memory/memoryKinds';
 import { UploadThumbnail } from './UploadThumbnail';
 import { ImageLightbox } from './ImageLightbox';
@@ -41,6 +43,26 @@ interface MessageListProps {
    *  MemorySavedReceipt rows immediately, not just after a reload; two
    *  independent hook instances would each hold their own stale copy. */
   memories: UseMemoriesReturn;
+  /** Fires the shared "coming soon" toast for every stubbed action — the
+   *  per-photo "+" (PhotoUploadActions) and MemorySavedReceipt's own "+"
+   *  (add to a story). Same handler ChatHero.tsx already passes to
+   *  MemoryCardView as `onStub`. Optional so this stays a non-breaking
+   *  addition; when omitted, those "+" buttons simply don't render (see
+   *  MemorySavedReceipt's own optional-onStub posture). */
+  onStub?: (message: string) => void;
+  /**
+   * The session's own ready image media items — same array BlockCanvas.tsx's
+   * ImageBlockRow and the memory panel already resolve a linked photo
+   * against. Sourced from useChatStore().mediaItems by ChatHero.tsx, same as
+   * the copy already threaded to MemoryCardView. Lets a DRAFT photo memory's
+   * MemoryCard (media_item_id populated at create time by
+   * createPhotoMemoryFromMedia, before Keep) show its real photo instead of
+   * always falling back to the placeholder. Optional (defaults to `[]`) so
+   * this stays a non-breaking addition for existing call sites/tests that
+   * mount MessageList directly without it — a memory simply falls back to
+   * the placeholder in that case, same graceful-degradation posture as
+   * every other application of this lookup pattern. */
+  sessionImages?: SessionImage[];
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -111,6 +133,8 @@ interface MemorySlotHandlers {
   onDiscard: (memory: MemoryRow) => void;
   onRetitle: (memory: MemoryRow, title: string) => void;
   onOpen?: (memory: MemoryRow) => void;
+  /** Threaded through to MemorySavedReceipt's own "+" (add to a story) — see MessageListProps.onStub. */
+  onStub?: (message: string) => void;
 }
 
 /**
@@ -121,18 +145,26 @@ interface MemorySlotHandlers {
  * sourceKind this anchor would create() with (source-specific per caller —
  * see sourceKindForUserMessage / the assistant 'conversation' literal) so
  * the failure line's "Try again" can replay the exact same call.
+ *
+ * mediaItemId (optional, added 2026-08-08 — Photo Bookmark) is threaded
+ * straight through to every useMemories lookup/create call below, so this
+ * same function backs BOTH the whole-message slot (mediaItemId omitted) and
+ * a per-photo slot anchored to the same message (PhotoUploadActions.tsx) —
+ * see useMemories.ts's composite key doc for why the two never collide.
  */
 function renderMemorySlot(
   anchorId: string,
   sourceKind: MemorySourceKind,
   memories: UseMemoriesReturn,
   handlers: MemorySlotHandlers,
+  mediaItemId?: string,
+  sessionImages: SessionImage[] = [],
 ): ReactNode {
-  if (memories.isPending(anchorId)) {
-    const kind = memories.getPendingKind(anchorId);
+  if (memories.isPending(anchorId, mediaItemId)) {
+    const kind = memories.getPendingKind(anchorId, mediaItemId);
     return kind ? <MemoryRunningPill sourceKind={kind} /> : null;
   }
-  const memory = memories.getByAnchor(anchorId);
+  const memory = memories.getByAnchor(anchorId, mediaItemId);
   if (memory?.status === 'draft') {
     return (
       <MemoryCard
@@ -140,6 +172,7 @@ function renderMemorySlot(
         onKeep={() => handlers.onKeep(memory)}
         onDiscard={() => handlers.onDiscard(memory)}
         onRetitle={(title) => handlers.onRetitle(memory, title)}
+        sessionImages={sessionImages}
       />
     );
   }
@@ -149,12 +182,14 @@ function renderMemorySlot(
         memory={memory}
         onRetitle={(title) => handlers.onRetitle(memory, title)}
         onOpen={handlers.onOpen}
+        onStub={handlers.onStub}
+        sessionImages={sessionImages}
       />
     );
   }
-  const errorType = memories.getErrorType(anchorId);
+  const errorType = memories.getErrorType(anchorId, mediaItemId);
   if (errorType) {
-    return <MemoryErrorLine errorType={errorType} onRetry={() => memories.create(anchorId, sourceKind)} />;
+    return <MemoryErrorLine errorType={errorType} onRetry={() => memories.create(anchorId, sourceKind, mediaItemId)} />;
   }
   return null;
 }
@@ -469,9 +504,10 @@ function makeRenderUserMessage(
   editMessage: (id: string, text: string) => Promise<void>,
   resendMessage: (id: string) => Promise<void>,
   memories: UseMemoriesReturn,
-  keepDisabled: (anchorId: string) => boolean,
-  renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind) => ReactNode,
+  keepDisabled: (anchorId: string, mediaItemId?: string) => boolean,
+  renderMemorySlotFn: (anchorId: string, sourceKind: MemorySourceKind, mediaItemId?: string) => ReactNode,
   onEnlarge: (src: string, filename: string) => void,
+  onStub: ((message: string) => void) | undefined,
 ) {
   return function renderUserMessage(msg: Message): ReactNode {
     // Admin debug: [SYSTEM: ...] signals are sent via sendHidden and never
@@ -492,19 +528,48 @@ function makeRenderUserMessage(
     return (
       <div key={msg.id} className="flex flex-col gap-2">
         {/* Real uploads — thumbnail/icon + shimmer while pending/processing,
-            static once ready, small retry badge on failure. No memory
-            awareness here: renders unconditionally, caption or no caption,
-            memory or no memory (see the memory bookmark below, which the
-            caption text separately drives, untouched by this). */}
-        {userMsg.uploads.map(u => (
-          <UploadThumbnail
-            key={u.mediaItemId}
-            item={mediaItems.find(m => m.id === u.mediaItemId)}
-            sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
-            filename={u.filename}
-            onEnlarge={onEnlarge}
-          />
-        ))}
+            static once ready, small retry badge on failure. Renders
+            unconditionally, caption or no caption. A photo upload
+            additionally gets its own PhotoUploadActions row below the
+            thumbnail (Photo Bookmark, 2026-08-08) — the `group` wrapper is
+            what lets that row's hover-gated icons track the WHOLE
+            thumbnail's hover state rather than needing to be hovered
+            themselves. Audio/document uploads are untouched: no action row,
+            same as before this feature. */}
+        {userMsg.uploads.map(u => {
+          const mediaItem = mediaItems.find(m => m.id === u.mediaItemId);
+          const thumbnail = (
+            <UploadThumbnail
+              item={mediaItem}
+              sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
+              filename={u.filename}
+              onEnlarge={onEnlarge}
+            />
+          );
+          if (u.type !== 'image') {
+            return <div key={u.mediaItemId}>{thumbnail}</div>;
+          }
+          return (
+            <div key={u.mediaItemId} className="group flex flex-col gap-1">
+              {thumbnail}
+              <PhotoUploadActions
+                isReady={mediaItem?.status === 'ready'}
+                onBookmark={() => {
+                  // Same double-save guard as the whole-message bookmark
+                  // below — a memory may already exist for this exact photo,
+                  // or a create call may already be in flight for it.
+                  if (memories.getByAnchor(msg.id, u.mediaItemId) || memories.isPending(msg.id, u.mediaItemId)) return;
+                  memories.create(msg.id, 'photo', u.mediaItemId);
+                }}
+                onAddToMemory={() => onStub?.('Coming soon')}
+                hasMemory={!!memories.getByAnchor(msg.id, u.mediaItemId)}
+                keepDisabled={keepDisabled(msg.id, u.mediaItemId)}
+                gpsFound={typeof mediaItem?.latitude === 'number' && typeof mediaItem?.longitude === 'number'}
+              />
+              {renderMemorySlotFn(msg.id, 'photo', u.mediaItemId)}
+            </div>
+          );
+        })}
         {/* Failed-before-server uploads — no media_items row exists at all,
             so these have nothing to retry against. */}
         {userMsg.failures.map((f, idx) => (
@@ -664,7 +729,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [] }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -747,16 +812,19 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
     onDiscard: (memory: MemoryRow) => void memories.discard(memory),
     onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
     onOpen: onOpenMemory,
+    onStub,
   };
 
-  const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind) =>
-    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers);
+  const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind, mediaItemId?: string) =>
+    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers, mediaItemId, sessionImages);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
-  // streaming or *that specific anchor's* draft is already open — nothing
-  // else may hide the bookmark. Per-anchor, not session-wide: a stale/open
-  // draft on a different message must never disable this one.
-  const keepDisabled = (anchorId: string) => isLoading || memories.hasOpenDraft(anchorId);
+  // streaming or *that specific anchor's (and, for a photo bookmark, that
+  // specific photo's)* draft is already open — nothing else may hide the
+  // bookmark. Per-anchor(+photo), not session-wide: a stale/open draft on a
+  // different message — or a different photo on the SAME message — must
+  // never disable this one.
+  const keepDisabled = (anchorId: string, mediaItemId?: string) => isLoading || memories.hasOpenDraft(anchorId, mediaItemId);
 
   // Which user message (if any) is currently swapped into its editing
   // textarea — local, single-message-at-a-time, doesn't need to survive reload.
@@ -841,6 +909,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
               keepDisabled,
               renderMemorySlotFn,
               (src, filename) => setLightbox({ src, filename }),
+              onStub,
             )}
             renderAssistantMessage={makeRenderAssistantMessage({
               isAdmin,

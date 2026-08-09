@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest } from '@/services/auth'
-import { listMemories, deleteMemoriesForAnchors, createMemoryFromAnchor, type MemorySourceKind } from '@/services/crm/memories'
+import { listMemories, deleteMemoriesForAnchors, createMemoryFromAnchor, createPhotoMemoryFromMedia, type MemorySourceKind } from '@/services/crm/memories'
 import { resolveMemberId } from '@/services/crm/feedback'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
@@ -38,6 +38,13 @@ export async function GET(
  * anchor message's own content verbatim via createMemoryFromAnchor
  * (services/crm/memories.ts). Not cancellable in v1 (accepted from the
  * original design spec).
+ *
+ * An optional media_item_id (PhotoUploadActions.tsx's per-photo Bookmark,
+ * added 2026-08-08) routes to createPhotoMemoryFromMedia instead — the
+ * photo's own AI-generated caption becomes the memory, not the anchor
+ * message's text. Body shape and validation are otherwise unchanged;
+ * omitting media_item_id is byte-for-byte the same request this route
+ * always accepted.
  */
 export async function POST(
   req: Request,
@@ -69,10 +76,11 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { anchor_message_id, source_kind, member_id } = body as {
+  const { anchor_message_id, source_kind, member_id, media_item_id } = body as {
     anchor_message_id?: unknown
     source_kind?: unknown
     member_id?: unknown
+    media_item_id?: unknown
   }
 
   if (typeof anchor_message_id !== 'string' || !anchor_message_id) {
@@ -95,15 +103,32 @@ export async function POST(
     })
     return NextResponse.json({ error: `source_kind must be one of: ${VALID_SOURCE_KINDS.join(', ')}` }, { status: 400 })
   }
+  if (media_item_id !== undefined && (typeof media_item_id !== 'string' || !media_item_id)) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'invalid_media_item_id' },
+    })
+    return NextResponse.json({ error: 'media_item_id must be a non-empty string' }, { status: 400 })
+  }
 
   const memberId = await resolveMemberId(tenantId, typeof member_id === 'string' ? member_id : null)
 
-  const result = await createMemoryFromAnchor(tenantId, {
-    sessionId: id,
-    anchorMessageId: anchor_message_id,
-    memberId,
-    sourceKind: source_kind as MemorySourceKind,
-  })
+  const result = typeof media_item_id === 'string'
+    ? await createPhotoMemoryFromMedia(tenantId, {
+        sessionId: id,
+        anchorMessageId: anchor_message_id,
+        mediaItemId: media_item_id,
+        memberId,
+      })
+    : await createMemoryFromAnchor(tenantId, {
+        sessionId: id,
+        anchorMessageId: anchor_message_id,
+        memberId,
+        sourceKind: source_kind as MemorySourceKind,
+      })
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }

@@ -4,6 +4,8 @@
 // previously entirely untested beyond the shared waitForStorageObject helper.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { AuditAction } from '@/services/audit/types'
 import type { MediaItem } from './index'
 
@@ -104,6 +106,50 @@ function textResponse(body: string, ok: boolean, status: number): Response {
 function arrayBufferResponse(text: string, ok = true, status = 200): Response {
   const bytes = new TextEncoder().encode(text)
   return { ok, status, arrayBuffer: async () => bytes.buffer } as Response
+}
+
+function bufferResponse(buffer: Buffer, ok = true, status = 200): Response {
+  return {
+    ok,
+    status,
+    arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+  } as Response
+}
+
+// Real JPEGs, not JSON-mockable — EXIF/GPS data lives in binary bytes.
+// Generated once via a throwaway script (sharp to build a minimal valid
+// JPEG, piexifjs to inject a real GPS IFD — see the PR description for the
+// exact generation steps) and committed as static fixtures; nothing in the
+// build or runtime dependency tree needs either library.
+const FIXTURES_DIR = join(__dirname, '__fixtures__')
+const PHOTO_WITH_GPS = readFileSync(join(FIXTURES_DIR, 'photo-with-gps.jpg'))
+const PHOTO_NO_GPS = readFileSync(join(FIXTURES_DIR, 'photo-no-gps.jpg'))
+// Golden Gate Bridge viewpoint, San Francisco — the coordinates baked into photo-with-gps.jpg.
+const KNOWN_GPS_LATITUDE = 37.8199
+const KNOWN_GPS_LONGITUDE = -122.4783
+
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
+
+/**
+ * Routes fetchMock by URL for the image pipeline, now that processImage
+ * makes two real calls per run: extractGpsCoordinates's own download of the
+ * signed URL (photo bytes, for exifr), and the Anthropic vision call. Every
+ * existing image-pipeline test below was written before GPS Extraction
+ * shipped and only mocked the vision call — without this, the GPS fetch
+ * would get back whatever the test set up for vision (usually a JSON body
+ * with no `arrayBuffer()` method), which would throw inside
+ * extractGpsCoordinates's own try/catch and log noise, harmlessly but
+ * sloppily. Defaults the GPS fetch to "no GPS data" (the real
+ * photo-no-gps.jpg fixture) so every pre-existing test's assertions (which
+ * never checked latitude/longitude) stay meaningful without further changes.
+ */
+function mockImageFetch(visionResponse: Response, gpsResponse: Response = bufferResponse(PHOTO_NO_GPS)) {
+  fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    if (url === ANTHROPIC_MESSAGES_URL) return visionResponse
+    if (url === 'https://signed.example/short') return gpsResponse
+    throw new Error(`unexpected fetch in image pipeline test: ${url}`)
+  })
 }
 
 function makeItem(overrides: Partial<MediaItem> = {}): MediaItem {
@@ -312,7 +358,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
 
   it('fails the item when Anthropic vision returns a non-ok response', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
-    fetchMock.mockImplementation(async () => textResponse('bad request', false, 400))
+    mockImageFetch(textResponse('bad request', false, 400))
 
     await processMediaItem(makeItem({ type: 'image' }))
 
@@ -324,7 +370,7 @@ describe('processMediaItem — image pipeline (processImage)', () => {
 
   it('parses a valid JSON response into caption/classification/extracted_text', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
-    fetchMock.mockImplementation(async () =>
+    mockImageFetch(
       jsonResponse({
         content: [{ type: 'text', text: JSON.stringify({ caption: 'A dog', classification: 'photo', extracted_text: '' }) }],
       }),
@@ -338,21 +384,61 @@ describe('processMediaItem — image pipeline (processImage)', () => {
     )
   })
 
-  it('falls back to the raw text as caption when the response is not valid JSON', async () => {
+  it('strips a ```json ... ``` markdown code fence before parsing — a real, observed vision-model failure mode', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
-    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'text', text: 'not json' }] }))
+    const fenced = '```json\n' + JSON.stringify({ caption: 'A dog', classification: 'photo', extracted_text: '' }) + '\n```'
+    mockImageFetch(jsonResponse({ content: [{ type: 'text', text: fenced }] }))
 
     await processMediaItem(makeItem({ type: 'image' }))
 
     expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
       'item-1',
-      expect.objectContaining({ status: 'ready', derived_content: 'not json', classification: 'photo' }),
+      expect.objectContaining({ status: 'ready', derived_content: 'A dog', classification: 'photo' }),
     )
+  })
+
+  it('strips a plain ``` ... ``` fence (no "json" language tag) the same way', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    const fenced = '```\n' + JSON.stringify({ caption: 'A cat', classification: 'photo', extracted_text: '' }) + '\n```'
+    mockImageFetch(jsonResponse({ content: [{ type: 'text', text: fenced }] }))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', derived_content: 'A cat', classification: 'photo' }),
+    )
+  })
+
+  it('falls back to a safe placeholder — never the raw response verbatim — when the text is still not valid JSON after fence-stripping, and logs why without leaking the raw text', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    mockImageFetch(jsonResponse({ content: [{ type: 'text', text: 'not json at all' }] }))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      // Never the raw model text ("not json at all") — a fixed, safe
+      // placeholder instead, and still non-empty (createPhotoMemoryFromMedia's
+      // 409 "not ready" gate treats an empty derived_content as unprocessed).
+      expect.objectContaining({ status: 'ready', derived_content: 'A photo.', classification: 'photo' }),
+    )
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[media/processor] vision response was not valid JSON, even after fence-stripping',
+      expect.objectContaining({ media_item_id: 'item-1', error_type: 'SyntaxError', raw_text_length: 'not json at all'.length }),
+    )
+    // Length/presence only — the raw text itself must never reach the log.
+    // (JSON.parse's own SyntaxError message embeds a snippet of the invalid
+    // input verbatim — this asserts the fix doesn't log err.message either.)
+    const loggedMetadata = consoleErrorSpy.mock.calls[0][1] as Record<string, unknown>
+    expect(JSON.stringify(loggedMetadata)).not.toContain('not json at all')
+    consoleErrorSpy.mockRestore()
   })
 
   it('fails the item when no text block is returned', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
-    fetchMock.mockImplementation(async () => jsonResponse({ content: [{ type: 'image' }] }))
+    mockImageFetch(jsonResponse({ content: [{ type: 'image' }] }))
 
     await processMediaItem(makeItem({ type: 'image' }))
 
@@ -360,6 +446,130 @@ describe('processMediaItem — image pipeline (processImage)', () => {
       'item-1',
       expect.objectContaining({ status: 'failed', error_message: 'No text block returned from Anthropic vision' }),
     )
+  })
+})
+
+describe('processMediaItem — GPS extraction (extractGpsCoordinates, via processImage)', () => {
+  beforeEach(() => {
+    resetSharedMocks()
+    process.env.ANTHROPIC_API_KEY = 'anthropic-test-key'
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete process.env.ANTHROPIC_API_KEY
+  })
+
+  const VISION_OK = jsonResponse({
+    content: [{ type: 'text', text: JSON.stringify({ caption: 'A view', classification: 'photo', extracted_text: '' }) }],
+  })
+
+  it('extracts real GPS EXIF data and writes correct decimal-degree lat/lng — proves extraction AND DMS-to-decimal conversion against a real fixture with known coordinates', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    mockImageFetch(VISION_OK, bufferResponse(PHOTO_WITH_GPS))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready' }),
+    )
+    const call = mockUpdateMediaItem.mock.calls.find(([, input]) => (input as { status?: string }).status === 'ready')
+    const written = call?.[1] as { latitude: number; longitude: number }
+    // Decimal degrees, not the raw DMS triplet the EXIF GPS IFD actually
+    // stores (degrees/minutes/seconds) — a non-integer value confirms real
+    // conversion happened, not just a passthrough of the DMS numerator.
+    expect(written.latitude).toBeCloseTo(KNOWN_GPS_LATITUDE, 4)
+    expect(written.longitude).toBeCloseTo(KNOWN_GPS_LONGITUDE, 4)
+    expect(Number.isInteger(written.latitude)).toBe(false)
+  })
+
+  it('a photo with no GPS EXIF at all (the common case) completes normally with null coordinates, no error', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    mockImageFetch(VISION_OK, bufferResponse(PHOTO_NO_GPS))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', latitude: null, longitude: null }),
+    )
+    // The no-GPS-data case is the expected common case, not a failure — no log.
+    expect(consoleErrorSpy).not.toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('corrupt/unparsable image bytes at the signed URL degrade to null coordinates and do NOT take down vision/caption processing', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    const garbage = Buffer.from('this is not a jpeg at all, just plain text bytes', 'utf8')
+    mockImageFetch(VISION_OK, bufferResponse(garbage))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    // Vision/caption processing completed successfully, unaffected.
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', derived_content: 'A view', latitude: null, longitude: null }),
+    )
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[media/processor] GPS extraction failed, continuing without coordinates',
+      expect.objectContaining({ media_item_id: 'item-1' }),
+    )
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('the signed URL failing to download for GPS purposes also degrades to null coordinates, without failing the item', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    mockImageFetch(VISION_OK, textResponse('not found', false, 404))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockUpdateMediaItem).toHaveBeenLastCalledWith(
+      'item-1',
+      expect.objectContaining({ status: 'ready', latitude: null, longitude: null }),
+    )
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[media/processor] GPS extraction failed, continuing without coordinates',
+      expect.objectContaining({ media_item_id: 'item-1' }),
+    )
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('logs error_type only on GPS failure, never raw EXIF bytes or file content', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    const garbage = Buffer.from('this is not a jpeg at all, just plain text bytes', 'utf8')
+    mockImageFetch(VISION_OK, bufferResponse(garbage))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    const loggedMetadata = consoleErrorSpy.mock.calls.find(
+      (call) => call[0] === '[media/processor] GPS extraction failed, continuing without coordinates',
+    )?.[1] as Record<string, unknown>
+    expect(loggedMetadata).toBeDefined()
+    expect(Object.keys(loggedMetadata).sort()).toEqual(['error_type', 'media_item_id'])
+    expect(JSON.stringify(loggedMetadata)).not.toContain('plain text bytes')
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("logs gps_found: true/false (presence only, never raw coordinates) on the MEDIA_PROCESS_COMPLETED audit event", async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ type: 'image' }))
+    mockImageFetch(VISION_OK, bufferResponse(PHOTO_WITH_GPS))
+
+    await processMediaItem(makeItem({ type: 'image' }))
+
+    expect(mockLogMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_PROCESS_COMPLETED,
+        metadata: expect.objectContaining({ gps_found: true }),
+      }),
+    )
+    const completedCall = mockLogMediaEvent.mock.calls.find(([p]) => p.action === AuditAction.MEDIA_PROCESS_COMPLETED)
+    const metadata = completedCall?.[0]?.metadata as Record<string, unknown>
+    expect(JSON.stringify(metadata)).not.toContain(String(KNOWN_GPS_LATITUDE))
+    expect(JSON.stringify(metadata)).not.toContain(String(KNOWN_GPS_LONGITUDE))
   })
 })
 

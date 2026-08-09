@@ -22,6 +22,14 @@
 //      createDraftMemory() to insert one row, status: 'draft'. Nothing is
 //      written on failure — there is no "running" status to reconcile,
 //      because no row exists until there's a real draft.
+//      A photo attachment has its own creation path, createPhotoMemoryFromMedia()
+//      (added 2026-08-08, PhotoUploadActions.tsx's Bookmark icon) — title/body
+//      both come from the photo's own AI-generated caption
+//      (media_items.derived_content), not from any message text, and the
+//      insert additionally stamps media_item_id so two photos on the same
+//      chat message resolve to two independent memories rather than
+//      colliding on anchor_message_id alone (see useMemories.ts's composite
+//      lookup key).
 //   2. "Keep this" -> publishMemory() flips status to 'published'.
 //   3. "Discard" -> discardMemory() stamps discarded_at; the row is never
 //      hard-deleted this way (soft, same convention as members.revoked_at /
@@ -72,6 +80,17 @@ export interface MemoryRow {
   id: string
   session_id: string
   anchor_message_id: string
+  /**
+   * One-to-one photo-bookmark disambiguator (added 2026-08-08, confirmed
+   * live in Studio — distinct from photo_artifacts's separate many-to-many
+   * "attach this photo to any memory" relationship, not yet built). Null
+   * for every non-photo-bookmark memory (conversation/video/audio/document,
+   * and any legacy row). Lets two photos on the same chat message resolve
+   * to two independent memories instead of colliding on anchor_message_id
+   * alone — see createPhotoMemoryFromMedia below and useMemories.ts's
+   * composite lookup key.
+   */
+  media_item_id?: string | null
   source_kind: MemorySourceKind
   title: string
   body: string
@@ -85,7 +104,7 @@ export interface MemoryRow {
 const ARTIFACT_TYPE = 'memory' as const
 
 const MEMORY_ROW_COLUMNS =
-  'id, session_id, anchor_message_id, source_kind, title, body, status, created_at, updated_at'
+  'id, session_id, anchor_message_id, media_item_id, source_kind, title, body, status, created_at, updated_at'
 
 /**
  * listMemories/createDraftMemory/renameMemory/publishMemory deliberately
@@ -107,6 +126,7 @@ function toMemoryRow(row: Record<string, unknown>): MemoryRow {
     id: row.id as string,
     session_id: row.session_id as string,
     anchor_message_id: row.anchor_message_id as string,
+    media_item_id: (row.media_item_id as string | null | undefined) ?? null,
     source_kind: row.source_kind as MemorySourceKind,
     title: row.title as string,
     body: row.body as string,
@@ -153,6 +173,8 @@ export interface CreateDraftMemoryInput {
   sourceKind: MemorySourceKind
   title: string
   body: string
+  /** Only ever set by createPhotoMemoryFromMedia below — every other caller (createMemoryFromAnchor) omits it, which inserts NULL. */
+  mediaItemId?: string
 }
 
 /** Distinct error string for the "no linked account" rejection below — lets
@@ -229,6 +251,7 @@ export async function createDraftMemory(
       user_id: userId,
       session_id: input.sessionId,
       anchor_message_id: input.anchorMessageId,
+      media_item_id: input.mediaItemId ?? null,
       member_id: input.memberId,
       type: ARTIFACT_TYPE,
       source_kind: input.sourceKind,
@@ -379,6 +402,112 @@ export async function createMemoryFromAnchor(
     target_id: createResult.data.id,
     outcome: 'success',
     metadata: { title_source: titleSource },
+  })
+
+  return createResult
+}
+
+export interface CreatePhotoMemoryFromMediaInput {
+  sessionId: string
+  anchorMessageId: string
+  mediaItemId: string
+  memberId: string | null
+}
+
+/**
+ * The photo-bookmark creation path — sibling to createMemoryFromAnchor, not
+ * a branch inside it: this has its own failure modes (a not-yet-processed
+ * photo, an unowned media item) that have nothing to do with anchor-message
+ * lookup. Backs the per-photo Bookmark action (PhotoUploadActions.tsx) —
+ * unlike the whole-message bookmark, this never needs the anchor message to
+ * have any text content at all (a caption-less photo message couldn't be
+ * bookmarked before this existed).
+ *
+ * Title and body both come from the photo's own AI-generated caption
+ * (media_items.derived_content, written by the Haiku vision pass that runs
+ * on every upload) — read server-side, never trusted from the client.
+ * deriveFallbackMemoryTitle() truncates it the same way every other
+ * fallback-titled memory does; there is no [MEMORY_TITLE] marker equivalent
+ * for a photo (nothing in the transcript to parse one from).
+ *
+ * Ownership check mirrors reviseMemoryBlocks's own image-block validation
+ * exactly: getMediaItem (tenant-scoped) plus listByChat membership (session-
+ * scoped) — a client can't bookmark another session's or tenant's photo by
+ * guessing/replaying a media_item_id. 409 (not 400) when the item hasn't
+ * finished processing yet or derived_content is still null — the client
+ * already gates the button on status: 'ready', so reaching this branch means
+ * a race (the item flipped back, or was queried mid-processing), not a
+ * malformed request.
+ */
+export async function createPhotoMemoryFromMedia(
+  tenantId: string,
+  input: CreatePhotoMemoryFromMediaInput,
+): Promise<MemoryResult<MemoryRow>> {
+  const { sessionId, anchorMessageId, mediaItemId, memberId } = input
+
+  const [item, sessionMediaItems] = await Promise.all([
+    getMediaItem(mediaItemId, tenantId),
+    listByChat(sessionId, tenantId),
+  ])
+  const belongsToSession = sessionMediaItems.some(m => m.id === mediaItemId)
+
+  if (!item || !belongsToSession) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'media_item_not_in_session', media_item_id: mediaItemId },
+    })
+    return { ok: false, status: 400, error: `media_item_id ${mediaItemId} does not belong to this session` }
+  }
+
+  if (item.status !== 'ready' || !item.derived_content) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: 'media_item_not_ready', media_item_id: mediaItemId, status: item.status },
+    })
+    return { ok: false, status: 409, error: 'This photo is still being processed — try again in a moment.' }
+  }
+
+  const body = item.derived_content.trim()
+  const title = deriveFallbackMemoryTitle(body)
+
+  const createResult = await createDraftMemory(tenantId, {
+    sessionId,
+    anchorMessageId,
+    memberId,
+    mediaItemId,
+    sourceKind: 'photo',
+    title,
+    body,
+  })
+
+  if (!createResult.ok) {
+    void logEvent({
+      action: AuditAction.MEMORY_CREATED,
+      tenant_id: tenantId,
+      actor_type: memberId ? 'user' : 'anonymous',
+      target_type: 'memory',
+      outcome: 'failure',
+      metadata: { error_detail: createResult.error, media_item_id: mediaItemId },
+    })
+    return createResult
+  }
+
+  void logEvent({
+    action: AuditAction.MEMORY_CREATED,
+    tenant_id: tenantId,
+    actor_type: memberId ? 'user' : 'anonymous',
+    target_type: 'memory',
+    target_id: createResult.data.id,
+    outcome: 'success',
+    metadata: { media_item_id: mediaItemId },
   })
 
   return createResult

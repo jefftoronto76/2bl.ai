@@ -25,6 +25,9 @@ export interface UpdateMediaItemInput {
   classification?: string | null
   error_message?: string | null
   processed_at?: string | null
+  /** Set once, alongside the ready-transition update, by processImage's GPS extraction step — see services/media/processor.ts. */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export async function createMediaItem(input: CreateMediaItemInput): Promise<MediaItem> {

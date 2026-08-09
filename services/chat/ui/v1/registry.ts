@@ -111,6 +111,46 @@ export const MEMORY_TITLE_MARKER: MarkerDefinition = {
   dispatch: 'server',
 }
 
+/**
+ * The MEDIA_UPLOAD marker — `[MEDIA_UPLOAD: filename | media_item_id | type]`,
+ * written into a visitor message's own stored content by the upload flow
+ * (ChatInput.tsx), one per attachment. Dispatch is 'client': the real
+ * consumer is `MessageList.tsx`'s own separate, purpose-built
+ * `MEDIA_UPLOAD_RE` parser (`parseUserMessage`), which extracts the
+ * structured `uploads` array that drives thumbnail rendering — this
+ * registry entry does NOT replace that. It exists so every OTHER consumer
+ * of the shared registry (chiefly `createMemoryFromAnchor`,
+ * services/crm/memories.ts, which reads a message's raw stored content
+ * verbatim) strips this marker from prose instead of leaking it into a
+ * memory's title/body — the bug this was added to fix, 2026-08-08 (a photo
+ * message bookmarked via the whole-message "Keep this as a memory" button
+ * showed raw `[MEDIA_UPLOAD: ...]` text as the memory's title and body,
+ * since this marker had never been registered here). The two parsers match
+ * the same real syntax independently — keep them in sync if the upload
+ * marker's shape ever changes.
+ */
+export const MEDIA_UPLOAD_MARKER: MarkerDefinition = {
+  type: 'MEDIA_UPLOAD',
+  pattern: /\[MEDIA_UPLOAD:\s*([^|\]]*)\|\s*([^|\]]*)\|\s*([^\]]*)\]/g,
+  fieldCount: 3,
+  dispatch: 'client',
+}
+
+/**
+ * The MEDIA_UPLOAD_FAILED marker — `[MEDIA_UPLOAD_FAILED: filename]`, written
+ * for a client-side (pre-upload) attachment failure with no `media_items`
+ * row behind it. Same rationale as MEDIA_UPLOAD_MARKER above: dispatch is
+ * 'client' (MessageList.tsx's own `MEDIA_FAILED_RE` is the real consumer,
+ * rendering `FailedUploadChip`) — registered here purely so it strips
+ * cleanly from prose everywhere else, rather than leaking raw bracket text.
+ */
+export const MEDIA_UPLOAD_FAILED_MARKER: MarkerDefinition = {
+  type: 'MEDIA_UPLOAD_FAILED',
+  pattern: /\[MEDIA_UPLOAD_FAILED:\s*([^\]]*)\]/g,
+  fieldCount: 1,
+  dispatch: 'client',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -186,5 +226,7 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(ACCOUNT_CREATE_MARKER)
   registry.register(SAVE_MEMORY_MARKER)
   registry.register(MEMORY_TITLE_MARKER)
+  registry.register(MEDIA_UPLOAD_MARKER)
+  registry.register(MEDIA_UPLOAD_FAILED_MARKER)
   return registry
 }
