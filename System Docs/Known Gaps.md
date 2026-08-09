@@ -562,7 +562,7 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     saved, doesn't repeat the kind), and the rename UI is gone entirely. See
     `System Docs/Public Site.md`'s memory bookmark row.
   - **Memory panel — Stages A–E shipped 2026-08-08 (PRs #302, #306, #307,
-    #308); F not built.** Clicking a saved memory (the row is now a button,
+    #308); F (mobile) shipped 2026-08-09 (PR #325).** Clicking a saved memory (the row is now a button,
     `onOpen` prop) opens it in a side panel: `SidebarV2` force-collapses to
     its existing 48px rail (`forceCollapsed` prop), the chat column narrows,
     and a third pane renders — **`MemoryCardView`, the real chrome, as of
@@ -580,23 +580,29 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     transcript's own `MemoryCard`/`MemorySavedReceipt` (see the entry
     above) stay exactly as read-only as they were before this panel shipped,
     untouched by any of it. See `System Docs/Public Site.md`'s
-    `MemoryCardView` row for the full mechanics. Desktop only;
-    mobile is unaffected, not broken — `onOpenMemory` is `undefined` there,
-    so the receipt stays exactly as inert as it was before this feature.
+    `MemoryCardView` row for the full mechanics.
     **C, D, E all shipped:** the chat/panel divider is drag-resizable (mouse
     and keyboard — arrow-key nudge, Home/double-click reset), with the
     hover/drag visual treatment (accent line, pill, background wash) from
     `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx` —
-    see the sprint-close pointer below for the short version. **Outstanding:
-    F** — mobile: the panel should slide up from the bottom, a genuinely
-    separate code path from the desktop side-split, not yet started. See
+    see the sprint-close pointer below for the short version. **F (mobile) —
+    shipped 2026-08-09, PR #325 — diverged from the original spec on
+    purpose.** `onOpenMemory` is no longer gated on `isMobile`, so the
+    receipt is clickable on mobile too, and tapping it opens `MemoryCardView`
+    as a full-screen overlay (`inset-0`/`h-[100dvh]`, no rounding, no scrim)
+    — not the "slide up from the bottom" partial sheet the original design
+    handoff spec'd. That partial-sheet framing was superseded once Media's
+    own mobile bottom sheet shipped the same week (PR #324) and needed a
+    visually distinct treatment for the memory panel to avoid the two
+    looking like the same affordance; see `System Docs/Public Site.md`'s
+    `ChatHero` row for the full mechanics and the reasoning for no scrim /
+    reusing the existing `hl-animate-sheet` timing. Original spec still at
     `Design Handovers/design_handoff_memory_panel_layout_2026/README.md` for
-    the full spec and `System Docs/Public Site.md`'s `ChatHero` /
-    `ChatDrawerV2` rows for the current implementation, including a real
-    architectural constraint found while building this: `ChatDrawerV2`
-    caps the whole app at `clamp(680px,50vw,1120px)` wide, not the full
-    viewport, with no `overflow-hidden` anywhere in its ancestry — worth
-    knowing before adding more wide content inside it.
+    historical reference only — it does not describe what shipped. The
+    `ChatDrawerV2` architectural constraint this section used to flag
+    (`clamp(680px,50vw,1120px)` cap, no `overflow-hidden` in its ancestry)
+    is still real and still worth knowing — see `System Docs/Public Site.md`'s
+    `ChatDrawerV2` row.
   - **Sprint-close pointer, 2026-08-08 — memory panel resize (Stages A–E) +
     scroll-to-latest nudge.** PRs #301–#303, #305–#308, and #310 (confirmed
     via `git log --merges`; #304 falls inside that number range but is an
