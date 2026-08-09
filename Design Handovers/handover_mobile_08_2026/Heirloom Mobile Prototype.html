@@ -1,0 +1,55 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Heirloom — Mobile Prototype</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;background:#EDE6D6;font-family:system-ui,sans-serif}
+#root{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px}
+.frame-wrap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.frame-note{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8072;font-family:ui-monospace,monospace}
+iframe.app-frame{width:100%;height:100%;border:none;display:block;background:#FAF6EE}</style>
+</head><body>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#EDE6D6"/><rect x="30" y="14" width="40" height="72" rx="8" fill="#2E2417"/><rect x="34" y="20" width="32" height="60" rx="2" fill="#FAF6EE"/></svg></template>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+function isTextField(el) {
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') return !['button','checkbox','radio','submit','range','color','file'].includes((el.type || '').toLowerCase());
+  return el.isContentEditable;
+}
+function App() {
+  const [keyboard, setKeyboard] = useState(false);
+  const frameRef = useRef(null);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    let doc;
+    const onFocusIn = (e) => { if (isTextField(e.target)) setKeyboard(true); };
+    const onFocusOut = (e) => { if (isTextField(e.target)) setTimeout(() => { if (!isTextField(doc.activeElement)) setKeyboard(false); }, 0); };
+    const attach = () => {
+      doc = frame.contentDocument;
+      if (!doc) return;
+      doc.addEventListener('focusin', onFocusIn, true);
+      doc.addEventListener('focusout', onFocusOut, true);
+    };
+    frame.addEventListener('load', attach);
+    attach();
+    return () => {
+      frame.removeEventListener('load', attach);
+      if (doc) { doc.removeEventListener('focusin', onFocusIn, true); doc.removeEventListener('focusout', onFocusOut, true); }
+    };
+  }, []);
+  return (
+    <div className="frame-wrap">
+      <IOSDevice width={402} height={874} keyboard={keyboard}>
+        <iframe ref={frameRef} className="app-frame" src="Heirloom Lander - Summer 2026 - Story Canvas.html" title="Heirloom mobile" />
+      </IOSDevice>
+      <span className="frame-note">Live prototype — same build as desktop, at phone width. Tap "Start Your Story" to open chat.</span>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body></html>
