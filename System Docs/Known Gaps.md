@@ -267,6 +267,52 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   "Story Invite Links" section and `System Docs/Database Schema.md`'s
   `story_invite_links` row for the real shape.
 
+  **Superseded again, same day — invite_modal_updates (Phase 5, 2026-08-10).**
+  Fixes a real bug the story-invite-links merge above carried forward
+  unnoticed (it swapped the backend but not this flow): `handleInviteStory`
+  called `createInviteLink('', storyId, false)` **immediately** on click,
+  before the modal had even opened or the member had typed anything — every
+  click on the per-story invite icon minted (or, if 1 already existed for
+  that story, silently reused) a real, shareable magic link with no
+  deliberate action behind it. `InviteCollaboratorsModal`'s `magicLink` prop
+  is optional now (`magicLink?: string`); opening the modal only sets
+  `invite: { storyId }`, `inviteLink` stays `null` until the member clicks
+  the new **Create** button in the link row's own spot (see that component's
+  row in `System Docs/Public Site.md` for the full Create/Copy state
+  mechanics). Also new: an **invalidation warning** — changing the story
+  picker or the Custom Greeting while a link is live no longer applies
+  silently (previously either changed nothing about the link, leaving stale
+  copy, or blanked it with no explanation depending on which field). The
+  edit is captured, a warning dialog fires, and only on Continue does the
+  edit apply AND the old link get revoked server-side (new `DELETE
+  /api/heirloom/story-invites`) — dropping back to "Not created yet," never
+  auto-creating a replacement. No warning with no link yet (nothing real to
+  lose), and none on "Reset link" itself (its own label already says what
+  it does). Both mechanics match `Design Handovers/invite_modal_updates_08_2026/
+  README.md`'s reference exactly.
+
+  **The roster gap above is finally closed, partially.** "Already invited"
+  is now "Existing members" — the joined/pending count and mixed badges are
+  gone, since every row here reflects a genuine `artifact_subscribers`
+  grant (a roster row only exists once `acceptStoryInvite` has written one;
+  there is no "pending" state on this table to represent). New `GET /api/
+  heirloom/story-invites?story_id=` + `listStoryCollaborators` (`services/
+  crm/story-invites.ts`) join `artifact_subscribers` to `members`, owner-
+  scoped the same way create/reset already are. **Still not real: a memory
+  count per collaborator.** The design reference's mockup shows "Joined
+  `[date]` · `N` memories" — this codebase has no way to compute the `N`
+  yet, since it depends on the still-unbuilt story ↔ memory relationship
+  (`artifact_containments`, called out as unwired in "Real story creation
+  and persistence" above and unchanged by this pass). Shipped as "Joined
+  `[date]`" alone rather than fabricating a count; `Collaborator.memoryCount`
+  is `number | undefined` (undefined ≠ 0) so a future wiring of
+  `artifact_containments` has a field ready without another prop-shape
+  change. `Collaborator.relationship` is also now optional and only
+  rendered when present — the real `members` table has no relationship
+  column, and the design mockup's "Daughter"/"Brother" values are sample
+  data with nothing behind them in this schema; never fabricated here
+  either.
+
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
