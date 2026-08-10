@@ -13,7 +13,7 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 vi.mock('@/services/audit', () => ({ logEvent: vi.fn() }))
 
-import { createStory, listStories, STORY_ACCOUNT_REQUIRED_ERROR } from './stories'
+import { createStory, listStories, discardStory, STORY_ACCOUNT_REQUIRED_ERROR } from './stories'
 import { logEvent } from '@/services/audit'
 
 const mockLogEvent = vi.mocked(logEvent)
@@ -223,5 +223,37 @@ describe('createStory', () => {
     expect(mockLogEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: AuditAction.STORY_CREATED, outcome: 'failure' }),
     )
+  })
+})
+
+describe('discardStory', () => {
+  it('stamps discarded_at, scoped by id + tenant + user', async () => {
+    const { client, updateCalls } = makeClient({ updateResult: { data: { id: 'story-1' }, error: null } })
+    adminHolder.client = client
+
+    const result = await discardStory('tenant-1', 'user-1', 'story-1')
+
+    expect(result.ok).toBe(true)
+    expect(updateCalls[0]).toHaveProperty('discarded_at')
+  })
+
+  it('404s when no row matches id + tenant + user', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: null } })
+    adminHolder.client = client
+
+    const result = await discardStory('tenant-1', 'user-1', 'nope')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(404)
+  })
+
+  it('500s when the update itself errors', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: { message: 'db down' } } })
+    adminHolder.client = client
+
+    const result = await discardStory('tenant-1', 'user-1', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
   })
 })

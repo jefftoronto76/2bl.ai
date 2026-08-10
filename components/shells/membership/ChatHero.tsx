@@ -307,6 +307,28 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   };
 
+  // Real persistence (2026-08-09) — DELETE /api/stories/[id] (services/crm/
+  // stories.ts's discardStory, stamping discarded_at on the same artifacts
+  // row), replacing the local-only filter this used to do. Fire-and-forget
+  // from ConfirmDeleteModal's onConfirm below (matching handleRemoveMemory's
+  // own not-awaited-inline call there) — the dialog closes immediately;
+  // failure only reverts local state and toasts, it doesn't reopen anything.
+  const handleDeleteStory = useCallback(async (storyId: string) => {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        console.error('[ChatHero] delete story failed:', res.status);
+        showToast('Could not delete story');
+        return;
+      }
+      setStories(prev => prev.filter(s => s.id !== storyId));
+      showToast('Deleted');
+    } catch (err) {
+      console.error('[ChatHero] delete story threw:', err);
+      showToast('Could not delete story');
+    }
+  }, [showToast]);
+
   const handleSelectPrompt = (prompt: WritingPrompt) => {
     // Gated visitors see GateView instead of the conversation — a prompt send
     // would vanish behind it. Streaming guard matches ChatInput's.
@@ -590,10 +612,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             // still the same memory pendingDelete was opened for.
             if (liveOpenMemory) void handleRemoveMemory(liveOpenMemory);
           } else if (pendingDelete.target === 'story') {
-            // No stories backend yet (ephemeral client state — see the
-            // stories comment above) — remove locally, no network call.
-            setStories(prev => prev.filter(s => s.id !== pendingDelete.id));
-            showToast('Deleted');
+            // Real delete now (2026-08-09) — see handleDeleteStory above.
+            void handleDeleteStory(pendingDelete.id);
           } else {
             void deleteSession(pendingDelete.id);
             showToast('Deleted');

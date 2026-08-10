@@ -187,3 +187,40 @@ export async function createStory(
   })
   return { ok: true, data: toStoryRow(data) }
 }
+
+/**
+ * "Delete" — soft, stamps discarded_at rather than deleting. Same
+ * soft-marker convention discardMemory already uses on this same artifacts
+ * table (services/crm/memories.ts). Tenant + user scoped (not session-scoped
+ * — a story has none); 404s rather than silently no-op'ing if the id
+ * doesn't resolve or belongs to someone else.
+ */
+export async function discardStory(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+): Promise<StoryResult<null>> {
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('artifacts')
+    .update({ discarded_at: new Date().toISOString() })
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error('[stories] discard error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[stories] no story matched id + tenant + user:', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  console.log('[stories] discarded:', storyId)
+  return { ok: true, data: null }
+}
