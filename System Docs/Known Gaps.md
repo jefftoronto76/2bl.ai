@@ -1010,3 +1010,22 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   the `'document'` default remains a reasonable soft-degrade, since it
   isn't core content the member sees directly the way a photo's caption
   is.
+
+- **RESOLVED 2026-08-10 — follow-up: retry generalized into a reprocess
+  capability, closing the gap the fix above left for pre-existing bad
+  rows (PR #327).** The 2026-08-09 fix immediately above stopped *new*
+  corrupted captions from ever landing as `'ready'`, but did nothing for
+  `media_items` rows already marked `'ready'` with bad `derived_content`
+  from before that fix shipped — the retry route's gate
+  (`item.status !== 'failed'`) rejected them outright, since they were
+  never `'failed'` to begin with, just wrong. `POST /api/media/[id]/retry`
+  (`app/api/media/[id]/retry/route.ts`) now accepts any **settled**
+  status (`'ready'` or `'failed'`), rejecting only `'pending'`/
+  `'processing'` (already in-flight — a second concurrent
+  `processMediaItem` run would race the one already running).
+  `MediaGallery.tsx`'s action button follows suit, now rendering on
+  `'ready'` items too, labeled "Reprocess" rather than reusing "Try
+  again" — re-running analysis on something that already succeeded reads
+  as a different user intent than recovering a failure. See
+  `Utilities/Media.md`'s "The pipeline" section and `Public Site.md`'s
+  `MediaGallery` row for the current behavior.
