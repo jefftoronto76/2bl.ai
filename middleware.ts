@@ -51,6 +51,16 @@ export default createAuthMiddleware(async (auth, req) => {
   // directly rather than becoming /secondbrainlabs/invite/x or /heirloom/invite/x.
   const isInvitePath = pathname === '/invite' || pathname.startsWith('/invite/')
 
+  // /join is the public story-invite-link redirect (app/join/[token]/route.ts,
+  // reusable-story-invite-links, 2026-08-10) — the story_invite_links sibling
+  // of /invite above, added after that guard already existed and initially
+  // missing this same exclusion (caught in post-merge doc review): without it,
+  // heirloom.2bl.ai/join/x fell into the Heirloom rewrite block below and
+  // became /heirloom/join/x, which has no route handler — a 404 on exactly the
+  // host this feature is for. Same reasoning as /invite: the token lookup has
+  // no tenant context of its own until it reads the story_invite_links row.
+  const isJoinPath = pathname === '/join' || pathname.startsWith('/join/')
+
   // API routes must never be rewritten under a product segment — they live at the
   // app root and resolve the tenant from the host header. Without this guard,
   // 2bl.ai/api/admin/appearance rewrites to /secondbrainlabs/api/admin/appearance
@@ -64,7 +74,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // rewritten URL automatically (req.nextUrl.clone() keeps all search params)
   // so it persists across server-rendered navigations.
   // Guards mirror the existing host blocks: API, admin, and platform paths pass through.
-  if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath && !isInvitePath) {
+  if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath && !isInvitePath && !isJoinPath) {
     const previewTenant = req.nextUrl.searchParams.get('preview')
 
     if (previewTenant === 'heirloom') {
@@ -155,7 +165,7 @@ export default createAuthMiddleware(async (auth, req) => {
     }
   }
 
-  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath && !isInvitePath) {
+  if ((isSblHost || isSblPath) && !isPlatformPath && !isAdminPath && !isApiPath && !isInvitePath && !isJoinPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-sbl', '1')
     requestHeaders.set('x-correlation-id', correlationId)
@@ -176,7 +186,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // never catches Heirloom. Direct hits to /heirloom (e.g. preview URLs) get
   // the same tag without a rewrite.
 
-  if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath && !isInvitePath) {
+  if ((isHeirloomHost || isHeirloomPath) && !isApiPath && !isAdminPath && !isInvitePath && !isJoinPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-heirloom', '1')
     requestHeaders.set('x-correlation-id', correlationId)
@@ -196,7 +206,7 @@ export default createAuthMiddleware(async (auth, req) => {
   // inkwell palette. Direct hits to /legacy (e.g. preview URLs) get
   // the same tag without a rewrite.
 
-  if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath && !isInvitePath) {
+  if ((isLegacyHost || isLegacyPath) && !isApiPath && !isAdminPath && !isInvitePath && !isJoinPath) {
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set('x-legacy', '1')
     requestHeaders.set('x-correlation-id', correlationId)

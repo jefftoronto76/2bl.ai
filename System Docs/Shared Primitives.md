@@ -41,6 +41,12 @@ invite) and deriving `reached` as `used_at ? 'accepted' : opened_at ? 'opened' :
 `inviteUrlFor(token, tenantDomain?, origin?)` is the single source of truth for the
 `/invite/{token}` URL shape — every invite-link builder in the codebase (`MembersList`,
 `MemberDrawer`, `InviteMemberModal`, both invite POST routes) calls through it rather than
-constructing the string inline.
+constructing the string inline. **Not reused by `/join/{token}`** (reusable-story-invite-links,
+2026-08-10) — `inviteUrlFor` is hardcoded to the `/invite/` path, so
+`app/api/heirloom/story-invites/route.ts` builds its own `https://${tenantDomain}/join/${token}`
+string inline instead of generalizing this helper to take a path segment; a deliberate
+small duplication rather than widening a function three other call sites already depend
+on for an unrelated, separately-locked mechanism (see `System Docs/Utilities/Members.md`'s
+note on this feature's hard constraint).
 
 ---
