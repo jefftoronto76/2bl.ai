@@ -178,7 +178,30 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   revert-on-failure. Still not built: story rows remain backend-less (delete
   only mutates the ephemeral local `stories` state — no network call, since
   there's still no `stories` table), and `moveToChapter` / `removeFromChapter`
-  / `invite` remain deliberate no-ops for both row types.
+  remain deliberate no-ops for both row types.
+
+  **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
+  `invite` is no longer a kebab item at all (it was buried and dead) —
+  `SidebarV2` now renders a dedicated per-story-row invite icon
+  (`onInviteStory`), wired in `ChatHero.tsx` to a real
+  `InviteCollaboratorsModal` (previously fully built but unmounted) and a new
+  member-facing route, `POST /api/heirloom/invites` (see `API Routes.md`).
+  Clicking the icon creates a real, generic (no invited_name/email/phone)
+  single-use `members` invite via `createMemberInvite`, with the modal's
+  Custom Greeting field writing straight to `members.primer` — the same
+  mechanism `InviteMemberModal.tsx`'s admin flow already uses, not a separate
+  "note" concept. **What's still not real:** (1) the story tie — there is no
+  `stories` table or story-collaborator schema yet, so which story an invite
+  is "for" is recorded only in that invite's own audit-event metadata
+  (`createMemberInvite`'s `storyId` param), not as a queryable relationship;
+  the modal's "Already invited" roster is therefore always empty (`[]`) since
+  there's nothing real to populate it from. (2) The prototype's second entry
+  point — a "Share this story" button inside a real story view — was not
+  built; there is no real story view yet (deferred, separate stage). (3)
+  Whether the story picker's selection should ever change what the link
+  actually *grants* (vs. just relabeling the modal's copy) is an open product
+  question, not decided — `acceptInvite`'s access grant is unchanged
+  (tenant-level only) for this pass.
 
 - **Media-item state machine (`chatStore.tsx`) — four real bugs found and
   fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide
