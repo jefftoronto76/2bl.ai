@@ -61,6 +61,11 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
   if (url.includes('/memories')) return jsonResponse({ memories: [] });
   if (url.startsWith('/api/media/') && url.endsWith('/retry') && method === 'POST') return jsonResponse({ ok: true });
+  // useFreshImageUrl's re-resolve call — a deterministic, id-derived "fresh"
+  // url distinct from any item.url a test seeds, so the swap is observable
+  // without per-test mock overrides.
+  const freshUrlMatch = url.match(/^\/api\/media\/([^/]+)\/url$/);
+  if (freshUrlMatch) return jsonResponse({ url: `https://example.test/fresh-${freshUrlMatch[1]}.jpg` });
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
   return jsonResponse({ ok: true });
 });
@@ -85,6 +90,7 @@ function mkItem(overrides: {
   status: 'pending' | 'processing' | 'ready' | 'failed';
   error_message?: string | null;
   url?: string | null;
+  localPreviewUrl?: string;
 }): ClientMediaItem {
   return {
     id: overrides.id,
@@ -105,6 +111,7 @@ function mkItem(overrides: {
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
     url: overrides.url ?? 'https://example.test/signed/campfire.jpg',
+    localPreviewUrl: overrides.localPreviewUrl,
   };
 }
 
@@ -370,5 +377,55 @@ describe('UploadThumbnail — persistent ready-checkmark badge (bottom-left, mir
     });
     expect(await screen.findByRole('button', { name: /Retry/ })).toBeInTheDocument();
     expect(screen.queryByTestId('ready-checkmark')).not.toBeInTheDocument();
+  });
+});
+
+describe('UploadThumbnail — re-resolving an expired item.url (useFreshImageUrl)', () => {
+  it('renders localPreviewUrl directly and never calls the fresh-url endpoint', async () => {
+    render(
+      <ChatProvider>
+        <Harness
+          messages={[CAPTIONLESS_UPLOAD_MESSAGE]}
+          seedItems={[
+            mkItem({
+              id: 'media-1',
+              status: 'ready',
+              url: 'https://example.test/signed/campfire.jpg',
+              localPreviewUrl: 'blob:local-preview',
+            }),
+          ]}
+        />
+      </ChatProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText('seed-ready'));
+    });
+
+    const img = await screen.findByAltText('campfire.jpg');
+    expect(img).toHaveAttribute('src', 'blob:local-preview');
+    expect(fetchCalls.some((c) => c.url === '/api/media/media-1/url')).toBe(false);
+  });
+
+  it('falls through to item.url (reload/history-load scenario) and swaps the <img> src to the freshly-fetched one', async () => {
+    render(
+      <ChatProvider>
+        <Harness
+          messages={[CAPTIONLESS_UPLOAD_MESSAGE]}
+          seedItems={[mkItem({ id: 'media-1', status: 'ready', url: 'https://example.test/stale.jpg' })]}
+        />
+      </ChatProvider>,
+    );
+    // Synchronous act (no microtask flush) — captures the render right after
+    // the seed click commits, before the fetch mock's own promise resolves,
+    // mirroring BlockCanvas.test.tsx's stale-then-fresh assertion.
+    act(() => {
+      fireEvent.click(screen.getByText('seed-ready'));
+    });
+
+    const img = screen.getByAltText('campfire.jpg');
+    expect(img).toHaveAttribute('src', 'https://example.test/stale.jpg');
+
+    await waitFor(() => expect(img).toHaveAttribute('src', 'https://example.test/fresh-media-1.jpg'));
+    expect(fetchCalls.some((c) => c.url === '/api/media/media-1/url')).toBe(true);
   });
 });

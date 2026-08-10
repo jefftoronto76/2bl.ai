@@ -452,10 +452,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (`BlockCanvas.tsx`'s `ImageBlockRow`, `MemoryCard.tsx`'s draft-state image
   and `MemorySavedReceipt`'s thumbnail — `MemoryCardView.tsx`'s hero image
   renders through `ImageBlockRow` too, so it's covered by the same edit).
-  **Still open here**: `MessageList`/`ChatThread`'s chat-transcript image
-  attachments read `mediaItems`/`sessionImages` the same way and hit the same
-  60s expiry — wiring `useFreshImageUrl` into that render spot the same way
-  should close this entry, but hasn't been done yet.
+  **Resolved 2026-08-09**: the actual chat-transcript render spot is
+  `UploadThumbnail.tsx` (rendered by `MessageList.tsx` per `userMsg.uploads`
+  entry) — it now calls `useFreshImageUrl` too, gated so the re-fetch only
+  fires when falling through to `item.url`; `item.localPreviewUrl` (the
+  instant, non-expiring local blob set at attach time in `ChatInput.tsx`)
+  still renders directly with no fetch when it's available, since that path
+  was never affected by the 60s expiry. See `System Docs/Public Site.md`'s
+  `UploadThumbnail` row for the mechanics.
 
 - **Save CTA message threshold should be tenant-configurable.** Currently
   hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
