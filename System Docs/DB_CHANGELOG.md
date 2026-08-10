@@ -47,6 +47,49 @@ grants to members *beyond* the creator.
   above is Jeff's own confirmed DDL, supplied directly for this entry, not
   inferred or copied without verification.
 
+## 2026-08-10 — story_invite_links (reusable-story-invite-links)
+
+**Documented same-day**, same as `artifact_subscribers` above — but
+**column list confirmed by Jeff directly in chat, not supplied as literal
+DDL** (unlike that entry's pasted `CREATE TABLE` statement). The shape
+below is what he confirmed live before the feature was built against it;
+treat it as accurate but not a verbatim SQL transcript.
+
+### Create `story_invite_links` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**Confirmed shape (not literal DDL) — two tiers of confidence, not one:**
+Jeff explicitly named `token`, `story_id`, `created_by`, `primer`,
+`expires_at`, `revoked_at`, and the **partial unique index enforcing at
+most one active (`revoked_at IS NULL`) link per `story_id`** — those are
+verified against what he actually said. `id` (uuid, PK), `tenant_id`
+(uuid, FK → `tenants`), `created_at`, `updated_at` (timestamptz) were not
+individually re-confirmed; they're the same boilerplate shape every other
+table in this schema carries, proposed as part of the original design and
+accepted implicitly (the build succeeded against them, nothing has since
+surfaced a mismatch), not independently verified column-by-column the way
+the first list was.
+
+**Purpose:** A durable, reusable, multi-person invite link per story —
+many different people can each accept the same token independently,
+unlike `members.token`'s single-use shape (one row, claimed once). See
+`System Docs/Database Schema.md`'s own `story_invite_links` row and
+`services/crm/story-invites.ts` for the full mechanism.
+
+**Notes:**
+- Live and fully wired the same day it was created — `services/crm/
+  story-invites.ts` (`createOrGetActiveStoryInviteLink`,
+  `resetStoryInviteLink`, `revokeStoryInviteLink`,
+  `validateStoryInviteToken`, `acceptStoryInvite`) reads and writes it
+  directly; unlike `artifact_containments`/`photo_artifacts` above, this is
+  not schema-only scaffolding.
+- This session had no direct Studio/`information_schema` access of its own
+  to independently re-verify the exact column list/constraint against the
+  live schema — same caveat as every other entry in this file that wasn't
+  independently re-run.
+
 ## 2026-08-08 — Photo/memory/story many-to-many schema (Memory Canvas prep)
 
 **Documented retroactively.** These four DDL statements ran in Supabase

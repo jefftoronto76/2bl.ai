@@ -85,6 +85,22 @@ routing in addition to Clerk auth**:
   `heirloom.2bl.ai/invite/x` are **not** rewritten under a product segment —
   they fall through to the shared root `/invite/[token]/route.ts` handler
   (the public invite-link redirect; see "Public" API routes).
+- **`/join` is excluded from every host rewrite, same as `/invite`.** An
+  `isJoinPath` guard (`/join` or `/join/*`) added 2026-08-10
+  (reusable-story-invite-links) is ANDed into the same four places
+  `isInvitePath` is — the preview-routing guard and the SBL/Heirloom/Legacy
+  host rewrite blocks — so `heirloom.2bl.ai/join/x` falls through to the
+  shared root `/join/[token]/route.ts` handler (the public story-invite-link
+  redirect) instead of being rewritten to `/heirloom/join/x`, which has no
+  route handler. **This guard was missing when the feature first shipped** —
+  the new route was added without it, which would 404 every
+  `/join/[token]` hit on `heirloom.2bl.ai` (and the SBL/Legacy hosts, same
+  reason). Caught and fixed in a post-merge documentation review by tracing
+  `/invite`'s own carve-out and checking whether the new sibling route had
+  the same one; actual production exposure before the fix was not
+  independently verified either way. Treat this as the reference example of
+  why a new top-level public route needs this same treatment — grep this
+  file's `isInvitePath` usages before adding another one.
 - **Correlation ID generation:** a `crypto.randomUUID()` is generated at the
   top of every request handler and written as `x-correlation-id` onto
   `requestHeaders`. The header propagates through all `NextResponse.next` /

@@ -244,13 +244,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   open product question, not decided — `acceptInvite`'s access grant is
   unchanged (tenant-level only) for this pass.
 
-  **Superseded, same day — reusable-story-invite-links (2026-08-10).** Both
-  gaps in (1) above are closed by a wholly separate mechanism, not a patch
-  to this one: `story_invite_links` (new table, `services/crm/
-  story-invites.ts`) is a real, durable, per-story FK — `story_id` is a
-  genuine column, not audit-metadata — and multiple different people can
-  each accept the same token independently (unlike `createMemberInvite`'s
-  single-row-single-use shape, which structurally cannot represent that).
+  **Superseded, same day — reusable-story-invite-links (2026-08-10).** The
+  first half of (1) — the story tie having no real column/relationship — is
+  closed by a wholly separate mechanism, not a patch to this one:
+  `story_invite_links` (new table, `services/crm/story-invites.ts`) is a
+  real, durable, per-story FK — `story_id` is a genuine column, not
+  audit-metadata — and multiple different people can each accept the same
+  token independently (unlike `createMemberInvite`'s single-row-single-use
+  shape, which structurally cannot represent that). The second half of (1)
+  — the roster being empty because there was nothing real to populate it
+  from — is **not** closed by this alone; see below, it's still empty for a
+  different reason now.
   `ChatHero.tsx`'s magic-link creation was repointed from `/api/heirloom/
   invites` to `/api/heirloom/story-invites` the same day; `/api/heirloom/
   invites*` and `createMemberInvite`/`acceptInvite` themselves are
@@ -312,6 +316,27 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   column, and the design mockup's "Daughter"/"Brother" values are sample
   data with nothing behind them in this schema; never fabricated here
   either.
+
+- **`/join/[token]` missing its middleware host-rewrite exclusion — found
+  and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
+  `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)
+  ANDed into the SBL/Heirloom/Legacy host-rewrite blocks and the preview-
+  routing guard, specifically so `heirloom.2bl.ai/invite/x` falls through
+  to the root `/invite/[token]/route.ts` handler instead of being rewritten
+  to `/heirloom/invite/x` (no such route). `/join/[token]` — this feature's
+  own public redirect, structurally identical to `/invite/[token]` — shipped
+  without the equivalent `isJoinPath` guard: on `heirloom.2bl.ai/join/x`,
+  the Heirloom rewrite block would have fired and rewritten it to
+  `/heirloom/join/x`, a 404, on exactly the host this feature is for.
+  Caught by deliberately checking whether the new sibling route had every
+  treatment its precedent did, not by an observed failure — actual
+  production exposure before the fix was not independently verified either
+  way. Fixed by adding `isJoinPath` and ANDing it into the same four places
+  `isInvitePath` already was. See `System Docs/App Structure and Routing.md`
+  for the mechanism and `System Docs/API Routes.md`'s `/join/[token]` row.
+  **Lesson for the next new top-level public route:** grep `isInvitePath`'s
+  usages in `middleware.ts` first and mirror every one, don't just add the
+  route file.
 
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
