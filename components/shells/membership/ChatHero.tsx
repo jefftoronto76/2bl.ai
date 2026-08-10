@@ -83,13 +83,46 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     [mediaItems],
   );
 
-  // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
-  // no stories backend yet (schema is Studio work), so created stories live for
-  // the session and demo the flow; rows are inert (no select/chat/kebab
-  // handlers passed). Invite / Uploads / Share / Search are stubbed per the
-  // integration decisions.
+  // V2 sidebar wiring. Stories are real now (2026-08-09) — artifacts rows,
+  // type='story' (services/crm/stories.ts), a sibling to memories'
+  // type='memory' rows, not a dedicated table. Created via POST /api/stories
+  // (handleCreateStory below) and fetched on mount via GET /api/stories
+  // (below) rather than living only in this local state, though this state
+  // remains the source of truth SidebarV2 renders from — both the create and
+  // fetch paths just keep it in sync with the DB. Rows are still inert
+  // (no select/chat/kebab handlers beyond delete) — moveToChapter/
+  // removeFromChapter/invite, and selecting into a story's own view, remain
+  // deliberate no-ops (there's no story view to select into yet; see System
+  // Docs/Known Gaps.md). Invite / Uploads / Share / Search are stubbed per
+  // the integration decisions.
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
+
+  // Fetch-on-mount hydration, mirroring chatStore.tsx's own GET /api/sessions
+  // recovery effect (recentSessions) in shape: cancelled-flag guard, silent
+  // console.error on failure (no error UI — matches this file's existing
+  // silent-fail posture for kebab/memory-panel network calls elsewhere).
+  // Unconditional (not gated on isSignedIn the way chatStore's session
+  // recovery is) — GET /api/stories itself returns an empty list for an
+  // anonymous/unresolvable-tenant request rather than erroring, so there's
+  // nothing this component needs to gate on client-side.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/stories');
+        if (!res.ok || cancelled) return;
+        const data: { stories?: Story[] } = await res.json();
+        if (cancelled) return;
+        setStories(Array.isArray(data.stories) ? data.stories : []);
+      } catch (err) {
+        console.error('[ChatHero] stories fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // One useMemories(sessionId) instance, owned here and passed down to
   // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
@@ -245,12 +278,33 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     showToast(message);
   }, [showToast]);
 
-  const handleCreateStory = (name: string, description: string) => {
-    setStories((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), name, description: description || undefined },
-    ]);
-    setBeginStoryOpen(false);
+  // Real persistence (2026-08-09) — POST /api/stories (services/crm/
+  // stories.ts's createStory, an artifacts insert type='story'), replacing
+  // the local-only crypto.randomUUID() row this used to build. On success,
+  // prepends the server's own row (its real id, not a client-guessed one) to
+  // local state rather than refetching the whole list. Leaves the modal open
+  // on failure — BeginStoryModal only resets its fields when `open` next
+  // transitions to true, so the member's typed name/description survive a
+  // failed attempt to retry.
+  const handleCreateStory = async (name: string, description: string) => {
+    try {
+      const res = await fetch('/api/stories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.story) {
+        console.error('[ChatHero] create story failed:', res.status);
+        showToast('Could not create story');
+        return;
+      }
+      setStories((prev) => [data.story as Story, ...prev]);
+      setBeginStoryOpen(false);
+    } catch (err) {
+      console.error('[ChatHero] create story threw:', err);
+      showToast('Could not create story');
+    }
   };
 
   const handleSelectPrompt = (prompt: WritingPrompt) => {
