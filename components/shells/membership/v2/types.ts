@@ -16,6 +16,11 @@ export interface Story {
   /** Surfaced as the row's hover tooltip. */
   description?: string;
   collaborators?: Collaborator[];
+  /** True when the story has an active invite link and/or any subscriber —
+   *  from GET/POST /api/stories (services/crm/stories.ts's listStories).
+   *  Drives ConfirmDeleteModal's extra warning line; not used to gate the
+   *  Invite/Delete controls themselves (deliberately unrestricted in V1). */
+  hasActiveInviteOrSubscribers?: boolean;
 }
 
 export interface WritingPrompt {
