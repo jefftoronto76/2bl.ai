@@ -200,7 +200,7 @@ type ResolveUserIdResult =
  * table's point of view. `ok: false` is reserved for a genuine lookup
  * failure (DB error), kept distinct so it isn't mistaken for "no account".
  */
-async function resolveUserIdForMember(tenantId: string, memberId: string | null): Promise<ResolveUserIdResult> {
+export async function resolveUserIdForMember(tenantId: string, memberId: string | null): Promise<ResolveUserIdResult> {
   if (!memberId) return { ok: true, userId: null }
   const supabase = getAdminClient()
   const { data, error } = await supabase

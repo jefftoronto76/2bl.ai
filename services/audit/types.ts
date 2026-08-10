@@ -109,6 +109,14 @@ export const AuditAction = {
   // — logged by services/crm/memories.ts's reviseMemoryBlocks, success or
   // failure, same placement convention as MEMORY_CREATED above.
   MEMORY_BLOCKS_REVISED: 'memory.blocks_revised',
+  // Stories — artifacts.type = 'story', same table as memories (no dedicated
+  // stories table). Logged by services/crm/stories.ts's createDraftStory
+  // (success/failure, same placement as MEMORY_CREATED since there's no
+  // separate anchor-wrapper layer for stories) and by DELETE
+  // /api/stories/[id] on a successful discard (mirroring where MEMORY_DISCARDED
+  // is logged — the route, not discardMemory/discardStory itself).
+  STORY_CREATED: 'story.created',
+  STORY_DISCARDED: 'story.discarded',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const
