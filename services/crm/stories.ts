@@ -36,6 +36,13 @@ export interface StoryRow {
   body: string | null
   created_at: string
   updated_at: string
+  /** True when the story has an active (non-revoked) story_invite_links row
+   *  OR any artifact_subscribers row — surfaced so the delete-confirm
+   *  dialog can warn before removing access other people currently have.
+   *  UI-only signal; discardStory itself is unaffected either way. Always
+   *  false on a freshly-created row (toStoryRow's default) — listStories
+   *  below is the only place that computes a real value. */
+  hasActiveInviteOrSubscribers: boolean
 }
 
 const ARTIFACT_TYPE = 'story' as const
@@ -49,14 +56,22 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
     body: (row.body as string | null | undefined) ?? null,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
+    hasActiveInviteOrSubscribers: false,
   }
 }
 
 /**
- * Lists every non-discarded story for a signed-in member, newest first —
- * mirrors listSessions' tenant_id + user_id scoping (services/crm/
- * sessions.ts), not listMemories' session_id scoping, since a story isn't
- * tied to one conversation.
+ * Lists every non-discarded story a signed-in member either owns OR has
+ * been granted access to via artifact_subscribers (reusable-story-invite-
+ * links, 2026-08-10) — the one enforcement point that lets a story-scoped
+ * collaborator see the story they were invited into without seeing
+ * anything else in the tenant: they simply own nothing else by
+ * construction (see services/crm/story-invites.ts's acceptStoryInvite), so
+ * this OR-subscribed widening is the only query that needed to change.
+ * Owned-only scoping (mirrors listSessions' tenant_id + user_id scoping,
+ * services/crm/sessions.ts) is unchanged for anyone with zero subscriptions
+ * — the .or() below degenerates to the exact same query as before when
+ * subscribedStoryIds is empty.
  */
 export async function listStories(
   tenantId: string,
@@ -64,13 +79,47 @@ export async function listStories(
 ): Promise<StoryResult<StoryRow[]>> {
   const supabase = getAdminClient()
 
+  // Resolve this user's members.id — artifact_subscribers grants are keyed
+  // by member_id, not user_id. No active members row (shouldn't happen for
+  // a signed-in caller, but defensive) just means no subscribed stories.
+  const { data: memberRow, error: memberErr } = await supabase
+    .from('members')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (memberErr) {
+    console.error('[stories] list member lookup error:', JSON.stringify(memberErr))
+    return { ok: false, status: 500, error: memberErr.message }
+  }
+
+  let subscribedStoryIds: string[] = []
+  if (memberRow) {
+    const { data: subRows, error: subErr } = await supabase
+      .from('artifact_subscribers')
+      .select('artifact_id')
+      .eq('member_id', (memberRow as { id: string }).id)
+
+    if (subErr) {
+      console.error('[stories] list subscriber lookup error:', JSON.stringify(subErr))
+      return { ok: false, status: 500, error: subErr.message }
+    }
+    subscribedStoryIds = (subRows ?? []).map(r => r.artifact_id as string)
+  }
+
+  const orFilter = subscribedStoryIds.length > 0
+    ? `user_id.eq.${userId},id.in.(${subscribedStoryIds.join(',')})`
+    : `user_id.eq.${userId}`
+
   const { data, error } = await supabase
     .from('artifacts')
     .select(STORY_ROW_COLUMNS)
     .eq('tenant_id', tenantId)
-    .eq('user_id', userId)
     .eq('type', ARTIFACT_TYPE)
     .is('discarded_at', null)
+    .or(orFilter)
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -78,7 +127,33 @@ export async function listStories(
     return { ok: false, status: 500, error: error.message }
   }
 
-  return { ok: true, data: (data ?? []).map(toStoryRow) }
+  const storyRows = data ?? []
+  const storyIds = storyRows.map(row => row.id as string)
+
+  let idsWithActiveLink = new Set<string>()
+  let idsWithSubscribers = new Set<string>()
+  if (storyIds.length > 0) {
+    const [linkResult, subscriberResult] = await Promise.all([
+      supabase.from('story_invite_links').select('story_id').in('story_id', storyIds).is('revoked_at', null),
+      supabase.from('artifact_subscribers').select('artifact_id').in('artifact_id', storyIds),
+    ])
+    if (linkResult.error) {
+      console.error('[stories] active-link lookup error (non-fatal):', JSON.stringify(linkResult.error))
+    }
+    if (subscriberResult.error) {
+      console.error('[stories] subscriber lookup error (non-fatal):', JSON.stringify(subscriberResult.error))
+    }
+    idsWithActiveLink = new Set((linkResult.data ?? []).map(r => r.story_id as string))
+    idsWithSubscribers = new Set((subscriberResult.data ?? []).map(r => r.artifact_id as string))
+  }
+
+  return {
+    ok: true,
+    data: storyRows.map(row => ({
+      ...toStoryRow(row),
+      hasActiveInviteOrSubscribers: idsWithActiveLink.has(row.id as string) || idsWithSubscribers.has(row.id as string),
+    })),
+  }
 }
 
 /** Distinct error string for the "no linked account" rejection below — same

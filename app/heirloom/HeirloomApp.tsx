@@ -73,6 +73,11 @@ interface HeirloomAppProps {
   /** When true, the chat panel opens automatically on mount. Sourced from
    *  members.auto_open on the invite row. */
   autoOpenChat?: boolean;
+  /** Raw story_invite_links token — present whenever the visitor arrived via
+   *  a valid /join/[token] link, regardless of sign-in state (unlike
+   *  inviteToken above). ChatProvider fires the accept call from either a
+   *  sign-in transition or an already-signed-in mount check. */
+  storyInviteToken?: string;
 }
 
 export default function HeirloomApp({
@@ -84,6 +89,7 @@ export default function HeirloomApp({
   inviteToken,
   memberId,
   autoOpenChat,
+  storyInviteToken,
 }: HeirloomAppProps) {
   return (
     <ChatProvider
@@ -95,6 +101,7 @@ export default function HeirloomApp({
       inviteToken={inviteToken}
       memberId={memberId}
       autoOpenChat={autoOpenChat}
+      storyInviteToken={storyInviteToken}
       enableExitWarning
     >
       <HeirloomInner />

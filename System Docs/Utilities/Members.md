@@ -12,3 +12,5 @@ Member invite and lifecycle operations for the `members` table. Server-only. The
 | `index.ts` | barrel | Re-exports the public surface above. |
 
 **Retired:** `services/invites/` (deleted). All callers updated to use `services/members` equivalents.
+
+**Deliberately NOT extended for reusable-story-invite-links (2026-08-10):** the durable, multi-person per-story invite link (`story_invite_links` table, one active link per story, many independent acceptances) lives entirely in `services/crm/story-invites.ts`, not here — see `System Docs/Utilities/CRM.md`. It is a wholly separate mechanism from everything in this file: no shared table, no shared function, no shared code path with `createMemberInvite`/`validateMemberToken`/`linkInvitedMember`/`acceptInvite`, which remain exactly as documented above. The two do intersect at one point only: a brand-new person accepting a story invite link gets a `members` row inserted directly with `status='active'` and `source='story_invite'` (see the `members` table's `source` column, `System Docs/Database Schema.md`) — a sibling insert shape to what `acceptInvite` produces, written by a completely different function.

@@ -17,8 +17,13 @@ import { useModalA11y } from './useModalA11y';
 import type { RowTarget } from './types';
 
 export interface ConfirmDeleteModalProps {
-  /** The row to be deleted, or null when the dialog is closed. */
-  item: { target: RowTarget; id: string; title?: string } | null;
+  /** The row to be deleted, or null when the dialog is closed.
+   *  hasActiveInviteOrSubscribers (story only) adds one more warning
+   *  sentence — reusable-story-invite-links, 2026-08-10 — a story with an
+   *  active invite link or subscribers should warn before removing the
+   *  access those people currently have. UI-only: no backend behavior
+   *  changes based on this flag, deletion proceeds identically either way. */
+  item: { target: RowTarget; id: string; title?: string; hasActiveInviteOrSubscribers?: boolean } | null;
   onClose: () => void;
   onConfirm: () => void;
 }
@@ -42,6 +47,13 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
   // reusing "and every memory it holds," which would be wrong here (a
   // memory doesn't hold other memories).
   const cascadeWarning = item.target === 'memory' ? '' : 'and every memory it holds ';
+  // Extra sentence, story-only — the orphaned story_invite_links/
+  // artifact_subscribers rows aren't cleaned up on delete (nothing
+  // re-surfaces a discarded story, so there's nothing to clean up), but the
+  // person clicking Delete should still know they're cutting others off.
+  const grantWarning = item.target === 'story' && item.hasActiveInviteOrSubscribers
+    ? ' This story has an active invite link and people with access to it — they will lose that access.'
+    : '';
 
   return (
     // Scrim — anchored to the drawer's relative body (ChatDrawerV2 sets
@@ -77,10 +89,10 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
               <span className="font-display italic text-base text-text-primary">
                 &ldquo;{title}&rdquo;
               </span>{' '}
-              {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.
+              {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}
             </>
           ) : (
-            <>This {noun} {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.</>
+            <>This {noun} {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}</>
           )}
         </p>
 

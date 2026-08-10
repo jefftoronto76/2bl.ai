@@ -161,6 +161,15 @@ interface ChatContextType {
    *  an unused invite link. Null after sign-in (consumed). Passed to
    *  MagicLinkCard so it can write it to Clerk unsafeMetadata on sign-up. */
   inviteToken: string | null;
+  /**
+   * Set once, the first time a story invite link (POST /api/heirloom/
+   * story-invites/accept) resolves successfully — either right after
+   * signup or immediately on mount for an already-signed-in existing
+   * member. Consumed by ChatHero.tsx to fire the "You've joined" toast;
+   * the same field serves both moments, see chatStore's own doc comment
+   * on the two accept trigger points below.
+   */
+  joinedStoryConfirmation: { title: string } | null;
   /** Toggle the starred flag for a session. Optimistic — reverts on API failure. */
   starSession: (id: string) => Promise<void>;
   /** Rename a session. No-op on empty/whitespace title. Optimistic — reverts on failure. */
@@ -246,6 +255,7 @@ export function ChatProvider({
   inviteToken,
   autoOpenChat = false,
   memberId,
+  storyInviteToken,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: false. */
@@ -272,6 +282,13 @@ export function ChatProvider({
    *  look up the member directly without chat_sessions.user_id. Only set for
    *  guests who haven't signed in yet. */
   memberId?: string;
+  /** Raw story_invite_links token — present whenever the visitor arrived via
+   *  a valid /join/[token] link, regardless of sign-in state (unlike
+   *  inviteToken, which is only passed pre-auth). Stored in a ref and
+   *  consumed by two independent triggers below — a wholly separate
+   *  mechanism from inviteToken/hasInviteToken, see services/crm/
+   *  story-invites.ts. */
+  storyInviteToken?: string;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -426,6 +443,58 @@ export function ChatProvider({
   // Stable ref for the invite token — must not change across renders so the
   // wasSignedIn effect closure always reads the original value from page load.
   const inviteTokenRef = useRef<string | null>(inviteToken ?? null);
+
+  // Stable ref for the story invite token — same "must not change across
+  // renders" reasoning as inviteTokenRef above, consumed by two independent
+  // effects below (mount-time + sign-in transition) rather than one.
+  const storyInviteTokenRef = useRef<string | null>(storyInviteToken ?? null);
+  // Guards acceptStoryInviteToken so exactly one of the two trigger effects
+  // below ever actually fires the request, even though both could in theory
+  // observe a matching condition across renders/Fast Refresh.
+  const storyInviteAcceptFiredRef = useRef(false);
+  const [joinedStoryConfirmation, setJoinedStoryConfirmation] = useState<{ title: string } | null>(null);
+
+  // Fires POST /api/heirloom/story-invites/accept exactly once. Called from
+  // two independent places below: the false→true isSignedIn transition
+  // (brand-new signup) and a mount-time check for a visitor who was already
+  // signed in when they arrived (existing-member case). The server
+  // independently determines new-vs-existing-member; this call site does
+  // not need to know or care which branch fires.
+  const acceptStoryInviteToken = useCallback((token: string) => {
+    if (storyInviteAcceptFiredRef.current) return;
+    storyInviteAcceptFiredRef.current = true;
+    fetch('/api/heirloom/story-invites/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error('[heirloom/chat] story invite accept failed:', res.status, data?.error);
+          return;
+        }
+        if (typeof data?.story_title === 'string') {
+          setJoinedStoryConfirmation({ title: data.story_title });
+        }
+      })
+      .catch((err) => console.error('[heirloom/chat] story invite accept error:', err));
+  }, []);
+
+  // Fires the story-invite accept call for a visitor who was ALREADY signed
+  // in the moment Clerk finished loading — the false→true transition effect
+  // further below deliberately never fires for this case (its own
+  // wasSignedInRef first-observation guard exists specifically to skip
+  // "already signed in on page load"). This is the real gap identified
+  // investigating this feature: an existing Heirloom member opening a story
+  // invite link while already logged in has no sign-in transition to hook.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && storyInviteTokenRef.current) {
+      acceptStoryInviteToken(storyInviteTokenRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
 
   // Stable ref for the pre-auth member id — threaded into every /api/sage
   // request so getMemberContext can look up the primer without user_id.
@@ -718,12 +787,18 @@ export function ChatProvider({
           body: JSON.stringify({ token: inviteTokenRef.current }),
         }).catch(err => console.error('[heirloom/chat] invite accept failed:', err));
       }
+      // Wholly separate call, separate endpoint, separate token — the
+      // brand-new-signup half of the story-invite mechanism (see
+      // acceptStoryInviteToken's own doc comment for the other half).
+      if (storyInviteTokenRef.current) {
+        acceptStoryInviteToken(storyInviteTokenRef.current);
+      }
     }
     if (!isSignedIn) {
       // Reset on sign-out so the next sign-in fires again.
       wasSignedInRef.current = false;
     }
-  }, [isLoaded, isSignedIn, claimSessionsOnly]);
+  }, [isLoaded, isSignedIn, claimSessionsOnly, acceptStoryInviteToken]);
 
   // Start a fresh conversation (Sidebar "New Chat"). Drops the active thread's
   // localStorage entries — both the pre-session draft slot AND the current
@@ -1092,7 +1167,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>

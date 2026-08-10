@@ -2,6 +2,16 @@
 // (2026-08-09), sibling to memories.test.ts's own pattern: mocks
 // @supabase/supabase-js's createClient directly, since getAdminClient()
 // (services/auth/supabase-admin.ts) bottoms out there.
+//
+// listStories' owned-OR-subscribed widening (reusable-story-invite-links,
+// 2026-08-10) touches three tables beyond the original owner-only query —
+// members (resolve the caller's own members.id), artifact_subscribers
+// (twice: the caller's own grants, and which of the returned stories have
+// ANY subscriber), and story_invite_links (which returned stories have an
+// active link) — makeClient below grew generic chain mocks for these
+// rather than the original single-shape nested-object mocks, so arbitrary
+// eq/is/in/or/order call sequences all resolve correctly regardless of
+// exact call count.
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { AuditAction } from '@/services/audit/types'
 
@@ -20,42 +30,80 @@ const mockLogEvent = vi.mocked(logEvent)
 
 type Row = Record<string, unknown>
 type SelectResult = { data: Row | null; error: { message: string } | null }
+type ListResult = { data: Row[] | null; error: { message: string } | null }
+
+/** A generic chainable mock — every intermediate method returns the chain
+ *  itself so any call sequence (eq/is/in/or/order in any combination) is
+ *  accepted; both a terminal .maybeSingle()/.single() and a direct `await`
+ *  on the chain (via .then) resolve to `result`. */
+function makeChain(result: SelectResult | ListResult) {
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    eq: () => chain,
+    is: () => chain,
+    in: () => chain,
+    or: () => chain,
+    order: () => result,
+    maybeSingle: async () => result,
+    single: async () => result,
+    then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+      Promise.resolve(result).then(resolve, reject),
+  }
+  return chain
+}
 
 function makeClient(opts: {
+  /** members lookup — shared by resolveUserIdForMember (createStory/
+   *  discardStory's account check) and listStories' own active-member
+   *  lookup; both terminate on .maybeSingle(). */
   memberResult?: SelectResult
   insertResult?: SelectResult
   updateResult?: SelectResult
-  listResult?: { data: Row[] | null; error: { message: string } | null }
+  /** The owned+subscribed artifacts query's result. */
+  listResult?: ListResult
+  /** artifact_subscribers .eq('member_id', ...) — the caller's own grants. */
+  subscriberIdsResult?: ListResult
+  /** story_invite_links .in('story_id', ...) — active-link ids among the returned stories. */
+  activeLinkStoryIdsResult?: ListResult
+  /** artifact_subscribers .in('artifact_id', ...) — subscriber ids among the returned stories. */
+  subscriberStoryIdsResult?: ListResult
 }) {
   const insertCalls: Row[] = []
   const updateCalls: Row[] = []
+  const orFilterCalls: string[] = []
 
   const client = {
     from(table: string) {
       if (table === 'members') {
+        return { select: () => makeChain(opts.memberResult ?? { data: null, error: null }) }
+      }
+      if (table === 'artifact_subscribers') {
         return {
           select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: async () => opts.memberResult ?? { data: null, error: null },
-              }),
-            }),
+            eq: () => makeChain(opts.subscriberIdsResult ?? { data: [], error: null }),
+            in: () => makeChain(opts.subscriberStoryIdsResult ?? { data: [], error: null }),
           }),
         }
       }
+      if (table === 'story_invite_links') {
+        return { select: () => makeChain(opts.activeLinkStoryIdsResult ?? { data: [], error: null }) }
+      }
       if (table === 'artifacts') {
         return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                eq: () => ({
-                  is: () => ({
-                    order: async () => opts.listResult ?? { data: [], error: null },
-                  }),
-                }),
-              }),
-            }),
-          }),
+          select: () => {
+            const chain: Record<string, unknown> = {
+              eq: () => chain,
+              is: () => chain,
+              or: (filter: string) => {
+                orFilterCalls.push(filter)
+                return chain
+              },
+              order: () => opts.listResult ?? { data: [], error: null },
+              then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+                Promise.resolve(opts.listResult ?? { data: [], error: null }).then(resolve, reject),
+            }
+            return chain
+          },
           insert: (row: Row) => {
             insertCalls.push(row)
             return {
@@ -67,30 +115,20 @@ function makeClient(opts: {
           },
           update: (patch: Row) => {
             updateCalls.push(patch)
-            return {
-              eq: () => ({
-                eq: () => ({
-                  eq: () => ({
-                    eq: () => ({
-                      select: () => ({
-                        maybeSingle: async () => opts.updateResult ?? { data: null, error: { message: 'not configured' } },
-                      }),
-                    }),
-                  }),
-                }),
-              }),
-            }
+            return makeChain(opts.updateResult ?? { data: null, error: { message: 'not configured' } })
           },
         }
       }
       throw new Error(`unexpected table: ${table}`)
     },
   }
-  return { client, insertCalls, updateCalls }
+  return { client, insertCalls, updateCalls, orFilterCalls }
 }
 
 /** A memberId that resolves to a linked account — the common non-anonymous case. */
 const LINKED_MEMBER_RESULT: SelectResult = { data: { user_id: 'user-1' }, error: null }
+/** listStories' own active-member lookup shape (selects `id`, not `user_id`). */
+const ACTIVE_MEMBER_ROW_RESULT: SelectResult = { data: { id: 'member-1' }, error: null }
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
@@ -116,7 +154,52 @@ describe('listStories', () => {
     if (result.ok) {
       expect(result.data).toHaveLength(1)
       expect(result.data[0]).toEqual(
-        expect.objectContaining({ id: 'story-1', title: 'A Life in Full', body: 'The long arc.' }),
+        expect.objectContaining({ id: 'story-1', title: 'A Life in Full', body: 'The long arc.', hasActiveInviteOrSubscribers: false }),
+      )
+    }
+  })
+
+  it('has no active member row → subscribedStoryIds is empty and the or() filter degenerates to owner-only, unchanged from before this feature', async () => {
+    const { client, orFilterCalls } = makeClient({
+      // memberResult unset → default { data: null, error: null } → no active members row
+      listResult: { data: [], error: null },
+    })
+    adminHolder.client = client
+
+    const result = await listStories('tenant-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    expect(orFilterCalls).toEqual(['user_id.eq.user-1'])
+  })
+
+  it('an active member with subscriptions gets them OR-ed into the query, and owned + subscribed stories are both returned', async () => {
+    const { client, orFilterCalls } = makeClient({
+      memberResult: ACTIVE_MEMBER_ROW_RESULT,
+      subscriberIdsResult: { data: [{ artifact_id: 'story-2' }], error: null },
+      listResult: {
+        data: [
+          { id: 'story-1', title: 'Owned Story', body: null, created_at: 'now', updated_at: 'now' },
+          { id: 'story-2', title: 'Shared Story', body: null, created_at: 'now', updated_at: 'now' },
+        ],
+        error: null,
+      },
+      // story-2 has an active link and a subscriber (the caller); story-1 has neither.
+      activeLinkStoryIdsResult: { data: [{ story_id: 'story-2' }], error: null },
+      subscriberStoryIdsResult: { data: [{ artifact_id: 'story-2' }], error: null },
+    })
+    adminHolder.client = client
+
+    const result = await listStories('tenant-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    expect(orFilterCalls).toEqual(['user_id.eq.user-1,id.in.(story-2)'])
+    if (result.ok) {
+      expect(result.data).toHaveLength(2)
+      expect(result.data.find(s => s.id === 'story-1')).toEqual(
+        expect.objectContaining({ hasActiveInviteOrSubscribers: false }),
+      )
+      expect(result.data.find(s => s.id === 'story-2')).toEqual(
+        expect.objectContaining({ hasActiveInviteOrSubscribers: true }),
       )
     }
   })
@@ -145,6 +228,7 @@ describe('createStory', () => {
     if (result.ok) {
       expect(result.data.title).toBe('A Life in Full')
       expect(result.data.body).toBe('The long arc.')
+      expect(result.data.hasActiveInviteOrSubscribers).toBe(false)
     }
     expect(insertCalls[0]).toEqual(
       expect.objectContaining({

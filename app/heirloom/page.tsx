@@ -2,6 +2,7 @@ import { getSession, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { headers } from 'next/headers';
 import { validateMemberToken } from '@/services/members';
+import { validateStoryInviteToken } from '@/services/crm/story-invites';
 import HeirloomApp from './HeirloomApp';
 
 export const dynamic = 'force-dynamic';
@@ -9,11 +10,12 @@ export const dynamic = 'force-dynamic';
 export default async function HeirloomPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invite?: string }>;
+  searchParams: Promise<{ invite?: string; join?: string }>;
 }) {
   const session = await getSession();
   const params = await searchParams;
   const inviteToken = params.invite;
+  const joinToken = params.join;
 
   // Resolve the tenant from the request Host header — same pattern as every
   // other public route. No hardcoded tenant ID.
@@ -84,7 +86,27 @@ export default async function HeirloomPage({
   const validatedMemberId =
     isAuthorized && !session && memberId ? memberId : undefined;
 
-  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken, autoOpenChat, hasMemberId: !!validatedMemberId });
+  // Story invite link (join searchParam) — a fully separate, parallel
+  // mechanism from the invite branch above (story_invite_links, not
+  // members.token; see services/crm/story-invites.ts). Deliberately NOT
+  // gated on `!isAuthorized` the way the invite-token branch above is: an
+  // already-signed-in EXISTING active member opening a join link is
+  // already isAuthorized from the member check further up, but the client
+  // still needs the token so it can fire the accept call and grant the
+  // artifact_subscribers row — chatStore.tsx's mount-time trigger handles
+  // exactly this case. So this both (a) grants gate access for a brand-new
+  // visitor who isn't authorized yet, and (b) always surfaces the token to
+  // the client whenever the link itself is valid, regardless of `session`.
+  let storyInviteToken: string | null = null;
+  if (joinToken) {
+    const link = await validateStoryInviteToken(joinToken);
+    if (link !== null) {
+      isAuthorized = true;
+      storyInviteToken = joinToken;
+    }
+  }
+
+  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken, autoOpenChat, hasMemberId: !!validatedMemberId, hasStoryInviteToken: !!storyInviteToken });
 
   return (
     <HeirloomApp
@@ -96,6 +118,7 @@ export default async function HeirloomPage({
       inviteToken={validatedInviteToken}
       memberId={validatedMemberId}
       autoOpenChat={autoOpenChat}
+      storyInviteToken={storyInviteToken ?? undefined}
     />
   );
 }

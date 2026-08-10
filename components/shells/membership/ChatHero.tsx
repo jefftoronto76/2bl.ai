@@ -67,7 +67,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, joinedStoryConfirmation } = useChatStore();
 
   // The memory panel's image-block picker (BlockCanvas.tsx, via
   // MemoryCardView) only ever offers photos already uploaded in THIS
@@ -205,6 +205,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     target: RowTarget;
     id: string;
     title?: string;
+    hasActiveInviteOrSubscribers?: boolean;
   } | null>(null);
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -219,6 +220,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const showToast = useCallback((message: string) => {
     setToast({ message, key: ++toastKeyRef.current });
   }, []);
+
+  // Story-invite acceptance confirmation (reusable-story-invite-links,
+  // 2026-08-10) — same toast weight as "Deleted"/"Starred", fired once per
+  // distinct joinedStoryConfirmation object (chatStore.tsx only ever sets
+  // it once, guarded by storyInviteAcceptFiredRef). Serves both the
+  // brand-new-signup moment and the already-a-member moment identically —
+  // see chatStore.tsx's own doc comment for why one field covers both.
+  useEffect(() => {
+    if (joinedStoryConfirmation) {
+      showToast(`You've joined "${joinedStoryConfirmation.title}"`);
+    }
+  }, [joinedStoryConfirmation, showToast]);
 
   const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
 
@@ -237,7 +250,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         target === 'conversation'
           ? recentSessions.find(s => s.id === id)?.title
           : stories.find(s => s.id === id)?.name;
-      setPendingDelete({ target, id, title });
+      const hasActiveInviteOrSubscribers =
+        target === 'story' ? stories.find(s => s.id === id)?.hasActiveInviteOrSubscribers ?? false : false;
+      setPendingDelete({ target, id, title, hasActiveInviteOrSubscribers });
       return;
     }
     // Story actions and chapter/invite actions are deferred — no-op
@@ -336,31 +351,42 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [showToast]);
 
-  // Invite collaborators (invites-collaboration-modal, 2026-08-10). `invite`
-  // tracks which story row triggered the modal; `inviteLink` holds the
-  // created magic link. InviteCollaboratorsModal has no separate "generate"
-  // step in its UI (magicLink is a required prop, assumed to already exist),
-  // so opening the modal and creating the invite happen together — the modal
-  // only actually opens once the link comes back. Changing the story picker
-  // re-labels the copy only (per the handover); it does NOT recreate the
-  // link — "Reset link" is the explicit action for that, reused here to mean
-  // "(re)create with the current story + primer" since there's no separate
-  // create action in the built component.
+  // Invite collaborators (reusable-story-invite-links, 2026-08-10 —
+  // replacing the single-use magic link invites-collaboration-modal shipped
+  // originally). `invite` tracks which story row triggered the modal;
+  // `inviteLink` holds the durable, reusable link. InviteCollaboratorsModal
+  // has no separate "generate" step in its UI (magicLink is a required
+  // prop, assumed to already exist), so opening the modal and fetching the
+  // link happen together — the modal only actually opens once it comes
+  // back. Opening the modal fetches-or-creates the story's one active link
+  // (POST /api/heirloom/story-invites, reset:false — the DB's partial
+  // unique index only allows one active link per story, so a repeat open
+  // must reuse it, never mint a second one); "Reset link" is the only
+  // action that actually rotates it (reset:true — revokes the old row,
+  // inserts a fresh one). Changing the story picker re-labels the copy only
+  // and re-fetches that story's own link, per the handover.
   const [invite, setInvite] = useState<{ storyId: string } | null>(null);
   const [invitePrimer, setInvitePrimer] = useState('');
   const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
 
-  const createInviteLink = useCallback(async (primer: string, storyId: string) => {
+  const createInviteLink = useCallback(async (primer: string, storyId: string, reset: boolean) => {
     try {
-      const res = await fetch('/api/heirloom/invites', {
+      const res = await fetch('/api/heirloom/story-invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ primer, story_id: storyId }),
+        body: JSON.stringify({ story_id: storyId, primer, reset }),
       });
-      if (!res.ok) throw new Error('Could not create invite');
-      const data = (await res.json()) as { token: string; invite_url: string | null };
-      const url = data.invite_url ?? `${window.location.origin}/invite/${data.token}`;
+      if (!res.ok) throw new Error('Could not create invite link');
+      const data = (await res.json()) as { token: string; primer?: string; invite_url: string | null };
+      const url = data.invite_url ?? `${window.location.origin}/join/${data.token}`;
       setInviteLink({ token: data.token, url });
+      // Fetch-or-create returns the EXISTING link's stored primer on a
+      // non-reset open — reflect it so reopening the modal doesn't show a
+      // blank field for a link that already has a real greeting saved.
+      // Reset intentionally skips this: invitePrimer already holds
+      // whatever the member just typed, which is what the new link is
+      // being created with.
+      if (!reset) setInvitePrimer(data.primer ?? '');
     } catch {
       showToast('Could not create invite link');
       setInvite(null);
@@ -371,12 +397,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setInvite({ storyId });
     setInvitePrimer('');
     setInviteLink(null);
-    void createInviteLink('', storyId);
+    void createInviteLink('', storyId, false);
   }, [createInviteLink]);
 
   const handleResetInviteLink = useCallback(() => {
     if (!invite) return;
-    void createInviteLink(invitePrimer, invite.storyId);
+    void createInviteLink(invitePrimer, invite.storyId, true);
   }, [invite, invitePrimer, createInviteLink]);
 
   const closeInvite = useCallback(() => {
@@ -656,7 +682,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         open={!!invite && !!inviteLink}
         onClose={closeInvite}
         magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : ''}
-        expiresLabel="Expires in 14 days"
+        expiresLabel="Expires in 7 days"
         // No story-collaborator schema yet (see createMemberInvite's doc
         // comment) — there's nothing real to populate this roster with.
         collaborators={[]}
