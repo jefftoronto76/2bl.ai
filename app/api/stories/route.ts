@@ -24,7 +24,12 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    stories: result.data.map(s => ({ id: s.id, name: s.title, description: s.body || undefined })),
+    stories: result.data.map(s => ({
+      id: s.id,
+      name: s.title,
+      description: s.body || undefined,
+      hasActiveInviteOrSubscribers: s.hasActiveInviteOrSubscribers,
+    })),
   })
 }
 
@@ -79,6 +84,11 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({
-    story: { id: result.data.id, name: result.data.title, description: result.data.body || undefined },
+    story: {
+      id: result.data.id,
+      name: result.data.title,
+      description: result.data.body || undefined,
+      hasActiveInviteOrSubscribers: result.data.hasActiveInviteOrSubscribers,
+    },
   })
 }
