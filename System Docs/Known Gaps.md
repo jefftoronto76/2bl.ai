@@ -244,6 +244,29 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   open product question, not decided — `acceptInvite`'s access grant is
   unchanged (tenant-level only) for this pass.
 
+  **Superseded, same day — reusable-story-invite-links (2026-08-10).** Both
+  gaps in (1) above are closed by a wholly separate mechanism, not a patch
+  to this one: `story_invite_links` (new table, `services/crm/
+  story-invites.ts`) is a real, durable, per-story FK — `story_id` is a
+  genuine column, not audit-metadata — and multiple different people can
+  each accept the same token independently (unlike `createMemberInvite`'s
+  single-row-single-use shape, which structurally cannot represent that).
+  `ChatHero.tsx`'s magic-link creation was repointed from `/api/heirloom/
+  invites` to `/api/heirloom/story-invites` the same day; `/api/heirloom/
+  invites*` and `createMemberInvite`/`acceptInvite` themselves are
+  untouched and still fully functional, just no longer exercised by this
+  particular UI path. (2) — a real story view to select into — remains
+  genuinely deferred; unaffected by this change. (3) is now moot for the
+  reusable link specifically: it always grants access to exactly the one
+  story chosen at creation (`artifact_subscribers`), never tenant-level —
+  changing the picker on an *existing* link still only relabels the copy
+  and does not retroactively change what that link grants, same as before.
+  The modal's "Already invited" roster is **still** not populated from real
+  data (`ChatHero.tsx` still passes `collaborators={[]}`) — this pass wired
+  the grant mechanism, not the roster UI; see `System Docs/API Routes.md`'s
+  "Story Invite Links" section and `System Docs/Database Schema.md`'s
+  `story_invite_links` row for the real shape.
+
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
