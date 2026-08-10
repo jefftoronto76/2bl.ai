@@ -103,6 +103,10 @@ export default async function HeirloomPage({
     if (link !== null) {
       isAuthorized = true;
       storyInviteToken = joinToken;
+      // A valid story invite opens the chat drawer automatically, same as
+      // the members.auto_open branch above — independent trigger, same
+      // effect. Purely additive: does not touch the auto_open branch above.
+      autoOpenChat = true;
     }
   }
 
