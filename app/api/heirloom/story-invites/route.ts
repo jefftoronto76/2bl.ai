@@ -16,7 +16,11 @@
 import { getCurrentUser, getCurrentUserId } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
-import { createOrGetActiveStoryInviteLink, resetStoryInviteLink } from '@/services/crm/story-invites'
+import {
+  createOrGetActiveStoryInviteLink,
+  resetStoryInviteLink,
+  revokeStoryInviteLink,
+} from '@/services/crm/story-invites'
 
 const PRIMER_MAX_LENGTH = 500
 
@@ -135,4 +139,80 @@ export async function POST(req: Request) {
     },
     { status: 201 },
   )
+}
+
+// DELETE /api/heirloom/story-invites
+// Invalidates a story's active invite link WITHOUT creating a replacement —
+// backs the invite modal's "this will invalidate the current link" warning
+// (Phase 5, 2026-08-10): changing the story picker or the primer while a
+// link is live revokes it and drops the magic-link row back to "Not created
+// yet," it does not auto-mint a new one (that only happens on the next
+// explicit Create/Reset). Distinct from POST's reset:true, which revokes
+// AND immediately inserts a fresh row.
+export async function DELETE(req: Request) {
+  const user = await getCurrentUser()
+  if (!user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const supabase = getAdminClient()
+
+  const { data: memberRow, error: memberErr } = await supabase
+    .from('members')
+    .select('id')
+    .eq('tenant_id', HEIRLOOM_TENANT_ID)
+    .eq('clerk_id', user.providerUserId)
+    .maybeSingle()
+
+  if (memberErr) {
+    console.error('[heirloom/story-invites] DELETE member lookup failed:', memberErr.message)
+    return Response.json({ error: 'Could not resolve member record' }, { status: 500 })
+  }
+  if (!memberRow) {
+    return Response.json({ error: 'Member record not found' }, { status: 403 })
+  }
+
+  let body: { story_id?: unknown } = {}
+  try {
+    body = await req.json()
+  } catch {
+    // story_id is required and validated below regardless
+  }
+
+  const storyId = typeof body.story_id === 'string' ? body.story_id.trim() : ''
+  if (!storyId) {
+    return Response.json({ error: 'story_id is required' }, { status: 400 })
+  }
+
+  const actorUserId = await getCurrentUserId()
+  if (!actorUserId) {
+    return Response.json({ error: 'Could not resolve user record' }, { status: 500 })
+  }
+
+  // Ownership check — same scoping POST uses for create/reset.
+  const { data: storyRow, error: storyErr } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('id', storyId)
+    .eq('tenant_id', HEIRLOOM_TENANT_ID)
+    .eq('user_id', actorUserId)
+    .eq('type', 'story')
+    .is('discarded_at', null)
+    .maybeSingle()
+
+  if (storyErr) {
+    console.error('[heirloom/story-invites] DELETE story lookup failed:', storyErr.message)
+    return Response.json({ error: 'Could not resolve story' }, { status: 500 })
+  }
+  if (!storyRow) {
+    return Response.json({ error: 'Story not found' }, { status: 404 })
+  }
+
+  const result = await revokeStoryInviteLink(HEIRLOOM_TENANT_ID, storyId, actorUserId)
+  if (!result.ok) {
+    console.error('[heirloom/story-invites] DELETE revoke failed:', result.error, { storyId })
+    return Response.json({ error: result.error }, { status: result.status })
+  }
+
+  return Response.json({ ok: true }, { status: 200 })
 }
