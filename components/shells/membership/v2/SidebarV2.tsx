@@ -12,7 +12,8 @@
 //   • New Chat · Uploads · Share Heirloom
 //   • Conversations — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
-//   • Stories       — Create action, Invite action, then the story list;
+//   • Stories       — Create action, then the story list, each row carrying
+//                     its own invite icon (onInviteStory);
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
 
@@ -72,7 +73,9 @@ export interface SidebarV2Props {
 
   // Stories
   onCreateStory?: () => void;
-  onInviteToStories?: () => void;
+  /** Invite collaborators to a specific story — the row's own invite icon,
+   *  not the old story-agnostic header button (see invites-collaboration-modal). */
+  onInviteStory?: (storyId: string) => void;
   onSelectStory?: (storyId: string) => void;
   onStartStoryChat?: (storyId: string) => void;
 
@@ -161,7 +164,6 @@ function SidebarMemoryCount({ count }: { count: number }) {
 const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean }[] = [
   { key: 'star', icon: Star, label: 'Star' },
   { key: 'rename', icon: Pencil, label: 'Rename' },
-  { key: 'invite', icon: UserPlus, label: 'Invite collaborators' },
   { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter' },
   { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter' },
   { key: 'delete', icon: Trash2, label: 'Delete', danger: true },
@@ -345,7 +347,7 @@ export function SidebarV2({
   onShareHeirloom,
   onSearch,
   onCreateStory,
-  onInviteToStories,
+  onInviteStory,
   onSelectStory,
   onStartStoryChat,
   onSelectPrompt,
@@ -612,7 +614,9 @@ export function SidebarV2({
               Stories
             </SectionLabel>
 
-            {/* Create + Invite — directly under the header */}
+            {/* Create — directly under the header. Invite moved to a
+                per-story-row icon (invites-collaboration-modal, 2026-08-10)
+                — there's no longer a story-agnostic invite entry point. */}
             <div className="flex flex-col gap-px mb-2 pb-2 border-b border-border">
               <button
                 type="button"
@@ -622,15 +626,6 @@ export function SidebarV2({
               >
                 <Plus size={15} className="flex-shrink-0" />
                 <span className="font-body text-sm font-semibold">Create</span>
-              </button>
-              <button
-                type="button"
-                onClick={onInviteToStories}
-                disabled={storiesDisabled || !onInviteToStories}
-                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
-              >
-                <UserPlus size={15} className="flex-shrink-0" />
-                <span className="font-body text-sm font-medium">Invite</span>
               </button>
             </div>
 
@@ -664,6 +659,21 @@ export function SidebarV2({
                         }`}
                       >
                         <MessageCircle size={14} />
+                      </button>
+                    )}
+                    {onInviteStory && !storiesDisabled && (
+                      // Sibling button, not nested inside the row's own <button>
+                      // (invalid HTML) — same pattern as onStartStoryChat above.
+                      <button
+                        type="button"
+                        aria-label={`Invite collaborators to ${story.name}`}
+                        title="Invite collaborators"
+                        onClick={() => onInviteStory(story.id)}
+                        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <UserPlus size={14} />
                       </button>
                     )}
                     {onRowAction && !storiesDisabled && (

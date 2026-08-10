@@ -29,10 +29,13 @@ export interface WritingPrompt {
 // delete flows (memory-panel-layout CardView chrome pass, 2026-08-08),
 // not because a memory row exists in the sidebar.
 export type RowTarget = 'conversation' | 'story' | 'memory';
+// 'invite' dropped 2026-08-10 (invites-collaboration-modal): it was a
+// deliberate no-op buried in the kebab for both row types (see Known Gaps.md)
+// and is superseded by SidebarV2's dedicated per-story-row invite icon
+// (onInviteStory), not routed through onRowAction anymore.
 export type RowAction =
   | 'star'
   | 'rename'
-  | 'invite'
   | 'moveToChapter'
   | 'removeFromChapter'
   | 'delete';

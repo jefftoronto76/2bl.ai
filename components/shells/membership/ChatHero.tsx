@@ -5,6 +5,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
+import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
@@ -88,13 +89,19 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // type='memory' rows, not a dedicated table. Created via POST /api/stories
   // (handleCreateStory below) and fetched on mount via GET /api/stories
   // (below) rather than living only in this local state, though this state
-  // remains the source of truth SidebarV2 renders from — both the create and
-  // fetch paths just keep it in sync with the DB. Rows are still inert
-  // (no select/chat/kebab handlers beyond delete) — moveToChapter/
-  // removeFromChapter/invite, and selecting into a story's own view, remain
+  // remains the source of truth SidebarV2 (and InviteCollaboratorsModal's
+  // story picker) render from — the create/fetch/delete paths just keep it
+  // in sync with the DB. Rows are still inert for select/chat — moveToChapter/
+  // removeFromChapter and selecting into a story's own view remain
   // deliberate no-ops (there's no story view to select into yet; see System
-  // Docs/Known Gaps.md). Invite / Uploads / Share / Search are stubbed per
-  // the integration decisions.
+  // Docs/Known Gaps.md). Uploads / Share / Search are stubbed per the
+  // integration decisions. Invite is real (invites-collaboration-modal,
+  // 2026-08-10) — see handleInviteStory below — and now picks from this
+  // same real `stories` list, though createMemberInvite itself still only
+  // bridges the chosen story_id through audit-event metadata, not a real
+  // column/relationship (services/members/members.ts's own doc comment —
+  // unchanged by this merge, still accurate: that's Stage 2 schema work
+  // Real Stories didn't include).
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
 
@@ -329,6 +336,54 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [showToast]);
 
+  // Invite collaborators (invites-collaboration-modal, 2026-08-10). `invite`
+  // tracks which story row triggered the modal; `inviteLink` holds the
+  // created magic link. InviteCollaboratorsModal has no separate "generate"
+  // step in its UI (magicLink is a required prop, assumed to already exist),
+  // so opening the modal and creating the invite happen together — the modal
+  // only actually opens once the link comes back. Changing the story picker
+  // re-labels the copy only (per the handover); it does NOT recreate the
+  // link — "Reset link" is the explicit action for that, reused here to mean
+  // "(re)create with the current story + primer" since there's no separate
+  // create action in the built component.
+  const [invite, setInvite] = useState<{ storyId: string } | null>(null);
+  const [invitePrimer, setInvitePrimer] = useState('');
+  const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
+
+  const createInviteLink = useCallback(async (primer: string, storyId: string) => {
+    try {
+      const res = await fetch('/api/heirloom/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primer, story_id: storyId }),
+      });
+      if (!res.ok) throw new Error('Could not create invite');
+      const data = (await res.json()) as { token: string; invite_url: string | null };
+      const url = data.invite_url ?? `${window.location.origin}/invite/${data.token}`;
+      setInviteLink({ token: data.token, url });
+    } catch {
+      showToast('Could not create invite link');
+      setInvite(null);
+    }
+  }, [showToast]);
+
+  const handleInviteStory = useCallback((storyId: string) => {
+    setInvite({ storyId });
+    setInvitePrimer('');
+    setInviteLink(null);
+    void createInviteLink('', storyId);
+  }, [createInviteLink]);
+
+  const handleResetInviteLink = useCallback(() => {
+    if (!invite) return;
+    void createInviteLink(invitePrimer, invite.storyId);
+  }, [invite, invitePrimer, createInviteLink]);
+
+  const closeInvite = useCallback(() => {
+    setInvite(null);
+    setInviteLink(null);
+  }, []);
+
   const handleSelectPrompt = (prompt: WritingPrompt) => {
     // Gated visitors see GateView instead of the conversation — a prompt send
     // would vanish behind it. Streaming guard matches ChatInput's.
@@ -406,6 +461,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             stories={stories}
             writingPrompts={WRITING_PROMPTS}
             onCreateStory={() => setBeginStoryOpen(true)}
+            onInviteStory={handleInviteStory}
             onSelectPrompt={handleSelectPrompt}
             onRowAction={handleRowAction}
             starredConversationIds={starredIds}
@@ -429,6 +485,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 stories={stories}
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}
+                onInviteStory={handleInviteStory}
                 onSelectPrompt={handleSelectPrompt}
                 onRowAction={handleRowAction}
                 starredConversationIds={starredIds}
@@ -594,6 +651,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         open={beginStoryOpen}
         onClose={() => setBeginStoryOpen(false)}
         onCreate={handleCreateStory}
+      />
+      <InviteCollaboratorsModal
+        open={!!invite && !!inviteLink}
+        onClose={closeInvite}
+        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : ''}
+        expiresLabel="Expires in 14 days"
+        // No story-collaborator schema yet (see createMemberInvite's doc
+        // comment) — there's nothing real to populate this roster with.
+        collaborators={[]}
+        stories={stories}
+        storyId={invite?.storyId}
+        onStoryChange={(id) => setInvite({ storyId: id })}
+        primer={invitePrimer}
+        onPrimerChange={setInvitePrimer}
+        onResetLink={handleResetInviteLink}
       />
       <ConfirmDeleteModal
         item={pendingDelete}

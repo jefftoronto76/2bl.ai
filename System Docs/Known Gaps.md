@@ -180,9 +180,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   /api/stories/[id]`, see below) — no revert-on-failure yet, unlike the
   conversation path (a failed delete toasts and leaves the row in place,
   it doesn't retry). Still not built: `moveToChapter` / `removeFromChapter`
-  / `invite` remain deliberate no-ops for both row types, and `star` /
-  `rename` remain no-ops for story rows specifically (only ever wired for
-  conversations).
+  remain deliberate no-ops for both row types, and `star` / `rename`
+  remain no-ops for story rows specifically (only ever wired for
+  conversations). `invite` is no longer a kebab item at all — see "Invite
+  — real as of 2026-08-10" below for its own dedicated entry point.
 
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
@@ -214,6 +215,34 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `SidebarV2`'s story rows have an `onClick` affordance already built, but
   `ChatHero.tsx` never passes `onSelectStory`, and there is no story view
   to select into yet.
+
+  **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
+  `invite` is no longer a kebab item at all (it was buried and dead) —
+  `SidebarV2` now renders a dedicated per-story-row invite icon
+  (`onInviteStory`), wired in `ChatHero.tsx` to a real
+  `InviteCollaboratorsModal` (previously fully built but unmounted) and a new
+  member-facing route, `POST /api/heirloom/invites` (see `API Routes.md`).
+  Clicking the icon creates a real, generic (no invited_name/email/phone)
+  single-use `members` invite via `createMemberInvite`, with the modal's
+  Custom Greeting field writing straight to `members.primer` — the same
+  mechanism `InviteMemberModal.tsx`'s admin flow already uses, not a separate
+  "note" concept. Its story picker now draws from the real `stories` state
+  described above (`ChatHero.tsx` passes the same list to both
+  `SidebarV2` and `InviteCollaboratorsModal`), no longer the ephemeral rows
+  this paragraph originally described. **What's still not real:** (1) the
+  story tie — stories themselves are real now (`artifacts.type='story'`,
+  above), but `createMemberInvite` doesn't write the chosen story to any
+  real column or join table yet; which story an invite is "for" is still
+  recorded only in that invite's own audit-event metadata
+  (`createMemberInvite`'s `storyId` param), not as a queryable relationship
+  — the modal's "Already invited" roster is therefore always empty (`[]`)
+  since there's nothing real to populate it from. (2) The prototype's
+  second entry point — a "Share this story" button inside a real story
+  view — was not built; there is no real story view yet (deferred, separate
+  stage). (3) Whether the story picker's selection should ever change what
+  the link actually *grants* (vs. just relabeling the modal's copy) is an
+  open product question, not decided — `acceptInvite`'s access grant is
+  unchanged (tenant-level only) for this pass.
 
 - **Media-item state machine (`chatStore.tsx`) — four real bugs found and
   fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide

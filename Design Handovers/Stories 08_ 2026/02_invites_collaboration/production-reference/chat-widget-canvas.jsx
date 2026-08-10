@@ -424,16 +424,12 @@
             <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
               <button aria-label="Create a new story" title="Create a new story" onClick={onCreateStory}
                 style={{ ...iconBtn, width: 24, height: 24, color: 'var(--hl-accent)' }}><Icon n="plus" s={14} /></button>
-              {stories.length > 0 && (
-                <button aria-label="Invite collaborators" title="Invite collaborators" onClick={() => onInvite(selectedStory ? selectedStory.name : null)}
-                  style={{ ...iconBtn, width: 24, height: 24 }}><Icon n="userPlus" s={13} /></button>
-              )}
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 8, paddingBottom: 8 }}>
             {stories.map((st) => (
-              <button key={st.id} title={st.tagline || st.name} onClick={() => onOpenStory(st.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '8px 8px 8px 10px', borderRadius: 9, border: 'none', background: st.id === selectedStoryId ? 'color-mix(in srgb, var(--hl-accent) 10%, transparent)' : 'transparent', color: 'var(--hl-muted)', cursor: 'pointer', transition: 'background .18s, color .18s' }}
+              <div key={st.id} title={st.tagline || st.name} onClick={() => onOpenStory(st.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '8px 8px 8px 10px', borderRadius: 9, background: st.id === selectedStoryId ? 'color-mix(in srgb, var(--hl-accent) 10%, transparent)' : 'transparent', color: 'var(--hl-muted)', cursor: 'pointer', transition: 'background .18s, color .18s' }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-text)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; }}>
                 <span style={{ flexShrink: 0, width: 5, height: 5, borderRadius: '50%', background: 'var(--hl-accent)', opacity: 0.55 }} />
@@ -444,7 +440,11 @@
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1 }}>{storyCount(st.id)}</span>
                   </span>
                 )}
-              </button>
+                <button aria-label={'Invite collaborators to ' + st.name} title="Invite collaborators" onClick={(e) => { e.stopPropagation(); onInvite(st.id); }}
+                  style={{ ...iconBtn, width: 22, height: 22, flexShrink: 0, color: 'var(--hl-faint)' }}
+                  onMouseEnter={(e) => { e.stopPropagation(); e.currentTarget.style.color = 'var(--hl-accent)'; }}
+                  onMouseLeave={(e) => { e.stopPropagation(); e.currentTarget.style.color = 'var(--hl-faint)'; }}><Icon n="userPlus" s={12} /></button>
+              </div>
             ))}
           </div>
 
@@ -1486,7 +1486,7 @@
   }
 
   /* ── Invite collaborators modal ───────────────────────────────────────── */
-  function InviteModal({ onClose, link, expiry, onRegenerate, collaborators, context, stories, storyId, onStoryChange }) {
+  function InviteModal({ onClose, link, expiry, onRegenerate, collaborators, context, stories, storyId, onStoryChange, note, onNoteChange }) {
     const [copied, setCopied] = useState(false);
     const [flashOn, setFlashOn] = useState(false);
     const copyTimer = useRef(0);
@@ -1508,7 +1508,8 @@
     const sectionLabel = { fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.18em', textTransform: 'uppercase', color: 'var(--hl-faint)' };
     return (
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(26,21,15,0.55)', backdropFilter: 'blur(3px)', animation: 'hl-fade .2s ease' }}>
-        <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Invite collaborators" style={{ position: 'relative', width: 'min(462px, 100%)', maxHeight: '92%', overflowY: 'auto', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', padding: '28px 28px 24px', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)' }}>
+        <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Invite collaborators" style={{ position: 'relative', width: 'min(462px, 100%)', maxHeight: '92%', display: 'flex', flexDirection: 'column', background: 'var(--hl-surface)', border: '1px solid var(--hl-border-strong)', borderRadius: 20, boxShadow: '0 40px 100px -24px var(--hl-shadow)', animation: 'hl-modal-in .26s cubic-bezier(.22,1,.36,1)', overflow: 'hidden' }}>
+          <div className="lg-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '28px 28px 20px' }}>
           <button onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 14, right: 14, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--hl-muted)', cursor: 'pointer' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--hl-text) 8%, transparent)'; e.currentTarget.style.color = 'var(--hl-text)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--hl-muted)'; }}>
@@ -1532,29 +1533,12 @@
               </select>
             </div>
           )}
-          <div style={{ marginTop: 22 }}>
-            <div style={sectionLabel}>Magic link</div>
-            <div key={link} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, padding: '6px 6px 6px 13px', background: 'var(--hl-surface-2)', border: '1px solid', borderColor: flashOn ? 'var(--hl-accent-line)' : 'var(--hl-border)', borderRadius: 13, transition: 'border-color .3s', animation: flashOn ? 'hl-fade .35s ease' : 'none' }}>
-              <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-accent)' }}><Icon name="link" size={16} /></span>
-              <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '.01em' }}>{link}</span>
-              <button onClick={copy} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 15px', borderRadius: 9, border: 'none', fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', background: copied ? 'var(--hl-accent-soft)' : 'var(--hl-accent)', color: copied ? 'var(--hl-accent)' : 'var(--hl-on-accent)', transition: 'all .2s' }}
-                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent-hover)'; }}
-                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent)'; }}>
-                <Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 11 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--hl-faint)', letterSpacing: '.02em' }}>
-                <Icon name="clock" size={12} /> {expLabel}
-              </span>
-              <button onClick={regen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, border: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, color: 'var(--hl-muted)', cursor: 'pointer', transition: 'all .2s' }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-accent)'; e.currentTarget.style.background = 'var(--hl-accent-soft)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.background = 'transparent'; }}>
-                <Icon name="refresh" size={13} /> Reset link
-              </button>
-            </div>
+          <div style={{ marginTop: 16 }}>
+            <div style={sectionLabel}>Custom message</div>
+            <textarea value={note} onChange={(e) => onNoteChange && onNoteChange(e.target.value)} placeholder="Add a personal note to include with the invite…" rows={3}
+              style={{ width: '100%', boxSizing: 'border-box', marginTop: 8, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--hl-border)', background: 'var(--hl-surface-2)', color: 'var(--hl-text)', fontFamily: 'var(--font-body)', fontSize: 14, lineHeight: 1.5, outline: 'none', resize: 'vertical' }} />
           </div>
-          <div style={{ height: 1, background: 'var(--hl-border)', margin: '20px 0' }} />
+          <div style={{ height: 1, background: 'var(--hl-border)', margin: '20px 0 16px' }} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 }}>
             <span style={sectionLabel}>Already invited</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--hl-faint)' }}>{joinedCount} joined · {collaborators.length - joinedCount} pending</span>
@@ -1579,6 +1563,29 @@
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--hl-border)' }}>
             <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-faint)', marginTop: 1 }}><Icon name="shield" size={13} /></span>
             <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--hl-faint)', textWrap: 'pretty' }}>You stay the author. Collaborators can read and add their own memories — they can never edit or overwrite yours.</p>
+          </div>
+          </div>
+          <div style={{ flexShrink: 0, padding: '18px 28px 24px', borderTop: '1px solid var(--hl-border)', background: 'var(--hl-surface)' }}>
+            <div style={sectionLabel}>Magic link</div>
+            <div key={link} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, padding: '6px 6px 6px 13px', background: 'var(--hl-surface-2)', border: '1px solid', borderColor: flashOn ? 'var(--hl-accent-line)' : 'var(--hl-border)', borderRadius: 13, transition: 'border-color .3s', animation: flashOn ? 'hl-fade .35s ease' : 'none' }}>
+              <span style={{ flexShrink: 0, display: 'flex', color: 'var(--hl-accent)' }}><Icon name="link" size={16} /></span>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--hl-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '.01em' }}>{link}</span>
+              <button onClick={copy} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7, height: 36, padding: '0 15px', borderRadius: 9, border: 'none', fontFamily: 'var(--font-body)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', background: copied ? 'var(--hl-accent-soft)' : 'var(--hl-accent)', color: copied ? 'var(--hl-accent)' : 'var(--hl-on-accent)', transition: 'all .2s' }}
+                onMouseEnter={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent-hover)'; }}
+                onMouseLeave={(e) => { if (!copied) e.currentTarget.style.background = 'var(--hl-accent)'; }}>
+                <Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 11 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--hl-faint)', letterSpacing: '.02em' }}>
+                <Icon name="clock" size={12} /> {expLabel}
+              </span>
+              <button onClick={regen} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8, border: 'none', background: 'transparent', fontFamily: 'var(--font-body)', fontSize: 12.5, fontWeight: 500, color: 'var(--hl-muted)', cursor: 'pointer', transition: 'all .2s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--hl-accent)'; e.currentTarget.style.background = 'var(--hl-accent-soft)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--hl-muted)'; e.currentTarget.style.background = 'transparent'; }}>
+                <Icon name="refresh" size={13} /> Reset link
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1692,7 +1699,7 @@
     const [beginOpen, setBeginOpen] = useState(false);
     const [saveOpen, setSaveOpen] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
-    const [invite, setInvite] = useState(null);            // null | { context } | { storyId }
+    const [invite, setInvite] = useState(null);            // null | { context } | { storyId, note }
     const [addMemToStory, setAddMemToStory] = useState(null); // null | storyId
     const [confirmDel, setConfirmDel] = useState(null);    // session pending deletion
     const [inviteLink, setInviteLink] = useState(() => LINK_BASE + makeToken());
@@ -2424,7 +2431,8 @@
         {beginOpen && <CreateStoryModal onClose={() => setBeginOpen(false)} onCreate={createStory} />}
         {invite && <InviteModal onClose={() => setInvite(null)} link={inviteLink} expiry={inviteExpiry} onRegenerate={regenerateLink} collaborators={SEED_COLLABS}
           context={invite.storyId ? (stories.find((s) => s.id === invite.storyId) || {}).name : invite.context}
-          stories={stories} storyId={invite.storyId} onStoryChange={(id) => setInvite({ storyId: id })} />}
+          stories={stories} storyId={invite.storyId} onStoryChange={(id) => setInvite((v) => ({ ...v, storyId: id }))}
+          note={invite.note || ''} onNoteChange={(v) => setInvite((c) => ({ ...c, note: v }))} />}
 
         <div onClick={() => setAddMemToStory(null)} aria-hidden="true"
           style={{ position: 'fixed', inset: 0, zIndex: 65, background: 'rgba(26,21,15,0.4)', opacity: addMemToStory ? 1 : 0, pointerEvents: addMemToStory ? 'auto' : 'none', transition: 'opacity .25s ease' }} />

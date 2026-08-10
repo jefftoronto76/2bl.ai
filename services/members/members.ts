@@ -49,9 +49,20 @@ function generateToken(): string {
  * account yet — user_id and clerk_id are null until they sign up and the
  * Clerk webhook fires (see linkInvitedMember). Optional email and phone lock
  * the invite to a specific contact (used by linkInvitedMember for email-match
- * activation via the webhook path). actorId (the acting admin's users.id) is
- * stamped onto invited_by for provenance — null means seeded/self-service and
- * renders as a dash in the members UI.
+ * activation via the webhook path). actorId (the acting admin's users.id, or
+ * for a member-initiated collaborator invite, the inviting member's own
+ * users.id) is stamped onto invited_by for provenance — null means
+ * seeded/self-service and renders as a dash in the members UI.
+ *
+ * storyId (invites-collaboration-modal, 2026-08-10): which story this invite
+ * is for, from the per-story invite trigger in SidebarV2. There is no
+ * `stories` table yet (Stage 2, in flight — see media_items.story_id's same
+ * not-yet-a-real-FK note in Database Schema.md) and no story-collaborator
+ * join table, so this cannot be persisted as a real column/relationship yet.
+ * Recorded only in this call's own audit-event metadata (jsonb, no schema
+ * change) as a bridge — read it back from audit_events if the story tie
+ * needs to be reconstructed before the real schema lands. Do not build
+ * against this as the final shape; see System Docs/Known Gaps.md.
  */
 export async function createMemberInvite(
   tenantId: string,
@@ -61,6 +72,7 @@ export async function createMemberInvite(
   phone?: string | null,
   autoOpen?: boolean,
   primer?: string | null,
+  storyId?: string | null,
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
   const supabase = getAdminClient()
   const token = generateToken()
@@ -118,6 +130,9 @@ export async function createMemberInvite(
       has_phone: phone != null && phone.trim().length > 0,
       auto_open: autoOpen === true,
       has_primer: primer != null && primer.trim().length > 0,
+      // Provisional story tie — see this function's doc comment. Not a real
+      // column; read back from here until Stage 2's schema lands.
+      story_id: storyId != null && storyId.trim().length > 0 ? storyId.trim() : null,
     },
   })
 
