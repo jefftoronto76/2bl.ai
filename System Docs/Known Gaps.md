@@ -244,6 +244,25 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   open product question, not decided — `acceptInvite`'s access grant is
   unchanged (tenant-level only) for this pass.
 
+- **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
+  (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
+  `SidebarV2`'s Create button was built inert in the original V2 UI-first
+  pass (2026-06-12), alongside the still-inert Uploads/Share Heirloom nav
+  buttons and Writing Prompts section, via two unconditional
+  `opacity-40 pointer-events-none` classes. When real
+  `disabled={storiesDisabled || !onCreateStory}` logic was wired in later
+  (real story creation, 2026-08-09), the leftover inert classes were never
+  removed — the button was functionally enabled (`onCreateStory` genuinely
+  supplied by `ChatHero.tsx`; `storiesDisabled` defaults `false`) but
+  rendered greyed out and, via `pointer-events-none`, unclickable
+  regardless of state. Fixed by removing the two unconditional classes; the
+  `disabled:opacity-40 disabled:cursor-not-allowed
+  disabled:hover:bg-transparent` variants are untouched and still apply
+  correctly for the genuine `storiesDisabled=true` case. Added
+  `SidebarV2.createButton.test.tsx`, asserting on the rendered class list
+  rather than just the `disabled` prop/attribute — the prior test gap that
+  let this ship unnoticed.
+
 - **Media-item state machine (`chatStore.tsx`) — four real bugs found and
   fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide
   claimed it couldn't see uploaded photos/files, despite the compiled system
