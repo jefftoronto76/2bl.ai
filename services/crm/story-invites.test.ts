@@ -20,6 +20,7 @@ vi.mock('@/services/audit', () => ({
 
 import {
   createOrGetActiveStoryInviteLink,
+  listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
   validateStoryInviteToken,
@@ -226,6 +227,93 @@ describe('validateStoryInviteToken', () => {
 
     const row = await validateStoryInviteToken('tok-abc')
     expect(row?.id).toBe('link-1')
+  })
+})
+
+describe('listStoryCollaborators', () => {
+  const STORY_ROW = { data: { id: 'story-1' }, error: null }
+
+  it('404s when the story is not found / not owned by the caller', async () => {
+    const { client } = makeClient({ artifacts: [{ data: null, error: null }] })
+    adminHolder.client = client
+
+    const result = await listStoryCollaborators('tenant-1', 'story-1', 'user-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(404)
+  })
+
+  it('returns an empty roster without querying members when nobody has joined', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: [], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await listStoryCollaborators('tenant-1', 'story-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data).toEqual([])
+    expect(calls.members).toBeUndefined()
+  })
+
+  it('joins subscribers to members, preserving joined-order and skipping a subscriber whose member row is gone', async () => {
+    const { client } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{
+        data: [
+          { member_id: 'member-1', created_at: '2026-08-03T00:00:00Z' },
+          { member_id: 'member-2', created_at: '2026-08-05T00:00:00Z' },
+          { member_id: 'member-orphan', created_at: '2026-08-06T00:00:00Z' },
+        ],
+        error: null,
+      }],
+      members: [{
+        data: [
+          { id: 'member-1', name: 'Eleanor Hayes', email: 'eleanor@example.com' },
+          { id: 'member-2', name: null, email: 'marcus@example.com' },
+        ],
+        error: null,
+      }],
+    })
+    adminHolder.client = client
+
+    const result = await listStoryCollaborators('tenant-1', 'story-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data).toEqual([
+        { memberId: 'member-1', name: 'Eleanor Hayes', email: 'eleanor@example.com', joinedAt: '2026-08-03T00:00:00Z' },
+        { memberId: 'member-2', name: null, email: 'marcus@example.com', joinedAt: '2026-08-05T00:00:00Z' },
+      ])
+    }
+  })
+
+  it('500s when the subscriber lookup errors', async () => {
+    const { client } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await listStoryCollaborators('tenant-1', 'story-1', 'user-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('500s when the member lookup errors', async () => {
+    const { client } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: [{ member_id: 'member-1', created_at: '2026-08-03T00:00:00Z' }], error: null }],
+      members: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await listStoryCollaborators('tenant-1', 'story-1', 'user-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
   })
 })
 

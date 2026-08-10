@@ -6,8 +6,20 @@
 
 export interface Collaborator {
   name: string;
-  relationship: string;
-  status: 'joined' | 'pending';
+  /** Optional — real collaborators come from artifact_subscribers joined to
+   *  members (see services/crm/story-invites.ts's listStoryCollaborators),
+   *  and members has no relationship column. Only render this line when set. */
+  relationship?: string;
+  /** Every real collaborator has joined by construction — a roster row only
+   *  exists once acceptStoryInvite has written the artifact_subscribers
+   *  grant. No 'pending' state exists to represent. */
+  status: 'joined';
+  /** e.g. "Aug 3" — pre-formatted by the caller from artifact_subscribers.created_at. */
+  joinedDate: string;
+  /** Memories this collaborator has added to the story. Undefined (not 0)
+   *  until story <-> memory linking (artifact_containments) is wired — see
+   *  System Docs/Known Gaps.md. Never fabricate a number here. */
+  memoryCount?: number;
 }
 
 export interface Story {

@@ -7,7 +7,7 @@ import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
-import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
+import type { Collaborator, RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
@@ -351,23 +351,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [showToast]);
 
-  // Invite collaborators (reusable-story-invite-links, 2026-08-10 —
-  // replacing the single-use magic link invites-collaboration-modal shipped
-  // originally). `invite` tracks which story row triggered the modal;
-  // `inviteLink` holds the durable, reusable link. InviteCollaboratorsModal
-  // has no separate "generate" step in its UI (magicLink is a required
-  // prop, assumed to already exist), so opening the modal and fetching the
-  // link happen together — the modal only actually opens once it comes
-  // back. Opening the modal fetches-or-creates the story's one active link
-  // (POST /api/heirloom/story-invites, reset:false — the DB's partial
-  // unique index only allows one active link per story, so a repeat open
-  // must reuse it, never mint a second one); "Reset link" is the only
-  // action that actually rotates it (reset:true — revokes the old row,
-  // inserts a fresh one). Changing the story picker re-labels the copy only
-  // and re-fetches that story's own link, per the handover.
+  // Invite collaborators (Phase 5 create/copy-flow + invalidation warning,
+  // 2026-08-10, on top of reusable-story-invite-links the same day).
+  // `invite` tracks which story row triggered the modal; `inviteLink` holds
+  // the durable, reusable link once one has actually been created.
+  // Opening the modal (handleInviteStory below) no longer creates or
+  // fetches anything — InviteCollaboratorsModal's magicLink prop is
+  // optional now, and renders its own "Not created yet" / Create state
+  // until the member deliberately clicks Create (handleCreateInviteLink).
+  // "Reset link" rotates an existing link (reset:true — revokes the old
+  // row, inserts a fresh one) via the same createInviteLink call. Changing
+  // the story picker or the primer while a link exists goes through
+  // InviteCollaboratorsModal's own pendingEdit warning first; only once
+  // Continue is clicked does the change reach handleInviteStoryChange /
+  // handleInvitePrimerChange below, which apply it AND invalidate the old
+  // link (DELETE /api/heirloom/story-invites) without minting a
+  // replacement — the next Create/Reset click does that.
   const [invite, setInvite] = useState<{ storyId: string } | null>(null);
   const [invitePrimer, setInvitePrimer] = useState('');
   const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
+  const [inviteCollaborators, setInviteCollaborators] = useState<Collaborator[]>([]);
 
   const createInviteLink = useCallback(async (primer: string, storyId: string, reset: boolean) => {
     try {
@@ -381,29 +384,106 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       const url = data.invite_url ?? `${window.location.origin}/join/${data.token}`;
       setInviteLink({ token: data.token, url });
       // Fetch-or-create returns the EXISTING link's stored primer on a
-      // non-reset open — reflect it so reopening the modal doesn't show a
-      // blank field for a link that already has a real greeting saved.
-      // Reset intentionally skips this: invitePrimer already holds
-      // whatever the member just typed, which is what the new link is
-      // being created with.
+      // non-reset create — reflect it so a story that already had an active
+      // link (created in another session) doesn't show a blank field once
+      // its real link surfaces. Reset intentionally skips this: invitePrimer
+      // already holds whatever the member just typed, which is what the new
+      // link is being created with.
       if (!reset) setInvitePrimer(data.primer ?? '');
     } catch {
       showToast('Could not create invite link');
-      setInvite(null);
     }
   }, [showToast]);
+
+  // Fire-and-forget — revokes the story's active link server-side without
+  // creating a replacement. Failure is non-fatal to the edit the member just
+  // made (the field still updates); it only means a since-invalidated link
+  // could theoretically still be redeemed server-side, so it's logged, not
+  // swallowed silently.
+  const invalidateInviteLink = useCallback(async (storyId: string) => {
+    try {
+      const res = await fetch('/api/heirloom/story-invites', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story_id: storyId }),
+      });
+      if (!res.ok) console.error('[ChatHero] invalidate invite link failed:', res.status);
+    } catch (err) {
+      console.error('[ChatHero] invalidate invite link threw:', err);
+    }
+  }, []);
 
   const handleInviteStory = useCallback((storyId: string) => {
     setInvite({ storyId });
     setInvitePrimer('');
     setInviteLink(null);
-    void createInviteLink('', storyId, false);
-  }, [createInviteLink]);
+  }, []);
+
+  const handleCreateInviteLink = useCallback(() => {
+    if (!invite) return;
+    void createInviteLink(invitePrimer, invite.storyId, false);
+  }, [invite, invitePrimer, createInviteLink]);
 
   const handleResetInviteLink = useCallback(() => {
     if (!invite) return;
     void createInviteLink(invitePrimer, invite.storyId, true);
   }, [invite, invitePrimer, createInviteLink]);
+
+  // Reached only once InviteCollaboratorsModal decides an edit should
+  // actually apply — instantly (no link yet) or via its own pendingEdit
+  // warning's Continue (a link exists). A live link means the edit
+  // invalidates it: drop back to "Not created yet" locally and revoke it
+  // server-side, matching the warning's own promise to the member.
+  const handleInviteStoryChange = useCallback((storyId: string) => {
+    const priorStoryId = invite?.storyId;
+    setInvite({ storyId });
+    if (inviteLink && priorStoryId) {
+      setInviteLink(null);
+      void invalidateInviteLink(priorStoryId);
+    }
+  }, [invite, inviteLink, invalidateInviteLink]);
+
+  const handleInvitePrimerChange = useCallback((value: string) => {
+    setInvitePrimer(value);
+    if (inviteLink && invite) {
+      setInviteLink(null);
+      void invalidateInviteLink(invite.storyId);
+    }
+  }, [invite, inviteLink, invalidateInviteLink]);
+
+  // "Existing members" roster — refetched whenever the modal's story
+  // changes (including via the invalidation warning), not on every primer
+  // keystroke. Silent-fail on error, matching this file's existing posture
+  // for the stories/mediaItems fetch-on-mount effects above.
+  useEffect(() => {
+    const storyId = invite?.storyId;
+    if (!storyId) {
+      setInviteCollaborators([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/heirloom/story-invites?story_id=${encodeURIComponent(storyId)}`);
+        if (!res.ok || cancelled) return;
+        const data: { collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }> } =
+          await res.json();
+        if (cancelled) return;
+        setInviteCollaborators(
+          (data.collaborators ?? []).map((c) => ({
+            name: c.name ?? c.email ?? 'Member',
+            status: 'joined' as const,
+            joinedDate: new Date(c.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          })),
+        );
+      } catch (err) {
+        console.error('[ChatHero] story collaborators fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invite?.storyId]);
 
   const closeInvite = useCallback(() => {
     setInvite(null);
@@ -679,18 +759,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onCreate={handleCreateStory}
       />
       <InviteCollaboratorsModal
-        open={!!invite && !!inviteLink}
+        open={!!invite}
         onClose={closeInvite}
-        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : ''}
+        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : undefined}
         expiresLabel="Expires in 7 days"
-        // No story-collaborator schema yet (see createMemberInvite's doc
-        // comment) — there's nothing real to populate this roster with.
-        collaborators={[]}
+        collaborators={inviteCollaborators}
         stories={stories}
         storyId={invite?.storyId}
-        onStoryChange={(id) => setInvite({ storyId: id })}
+        onStoryChange={handleInviteStoryChange}
         primer={invitePrimer}
-        onPrimerChange={setInvitePrimer}
+        onPrimerChange={handleInvitePrimerChange}
+        onCreateLink={handleCreateInviteLink}
         onResetLink={handleResetInviteLink}
       />
       <ConfirmDeleteModal
