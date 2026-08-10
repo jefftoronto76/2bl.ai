@@ -6,12 +6,13 @@ import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
-import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
+import type { RowAction, RowTarget, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
 import { useChatStore } from './chatStore';
 import { useMemories, type MemoryRow } from '@/services/chat/ui/v1/useMemories';
+import { useStories } from '@/services/chat/ui/v1/useStories';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
@@ -83,13 +84,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     [mediaItems],
   );
 
-  // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
-  // no stories backend yet (schema is Studio work), so created stories live for
-  // the session and demo the flow; rows are inert (no select/chat/kebab
-  // handlers passed). Invite / Uploads / Share / Search are stubbed per the
-  // integration decisions.
+  // V2 sidebar wiring. Stories persist for real (artifacts.type='story', via
+  // useStories — services/chat/ui/v1/useStories.ts) as of 2026-08-10; rows
+  // are still inert (no select/chat/kebab-beyond-delete handlers passed).
+  // Invite / Uploads / Share / Search remain stubbed per the integration
+  // decisions.
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
-  const [stories, setStories] = useState<Story[]>([]);
+  const stories = useStories();
 
   // One useMemories(sessionId) instance, owned here and passed down to
   // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
@@ -196,7 +197,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       const title =
         target === 'conversation'
           ? recentSessions.find(s => s.id === id)?.title
-          : stories.find(s => s.id === id)?.name;
+          : stories.stories.find(s => s.id === id)?.name;
       setPendingDelete({ target, id, title });
       return;
     }
@@ -246,11 +247,10 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   }, [showToast]);
 
   const handleCreateStory = (name: string, description: string) => {
-    setStories((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), name, description: description || undefined },
-    ]);
     setBeginStoryOpen(false);
+    void stories.create(name, description).then((ok) => {
+      if (!ok) showToast('Could not create story');
+    });
   };
 
   const handleSelectPrompt = (prompt: WritingPrompt) => {
@@ -327,7 +327,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             needed here) rather than the handoff's invented 60px rail. */}
         {!isMobile && (
           <SidebarV2
-            stories={stories}
+            stories={stories.stories}
             writingPrompts={WRITING_PROMPTS}
             onCreateStory={() => setBeginStoryOpen(true)}
             onSelectPrompt={handleSelectPrompt}
@@ -350,7 +350,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             />
             <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
               <SidebarV2
-                stories={stories}
+                stories={stories.stories}
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}
                 onSelectPrompt={handleSelectPrompt}
@@ -536,9 +536,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             // still the same memory pendingDelete was opened for.
             if (liveOpenMemory) void handleRemoveMemory(liveOpenMemory);
           } else if (pendingDelete.target === 'story') {
-            // No stories backend yet (ephemeral client state — see the
-            // stories comment above) — remove locally, no network call.
-            setStories(prev => prev.filter(s => s.id !== pendingDelete.id));
+            void stories.discard(pendingDelete.id);
             showToast('Deleted');
           } else {
             void deleteSession(pendingDelete.id);
