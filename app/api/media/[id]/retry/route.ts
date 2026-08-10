@@ -1,11 +1,19 @@
 // POST /api/media/[id]/retry
-// Resets a failed media item back to status=pending, then drives processing
-// directly — no re-upload needed, the file is still in storage. Does NOT
-// depend on the Supabase Database Webhook: that webhook only fires (and is
-// only handled) on INSERT, so this route's UPDATE would never be picked up
-// through that path. processMediaItem re-fetches the item itself and
-// re-verifies status === 'pending' before doing anything, so calling it
-// directly here is safe even under concurrent retry clicks.
+// Resets a settled media item (ready or failed) back to status=pending, then
+// drives processing directly — no re-upload needed, the file is still in
+// storage. This is a general reprocess capability, not just failure
+// recovery: a 'ready' item can have genuinely wrong derived_content (e.g.
+// from a since-fixed pipeline bug) even though it was marked successful at
+// the time, and this lets it be corrected without re-uploading. 'pending'
+// and 'processing' are rejected — those are already in-flight, and starting
+// a second processMediaItem run against the same row while one is still
+// running would race it (processMediaItem's own idempotency guard is a
+// read-then-write check, not a DB-level lock). Does NOT depend on the
+// Supabase Database Webhook: that webhook only fires (and is only handled)
+// on INSERT, so this route's UPDATE would never be picked up through that
+// path. processMediaItem re-fetches the item itself and re-verifies
+// status === 'pending' before doing anything, so calling it directly here
+// is safe even under concurrent retry clicks.
 
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
@@ -34,9 +42,11 @@ export async function POST(
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 
-  if (item.status !== 'failed') {
+  // 'pending' and 'processing' are already in-flight — only settled states
+  // ('ready', 'failed') are safe to reprocess from.
+  if (item.status === 'pending' || item.status === 'processing') {
     return Response.json(
-      { error: `Cannot retry item with status: ${item.status}` },
+      { error: `Cannot reprocess item with status: ${item.status}` },
       { status: 400 },
     )
   }

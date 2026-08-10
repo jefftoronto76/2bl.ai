@@ -151,15 +151,22 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
             {downloading ? 'Opening…' : 'Download'}
           </button>
         )}
-        {item.status === 'failed' && (
+        {(item.status === 'failed' || item.status === 'ready') && (
           <button
             type="button"
             onClick={handleRetry}
             disabled={retrying}
+            title={item.status === 'ready' ? 'Re-run analysis on this file' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 font-body text-[11.5px] transition-colors disabled:opacity-50"
           >
             <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
-            {retrying ? 'Retrying…' : 'Try again'}
+            {item.status === 'ready'
+              ? retrying
+                ? 'Reprocessing…'
+                : 'Reprocess'
+              : retrying
+                ? 'Retrying…'
+                : 'Try again'}
           </button>
         )}
       </div>

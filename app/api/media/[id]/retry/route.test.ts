@@ -119,15 +119,47 @@ describe('POST /api/media/[id]/retry', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 400 and does not touch the item when status is not failed', async () => {
-    mockGetMediaItem.mockResolvedValue(makeItem({ status: 'ready' }))
+  it('returns 400 and does not touch the item when status is pending', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ status: 'pending' }))
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('ready')
+    expect(body.error).toContain('pending')
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
     expect(mockProcessMediaItem).not.toHaveBeenCalled()
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 and does not touch the item when status is processing', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ status: 'processing' }))
+    const res = await POST(makeRequest(), makeParams('item-1'))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toContain('processing')
+    expect(mockUpdateMediaItem).not.toHaveBeenCalled()
+    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockLogMediaEvent).not.toHaveBeenCalled()
+  })
+
+  it('resets a ready item to pending and reprocesses it (not just failed)', async () => {
+    const item = makeItem({ status: 'ready', derived_content: 'stale garbage content', error_message: null })
+    mockGetMediaItem.mockResolvedValue(item)
+
+    const res = await POST(makeRequest(), makeParams('item-1'))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
+      status: 'pending',
+      error_message: null,
+      derived_content: null,
+      classification: null,
+      processed_at: null,
+    })
+    expect(mockProcessMediaItem).toHaveBeenCalledTimes(1)
+    expect(mockProcessMediaItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'item-1', tenant_id: 'tenant-1' }),
+    )
   })
 
   it('returns 403 when the requesting member does not own the item', async () => {

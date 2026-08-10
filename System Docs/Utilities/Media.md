@@ -65,7 +65,19 @@ that didn't exist yet.
    re-runs this whole pipeline from scratch. (An earlier version of this
    pipeline soft-degraded this case behind a placeholder caption instead,
    reasoning that a failed item was permanently stuck — that premise was
-   wrong given the retry route already existed; see `Known Gaps.md`.)
+   wrong given the retry route already existed; see `Known Gaps.md`.) The
+   route is a general reprocess capability, not failure-only recovery: it
+   accepts any **settled** item — `'ready'` or `'failed'` — and rejects
+   `'pending'`/`'processing'` (already in-flight, so a second
+   `processMediaItem` run would race the one already running). This matters
+   because a `'ready'` item can still carry wrong `derived_content` from a
+   since-fixed pipeline bug (the pipeline marked it successful at the time,
+   the content just wasn't correct) — reprocessing is how that gets
+   corrected without re-uploading the file. The gallery UI
+   (`MediaGallery.tsx`) surfaces this as two differently-labeled actions on
+   the same button — "Try again" on a failed item, "Reprocess" on a ready
+   one — since they read as different user intents even though they hit the
+   same endpoint.
 3. Writes `status: 'ready'`, `derived_content` (caption + extracted text,
    joined), `classification`, `latitude`/`longitude` to the row.
 
