@@ -338,6 +338,30 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   usages in `middleware.ts` first and mirror every one, don't just add the
   route file.
 
+- **Story invite acceptance not reaching its expected end state for a real
+  member — still open, only instrumented (not fixed) 2026-08-10 (PR #341,
+  branch `claude/story-invite-client-logging-ycgyj5`).** Reported live
+  symptom: a story invite is accepted, but the story does not appear in the
+  new member's account afterward — the expected end state never materializes.
+  Root cause not yet found. Prior to this pass, the accept flow
+  (`chatStore.tsx`'s `storyInviteTokenRef`, its two trigger effects, and
+  `acceptStoryInviteToken`) only logged on failure (`console.error`), so
+  there was no way to see where in the client-side chain it broke — whether
+  the token was even captured on mount, which of the two triggers (or
+  neither) fired, or whether the accept call itself ever succeeded. This
+  pass added five sequential `[heirloom/chat]` `console.log` checkpoints
+  end-to-end (see the `chatStore` row in `System Docs/Public Site.md` for
+  the full list) — **diagnostic visibility only, deliberately no behavior
+  change.** The next step is to actually reproduce the failure with a
+  browser console open against the sequence this pass added, read off where
+  the chain stops or diverges from the expected path, and root-cause from
+  there — the server-side half (`POST /api/heirloom/story-invites/accept`,
+  `acceptStoryInvite` in `services/crm/story-invites.ts`) was not audited in
+  this pass either, so the break could still turn out to be server-side
+  (e.g. the accept call succeeding but not actually granting/persisting the
+  `artifact_subscribers` row) rather than the client never firing the call
+  at all — the new logging only narrows down which side to look at next.
+
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
