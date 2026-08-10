@@ -7,10 +7,15 @@ import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-regis
 // Regression test for the kebab-delete-not-gated-by-row-type bug found in the
 // CLAUDE.md docs audit (commit 72e0618): the delete confirmation dialog was
 // already target-aware, but onConfirm always called deleteSession(id) —
-// including for story rows, which have no backend at all yet. This test
-// exercises both paths through the real ChatHero + SidebarV2 + ConfirmDeleteModal
-// stack (not just the isolated handler) so a regression here is caught by
-// component behavior, not just a unit assertion on a callback.
+// including for story rows, which had no backend at all at the time. Story
+// rows are real now (2026-08-09, artifacts type='story' — see
+// services/crm/stories.ts): deleting one fires a real
+// DELETE /api/stories/[id] request. This test exercises both paths through
+// the real ChatHero + SidebarV2 + ConfirmDeleteModal stack (not just the
+// isolated handler) so a regression here is caught by component behavior,
+// not just a unit assertion on a callback — updated from its original
+// "no network request" assertions to "the right, story-scoped request" now
+// that there's a real endpoint to hit.
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -69,6 +74,14 @@ const CONVERSATION = {
 // deliberately did not) hit the network.
 let requestLog: { url: string; method: string }[] = [];
 
+// Real story backend (2026-08-09) — GET returns none (nothing pre-seeded, so
+// each test's own createStory() call is what populates the sidebar), POST
+// echoes back the submitted name/description with a generated id (real
+// createStory, services/crm/stories.ts, does the same via a real DB row),
+// DELETE just acks. storyIdCounter keeps ids unique across a single test's
+// own createStory() calls without needing crypto.randomUUID() in a mock.
+let storyIdCounter = 0;
+
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
   const method = init?.method ?? 'GET';
@@ -78,6 +91,17 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   }
   if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
+  if (url === '/api/stories' && method === 'GET') {
+    return jsonResponse({ stories: [] });
+  }
+  if (url === '/api/stories' && method === 'POST') {
+    const { name, description } = JSON.parse((init?.body as string) ?? '{}');
+    storyIdCounter += 1;
+    return jsonResponse({ story: { id: `story-${storyIdCounter}`, name, description: description || undefined } });
+  }
+  if (url.startsWith('/api/stories/') && method === 'DELETE') {
+    return jsonResponse({ ok: true });
+  }
   if (url.startsWith('/api/sessions/') && method === 'DELETE') {
     return jsonResponse({ ok: true });
   }
@@ -90,6 +114,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
 beforeEach(() => {
   fetchMock.mockClear();
   requestLog = [];
+  storyIdCounter = 0;
   __clearSingletonRegistry();
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -134,7 +159,7 @@ function openKebabFor(rowName: string, kebabLabel: 'Conversation options' | 'Sto
 }
 
 describe('Kebab delete — gated correctly by row type (regression, commit 72e0618)', () => {
-  it('deleting a story row removes it locally and fires no network request', async () => {
+  it('deleting a story row removes it locally and hits the real story-scoped endpoint', async () => {
     render(
       <ChatProvider>
         <ChatHero />
@@ -155,15 +180,14 @@ describe('Kebab delete — gated correctly by row type (regression, commit 72e06
 
     // Removed from the sidebar immediately.
     await waitFor(() => expect(screen.queryByText('My Test Story')).toBeNull());
-    // Toast still shows — deleting a story is still a real (local) action.
     expect(screen.getByText('Deleted')).toBeInTheDocument();
 
-    // The regression this guards against: no DELETE (or any) request should
-    // have fired for the story's client-generated id — there is no backend
-    // for stories yet, so the old code's dead `DELETE /api/sessions/{storyId}`
-    // call (which used to 404 silently) must not happen anymore.
+    // Real now (2026-08-09): exactly one DELETE, scoped to this story's own
+    // id via /api/stories/[id] (services/crm/stories.ts's discardStory) —
+    // must not fall back to the conversation route's /api/sessions/{id}.
     const deleteCalls = requestLog.filter(r => r.method === 'DELETE');
-    expect(deleteCalls).toHaveLength(0);
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0].url).toBe('/api/stories/story-1');
   });
 
   it('deleting a conversation row still soft-deletes it server-side as before', async () => {
@@ -237,7 +261,7 @@ describe('Kebab delete at 390px (mobile overlay sidebar)', () => {
     });
   });
 
-  it('deleting a story row from the mobile overlay sidebar removes it locally with no network request', async () => {
+  it('deleting a story row from the mobile overlay sidebar removes it locally and hits the real endpoint', async () => {
     render(
       <ChatProvider>
         <ChatHero />
@@ -262,7 +286,9 @@ describe('Kebab delete at 390px (mobile overlay sidebar)', () => {
 
     await waitFor(() => expect(screen.queryByText('Mobile Story')).toBeNull());
     expect(screen.getByText('Deleted')).toBeInTheDocument();
-    expect(requestLog.filter(r => r.method === 'DELETE')).toHaveLength(0);
+    const deleteCalls = requestLog.filter(r => r.method === 'DELETE');
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0].url).toBe('/api/stories/story-1');
   });
 
   it('deleting a conversation row from the mobile overlay sidebar still hits the real API', async () => {

@@ -156,29 +156,65 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   "Version" row entirely and keep "Compiled version." Not urgent — cosmetic
   duplication only, no functional bug.
 
-- **Heirloom chat-widget V2 is UI-first; its backends do not exist yet.**
-  The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped the
-  presentation layer only. Outstanding, in dependency order: a `stories`
-  schema (Jeff, Studio — created stories are currently **ephemeral client
-  state** in ChatHero, lost on refresh) + story CRUD; per-story collaborator
-  invites (member-facing magic-link API — the existing `invites` table is the
-  admin-created access gate, not this); conversation search (the sidebar field
-  is a visible stub); Uploads; Share Heirloom (sidebar item + ChatHeader icon
-  are inert; `ShareHeirloomModal` is landed but unmounted — pass the real
-  `heirloom.2bl.ai` URL when mounting, its default is a placeholder); Writing
-  Prompts copy review (the 4 static prompts in ChatHero are placeholder-grade).
-  The v1 `Sidebar.tsx` is superseded and unmounted — delete after preview
-  verification.
+- **Heirloom chat-widget V2 is UI-first; most of its backends do not exist
+  yet.** The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped
+  the presentation layer only. Story creation/read/delete are real now
+  (2026-08-09 — see "Real story creation and persistence" below); still
+  outstanding: per-story collaborator invites (member-facing magic-link API
+  — the existing `invites` table is the admin-created access gate, not
+  this); conversation search (the sidebar field is a visible stub);
+  Uploads; Share Heirloom (sidebar item + ChatHeader icon are inert;
+  `ShareHeirloomModal` is landed but unmounted — pass the real
+  `heirloom.2bl.ai` URL when mounting, its default is a placeholder);
+  Writing Prompts copy review (the 4 static prompts in ChatHero are
+  placeholder-grade). The v1 `Sidebar.tsx` is superseded and unmounted —
+  delete after preview verification.
 
-  **Per-row kebab actions — resolved for conversations 2026-08-03 (PR #247).**
-  `ChatHero.tsx` now passes `onRowAction` to `SidebarV2` on both desktop and
-  mobile, so kebab menus render for both conversation and story rows.
-  Conversation `star` / `rename` / `delete` are fully wired to real endpoints
-  (`PATCH` / `DELETE /api/sessions/[id]`) with optimistic updates and
-  revert-on-failure. Still not built: story rows remain backend-less (delete
-  only mutates the ephemeral local `stories` state — no network call, since
-  there's still no `stories` table), and `moveToChapter` / `removeFromChapter`
-  remain deliberate no-ops for both row types.
+  **Per-row kebab actions — resolved for conversations 2026-08-03 (PR
+  #247); resolved for story delete 2026-08-09.** `ChatHero.tsx` now passes
+  `onRowAction` to `SidebarV2` on both desktop and mobile, so kebab menus
+  render for both conversation and story rows. Conversation `star` /
+  `rename` / `delete` are fully wired to real endpoints (`PATCH` /
+  `DELETE /api/sessions/[id]`) with optimistic updates and
+  revert-on-failure. Story `delete` is now real too (`DELETE
+  /api/stories/[id]`, see below) — no revert-on-failure yet, unlike the
+  conversation path (a failed delete toasts and leaves the row in place,
+  it doesn't retry). Still not built: `moveToChapter` / `removeFromChapter`
+  remain deliberate no-ops for both row types, and `star` / `rename`
+  remain no-ops for story rows specifically (only ever wired for
+  conversations). `invite` is no longer a kebab item at all — see "Invite
+  — real as of 2026-08-10" below for its own dedicated entry point.
+
+- **Real story creation and persistence (2026-08-09).** A story is an
+  `artifacts` row with `type='story'` — a sibling to memories'
+  `type='memory'` rows on the same table, **not** the dedicated `stories`
+  table earlier passes of this doc described as outstanding Studio work.
+  `artifacts.type` has no CHECK constraint, so this needed zero migration.
+  `services/crm/stories.ts` (`createStory`/`listStories`/`discardStory`)
+  mirrors `services/crm/memories.ts`'s structure closely — same
+  `resolveUserIdForMember` account-required check (now exported from
+  `memories.ts` and reused, rather than duplicated), same
+  `getAdminClient()`/audit-logging shape — but scoped by `tenant_id` +
+  `user_id` (mirroring `listSessions`' scoping) rather than `tenant_id` +
+  `session_id` (`listMemories`' scoping), since a story isn't tied to one
+  conversation: `session_id` and `anchor_message_id` are both left out of
+  the insert. `name`/`description` (`BeginStoryModal.tsx`'s own field
+  names) map to `title`/`body` — the same two columns a memory's
+  title/passage already use — not `metadata`. Routes: `GET`/`POST
+  /api/stories`, `DELETE /api/stories/[id]`. `ChatHero.tsx`'s `stories`
+  state now hydrates via `GET /api/stories` on mount and stays in sync
+  with real creates/deletes, replacing the old ephemeral
+  `crypto.randomUUID()` local-only rows.
+
+  **Two further relationships were explicitly deferred, not built:**
+  story ↔ memory (via `artifact_containments`, a self-referencing
+  `artifacts` join table that's been schema-only and unreferenced by any
+  code since 2026-08-08 — still true after this pass) and story ↔ media
+  (via `media_items.story_id`, a column that already exists and is still
+  always null). Selecting into a story's own view is also still a no-op —
+  `SidebarV2`'s story rows have an `onClick` affordance already built, but
+  `ChatHero.tsx` never passes `onSelectStory`, and there is no story view
+  to select into yet.
 
   **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
   `invite` is no longer a kebab item at all (it was buried and dead) —
@@ -190,18 +226,23 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   single-use `members` invite via `createMemberInvite`, with the modal's
   Custom Greeting field writing straight to `members.primer` — the same
   mechanism `InviteMemberModal.tsx`'s admin flow already uses, not a separate
-  "note" concept. **What's still not real:** (1) the story tie — there is no
-  `stories` table or story-collaborator schema yet, so which story an invite
-  is "for" is recorded only in that invite's own audit-event metadata
-  (`createMemberInvite`'s `storyId` param), not as a queryable relationship;
-  the modal's "Already invited" roster is therefore always empty (`[]`) since
-  there's nothing real to populate it from. (2) The prototype's second entry
-  point — a "Share this story" button inside a real story view — was not
-  built; there is no real story view yet (deferred, separate stage). (3)
-  Whether the story picker's selection should ever change what the link
-  actually *grants* (vs. just relabeling the modal's copy) is an open product
-  question, not decided — `acceptInvite`'s access grant is unchanged
-  (tenant-level only) for this pass.
+  "note" concept. Its story picker now draws from the real `stories` state
+  described above (`ChatHero.tsx` passes the same list to both
+  `SidebarV2` and `InviteCollaboratorsModal`), no longer the ephemeral rows
+  this paragraph originally described. **What's still not real:** (1) the
+  story tie — stories themselves are real now (`artifacts.type='story'`,
+  above), but `createMemberInvite` doesn't write the chosen story to any
+  real column or join table yet; which story an invite is "for" is still
+  recorded only in that invite's own audit-event metadata
+  (`createMemberInvite`'s `storyId` param), not as a queryable relationship
+  — the modal's "Already invited" roster is therefore always empty (`[]`)
+  since there's nothing real to populate it from. (2) The prototype's
+  second entry point — a "Share this story" button inside a real story
+  view — was not built; there is no real story view yet (deferred, separate
+  stage). (3) Whether the story picker's selection should ever change what
+  the link actually *grants* (vs. just relabeling the modal's copy) is an
+  open product question, not decided — `acceptInvite`'s access grant is
+  unchanged (tenant-level only) for this pass.
 
 - **Media-item state machine (`chatStore.tsx`) — four real bugs found and
   fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide
@@ -559,9 +600,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     Offered is now a prompt-instructions + chip-UI task on Heirloom's own
     compiled prompt, not a blocked one.
   Also not in this pass: the story-linking concept entirely — a memory does
-  not require a story to be saved (there is no `stories` table), and when
-  story-linking is eventually built it should be many-to-many (a memory
-  connecting to more than one thing), not a single column on `artifacts`.
+  not require a story to be saved, and when story-linking is eventually
+  built it should be many-to-many (a memory connecting to more than one
+  thing), not a single column on `artifacts`. (Stories themselves are real
+  now, as of 2026-08-09 — see "Real story creation and persistence" above
+  — but still via `artifacts.type='story'`, not a dedicated `stories`
+  table; this paragraph's "many-to-many, not a single column" guidance is
+  about the still-unbuilt memory↔story link, `artifact_containments`, and
+  is unaffected by that.)
   - **Anonymous visitors get a dead-end "account required" failure on
     bookmark — no path forward to actually create one.** Fixed in PR #288
     (2026-08-06): `createDraftMemory` now cleanly rejects an anonymous or

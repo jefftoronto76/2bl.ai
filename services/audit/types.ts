@@ -109,6 +109,11 @@ export const AuditAction = {
   // — logged by services/crm/memories.ts's reviseMemoryBlocks, success or
   // failure, same placement convention as MEMORY_CREATED above.
   MEMORY_BLOCKS_REVISED: 'memory.blocks_revised',
+  // Stories (Heirloom) — a sibling artifacts row (type='story') to memories,
+  // not a separate table. Logged by services/crm/stories.ts's createStory
+  // (success/failure) and the DELETE /api/stories/[id] route.
+  STORY_CREATED: 'story.created',
+  STORY_DISCARDED: 'story.discarded',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const

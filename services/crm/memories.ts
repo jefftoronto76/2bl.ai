@@ -183,7 +183,7 @@ export interface CreateDraftMemoryInput {
  *  apart from a generic infra failure without a second field. */
 export const ACCOUNT_REQUIRED_ERROR = 'An account is required to save memories.'
 
-type ResolveUserIdResult =
+export type ResolveUserIdResult =
   | { ok: true; userId: string | null }
   | { ok: false; error: string }
 
@@ -199,8 +199,13 @@ type ResolveUserIdResult =
  * members.user_id IS NULL) — both are the same "no account" case from this
  * table's point of view. `ok: false` is reserved for a genuine lookup
  * failure (DB error), kept distinct so it isn't mistaken for "no account".
+ *
+ * Exported (2026-08-09) — services/crm/stories.ts's createStory reuses this
+ * verbatim rather than duplicating it: a story write needs the exact same
+ * members.id -> users.id resolution a memory write does, for the same
+ * artifacts.user_id NOT NULL constraint.
  */
-async function resolveUserIdForMember(tenantId: string, memberId: string | null): Promise<ResolveUserIdResult> {
+export async function resolveUserIdForMember(tenantId: string, memberId: string | null): Promise<ResolveUserIdResult> {
   if (!memberId) return { ok: true, userId: null }
   const supabase = getAdminClient()
   const { data, error } = await supabase

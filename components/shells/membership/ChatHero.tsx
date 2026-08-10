@@ -84,15 +84,52 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     [mediaItems],
   );
 
-  // V2 sidebar wiring. Stories are EPHEMERAL client state this pass — there is
-  // no stories backend yet (schema is Studio work), so created stories live for
-  // the session and demo the flow; rows are inert (no select/chat/kebab
-  // handlers passed). Uploads / Share / Search are stubbed per the
+  // V2 sidebar wiring. Stories are real now (2026-08-09) — artifacts rows,
+  // type='story' (services/crm/stories.ts), a sibling to memories'
+  // type='memory' rows, not a dedicated table. Created via POST /api/stories
+  // (handleCreateStory below) and fetched on mount via GET /api/stories
+  // (below) rather than living only in this local state, though this state
+  // remains the source of truth SidebarV2 (and InviteCollaboratorsModal's
+  // story picker) render from — the create/fetch/delete paths just keep it
+  // in sync with the DB. Rows are still inert for select/chat — moveToChapter/
+  // removeFromChapter and selecting into a story's own view remain
+  // deliberate no-ops (there's no story view to select into yet; see System
+  // Docs/Known Gaps.md). Uploads / Share / Search are stubbed per the
   // integration decisions. Invite is real (invites-collaboration-modal,
-  // 2026-08-10) — see handleInviteStory below — though the invite it creates
-  // has no real story tie yet, for the same ephemeral-stories reason.
+  // 2026-08-10) — see handleInviteStory below — and now picks from this
+  // same real `stories` list, though createMemberInvite itself still only
+  // bridges the chosen story_id through audit-event metadata, not a real
+  // column/relationship (services/members/members.ts's own doc comment —
+  // unchanged by this merge, still accurate: that's Stage 2 schema work
+  // Real Stories didn't include).
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
+
+  // Fetch-on-mount hydration, mirroring chatStore.tsx's own GET /api/sessions
+  // recovery effect (recentSessions) in shape: cancelled-flag guard, silent
+  // console.error on failure (no error UI — matches this file's existing
+  // silent-fail posture for kebab/memory-panel network calls elsewhere).
+  // Unconditional (not gated on isSignedIn the way chatStore's session
+  // recovery is) — GET /api/stories itself returns an empty list for an
+  // anonymous/unresolvable-tenant request rather than erroring, so there's
+  // nothing this component needs to gate on client-side.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/stories');
+        if (!res.ok || cancelled) return;
+        const data: { stories?: Story[] } = await res.json();
+        if (cancelled) return;
+        setStories(Array.isArray(data.stories) ? data.stories : []);
+      } catch (err) {
+        console.error('[ChatHero] stories fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // One useMemories(sessionId) instance, owned here and passed down to
   // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
@@ -248,13 +285,56 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     showToast(message);
   }, [showToast]);
 
-  const handleCreateStory = (name: string, description: string) => {
-    setStories((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), name, description: description || undefined },
-    ]);
-    setBeginStoryOpen(false);
+  // Real persistence (2026-08-09) — POST /api/stories (services/crm/
+  // stories.ts's createStory, an artifacts insert type='story'), replacing
+  // the local-only crypto.randomUUID() row this used to build. On success,
+  // prepends the server's own row (its real id, not a client-guessed one) to
+  // local state rather than refetching the whole list. Leaves the modal open
+  // on failure — BeginStoryModal only resets its fields when `open` next
+  // transitions to true, so the member's typed name/description survive a
+  // failed attempt to retry.
+  const handleCreateStory = async (name: string, description: string) => {
+    try {
+      const res = await fetch('/api/stories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.story) {
+        console.error('[ChatHero] create story failed:', res.status);
+        showToast('Could not create story');
+        return;
+      }
+      setStories((prev) => [data.story as Story, ...prev]);
+      setBeginStoryOpen(false);
+    } catch (err) {
+      console.error('[ChatHero] create story threw:', err);
+      showToast('Could not create story');
+    }
   };
+
+  // Real persistence (2026-08-09) — DELETE /api/stories/[id] (services/crm/
+  // stories.ts's discardStory, stamping discarded_at on the same artifacts
+  // row), replacing the local-only filter this used to do. Fire-and-forget
+  // from ConfirmDeleteModal's onConfirm below (matching handleRemoveMemory's
+  // own not-awaited-inline call there) — the dialog closes immediately;
+  // failure only reverts local state and toasts, it doesn't reopen anything.
+  const handleDeleteStory = useCallback(async (storyId: string) => {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        console.error('[ChatHero] delete story failed:', res.status);
+        showToast('Could not delete story');
+        return;
+      }
+      setStories(prev => prev.filter(s => s.id !== storyId));
+      showToast('Deleted');
+    } catch (err) {
+      console.error('[ChatHero] delete story threw:', err);
+      showToast('Could not delete story');
+    }
+  }, [showToast]);
 
   // Invite collaborators (invites-collaboration-modal, 2026-08-10). `invite`
   // tracks which story row triggered the modal; `inviteLink` holds the
@@ -604,10 +684,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             // still the same memory pendingDelete was opened for.
             if (liveOpenMemory) void handleRemoveMemory(liveOpenMemory);
           } else if (pendingDelete.target === 'story') {
-            // No stories backend yet (ephemeral client state — see the
-            // stories comment above) — remove locally, no network call.
-            setStories(prev => prev.filter(s => s.id !== pendingDelete.id));
-            showToast('Deleted');
+            // Real delete now (2026-08-09) — see handleDeleteStory above.
+            void handleDeleteStory(pendingDelete.id);
           } else {
             void deleteSession(pendingDelete.id);
             showToast('Deleted');
