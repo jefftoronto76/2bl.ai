@@ -1,5 +1,52 @@
 # DB Changelog
 
+## 2026-08-10 — artifact_subscribers (artifact-level access grants)
+
+**Documented same-day**, unlike the 2026-08-08 entries below — full DDL
+supplied directly rather than reconstructed from a Postgres log export
+after the fact.
+
+### Create `artifact_subscribers` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL run:**
+
+```sql
+CREATE TABLE artifact_subscribers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  artifact_id uuid NOT NULL REFERENCES artifacts(id),
+  member_id uuid NOT NULL REFERENCES members(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (artifact_id, member_id)
+);
+```
+
+**Purpose:** A generic, artifact-level access grant — "this member can
+access this artifact." Deliberately generic naming (not
+`story_subscribers`), matching `artifact_containments`'s own precedent of
+naming for the self-referencing `artifacts` concept generally rather than
+one specific artifact type, so this is reusable by any future artifact
+type, not just stories. Binary (a row's existence is the grant — no
+`role`/`permission_level` column, so this cannot express a permission
+spectrum, only "has access" vs "doesn't"). Does not duplicate ownership —
+the creator/owner of an artifact is already recorded on the artifact's own
+row (`artifacts.member_id`/`artifacts.user_id`); this table only holds
+grants to members *beyond* the creator.
+
+**Notes:**
+- **Zero application code references this table as of 2026-08-10**
+  (repo-wide grep confirmed) — the schema exists, but nothing reads or
+  writes it yet. Do not assume this is wired into the app.
+- Unique on `(artifact_id, member_id)` — a member can be granted access to
+  a given artifact at most once; a repeat grant is idempotent-shaped, not
+  stackable.
+- This session had no direct Studio/`information_schema` access of its own
+  to independently re-run this check against the live schema — the shape
+  above is Jeff's own confirmed DDL, supplied directly for this entry, not
+  inferred or copied without verification.
+
 ## 2026-08-08 — Photo/memory/story many-to-many schema (Memory Canvas prep)
 
 **Documented retroactively.** These four DDL statements ran in Supabase
