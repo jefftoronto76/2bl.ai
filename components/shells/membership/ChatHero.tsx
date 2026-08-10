@@ -7,7 +7,7 @@ import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
-import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
+import type { Collaborator, RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
@@ -370,6 +370,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const [invite, setInvite] = useState<{ storyId: string } | null>(null);
   const [invitePrimer, setInvitePrimer] = useState('');
   const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
+  const [inviteCollaborators, setInviteCollaborators] = useState<Collaborator[]>([]);
 
   const createInviteLink = useCallback(async (primer: string, storyId: string, reset: boolean) => {
     try {
@@ -449,6 +450,40 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       void invalidateInviteLink(invite.storyId);
     }
   }, [invite, inviteLink, invalidateInviteLink]);
+
+  // "Existing members" roster — refetched whenever the modal's story
+  // changes (including via the invalidation warning), not on every primer
+  // keystroke. Silent-fail on error, matching this file's existing posture
+  // for the stories/mediaItems fetch-on-mount effects above.
+  useEffect(() => {
+    const storyId = invite?.storyId;
+    if (!storyId) {
+      setInviteCollaborators([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/heirloom/story-invites?story_id=${encodeURIComponent(storyId)}`);
+        if (!res.ok || cancelled) return;
+        const data: { collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }> } =
+          await res.json();
+        if (cancelled) return;
+        setInviteCollaborators(
+          (data.collaborators ?? []).map((c) => ({
+            name: c.name ?? c.email ?? 'Member',
+            status: 'joined' as const,
+            joinedDate: new Date(c.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          })),
+        );
+      } catch (err) {
+        console.error('[ChatHero] story collaborators fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invite?.storyId]);
 
   const closeInvite = useCallback(() => {
     setInvite(null);
@@ -728,9 +763,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onClose={closeInvite}
         magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : undefined}
         expiresLabel="Expires in 7 days"
-        // No story-collaborator schema yet (see createMemberInvite's doc
-        // comment) — there's nothing real to populate this roster with.
-        collaborators={[]}
+        collaborators={inviteCollaborators}
         stories={stories}
         storyId={invite?.storyId}
         onStoryChange={handleInviteStoryChange}

@@ -249,6 +249,103 @@ export async function validateStoryInviteToken(token: string): Promise<StoryInvi
   return row
 }
 
+export interface StoryCollaboratorRow {
+  memberId: string
+  name: string | null
+  email: string | null
+  /** When this member's artifact_subscribers grant was written — i.e. when
+   *  they joined this story. */
+  joinedAt: string
+}
+
+/**
+ * Lists members who have joined a story — the invite modal's "Existing
+ * members" roster (invites-collaboration-modal Phase 5, 2026-08-10).
+ * Every row here reflects a real artifact_subscribers grant, written only
+ * by acceptStoryInvite above, so there is no "pending" state to represent —
+ * unlike members.ts's single-use invite mechanism, this table has nothing
+ * between "not granted" and "granted."
+ *
+ * Scoped to the story's owner, same ownership check the POST route uses for
+ * create/reset: only the person who can mint/rotate the invite link can see
+ * who has joined through it. Two queries rather than an embedded join
+ * (matches listStories' own pattern above) — merged in application code.
+ *
+ * Deliberately returns no memory count: that depends on artifact_containments
+ * (story <-> memory linking), which is unwired — see this repo's Known Gaps.
+ * Callers must not fabricate one.
+ */
+export async function listStoryCollaborators(
+  tenantId: string,
+  storyId: string,
+  ownerUserId: string,
+): Promise<StoryInviteResult<StoryCollaboratorRow[]>> {
+  const supabase = getAdminClient()
+
+  const { data: storyRow, error: storyErr } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', ownerUserId)
+    .eq('type', 'story')
+    .is('discarded_at', null)
+    .maybeSingle()
+
+  if (storyErr) {
+    console.error('[story-invites] collaborators — story lookup failed:', storyErr.message)
+    return { ok: false, status: 500, error: storyErr.message }
+  }
+  if (!storyRow) {
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const { data: subRows, error: subErr } = await supabase
+    .from('artifact_subscribers')
+    .select('member_id, created_at')
+    .eq('artifact_id', storyId)
+    .order('created_at', { ascending: true })
+
+  if (subErr) {
+    console.error('[story-invites] collaborators — subscriber lookup failed:', subErr.message)
+    return { ok: false, status: 500, error: subErr.message }
+  }
+
+  const subscriberRows = (subRows ?? []) as Array<{ member_id: string; created_at: string }>
+  if (subscriberRows.length === 0) {
+    return { ok: true, data: [] }
+  }
+
+  const memberIds = subscriberRows.map(r => r.member_id)
+  const { data: memberRows, error: memberErr } = await supabase
+    .from('members')
+    .select('id, name, email')
+    .eq('tenant_id', tenantId)
+    .in('id', memberIds)
+
+  if (memberErr) {
+    console.error('[story-invites] collaborators — member lookup failed:', memberErr.message)
+    return { ok: false, status: 500, error: memberErr.message }
+  }
+
+  const membersById = new Map(
+    ((memberRows ?? []) as Array<{ id: string; name: string | null; email: string | null }>)
+      .map(m => [m.id, m] as const),
+  )
+
+  const collaborators: StoryCollaboratorRow[] = []
+  for (const row of subscriberRows) {
+    const member = membersById.get(row.member_id)
+    // Defensive — a member row could theoretically be missing (deleted
+    // independently of its subscriber grant); skip rather than render a
+    // roster row with no identity.
+    if (!member) continue
+    collaborators.push({ memberId: row.member_id, name: member.name, email: member.email, joinedAt: row.created_at })
+  }
+
+  return { ok: true, data: collaborators }
+}
+
 /**
  * Accepts a story invite token for the currently-signed-in Clerk user.
  * Re-validates the token independently (never trusts an earlier gate

@@ -29,7 +29,7 @@ export interface InviteCollaboratorsModalProps {
   magicLink?: string;
   /** Human label for expiry, e.g. "Expires in 7 days · Jun 18". */
   expiresLabel?: string;
-  /** People already invited — name, relationship, joined/pending. */
+  /** People who have joined the story via this invite mechanism. */
   collaborators: Collaborator[];
   /** All stories the picker can choose from. Picker renders only when non-empty. */
   stories: Story[];
@@ -233,45 +233,39 @@ export function InviteCollaboratorsModal({
 
           <div className="h-px bg-border my-5" />
 
-          {/* Roster */}
+          {/* Roster — every row here has genuinely joined (a row only
+              exists once acceptStoryInvite has written the
+              artifact_subscribers grant), so there's no joined/pending mix
+              or count left to show. */}
           <div className="flex items-center justify-between mb-3">
-            <span className={sectionLabel}>Already invited</span>
-            <span className="font-mono text-[11px] text-text-muted">
-              {collaborators.filter((c) => c.status === 'joined').length} joined ·{' '}
-              {collaborators.filter((c) => c.status !== 'joined').length} pending
-            </span>
+            <span className={sectionLabel}>Existing members</span>
           </div>
           <div className="flex flex-col gap-3">
-            {collaborators.map((c, i) => {
-              const isJoined = c.status === 'joined';
-              return (
-                <div key={`${c.name}-${i}`} className="flex items-center gap-3">
-                  <span className="flex-shrink-0 w-9 h-9 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center font-display text-sm font-semibold text-accent">
-                    {initials(c.name)}
+            {collaborators.map((c, i) => (
+              <div key={`${c.name}-${i}`} className="flex items-center gap-3">
+                <span className="flex-shrink-0 w-9 h-9 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center font-display text-sm font-semibold text-accent">
+                  {initials(c.name)}
+                </span>
+                <span className="flex-1 min-w-0 flex flex-col leading-tight">
+                  <span className="font-body text-sm text-text-primary truncate">
+                    {c.name}
                   </span>
-                  <span className="flex-1 min-w-0 flex flex-col leading-tight">
-                    <span className="font-body text-sm text-text-primary truncate">
-                      {c.name}
-                    </span>
+                  {c.relationship && (
                     <span className="font-body text-xs text-text-muted">
                       {c.relationship}
                     </span>
-                  </span>
-                  <span
-                    className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[10.5px] tracking-[0.1em] uppercase border ${
-                      isJoined
-                        ? 'bg-accent/15 text-accent border-accent/30'
-                        : 'bg-text-primary/[0.07] text-text-muted border-transparent'
-                    }`}
-                  >
-                    {isJoined && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    )}
-                    {c.status}
-                  </span>
-                </div>
-              );
-            })}
+                  )}
+                </span>
+                <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[10.5px] tracking-[0.02em] bg-accent/15 text-accent border border-accent/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  {/* memoryCount is undefined (not 0) until story <-> memory
+                      linking (artifact_containments) is wired — see
+                      System Docs/Known Gaps.md. Never fabricate a count. */}
+                  {`Joined ${c.joinedDate}`}
+                  {c.memoryCount != null && ` · ${c.memoryCount} ${c.memoryCount === 1 ? 'memory' : 'memories'}`}
+                </span>
+              </div>
+            ))}
           </div>
 
           <div className="flex items-start gap-2 mt-5 pt-4 border-t border-border">

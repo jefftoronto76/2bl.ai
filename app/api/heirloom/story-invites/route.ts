@@ -18,6 +18,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import {
   createOrGetActiveStoryInviteLink,
+  listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
 } from '@/services/crm/story-invites'
@@ -139,6 +140,52 @@ export async function POST(req: Request) {
     },
     { status: 201 },
   )
+}
+
+// GET /api/heirloom/story-invites?story_id=...
+// Backs InviteCollaboratorsModal.tsx's "Existing members" roster (Phase 5,
+// 2026-08-10) — see services/crm/story-invites.ts's listStoryCollaborators
+// for the artifact_subscribers + members query and why it's owner-scoped.
+export async function GET(req: Request) {
+  const user = await getCurrentUser()
+  if (!user) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const supabase = getAdminClient()
+
+  const { data: memberRow, error: memberErr } = await supabase
+    .from('members')
+    .select('id')
+    .eq('tenant_id', HEIRLOOM_TENANT_ID)
+    .eq('clerk_id', user.providerUserId)
+    .maybeSingle()
+
+  if (memberErr) {
+    console.error('[heirloom/story-invites] GET member lookup failed:', memberErr.message)
+    return Response.json({ error: 'Could not resolve member record' }, { status: 500 })
+  }
+  if (!memberRow) {
+    return Response.json({ error: 'Member record not found' }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const storyId = searchParams.get('story_id')?.trim() ?? ''
+  if (!storyId) {
+    return Response.json({ error: 'story_id is required' }, { status: 400 })
+  }
+
+  const actorUserId = await getCurrentUserId()
+  if (!actorUserId) {
+    return Response.json({ error: 'Could not resolve user record' }, { status: 500 })
+  }
+
+  const result = await listStoryCollaborators(HEIRLOOM_TENANT_ID, storyId, actorUserId)
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status })
+  }
+
+  return Response.json({ collaborators: result.data }, { status: 200 })
 }
 
 // DELETE /api/heirloom/story-invites
