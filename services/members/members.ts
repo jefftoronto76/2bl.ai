@@ -55,14 +55,16 @@ function generateToken(): string {
  * seeded/self-service and renders as a dash in the members UI.
  *
  * storyId (invites-collaboration-modal, 2026-08-10): which story this invite
- * is for, from the per-story invite trigger in SidebarV2. There is no
- * `stories` table yet (Stage 2, in flight — see media_items.story_id's same
- * not-yet-a-real-FK note in Database Schema.md) and no story-collaborator
- * join table, so this cannot be persisted as a real column/relationship yet.
- * Recorded only in this call's own audit-event metadata (jsonb, no schema
- * change) as a bridge — read it back from audit_events if the story tie
- * needs to be reconstructed before the real schema lands. Do not build
- * against this as the final shape; see System Docs/Known Gaps.md.
+ * is for, from the per-story invite trigger in SidebarV2. Stories are real
+ * now (Real Story Creation, PR #332, 2026-08-09/10 — a story is an
+ * `artifacts` row, type='story', same table as memories) but there is still
+ * no story-collaborator join table (same still-dormant-FK situation as
+ * media_items.story_id — see Database Schema.md), so this invite→story tie
+ * cannot be persisted as a real column/relationship yet. Recorded only in
+ * this call's own audit-event metadata (jsonb, no schema change) as a
+ * bridge — read it back from audit_events if the story tie needs to be
+ * reconstructed before the real schema lands. Do not build against this as
+ * the final shape; see System Docs/Known Gaps.md.
  */
 export async function createMemberInvite(
   tenantId: string,
