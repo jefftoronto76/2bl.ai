@@ -114,6 +114,14 @@ export const AuditAction = {
   // (success/failure) and the DELETE /api/stories/[id] route.
   STORY_CREATED: 'story.created',
   STORY_DISCARDED: 'story.discarded',
+  // Story invite links (reusable-story-invite-links, 2026-08-10) — a
+  // deliberately separate mechanism from the member.invite_* single-use
+  // admin/member invite actions above; see services/crm/story-invites.ts.
+  STORY_INVITE_LINK_CREATED: 'story.invite_link_created',
+  STORY_INVITE_LINK_REVOKED: 'story.invite_link_revoked',
+  STORY_INVITE_LINK_OPENED: 'story.invite_link_opened',
+  STORY_INVITE_ACCEPTED_NEW_MEMBER: 'story.invite_accepted_new_member',
+  STORY_INVITE_ACCEPTED_EXISTING_MEMBER: 'story.invite_accepted_existing_member',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const
