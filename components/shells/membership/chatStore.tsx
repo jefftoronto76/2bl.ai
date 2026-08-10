@@ -452,6 +452,17 @@ export function ChatProvider({
   // below ever actually fires the request, even though both could in theory
   // observe a matching condition across renders/Fast Refresh.
   const storyInviteAcceptFiredRef = useRef(false);
+
+  // One-time mount log confirming whether the server→client handoff
+  // (page.tsx → HeirloomApp → chatStore) actually delivered a story invite
+  // token, before either trigger effect below has had a chance to run.
+  useEffect(() => {
+    console.log(
+      '[heirloom/chat] storyInviteToken on mount:',
+      storyInviteTokenRef.current ? `present (${storyInviteTokenRef.current.slice(0, 8)}…)` : 'absent',
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [joinedStoryConfirmation, setJoinedStoryConfirmation] = useState<{ title: string } | null>(null);
 
   // Fires POST /api/heirloom/story-invites/accept exactly once. Called from
@@ -461,8 +472,15 @@ export function ChatProvider({
   // independently determines new-vs-existing-member; this call site does
   // not need to know or care which branch fires.
   const acceptStoryInviteToken = useCallback((token: string) => {
-    if (storyInviteAcceptFiredRef.current) return;
+    if (storyInviteAcceptFiredRef.current) {
+      console.log(
+        '[heirloom/chat] acceptStoryInviteToken: guard already fired, skipping second attempt for token:',
+        token.slice(0, 8) + '…',
+      );
+      return;
+    }
     storyInviteAcceptFiredRef.current = true;
+    console.log('[heirloom/chat] firing story invite accept for token:', token.slice(0, 8) + '…');
     fetch('/api/heirloom/story-invites/accept', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -474,6 +492,7 @@ export function ChatProvider({
           console.error('[heirloom/chat] story invite accept failed:', res.status, data?.error);
           return;
         }
+        console.log('[heirloom/chat] story invite accept succeeded, story_title:', data?.story_title);
         if (typeof data?.story_title === 'string') {
           setJoinedStoryConfirmation({ title: data.story_title });
         }
@@ -489,9 +508,23 @@ export function ChatProvider({
   // investigating this feature: an existing Heirloom member opening a story
   // invite link while already logged in has no sign-in transition to hook.
   useEffect(() => {
-    if (!isLoaded) return;
+    console.log(
+      '[heirloom/chat] mount-time story invite effect: isLoaded=%s isSignedIn=%s tokenPresent=%s',
+      isLoaded,
+      !!isSignedIn,
+      !!storyInviteTokenRef.current,
+    );
+    if (!isLoaded) {
+      console.log('[heirloom/chat] mount-time story invite effect: Clerk not loaded yet, skipping');
+      return;
+    }
     if (isSignedIn && storyInviteTokenRef.current) {
+      console.log('[heirloom/chat] mount-time story invite effect: already signed in with token, calling acceptStoryInviteToken');
       acceptStoryInviteToken(storyInviteTokenRef.current);
+    } else if (!storyInviteTokenRef.current) {
+      console.log('[heirloom/chat] mount-time story invite effect: no token present, skipping');
+    } else {
+      console.log('[heirloom/chat] mount-time story invite effect: not signed in, skipping');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
@@ -790,6 +823,10 @@ export function ChatProvider({
       // Wholly separate call, separate endpoint, separate token — the
       // brand-new-signup half of the story-invite mechanism (see
       // acceptStoryInviteToken's own doc comment for the other half).
+      console.log(
+        '[heirloom/chat] sign-in transition: story invite branch reached, token present:',
+        !!storyInviteTokenRef.current,
+      );
       if (storyInviteTokenRef.current) {
         acceptStoryInviteToken(storyInviteTokenRef.current);
       }
