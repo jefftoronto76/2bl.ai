@@ -361,28 +361,56 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   route file.
 
 - **Story invite acceptance not reaching its expected end state for a real
-  member — still open, only instrumented (not fixed) 2026-08-10 (PR #341,
-  branch `claude/story-invite-client-logging-ycgyj5`).** Reported live
-  symptom: a story invite is accepted, but the story does not appear in the
-  new member's account afterward — the expected end state never materializes.
-  Root cause not yet found. Prior to this pass, the accept flow
-  (`chatStore.tsx`'s `storyInviteTokenRef`, its two trigger effects, and
-  `acceptStoryInviteToken`) only logged on failure (`console.error`), so
-  there was no way to see where in the client-side chain it broke — whether
-  the token was even captured on mount, which of the two triggers (or
-  neither) fired, or whether the accept call itself ever succeeded. This
-  pass added five sequential `[heirloom/chat]` `console.log` checkpoints
-  end-to-end (see the `chatStore` row in `System Docs/Public Site.md` for
-  the full list) — **diagnostic visibility only, deliberately no behavior
-  change.** The next step is to actually reproduce the failure with a
-  browser console open against the sequence this pass added, read off where
-  the chain stops or diverges from the expected path, and root-cause from
-  there — the server-side half (`POST /api/heirloom/story-invites/accept`,
-  `acceptStoryInvite` in `services/crm/story-invites.ts`) was not audited in
-  this pass either, so the break could still turn out to be server-side
-  (e.g. the accept call succeeding but not actually granting/persisting the
-  `artifact_subscribers` row) rather than the client never firing the call
-  at all — the new logging only narrows down which side to look at next.
+  member — instrumented 2026-08-10 (PR #341), four independent real gaps
+  found and fixed 2026-08-10/11 (PRs #343, #344, #346, #348).** Original
+  reported live symptom: a story invite is accepted, but the story does not
+  appear in the new member's account afterward — the expected end state
+  never materializes. PR #341 (see prior revision of this entry, or its own
+  section in `System Docs/Public Site.md`'s `chatStore` row) added
+  diagnostic-only `console.log` checkpoints with no behavior change. Code
+  review of the full flow — not the suggested browser-console reproduction —
+  surfaced four distinct, independent bugs rather than one root cause,
+  covering different ways the flow could silently fail to reach its expected
+  end state:
+  1. **#343 — `autoOpenChat` never set for the `?join=` path.** `page.tsx`
+     only ever set `autoOpenChat` from `members.auto_open` on the `?invite=`
+     path; a story-invite visitor's chat panel simply never opened, so
+     nothing in the flow — including the accept call's own trigger effects —
+     was visibly happening to them.
+  2. **#344 — no visitor-facing prompt to actually create an account.** A
+     not-signed-in story-invite visitor got a bare "Hi" greeting with no
+     mention of the story, and no CTA telling them they needed to sign up
+     for the invite to take effect — `acceptStoryInviteToken` only ever
+     fires post-sign-in, so a visitor who never saw a reason to sign up
+     never triggered it at all. Fixed with a contextual greet (story title +
+     inviter name, deterministic/no-LLM via `injectAssistantMessage`)
+     immediately followed by an injected `[ACCOUNT_CREATE: story invite]`
+     message when not signed in. See the `chatStore` row in
+     `System Docs/Public Site.md` and the `[ACCOUNT_CREATE: reason]` entry in
+     `System Docs/Marker Syntax.md`.
+  3. **#346 — sidebar `stories` list never refetched.** Even when the accept
+     call genuinely succeeded server-side, `ChatHero.tsx`'s `stories` state
+     was fetched exactly once, on mount — this alone is very likely the
+     literal original report ("story does not appear... afterward"): the
+     grant existed in the DB, but the sidebar showing it required a manual
+     page reload. Fixed by extracting the mount fetch into a reusable
+     `refreshStories` callback, now also called when `joinedStoryConfirmation`
+     fires.
+  4. **#348 — failure paths were silent to the visitor.** Both
+     `acceptStoryInviteToken` failure branches (non-ok response, rejected
+     fetch) only ever `console.error`'d — a genuine server-side failure
+     (e.g. an expired/revoked link) left the visitor signed in with no story
+     and no explanation, indistinguishable from success from their side.
+     Fixed with a generic, no-LLM fallback message via the same
+     `injectAssistantMessage` mechanism.
+
+  Each fix shipped with its own committed test; `services/crm/story-invites.ts`'s
+  server-side `acceptStoryInvite` itself was re-read during this pass and
+  still appears correct — no server-side fix was needed. This closes out the
+  client-side investigation PR #341 opened; if the original live report
+  persists after this, the next step is re-verifying the server-side grant
+  path (`artifact_subscribers` upsert) against production data, not the
+  client flow this entry now covers end-to-end.
 
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
