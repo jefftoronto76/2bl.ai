@@ -317,6 +317,28 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   data with nothing behind them in this schema; never fabricated here
   either.
 
+  **Superseded again, 2026-08-11 — invite-modal-restore-on-open.** Fixes a
+  bug the `invite_modal_updates` paragraph above shipped unnoticed: opening
+  the modal (`handleInviteStory`) always reset `inviteLink` to `null` and
+  `invitePrimer` to `''`, with no check for whether a real, active link
+  (with a saved primer) already existed for that story — closing and
+  reopening the modal always showed "Not created yet" and a blank Custom
+  Greeting, even for a story someone had already created a real link for
+  (in this session or another one). Nothing fetched existing state on open.
+  Fixed by adding a read-only lookup, `getActiveStoryInviteLink`
+  (`services/crm/story-invites.ts`) — the same `tenant_id` + `story_id` +
+  `revoked_at IS NULL` query `createOrGetActiveStoryInviteLink` already
+  runs internally, but without its create-if-missing fallback, so opening
+  the modal can never itself mint a link — and exposing it via the existing
+  `GET /api/heirloom/story-invites?story_id=` route as a new `active_link`
+  field alongside `collaborators` (same request, no new endpoint —
+  `System Docs/API Routes.md`). `ChatHero.tsx`'s collaborators-fetch effect
+  (already keyed on `invite?.storyId`, so it already re-runs on every modal
+  open) now also reads `active_link` and, when present, overwrites the
+  blank reset with the real `token`/`primer`/`invite_url`. A story with no
+  active link is unaffected — the existing blank-reset behavior stands, so
+  "Not created yet" still means what it says.
+
 - **`/join/[token]` missing its middleware host-rewrite exclusion — found
   and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
   `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)
