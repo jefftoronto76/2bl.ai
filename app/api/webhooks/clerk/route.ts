@@ -6,6 +6,7 @@ import { AuthEventType } from '@/services/audit/types'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { linkInvitedMember } from '@/services/members'
+import { acceptStoryInvite } from '@/services/crm/story-invites'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -158,33 +159,76 @@ export async function POST(req: Request): Promise<NextResponse> {
       })
     }
 
-    // Link any pending invited members row to this Clerk user. Primary lookup
-    // is by token (when present in unsafeMetadata); email is the fallback.
-    // Returns true when an invited row was found and stamped — in that case skip
-    // syncMember: the invited row already has the correct clerk_id so the upsert
-    // conflict would fire, but avoiding the extra write is cleaner and prevents
-    // a race where the upsert could clobber fields (e.g. status='invited'→'active'
-    // already set; upsert would write 'active' again which is fine, but source and
-    // used_at would not be set by syncMember). When false, no invited row matched
-    // and syncMember creates a fresh active row as normal.
-    const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken)
+    // Extract the story-invite token written to Clerk unsafeMetadata during
+    // sign-up by the story-invite flow (signUp.update({ unsafeMetadata: {
+    // heirloom_story_invite_token } })). Mutually exclusive with inviteToken
+    // in practice — a visitor arrives via one query param, not both.
+    const storyInviteToken =
+      ((data.unsafe_metadata as Record<string, unknown> | undefined)
+        ?.heirloom_story_invite_token as string | undefined) ?? null
 
-    if (linked) {
-      console.log('[webhook/clerk] skipping syncMember — invited row stamped by linkInvitedMember', {
+    // When a story-invite token is present, become authoritative for this
+    // signup: call the same acceptStoryInvite the client itself calls after
+    // sign-up (services/crm/story-invites.ts), so whichever of {webhook,
+    // client} runs first performs the correctly-scoped insert (source=
+    // 'story_invite', primer copied from the link) and the other is a safe
+    // no-op existing-member grant. Without this, the webhook previously
+    // always won the race with a generic syncMember upsert that has no
+    // concept of story invites — source stayed null and primer was dropped.
+    let storyInviteAccepted = false
+    if (storyInviteToken) {
+      const user = await findUserByClerkId(clerkUserId)
+      const result = user
+        ? await acceptStoryInvite(storyInviteToken, clerkUserId, user.id, HEIRLOOM_TENANT_ID)
+        : { ok: false as const, status: 500, error: 'could not resolve users.id after users upsert' }
+
+      if (result.ok) {
+        storyInviteAccepted = true
+        console.log('[webhook/clerk] story invite accepted by webhook', { clerkUserId })
+      } else {
+        // Falls through to the linkInvitedMember/syncMember cascade below as
+        // a safety net (e.g. token expired/revoked by the time the webhook
+        // processed it) — same fallback shape as an absent inviteToken today.
+        console.error('[webhook/clerk] story invite accept failed, falling back to syncMember', {
+          clerkUserId,
+          error: result.error,
+        })
+      }
+    }
+
+    if (storyInviteAccepted) {
+      console.log('[webhook/clerk] skipping linkInvitedMember/syncMember — story invite accepted by webhook', {
         clerkUserId,
       })
     } else {
-      // Upsert members row for Heirloom tenant (non-invite or fallback path)
-      const membersResult = await syncMember({
-        clerkUserId,
-        tenantId: HEIRLOOM_TENANT_ID,
-        name: name ?? undefined,
-        email: email ?? undefined,
-        phone: phone ?? undefined,
-      })
+      // Link any pending invited members row to this Clerk user. Primary lookup
+      // is by token (when present in unsafeMetadata); email is the fallback.
+      // Returns true when an invited row was found and stamped — in that case skip
+      // syncMember: the invited row already has the correct clerk_id so the upsert
+      // conflict would fire, but avoiding the extra write is cleaner and prevents
+      // a race where the upsert could clobber fields (e.g. status='invited'→'active'
+      // already set; upsert would write 'active' again which is fine, but source and
+      // used_at would not be set by syncMember). When false, no invited row matched
+      // and syncMember creates a fresh active row as normal.
+      const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken)
 
-      if (!membersResult.ok) {
-        console.error('[webhook/clerk] members sync failed:', membersResult.error)
+      if (linked) {
+        console.log('[webhook/clerk] skipping syncMember — invited row stamped by linkInvitedMember', {
+          clerkUserId,
+        })
+      } else {
+        // Upsert members row for Heirloom tenant (non-invite or fallback path)
+        const membersResult = await syncMember({
+          clerkUserId,
+          tenantId: HEIRLOOM_TENANT_ID,
+          name: name ?? undefined,
+          email: email ?? undefined,
+          phone: phone ?? undefined,
+        })
+
+        if (!membersResult.ok) {
+          console.error('[webhook/clerk] members sync failed:', membersResult.error)
+        }
       }
     }
   }

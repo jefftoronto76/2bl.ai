@@ -222,6 +222,67 @@ describe('useAuthFlowAdapter.sendCode — name attachment (sign-up path only)', 
   })
 })
 
+describe('useAuthFlowAdapter.sendCode — invite token metadata (single write)', () => {
+  // unsafeMetadata is a full-object REPLACE, not a merge, in Clerk's API —
+  // two sequential signUp.update({ unsafeMetadata }) calls would let the
+  // second silently wipe the first. sendCode combines both keys into one
+  // call specifically to avoid that; these tests pin that behavior down.
+  function metadataCalls(): unknown[][] {
+    return (mocks.current.signUp.update as AnyFn).mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === 'object' && args[0] !== null && 'unsafeMetadata' in (args[0] as object),
+    )
+  }
+
+  it('both inviteToken and storyInviteToken land in a single signUp.update() call, not two', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({
+      type: 'email', value: 'new@b.com', inviteToken: 'inv-tok', storyInviteToken: 'story-tok',
+    })
+    const calls = metadataCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toEqual({
+      unsafeMetadata: { heirloom_invite_token: 'inv-tok', heirloom_story_invite_token: 'story-tok' },
+    })
+  })
+
+  it('inviteToken alone writes only heirloom_invite_token', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({ type: 'email', value: 'new@b.com', inviteToken: 'inv-tok' })
+    const calls = metadataCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toEqual({ unsafeMetadata: { heirloom_invite_token: 'inv-tok' } })
+  })
+
+  it('storyInviteToken alone writes only heirloom_story_invite_token', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({ type: 'email', value: 'new@b.com', storyInviteToken: 'story-tok' })
+    const calls = metadataCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toEqual({ unsafeMetadata: { heirloom_story_invite_token: 'story-tok' } })
+  })
+
+  it('neither token supplied → no unsafeMetadata update call at all', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({ type: 'email', value: 'new@b.com' })
+    expect(metadataCalls()).toHaveLength(0)
+  })
+
+  it('sign-in path never writes invite-token metadata — existing profiles are not touched', async () => {
+    ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({
+      error: { code: 'form_identifier_exists', message: 'That email address is taken. Please try another.' },
+    })
+    const { result } = renderHook(() => useAuthFlowAdapter())
+    await result.current.sendCode({
+      type: 'email', value: 'existing@b.com', inviteToken: 'inv-tok', storyInviteToken: 'story-tok',
+    })
+    expect(metadataCalls()).toHaveLength(0)
+  })
+})
+
 describe('useAuthFlowAdapter.verifyCode — terminal vs retryable', () => {
   async function startSignupFlow(result: { current: ReturnType<typeof useAuthFlowAdapter> }) {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })

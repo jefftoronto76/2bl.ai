@@ -489,11 +489,35 @@ export async function acceptStoryInvite(
       .single()
 
     if (insertErr || !newMember) {
-      console.error('[story-invites] accept — new member insert failed:', insertErr?.message)
-      return { ok: false, status: 500, error: insertErr?.message ?? 'Failed to create member' }
+      // 23505 = unique violation on members.clerk_id. Now that both the
+      // user.created webhook and the client's own accept call reach this
+      // function for the same signup, they can race each other's insert —
+      // not a real failure. Re-fetch and continue as the existing-member
+      // branch would (mirrors createOrGetActiveStoryInviteLink's own 23505
+      // handling above).
+      if (insertErr?.code === '23505') {
+        console.warn('[story-invites] accept — new member insert race, re-fetching', { clerkUserId, tenantId })
+        const { data: existing, error: existingErr } = await supabase
+          .from('members')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('clerk_id', clerkUserId)
+          .maybeSingle()
+        if (!existingErr && existing) {
+          memberId = (existing as { id: string }).id
+          isNewMember = false
+        } else {
+          console.error('[story-invites] accept — new member insert race, re-fetch failed:', existingErr?.message)
+          return { ok: false, status: 500, error: existingErr?.message ?? 'Failed to resolve member after insert race' }
+        }
+      } else {
+        console.error('[story-invites] accept — new member insert failed:', insertErr?.message)
+        return { ok: false, status: 500, error: insertErr?.message ?? 'Failed to create member' }
+      }
+    } else {
+      memberId = (newMember as { id: string }).id
+      isNewMember = true
     }
-    memberId = (newMember as { id: string }).id
-    isNewMember = true
   }
 
   const { error: subErr } = await supabase
