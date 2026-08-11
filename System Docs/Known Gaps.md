@@ -412,6 +412,46 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   path (`artifact_subscribers` upsert) against production data, not the
   client flow this entry now covers end-to-end.
 
+  **Superseded, same day — the server-side half flagged above as "no fix
+  needed" did in fact need one, 2026-08-11 (PR #351).** Not a bug in
+  `acceptStoryInvite`'s own logic (that re-read was correct as far as it
+  went) but a reliability gap in *when* it got called: every accept
+  ultimately depended on the client's browser successfully firing `POST
+  /api/heirloom/story-invites/accept` (the two `chatStore.tsx` trigger
+  points this entry already covers) — a single point of failure with no
+  server-side fallback, the exact shape CLAUDE.md's Marker fallback
+  principle exists to prevent. Confirmed separately, via live Studio data,
+  as also producing a second, quieter symptom: when Clerk's `user.created`
+  webhook happened to process a story-invite signup before the client's own
+  accept call did, the webhook had no concept of story invites at all and
+  fell through to the generic `syncMember` upsert — the `artifact_subscribers`
+  grant still landed correctly (via the client call arriving after), but the
+  resulting `members` row got `source: null` and no `primer` instead of
+  `source: 'story_invite'`, silently losing personalization/attribution
+  without ever locking the person out. **Fixed** by threading a new
+  `storyInviteToken` field through `chatStore.tsx` → `MessageList.tsx` →
+  `MagicLinkCard.tsx` → `useAuthFlow.ts` into the Clerk adapter
+  (`services/auth/providers/clerk/client.ts`), which now writes it into
+  Clerk `unsafeMetadata` as `heirloom_story_invite_token` — combined into
+  the SAME `signUp.update()` call the pre-existing `heirloom_invite_token`
+  write already made, since `unsafeMetadata` is a full-object replace, not a
+  merge, and writing them separately would let one silently wipe the other.
+  `app/api/webhooks/clerk/route.ts`'s `user.created`/`user.updated` handler
+  now reads that key and calls `acceptStoryInvite()` directly — the exact
+  same function the client calls — so whichever of {webhook, client} runs
+  first performs the real insert and the other is a safe no-op; a missing or
+  failed token still falls through to the pre-existing
+  `linkInvitedMember`/`syncMember` cascade as a safety net. Since this makes
+  `acceptStoryInvite` reachable from two racing callers instead of one, its
+  new-member insert (`services/crm/story-invites.ts`) is now also hardened
+  against a concurrent `23505` unique-violation on `members.clerk_id` —
+  re-fetches and continues as the existing-member branch rather than
+  surfacing a 500, mirroring `createOrGetActiveStoryInviteLink`'s own
+  precedent for the identical race shape. Shipped as commit `fbd3807d` +
+  test coverage in `1bf8c55e`, merged as PR #351. See
+  `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
+  `System Docs/Utilities/Auth.md` for the mechanism.
+
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
