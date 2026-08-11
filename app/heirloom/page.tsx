@@ -98,12 +98,27 @@ export default async function HeirloomPage({
   // visitor who isn't authorized yet, and (b) always surfaces the token to
   // the client whenever the link itself is valid, regardless of `session`.
   let storyInviteToken: string | null = null;
+  // Story title + inviter name for the one-time contextual auto-greet in
+  // chatStore.tsx — resolved here (not in services/crm/story-invites.ts)
+  // since it's display-only data for a single hidden client message, not
+  // part of the accept flow that file owns. Never fed to a model as an
+  // instruction — both are plain display text handled the same way
+  // invitedName above already is.
+  let storyInviteStoryTitle: string | null = null;
+  let storyInviteInviterName: string | null = null;
   if (joinToken) {
     const link = await validateStoryInviteToken(joinToken);
     if (link !== null) {
       isAuthorized = true;
       autoOpenChat = true;
       storyInviteToken = joinToken;
+
+      const [{ data: storyRow }, { data: inviterRow }] = await Promise.all([
+        supabase.from('artifacts').select('title').eq('id', link.story_id).maybeSingle(),
+        supabase.from('members').select('name').eq('id', link.created_by).maybeSingle(),
+      ]);
+      storyInviteStoryTitle = (storyRow?.title as string | undefined) ?? null;
+      storyInviteInviterName = (inviterRow?.name as string | undefined) ?? null;
     }
   }
 
@@ -120,6 +135,8 @@ export default async function HeirloomPage({
       memberId={validatedMemberId}
       autoOpenChat={autoOpenChat}
       storyInviteToken={storyInviteToken ?? undefined}
+      storyInviteStoryTitle={storyInviteStoryTitle}
+      storyInviteInviterName={storyInviteInviterName}
     />
   );
 }
