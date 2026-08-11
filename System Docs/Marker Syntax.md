@@ -101,6 +101,15 @@ session's genuine first assistant turn, not repeatedly.
   (`services/chat/ui/v1/registry.ts`) and consumed by
   `components/shells/membership/MessageList.tsx`. Stripped from prose in every
   other context (widget shell, admin transcript) via `createDefaultRegistry()`.
+  **Second, deterministic source (added 2026-08-11, story-invite-first-run):**
+  the registry's `.parse()` runs over every assistant message's raw content
+  regardless of where it came from, so `chatStore.tsx`'s story-invite greet
+  effect emits `[ACCOUNT_CREATE: story invite]` itself via
+  `injectAssistantMessage` (a synthetic message, no LLM round-trip) for a
+  not-signed-in visitor who arrived via a story invite link — `MagicLinkCard`
+  renders identically either way. See the `chatStore` row in
+  `System Docs/Public Site.md` for the full greet/account-create/failure-
+  fallback sequence this belongs to.
 
 ### `[SAVE_MEMORY]` — dispatch `client`
 
