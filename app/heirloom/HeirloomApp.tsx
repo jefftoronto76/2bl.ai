@@ -78,6 +78,12 @@ interface HeirloomAppProps {
    *  inviteToken above). ChatProvider fires the accept call from either a
    *  sign-in transition or an already-signed-in mount check. */
   storyInviteToken?: string;
+  /** Story title resolved from storyInviteToken's story_id — display-only
+   *  data for chatStore.tsx's one-time contextual auto-greet. */
+  storyInviteStoryTitle?: string | null;
+  /** Display name of the member who created the story invite link — same
+   *  auto-greet use as storyInviteStoryTitle above. */
+  storyInviteInviterName?: string | null;
 }
 
 export default function HeirloomApp({
@@ -90,6 +96,8 @@ export default function HeirloomApp({
   memberId,
   autoOpenChat,
   storyInviteToken,
+  storyInviteStoryTitle,
+  storyInviteInviterName,
 }: HeirloomAppProps) {
   return (
     <ChatProvider
@@ -102,6 +110,8 @@ export default function HeirloomApp({
       memberId={memberId}
       autoOpenChat={autoOpenChat}
       storyInviteToken={storyInviteToken}
+      storyInviteStoryTitle={storyInviteStoryTitle}
+      storyInviteInviterName={storyInviteInviterName}
       enableExitWarning
     >
       <HeirloomInner />

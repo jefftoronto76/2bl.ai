@@ -256,6 +256,8 @@ export function ChatProvider({
   autoOpenChat = false,
   memberId,
   storyInviteToken,
+  storyInviteStoryTitle,
+  storyInviteInviterName,
 }: {
   children: ReactNode;
   /** Whether the invite gate is enabled (from tenant settings). Default: false. */
@@ -289,6 +291,14 @@ export function ChatProvider({
    *  mechanism from inviteToken/hasInviteToken, see services/crm/
    *  story-invites.ts. */
   storyInviteToken?: string;
+  /** Story title resolved from storyInviteToken's story_id — present only
+   *  alongside storyInviteToken. Used solely by the one-time auto-greet
+   *  below, never the per-turn system prompt/getMemberContext. */
+  storyInviteStoryTitle?: string | null;
+  /** Display name of the member who created the story invite link — present
+   *  only alongside storyInviteToken, same one-time auto-greet use as
+   *  storyInviteStoryTitle above. */
+  storyInviteInviterName?: string | null;
 }) {
   // Shell state only (sidebar + panel open). Conversation state now lives in the
   // shared session below. The reducer's conversation actions remain defined but
@@ -411,9 +421,19 @@ export function ChatProvider({
   const messagesRef = useRef<Message[]>(messages);
 
   // Fire the auto-greeting once when the invite was created with auto_open=true
-  // and there is no existing conversation. Waits for auth to load, then defers
-  // 350ms so localStorage/DB hydration effects (which also trigger on isLoaded)
-  // have time to complete and re-render before we check messagesRef.current.
+  // (either the old members.auto_open flow or a resolved story invite — see
+  // page.tsx) and there is no existing conversation. Waits for auth to load,
+  // then defers 350ms so localStorage/DB hydration effects (which also
+  // trigger on isLoaded) have time to complete and re-render before we check
+  // messagesRef.current. When a story invite is present and both its title
+  // and inviter name resolved, sends a deterministic, no-LLM greeting via
+  // injectAssistantMessage instead of the bare "Hi" round-trip — this is a
+  // fixed, non-conversational message, so there is no reason to spend an API
+  // call generating it. injectAssistantMessage/hydrateConversation/
+  // storyInvite*Ref are all declared further down this same component body;
+  // referencing them here is safe because this callback only ever runs
+  // asynchronously (via setTimeout, after the full render — and all of the
+  // component's const declarations — has already executed at least once).
   const autoGreetSentRef = useRef(false);
   useEffect(() => {
     if (!autoOpenChat || !isLoaded || autoGreetSentRef.current) return;
@@ -421,7 +441,13 @@ export function ChatProvider({
       if (autoGreetSentRef.current) return;
       if (messagesRef.current.length > 0) return; // returning member with history
       autoGreetSentRef.current = true;
-      void sendHidden('Hi');
+      const title = storyInviteStoryTitleRef.current;
+      const inviter = storyInviteInviterNameRef.current;
+      if (storyInviteTokenRef.current && title && inviter) {
+        injectAssistantMessage(`${inviter} invited you to their story '${title}'. I'm going to help you get set up.`);
+      } else {
+        void sendHidden('Hi');
+      }
     }, 350);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -448,6 +474,13 @@ export function ChatProvider({
   // renders" reasoning as inviteTokenRef above, consumed by two independent
   // effects below (mount-time + sign-in transition) rather than one.
   const storyInviteTokenRef = useRef<string | null>(storyInviteToken ?? null);
+  // Story title / inviter name for the auto-greet above — same stability
+  // reasoning as storyInviteTokenRef. Only ever populated alongside a
+  // present storyInviteTokenRef; either can independently be null if the
+  // story/member lookup in page.tsx came back empty, in which case the
+  // greet effect falls back to the bare "Hi".
+  const storyInviteStoryTitleRef = useRef<string | null>(storyInviteStoryTitle ?? null);
+  const storyInviteInviterNameRef = useRef<string | null>(storyInviteInviterName ?? null);
   // Guards acceptStoryInviteToken so exactly one of the two trigger effects
   // below ever actually fires the request, even though both could in theory
   // observe a matching condition across renders/Fast Refresh.
