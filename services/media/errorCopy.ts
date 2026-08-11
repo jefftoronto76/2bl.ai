@@ -24,6 +24,13 @@ export function sanitizeFailureReason(raw: string | null): string {
   if (message.includes('Storage object not available after')) {
     return "the file didn't finish uploading before we tried to process it"
   }
+  // Written by the stale-processing sweep (services/media/index.ts's
+  // sweepStaleProcessingItems) and the retry route's matching backstop —
+  // literal string, not an import, to keep this module dependency-free (see
+  // header comment) — services/media/index.ts pulls in getAdminClient.
+  if (message.includes('Processing stalled and timed out')) {
+    return 'processing took too long and timed out'
+  }
   if (message.includes('Deepgram API error')) {
     return "the audio transcription service couldn't process this file"
   }

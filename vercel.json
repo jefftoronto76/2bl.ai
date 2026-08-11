@@ -10,6 +10,15 @@
     },
     "app/api/media/[id]/retry/route.ts": {
       "maxDuration": 900
+    },
+    "app/api/cron/media-sweep/route.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/media-sweep",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

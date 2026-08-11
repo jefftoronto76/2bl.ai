@@ -79,10 +79,48 @@ doesn't have — both route test files stub it via
 This closes the execution-lifecycle cause of a job stalling on new uploads.
 It is not, by itself, a full guarantee against a row ever getting stuck
 `processing` again — e.g. an upstream fetch (Deepgram/Anthropic) with no
-timeout could still hold a *kept-alive* invocation open indefinitely. A
-separate defense-in-depth recovery mechanism (a bounded sweep that flips an
-old `processing` row to `failed` regardless of cause) is planned as a
-follow-up and not yet implemented as of this section.
+timeout could still hold a *kept-alive* invocation open indefinitely. The
+stale-processing sweep below is the defense-in-depth recovery mechanism for
+that — independent of root cause, not a fix for this one.
+
+**Recovery: the stale-processing sweep.** `app/api/cron/media-sweep/route.ts`
+is a Vercel Cron target (`vercel.json`'s `crons`, every 5 minutes) that calls
+`sweepStaleProcessingItems()` (`services/media/index.ts`): selects every
+`status='processing'` row, and for any row older than its type's
+`MAX_PROCESSING_AGE_SECONDS` flips it to `status='failed'` with
+`error_message: 'Processing stalled and timed out'` — a per-row guarded
+update (`.eq('status', 'processing')` at update time) so a job that
+legitimately completes in the gap between the select and the update is left
+alone rather than clobbered. The route logs one `MEDIA_PROCESS_FAILED` audit
+event per swept row (`pipeline_step: 'stale_processing_sweep'`,
+`stalled_since` carrying the original `created_at`) so the audit trail
+records *why* a row resolved, not just that it changed. `errorCopy.ts` maps
+the fixed error string to member-facing copy the same way it does every
+other `error_message`.
+
+Thresholds (`MAX_PROCESSING_AGE_SECONDS`):
+
+| Type | Threshold | Basis |
+|---|---|---|
+| `image` | 300s | Data-backed — ~30x the observed 10.2s max over a 14-day `audit_events` sample of `media.process_started`→`media.process_completed` pairs. Wide headroom deliberately: the sample is thin, and a stuck row costing a few extra minutes before recovery is a non-issue against the actual failure mode (days of silence). |
+| `document` | 600s | **Provisional — no samples exist** (see "Known Unknowns" below). Reasoned from architecture, not data: single-AI-call shape similar to `image` (one Sonnet document-API call + one Haiku classification call, no external queue), doubled vs. `image` only for Sonnet processing a full multi-page PDF vs. Haiku on one photo. |
+| `audio` | 5400s (90 min) | **Provisional — no samples exist.** Anchored to `processAudio`'s own 1-hour-signed-URL design assumption for slow Deepgram queues (see that function's comment) — modest headroom above a figure the code's own author already judged plausible, rather than an unrelated number. |
+
+Auth: same shared-secret pattern as the webhook route's `verifySignature`,
+against a `CRON_SECRET` env var compared with `timingSafeEqual` — Vercel
+Cron sends it automatically as `Authorization: Bearer <CRON_SECRET>` once
+that variable is set on the project. **Needs `CRON_SECRET` added in Vercel's
+project env vars before this runs for real** (Jeff, Vercel dashboard — same
+division of labor as `SUPABASE_WEBHOOK_SECRET`).
+
+Manual backstop: `POST /api/media/[id]/retry` also accepts a `'processing'`
+item whose age is past its type's threshold (previously it rejected
+`'processing'` outright, always) — lets a member or admin unstick a stalled
+job without waiting for the next cron tick. Logged with
+`stale_processing_recovery: true` in the `MEDIA_RETRY_REQUESTED` metadata,
+since a stale `'processing'` item's `error_message` is always null (that's
+the marker of the stuck state) and wouldn't otherwise distinguish this from
+an ordinary failed-item retry in the audit trail.
 
 Mid-pipeline visibility: `logPipelineStepStarted` logs
 `MEDIA_PIPELINE_STEP_STARTED` (metadata `pipeline_step`, same key/values the
