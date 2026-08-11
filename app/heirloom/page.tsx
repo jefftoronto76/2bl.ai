@@ -102,6 +102,7 @@ export default async function HeirloomPage({
     const link = await validateStoryInviteToken(joinToken);
     if (link !== null) {
       isAuthorized = true;
+      autoOpenChat = true;
       storyInviteToken = joinToken;
     }
   }
