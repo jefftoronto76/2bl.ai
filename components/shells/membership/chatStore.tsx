@@ -445,6 +445,21 @@ export function ChatProvider({
       const inviter = storyInviteInviterNameRef.current;
       if (storyInviteTokenRef.current && title && inviter) {
         injectAssistantMessage(`${inviter} invited you to their story '${title}'. I'm going to help you get set up.`);
+        // A signed-in visitor (existing member opening a join link while
+        // already logged in) is already handled by the mount-time story
+        // invite effect below, which fires acceptStoryInviteToken and adds
+        // the story to their account directly — no further action needed
+        // here. A visitor who is NOT signed in still needs to create an
+        // account (or sign in) before that can happen, so surface the
+        // ACCOUNT_CREATE marker as a second deterministic message — same
+        // no-LLM approach as the greeting above, immediately following it —
+        // so MessageList.tsx's marker parser renders MagicLinkCard right
+        // away instead of waiting on a real reply.
+        if (!isSignedInRef.current) {
+          injectAssistantMessage(
+            "It doesn't look like you're signed in, or have an account yet — just use the form below to sort that out. [ACCOUNT_CREATE: story invite]",
+          );
+        }
       } else {
         void sendHidden('Hi');
       }
@@ -977,11 +992,19 @@ export function ChatProvider({
   // Append a synthetic assistant message without a network round-trip. Uses
   // hydrateConversation so prevSessionIdRef stays primed (no spurious draft →
   // session transition) and the buffer-flush effects pick it up naturally.
+  // Updates messagesRef.current synchronously (not just on next render) so
+  // that a second call in the same synchronous tick — e.g. the story-invite
+  // greeting immediately followed by the account-creation prompt — appends
+  // after the just-injected message instead of overwriting it with a stale
+  // pre-injection snapshot (messages only update the ref during render,
+  // which hasn't happened yet between two calls in the same callback).
   const injectAssistantMessage = useCallback(
     (content: string) => {
       const msg: Message = createUIMessage('assistant', content);
+      const nextMessages = [...messagesRef.current, msg];
+      messagesRef.current = nextMessages;
       hydrateConversation({
-        messages: [...messagesRef.current, msg],
+        messages: nextMessages,
         sessionId: sessionIdRef.current,
       });
     },
