@@ -13,8 +13,10 @@ const mockGetCurrentUser = vi.fn()
 const mockGetCurrentUserId = vi.fn()
 const mockMembersMaybeSingle = vi.fn()
 const mockArtifactsMaybeSingle = vi.fn()
+const mockTenantsMaybeSingle = vi.fn()
 const mockListStoryCollaborators = vi.fn()
 const mockRevokeStoryInviteLink = vi.fn()
+const mockGetActiveStoryInviteLink = vi.fn()
 
 vi.mock('@/services/auth', () => ({
   getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
@@ -52,6 +54,15 @@ vi.mock('@/services/auth/supabase-admin', () => ({
           }),
         }
       }
+      if (table === 'tenants') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: (...args: unknown[]) => mockTenantsMaybeSingle(...args),
+            }),
+          }),
+        }
+      }
       throw new Error(`unexpected table: ${table}`)
     },
   }),
@@ -66,6 +77,7 @@ vi.mock('@/services/crm/story-invites', () => ({
   resetStoryInviteLink: vi.fn(),
   listStoryCollaborators: (...args: unknown[]) => mockListStoryCollaborators(...args),
   revokeStoryInviteLink: (...args: unknown[]) => mockRevokeStoryInviteLink(...args),
+  getActiveStoryInviteLink: (...args: unknown[]) => mockGetActiveStoryInviteLink(...args),
 }))
 
 import { GET, DELETE } from './route'
@@ -88,8 +100,10 @@ beforeEach(() => {
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockMembersMaybeSingle.mockReset()
   mockArtifactsMaybeSingle.mockReset()
+  mockTenantsMaybeSingle.mockReset()
   mockListStoryCollaborators.mockReset()
   mockRevokeStoryInviteLink.mockReset()
+  mockGetActiveStoryInviteLink.mockReset().mockResolvedValue({ ok: true, data: null })
 })
 
 describe('GET /api/heirloom/story-invites', () => {
@@ -132,9 +146,48 @@ describe('GET /api/heirloom/story-invites', () => {
 
     expect(res.status).toBe(200)
     expect(body.collaborators).toHaveLength(1)
+    expect(body.active_link).toBeNull()
     expect(mockListStoryCollaborators).toHaveBeenCalledWith(
       '20767f1d-1148-4e43-ab73-f6da88f0ac56', 'story-1', 'user-1',
     )
+  })
+
+  it('includes the story active invite link when one exists, restoring token/primer/url', async () => {
+    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
+    mockListStoryCollaborators.mockResolvedValue({ ok: true, data: [] })
+    mockGetActiveStoryInviteLink.mockResolvedValue({
+      ok: true,
+      data: { token: 'tok-1', primer: 'Ask about the lake house.', story_id: 'story-1' },
+    })
+    mockTenantsMaybeSingle.mockResolvedValue({ data: { domain: 'heirloom.example.com' }, error: null })
+
+    const res = await GET(makeGetRequest('https://x/api/heirloom/story-invites?story_id=story-1'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.active_link).toEqual({
+      token: 'tok-1',
+      primer: 'Ask about the lake house.',
+      invite_url: 'https://heirloom.example.com/join/tok-1',
+    })
+    expect(mockGetActiveStoryInviteLink).toHaveBeenCalledWith(
+      '20767f1d-1148-4e43-ab73-f6da88f0ac56', 'story-1',
+    )
+  })
+
+  it('a story with no active link still returns active_link: null', async () => {
+    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
+    mockListStoryCollaborators.mockResolvedValue({ ok: true, data: [] })
+    mockGetActiveStoryInviteLink.mockResolvedValue({ ok: true, data: null })
+
+    const res = await GET(makeGetRequest('https://x/api/heirloom/story-invites?story_id=story-1'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.active_link).toBeNull()
+    expect(mockTenantsMaybeSingle).not.toHaveBeenCalled()
   })
 
   it('propagates a not-found story as 404', async () => {

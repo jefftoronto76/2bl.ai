@@ -20,6 +20,7 @@ vi.mock('@/services/audit', () => ({
 
 import {
   createOrGetActiveStoryInviteLink,
+  getActiveStoryInviteLink,
   listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
@@ -162,6 +163,46 @@ describe('createOrGetActiveStoryInviteLink', () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.data.id).toBe('link-1')
+  })
+})
+
+describe('getActiveStoryInviteLink', () => {
+  it('returns the active link without inserting or creating anything', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getActiveStoryInviteLink('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data?.token).toBe('tok-abc')
+    expect(calls.story_invite_links.filter(c => c.op === 'insert')).toHaveLength(0)
+  })
+
+  it('returns null when the story has no active link, without falling back to create one', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getActiveStoryInviteLink('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data).toBeNull()
+    expect(calls.story_invite_links.filter(c => c.op === 'insert')).toHaveLength(0)
+  })
+
+  it('surfaces a lookup error', async () => {
+    const { client } = makeClient({
+      story_invite_links: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await getActiveStoryInviteLink('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
   })
 })
 

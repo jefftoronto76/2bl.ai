@@ -18,6 +18,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import {
   createOrGetActiveStoryInviteLink,
+  getActiveStoryInviteLink,
   listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
@@ -185,7 +186,34 @@ export async function GET(req: Request) {
     return Response.json({ error: result.error }, { status: result.status })
   }
 
-  return Response.json({ collaborators: result.data }, { status: 200 })
+  // Ownership already confirmed by listStoryCollaborators above (it 404s
+  // otherwise), so it's safe to also surface the story's active invite
+  // link here — same GET, no new endpoint. A lookup failure is logged but
+  // non-fatal to the collaborators roster the modal still needs to render.
+  let activeLink: { token: string; primer: string; invite_url: string | null } | null = null
+  const linkResult = await getActiveStoryInviteLink(HEIRLOOM_TENANT_ID, storyId)
+  if (!linkResult.ok) {
+    console.error('[heirloom/story-invites] GET active-link lookup failed:', linkResult.error, { storyId })
+  } else if (linkResult.data) {
+    const { data: tenantRow, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('domain')
+      .eq('id', HEIRLOOM_TENANT_ID)
+      .maybeSingle()
+
+    if (tenantErr) {
+      console.warn('[heirloom/story-invites] GET tenant lookup failed (non-fatal):', tenantErr.message)
+    }
+
+    const tenantDomain = (tenantRow as { domain: string | null } | null)?.domain ?? null
+    activeLink = {
+      token: linkResult.data.token,
+      primer: linkResult.data.primer ?? '',
+      invite_url: tenantDomain ? `https://${tenantDomain}/join/${linkResult.data.token}` : null,
+    }
+  }
+
+  return Response.json({ collaborators: result.data, active_link: activeLink }, { status: 200 })
 }
 
 // DELETE /api/heirloom/story-invites

@@ -164,6 +164,37 @@ export async function createOrGetActiveStoryInviteLink(
 }
 
 /**
+ * Read-only lookup for the story's current active (non-revoked) invite
+ * link, if any — same tenant_id + story_id + revoked_at IS NULL query
+ * createOrGetActiveStoryInviteLink uses to check for an existing link,
+ * but WITHOUT its create-if-missing fallback. Backs the GET route's
+ * response so reopening the invite modal can restore a real link/primer
+ * instead of always showing "Not created yet" (invite-modal-restore-on-
+ * open, 2026-08-11).
+ */
+export async function getActiveStoryInviteLink(
+  tenantId: string,
+  storyId: string,
+): Promise<StoryInviteResult<StoryInviteLinkRow | null>> {
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('story_invite_links')
+    .select(STORY_INVITE_LINK_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .eq('story_id', storyId)
+    .is('revoked_at', null)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[story-invites] active-link lookup failed:', error.message)
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  return { ok: true, data: data as StoryInviteLinkRow | null }
+}
+
+/**
  * Revokes the story's current active link, if any. Idempotent — a story
  * with no active link is not an error. Separate, standalone export (not
  * just a private step of resetStoryInviteLink) since "Reset link" is the
