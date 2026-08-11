@@ -454,7 +454,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // "Existing members" roster — refetched whenever the modal's story
   // changes (including via the invalidation warning), not on every primer
   // keystroke. Silent-fail on error, matching this file's existing posture
-  // for the stories/mediaItems fetch-on-mount effects above.
+  // for the stories/mediaItems fetch-on-mount effects above. The same
+  // response also carries the story's active invite link (if any) — used
+  // to restore invitePrimer/inviteLink to their real values on open rather
+  // than leaving handleInviteStory's blank/null reset in place when a link
+  // already exists (invite-modal-restore-on-open, 2026-08-11).
   useEffect(() => {
     const storyId = invite?.storyId;
     if (!storyId) {
@@ -466,8 +470,10 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       try {
         const res = await fetch(`/api/heirloom/story-invites?story_id=${encodeURIComponent(storyId)}`);
         if (!res.ok || cancelled) return;
-        const data: { collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }> } =
-          await res.json();
+        const data: {
+          collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }>;
+          active_link?: { token: string; primer: string; invite_url: string | null } | null;
+        } = await res.json();
         if (cancelled) return;
         setInviteCollaborators(
           (data.collaborators ?? []).map((c) => ({
@@ -476,6 +482,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             joinedDate: new Date(c.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
           })),
         );
+        if (data.active_link) {
+          setInvitePrimer(data.active_link.primer);
+          const url = data.active_link.invite_url ?? `${window.location.origin}/join/${data.active_link.token}`;
+          setInviteLink({ token: data.active_link.token, url });
+        }
       } catch (err) {
         console.error('[ChatHero] story collaborators fetch failed:', err);
       }
