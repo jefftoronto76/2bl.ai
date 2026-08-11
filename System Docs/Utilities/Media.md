@@ -251,3 +251,37 @@ different situations:
   callers today.
 
 Neither pattern replaces the other.
+
+---
+
+## Known Unknowns
+
+**`document` and `audio` processing durations are unmeasured.** A query of
+`audit_events` for `media.process_started` → `media.process_completed` pairs
+over the most recent 14 days returned zero completed `document` or `audio`
+jobs — only `image` jobs have any real duration data at all. This is a
+standing caveat, not a one-off note: any max-age/stale-job threshold, timeout,
+or similar duration-based logic applied to `document` or `audio` items in
+this codebase is a judgment call, not something backed by observed data, and
+should be revisited once genuine samples of those two types exist. Re-run the
+duration query scoped to `metadata->>'type'` periodically to check whether
+this gap has closed.
+
+The one piece of in-code evidence bearing on this: `processAudio`'s comment
+above `generateLongLivedSignedUrl` — "Use a long-lived URL (1hr) to guard
+against slow Deepgram queues for large audio files causing URL expiry before
+the fetch completes." This describes the signed *URL's* validity window, not
+a measured or expected job duration — `processAudio` passes that URL
+directly to Deepgram's `/v1/listen` endpoint (`url` in the request body, not
+raw bytes) and `await`s the response synchronously; Deepgram fetches the
+audio itself, on its own schedule, and the whole call blocks until Deepgram
+returns the finished transcript in that same HTTP response (the code parses
+`data.results.channels[0].alternatives[0].transcript` directly off it — no
+polling, no callback). The 1-hour URL exists because the author judged
+Deepgram's own queueing + fetch + transcription of a large file plausible
+enough to approach that order of magnitude that a short-lived URL could
+expire first. That is a design-time risk assumption baked into the pipeline,
+not a measurement — but it is the only signal in the codebase that audio
+jobs' legitimate duration could be dramatically longer than an image job's,
+and any audio-specific timeout should stay consistent with it rather than
+being picked independently.
