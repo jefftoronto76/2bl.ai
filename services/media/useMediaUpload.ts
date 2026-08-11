@@ -130,11 +130,15 @@ export function useMediaUpload(
         throw new Error(`Storage upload failed: ${uploadRes.status}`)
       }
 
-      void fetch('/api/events/media', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mediaItemId, event: 'upload_completed' }),
-      })
+      // Triggers processing directly — this is now the ONLY trigger for a
+      // fresh upload's processing (see
+      // app/api/media/[id]/start-processing/route.ts and
+      // app/api/webhooks/media-process/route.ts's now-inert INSERT handler).
+      // Also logs media.upload_completed itself, replacing the old
+      // /api/events/media call for that event. Best-effort — never blocks
+      // the upload; a lost call here is recovered by
+      // sweepStalePendingItems (services/media/index.ts).
+      void fetch(`/api/media/${mediaItemId}/start-processing`, { method: 'POST' })
 
       if (!mediaItemId) throw new Error('mediaItemId unexpectedly null after upload')
       return {

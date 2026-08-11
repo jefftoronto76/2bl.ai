@@ -22,7 +22,7 @@ beforeEach(() => {
 })
 
 describe('useMediaUpload', () => {
-  it('resolves an UploadResult on the happy path (upload-url -> PUT -> upload_completed event)', async () => {
+  it('resolves an UploadResult on the happy path (upload-url -> PUT -> start-processing)', async () => {
     fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input.toString()
       const method = init?.method ?? 'GET'
@@ -34,6 +34,9 @@ describe('useMediaUpload', () => {
         return jsonResponse({})
       }
       if (url === '/api/events/media' && method === 'POST') {
+        return jsonResponse({ ok: true })
+      }
+      if (url === '/api/media/item-1/start-processing' && method === 'POST') {
         return jsonResponse({ ok: true })
       }
       throw new Error(`unexpected fetch: ${method} ${url}`)
@@ -55,10 +58,20 @@ describe('useMediaUpload', () => {
     expect(typeof sentBody.contentHash).toBe('string')
     expect(sentBody.contentHash).toHaveLength(64)
 
+    // Only upload_started goes through the generic events endpoint now —
+    // upload_completed's audit logging moved into start-processing itself.
     const eventBodies = fetchMock.mock.calls
       .filter(([input]) => (typeof input === 'string' ? input : input.toString()) === '/api/events/media')
       .map(([, init]) => JSON.parse((init as RequestInit).body as string))
-    expect(eventBodies.map((b) => b.event)).toEqual(['upload_started', 'upload_completed'])
+    expect(eventBodies.map((b) => b.event)).toEqual(['upload_started'])
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, callInit]) =>
+          (typeof input === 'string' ? input : input.toString()) === '/api/media/item-1/start-processing' &&
+          callInit?.method === 'POST',
+      ),
+    ).toBe(true)
   })
 
   it('on a duplicate response, resolves the existing mediaItemId WITHOUT ever PUTting to Storage', async () => {
@@ -93,6 +106,7 @@ describe('useMediaUpload', () => {
       if (url === '/api/media/upload-url') return jsonResponse({ signedUrl: 'https://signed.example/put', mediaItemId: 'item-1' })
       if (url === 'https://signed.example/put') return jsonResponse({})
       if (url === '/api/events/media') return jsonResponse({ ok: true })
+      if (url === '/api/media/item-1/start-processing') return jsonResponse({ ok: true })
       throw new Error(`unexpected fetch: ${method} ${url}`)
     })
 

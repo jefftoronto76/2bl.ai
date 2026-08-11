@@ -1,6 +1,7 @@
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
+import { objectExists } from './storage'
 import type { MediaItemStatus, MediaItemType, MediaItem } from './types'
 
 export type { MediaItemStatus, MediaItemType, MediaItem } from './types'
@@ -288,6 +289,105 @@ export async function sweepStaleProcessingItems(): Promise<StaleProcessingItem[]
   }
 
   return swept
+}
+
+/**
+ * How long a row may sit at status='pending' before the sweep considers the
+ * trigger call lost/never-sent rather than merely slow. Flat, not per-type —
+ * unlike MAX_PROCESSING_AGE_SECONDS this isn't about how long a pipeline
+ * step legitimately takes; it's about how long the gap between the client's
+ * Storage PUT resolving and its immediate follow-up call to
+ * POST /api/media/[id]/start-processing should ever plausibly be. That call
+ * carries no file body, so it should complete in well under this window
+ * regardless of type or connection quality.
+ */
+export const MAX_PENDING_AGE_SECONDS = 120
+
+/**
+ * Fixed error_message for a stale 'pending' row whose file never actually
+ * reached Storage — a genuinely abandoned upload (tab closed mid-PUT),
+ * distinct from STALE_PROCESSING_ERROR_MESSAGE's "started but never
+ * finished" and from a row whose file IS present (see
+ * sweepStalePendingItems's `recovered` bucket — that case isn't a failure at
+ * all, just a lost trigger call, so it gets retriggered instead of failed).
+ */
+export const STALE_PENDING_ERROR_MESSAGE = 'Upload was never completed'
+
+export interface StalePendingSweepResult {
+  /**
+   * The file IS present in Storage — the client's PUT actually succeeded,
+   * only the follow-up trigger call was lost (tab closed right after the
+   * PUT, a flaky connection dropped that one small request, etc). Not
+   * touched in the DB by this function — the caller is expected to
+   * retrigger processMediaItem for each of these (the same way the
+   * start-processing route itself would have).
+   */
+  recovered: MediaItem[]
+  /**
+   * The file is NOT present in Storage — a genuinely abandoned upload.
+   * Already flipped to status='failed' with STALE_PENDING_ERROR_MESSAGE by
+   * this function; the caller only needs to log it.
+   */
+  abandoned: MediaItem[]
+}
+
+/**
+ * Defense-in-depth recovery for the other half of the trigger-ordering fix:
+ * moving the processing trigger to POST /api/media/[id]/start-processing
+ * (called by the client right after its Storage PUT resolves) closes the
+ * too-early race, but introduces a narrower failure mode of its own — a
+ * client that closes/crashes between the PUT resolving and that follow-up
+ * call firing leaves the row at 'pending' forever, with no error and (unlike
+ * a stuck 'processing' row) no path to sweepStaleProcessingItems either,
+ * since that function only ever looks at 'processing' rows.
+ *
+ * Selects every 'pending' row older than MAX_PENDING_AGE_SECONDS and uses
+ * objectExists (the same check waitForStorageObject uses, services/media/processor.ts)
+ * to tell the two real cases apart: if the file is actually in Storage, only
+ * the trigger call was lost, so the row is recoverable, not failed — the
+ * caller retriggers processing for it. If the file was never written, the
+ * upload itself was abandoned, and this function flips the row straight to
+ * 'failed' since there is nothing left to retrigger.
+ */
+export async function sweepStalePendingItems(): Promise<StalePendingSweepResult> {
+  const supabase = getAdminClient()
+  const { data, error } = await supabase
+    .from('media_items')
+    .select()
+    .eq('status', 'pending')
+
+  if (error || !data) return { recovered: [], abandoned: [] }
+
+  const now = Date.now()
+  const stale = (data as MediaItem[]).filter(
+    (item) => (now - new Date(item.created_at).getTime()) / 1000 > MAX_PENDING_AGE_SECONDS,
+  )
+
+  const recovered: MediaItem[] = []
+  const abandoned: MediaItem[] = []
+
+  for (const item of stale) {
+    const fileExists = await objectExists(item.storage_path)
+    if (fileExists) {
+      recovered.push(item)
+      continue
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from('media_items')
+      .update({
+        status: 'failed',
+        error_message: STALE_PENDING_ERROR_MESSAGE,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', item.id)
+      .eq('status', 'pending')
+      .select('id')
+
+    if (!updateError && updated && updated.length > 0) abandoned.push(item)
+  }
+
+  return { recovered, abandoned }
 }
 
 /**
