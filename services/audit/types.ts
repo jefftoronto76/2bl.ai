@@ -44,6 +44,13 @@ export const AuditAction = {
   MEDIA_CHAT_ID_BACKFILL_FAILED: 'media.chat_id_backfill_failed',
   // Media processing pipeline
   MEDIA_PROCESS_STARTED: 'media.process_started',
+  // Mid-pipeline breadcrumb — fired at entry to each step inside
+  // processMediaItem (await_storage_availability, then the type-specific
+  // claude_vision/deepgram_transcription/text_extraction step), carrying the
+  // step name in metadata.pipeline_step (same key MEDIA_PROCESS_FAILED
+  // already uses). Lets a stalled job be diagnosed by querying audit_events
+  // instead of only ever seeing start/end with nothing in between.
+  MEDIA_PIPELINE_STEP_STARTED: 'media.pipeline_step_started',
   MEDIA_PROCESS_COMPLETED: 'media.process_completed',
   MEDIA_PROCESS_FAILED: 'media.process_failed',
   MEDIA_URL_FAILED: 'media.url_failed',

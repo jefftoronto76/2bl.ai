@@ -37,6 +37,24 @@ try/catch that marks the item `'failed'` with `error_message` and logs
 pipeline funnels through this one catch — none of the three pipeline
 functions below has its own top-level try/catch for unexpected errors.
 
+Mid-pipeline visibility: `logPipelineStepStarted` logs
+`MEDIA_PIPELINE_STEP_STARTED` (metadata `pipeline_step`, same key/values the
+failure event above uses) at entry to `await_storage_availability` and again
+at entry to whichever type-specific step runs next — added because a job
+that stalls (network stall, an infinite hang inside a dependency, the
+function getting killed before its catch runs) previously left nothing
+between `MEDIA_PROCESS_STARTED` and either terminal event, so there was no
+way to tell which step it died in without querying `media_items` directly.
+Completion needs no separate breadcrumb — each of the three pipeline
+functions below already ends by logging `MEDIA_PROCESS_COMPLETED` itself.
+Query a specific item's full step timeline with:
+```sql
+select action, metadata->>'pipeline_step' as step, created_at
+from audit_events
+where target_id = '<media_item_id>'
+order by created_at;
+```
+
 Before dispatch, `waitForStorageObject` polls `objectExists` with bounded
 backoff (`STORAGE_WAIT_DELAYS_MS`, ~5.5s worst case) to close the race
 between the `media_items` INSERT (fires the webhook immediately) and the
