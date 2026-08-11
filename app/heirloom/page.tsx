@@ -2,7 +2,7 @@ import { getSession, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { headers } from 'next/headers';
 import { validateMemberToken } from '@/services/members';
-import { validateStoryInviteToken } from '@/services/crm/story-invites';
+import { validateStoryInviteToken, getStoryInviteContext } from '@/services/crm/story-invites';
 import HeirloomApp from './HeirloomApp';
 
 export const dynamic = 'force-dynamic';
@@ -98,6 +98,11 @@ export default async function HeirloomPage({
   // visitor who isn't authorized yet, and (b) always surfaces the token to
   // the client whenever the link itself is valid, regardless of `session`.
   let storyInviteToken: string | null = null;
+  // Story title + inviter name for chatStore.tsx's one-time contextual
+  // auto-greet — resolved here (not in getMemberContext) since this is only
+  // ever relevant to that single hidden message, not every turn.
+  let storyInviteStoryTitle: string | null = null;
+  let storyInviteInviterName: string | null = null;
   if (joinToken) {
     const link = await validateStoryInviteToken(joinToken);
     if (link !== null) {
@@ -107,6 +112,10 @@ export default async function HeirloomPage({
       // the members.auto_open branch above — independent trigger, same
       // effect. Purely additive: does not touch the auto_open branch above.
       autoOpenChat = true;
+
+      const context = await getStoryInviteContext(link);
+      storyInviteStoryTitle = context.storyTitle;
+      storyInviteInviterName = context.inviterName;
     }
   }
 
@@ -123,6 +132,8 @@ export default async function HeirloomPage({
       memberId={validatedMemberId}
       autoOpenChat={autoOpenChat}
       storyInviteToken={storyInviteToken ?? undefined}
+      storyInviteStoryTitle={storyInviteStoryTitle ?? undefined}
+      storyInviteInviterName={storyInviteInviterName ?? undefined}
     />
   );
 }

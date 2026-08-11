@@ -249,6 +249,41 @@ export async function validateStoryInviteToken(token: string): Promise<StoryInvi
   return row
 }
 
+export interface StoryInviteContext {
+  storyTitle: string | null
+  inviterName: string | null
+}
+
+/**
+ * Resolves display context for a valid link — the story's title and the
+ * inviting member's name — for the one-time contextual auto-greet message
+ * (app/heirloom/page.tsx → chatStore.tsx's autoGreetSentRef effect). Two
+ * queries, not an embedded join — same pattern as listStoryCollaborators'
+ * member lookup below. Either field can come back null (story/member since
+ * deleted); callers fall back to the plain greet in that case.
+ */
+export async function getStoryInviteContext(link: StoryInviteLinkRow): Promise<StoryInviteContext> {
+  const supabase = getAdminClient()
+  const [{ data: storyRow }, { data: inviterRow }] = await Promise.all([
+    supabase
+      .from('artifacts')
+      .select('title')
+      .eq('id', link.story_id)
+      .eq('tenant_id', link.tenant_id)
+      .maybeSingle(),
+    supabase
+      .from('members')
+      .select('name')
+      .eq('id', link.created_by)
+      .eq('tenant_id', link.tenant_id)
+      .maybeSingle(),
+  ])
+  return {
+    storyTitle: (storyRow as { title: string } | null)?.title ?? null,
+    inviterName: (inviterRow as { name: string | null } | null)?.name ?? null,
+  }
+}
+
 export interface StoryCollaboratorRow {
   memberId: string
   name: string | null

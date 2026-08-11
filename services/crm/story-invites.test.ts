@@ -20,6 +20,7 @@ vi.mock('@/services/audit', () => ({
 
 import {
   createOrGetActiveStoryInviteLink,
+  getStoryInviteContext,
   listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
@@ -162,6 +163,32 @@ describe('createOrGetActiveStoryInviteLink', () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.data.id).toBe('link-1')
+  })
+})
+
+describe('getStoryInviteContext', () => {
+  it('resolves the story title and inviter name from the link row', async () => {
+    const { client } = makeClient({
+      artifacts: [{ data: { title: 'Grandma\'s Recipes' }, error: null }],
+      members: [{ data: { name: 'Jane Doe' }, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getStoryInviteContext(LINK_COLUMNS_ROW)
+
+    expect(result).toEqual({ storyTitle: "Grandma's Recipes", inviterName: 'Jane Doe' })
+  })
+
+  it('returns null fields rather than throwing when the story or member lookup comes back empty', async () => {
+    const { client } = makeClient({
+      artifacts: [{ data: null, error: null }],
+      members: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getStoryInviteContext(LINK_COLUMNS_ROW)
+
+    expect(result).toEqual({ storyTitle: null, inviterName: null })
   })
 })
 
