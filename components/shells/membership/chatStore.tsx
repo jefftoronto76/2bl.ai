@@ -513,6 +513,14 @@ export function ChatProvider({
   }, []);
   const [joinedStoryConfirmation, setJoinedStoryConfirmation] = useState<{ title: string } | null>(null);
 
+  // Shown to the visitor (via injectAssistantMessage below) on either
+  // acceptStoryInviteToken failure path. Deliberately generic rather than
+  // branching on the real server error — strings like "Unauthorized" or
+  // "token is required" are developer-facing (console.error already covers
+  // that), not something to surface verbatim to an end user.
+  const STORY_INVITE_ACCEPT_FALLBACK_MESSAGE =
+    "Something went wrong adding you to this story. Try refreshing the page — if it still doesn't work, ask whoever invited you for a fresh link.";
+
   // Fires POST /api/heirloom/story-invites/accept exactly once. Called from
   // two independent places below: the false→true isSignedIn transition
   // (brand-new signup) and a mount-time check for a visitor who was already
@@ -538,6 +546,7 @@ export function ChatProvider({
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           console.error('[heirloom/chat] story invite accept failed:', res.status, data?.error);
+          injectAssistantMessage(STORY_INVITE_ACCEPT_FALLBACK_MESSAGE);
           return;
         }
         console.log('[heirloom/chat] story invite accept succeeded, story_title:', data?.story_title);
@@ -545,7 +554,15 @@ export function ChatProvider({
           setJoinedStoryConfirmation({ title: data.story_title });
         }
       })
-      .catch((err) => console.error('[heirloom/chat] story invite accept error:', err));
+      .catch((err) => {
+        console.error('[heirloom/chat] story invite accept error:', err);
+        injectAssistantMessage(STORY_INVITE_ACCEPT_FALLBACK_MESSAGE);
+      });
+    // injectAssistantMessage is omitted from deps deliberately, not an
+    // oversight — it's a stable identity for the life of this component
+    // (its own dep chain, hydrateConversation -> hydrate -> the store ref,
+    // never changes across renders), so this can't produce a stale closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fires the story-invite accept call for a visitor who was ALREADY signed
