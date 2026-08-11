@@ -11,6 +11,14 @@ vi.mock('@/services/media/processor', () => ({
   processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
 }))
 
+// after() requires a real Next.js request-scoped context (AsyncLocalStorage)
+// that isn't present when calling a route handler directly in Vitest — stub
+// it as an immediate invocation, matching the same shim in the retry route's
+// own test file (app/api/media/[id]/retry/route.test.ts).
+vi.mock('next/server', () => ({
+  after: (fn: () => unknown) => fn(),
+}))
+
 import { POST } from './route'
 
 const SECRET = 'test-webhook-secret'

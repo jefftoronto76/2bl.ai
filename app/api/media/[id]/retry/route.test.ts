@@ -51,6 +51,16 @@ vi.mock('@/services/media/processor', () => ({
   processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
 }))
 
+// after() requires a real Next.js request-scoped context (AsyncLocalStorage)
+// that isn't present when calling a route handler directly in Vitest — the
+// documented approach for testing code that uses it is to stub it as an
+// immediate invocation, since what these tests actually care about is that
+// the wrapped work still runs, not the request-lifecycle extension itself
+// (that's Next's own guarantee, not this codebase's).
+vi.mock('next/server', () => ({
+  after: (fn: () => unknown) => fn(),
+}))
+
 import { POST } from './route'
 
 function makeItem(overrides: Partial<MediaItem> = {}): MediaItem {

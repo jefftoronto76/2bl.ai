@@ -5,10 +5,14 @@
 Server-side pipeline for member-uploaded audio/image/document attachments.
 Rows live in `media_items` (`type`, `status`, `derived_content`,
 `classification`, `error_message`, `latitude`/`longitude` — see
-`Database Schema.md`). The client uploads file bytes directly to Supabase
-Storage via a signed URL (never through our server); a Storage webhook then
-INSERTs the `media_items` row, which itself fires the processing webhook
-(`app/api/webhooks/media-process/route.ts`) into `processMediaItem`.
+`Database Schema.md`). `POST /api/media/upload-url` INSERTs the `media_items`
+row itself (status `pending`) and returns a signed Storage upload URL; the
+client then PUTs the file bytes directly to Supabase Storage (never through
+our server) — a separate, later request. That INSERT is what a Supabase
+Database Webhook fires on, into `app/api/webhooks/media-process/route.ts` →
+`processMediaItem` — which is why the job can start racing the Storage PUT
+(see `waitForStorageObject` below) rather than being triggered by Storage
+confirming the object exists.
 
 | File | Exports | Purpose |
 |------|---------|---------|
@@ -36,6 +40,49 @@ try/catch that marks the item `'failed'` with `error_message` and logs
 `'await_storage_availability'`) on any throw from any pipeline. Every
 pipeline funnels through this one catch — none of the three pipeline
 functions below has its own top-level try/catch for unexpected errors.
+
+**Execution lifecycle — why both trigger routes wrap the call in `after()`.**
+`app/api/webhooks/media-process/route.ts` and `app/api/media/[id]/retry/route.ts`
+both invoke `processMediaItem` fire-and-forget (they respond before the job
+finishes, since Supabase's webhook delivery and the retry-click UI both need
+an immediate response, not a 15-minute-long request). Root cause of media
+items getting stuck at `status: 'processing'` forever — no `error_message`,
+no terminal audit event, one for 5+ days — was that a bare
+`void processMediaItem(record).catch(...)` gives Vercel no signal to keep the
+invocation alive past the response: the platform is free to freeze/reap the
+function the instant the response flushes, silently abandoning whatever
+point the still-pending promise had reached. `maxDuration` does not prevent
+this — it only bounds how long a function is *allowed* to run once it's
+actually running; it does nothing to extend an already-fire-and-forgotten
+invocation's life. The evidence for this over a genuine hang: no timeout
+error was ever caught (a real 900s `maxDuration` kill, or a hung dependency,
+would both eventually throw into the outer `catch` and log
+`MEDIA_PROCESS_FAILED`) — total silence forever is the signature of the
+promise never being resumed at all, not of it running long.
+
+Fix: both routes now wrap the call in `after()` (`next/server`, stable since
+Next 15 — no new dependency), which registers the promise with Vercel's
+lifecycle manager so the invocation stays alive until it settles; the
+existing `maxDuration = 900` then bounds how long that's allowed to take.
+The retry route previously had no `maxDuration` at all (silently inheriting
+the project/plan default, likely far too short for a slow job) — it now
+explicitly sets `maxDuration = 900` to match the webhook route, since it
+drives the identical pipeline. `vercel.json`'s `functions` block mirrors both
+route-level exports, matching the pre-existing (redundant but harmless)
+pattern the webhook route already used.
+
+Testing note: `after()` throws when called outside a real Next.js
+request-scoped context, which a route handler invoked directly in Vitest
+doesn't have — both route test files stub it via
+`vi.mock('next/server', () => ({ after: (fn) => fn() }))`.
+
+This closes the execution-lifecycle cause of a job stalling on new uploads.
+It is not, by itself, a full guarantee against a row ever getting stuck
+`processing` again — e.g. an upstream fetch (Deepgram/Anthropic) with no
+timeout could still hold a *kept-alive* invocation open indefinitely. A
+separate defense-in-depth recovery mechanism (a bounded sweep that flips an
+old `processing` row to `failed` regardless of cause) is planned as a
+follow-up and not yet implemented as of this section.
 
 Mid-pipeline visibility: `logPipelineStepStarted` logs
 `MEDIA_PIPELINE_STEP_STARTED` (metadata `pipeline_step`, same key/values the

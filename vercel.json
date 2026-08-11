@@ -7,6 +7,9 @@
   "functions": {
     "app/api/webhooks/media-process/route.ts": {
       "maxDuration": 900
+    },
+    "app/api/media/[id]/retry/route.ts": {
+      "maxDuration": 900
     }
   }
 }

@@ -15,12 +15,16 @@
 // status === 'pending' before doing anything, so calling it directly here
 // is safe even under concurrent retry clicks.
 
+import { after } from 'next/server'
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getMediaItem, updateMediaItem, isMediaAuditEnabled, logMediaEvent } from '@/services/media'
 import { processMediaItem } from '@/services/media/processor'
 import { AuditAction } from '@/services/audit/types'
+
+export const maxDuration = 900 // 15 min — Vercel Pro plan, matches the webhook route's ceiling since this drives the identical processMediaItem pipeline
+export const runtime = 'nodejs'
 
 export async function POST(
   req: Request,
@@ -96,20 +100,26 @@ export async function POST(
   // pattern — respond to the client immediately, let processing run in the
   // background. `item` already carries the id/tenant_id processMediaItem
   // needs; it re-fetches a fresh copy itself before doing anything.
-  void processMediaItem(item).catch(async (err) => {
-    const errorMessage = err instanceof Error ? err.message : String(err)
-    if (isMediaAuditEnabled()) {
-      await logMediaEvent({
-        tenant_id: tenantId,
-        member_id: memberRow.id,
-        media_item_id: id,
-        action: AuditAction.MEDIA_RETRY_FAILED,
-        outcome: 'failure',
-        correlation_id: correlationId,
-        metadata: { error_message: errorMessage, timestamp: new Date().toISOString() },
-      })
-    }
-  })
+  // after() keeps this invocation alive until the promise settles instead of
+  // letting Vercel freeze/reap it the moment the response above is sent —
+  // see the webhook route's identical fix for why a bare `void` here would
+  // otherwise risk the same permanently-stuck-at-'processing' failure mode.
+  after(() =>
+    processMediaItem(item).catch(async (err) => {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      if (isMediaAuditEnabled()) {
+        await logMediaEvent({
+          tenant_id: tenantId,
+          member_id: memberRow.id,
+          media_item_id: id,
+          action: AuditAction.MEDIA_RETRY_FAILED,
+          outcome: 'failure',
+          correlation_id: correlationId,
+          metadata: { error_message: errorMessage, timestamp: new Date().toISOString() },
+        })
+      }
+    }),
+  )
 
   return Response.json({ ok: true })
 }
