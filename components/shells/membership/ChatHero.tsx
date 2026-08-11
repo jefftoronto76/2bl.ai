@@ -105,15 +105,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
 
-  // Fetch-on-mount hydration, mirroring chatStore.tsx's own GET /api/sessions
+  // Fetch/refresh hydration, mirroring chatStore.tsx's own GET /api/sessions
   // recovery effect (recentSessions) in shape: cancelled-flag guard, silent
   // console.error on failure (no error UI — matches this file's existing
   // silent-fail posture for kebab/memory-panel network calls elsewhere).
   // Unconditional (not gated on isSignedIn the way chatStore's session
   // recovery is) — GET /api/stories itself returns an empty list for an
   // anonymous/unresolvable-tenant request rather than erroring, so there's
-  // nothing this component needs to gate on client-side.
-  useEffect(() => {
+  // nothing this component needs to gate on client-side. Extracted to a
+  // stable callback so the joinedStoryConfirmation effect below can reuse it
+  // to pick up a newly-granted story invite without a page reload, not just
+  // the mount effect.
+  const refreshStories = useCallback(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -130,6 +133,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => refreshStories(), [refreshStories]);
 
   // One useMemories(sessionId) instance, owned here and passed down to
   // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
@@ -227,11 +232,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // it once, guarded by storyInviteAcceptFiredRef). Serves both the
   // brand-new-signup moment and the already-a-member moment identically —
   // see chatStore.tsx's own doc comment for why one field covers both.
+  // Also re-fetches stories — the newly-granted story otherwise doesn't
+  // appear in the sidebar until a manual page reload, since stories was
+  // previously only ever fetched once on mount.
   useEffect(() => {
     if (joinedStoryConfirmation) {
       showToast(`You've joined "${joinedStoryConfirmation.title}"`);
+      refreshStories();
     }
-  }, [joinedStoryConfirmation, showToast]);
+  }, [joinedStoryConfirmation, showToast, refreshStories]);
 
   const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
 
