@@ -654,6 +654,34 @@ async function processDocument(
 }
 
 // ---------------------------------------------------------------------------
+// Mid-pipeline breadcrumb — see MEDIA_PIPELINE_STEP_STARTED's doc comment
+// (services/audit/types.ts) for why this exists as its own action rather
+// than reusing MEDIA_PROCESS_STARTED or adding one action per step.
+// ---------------------------------------------------------------------------
+async function logPipelineStepStarted(
+  item: MediaItem,
+  correlationId: string,
+  pipeline_step: string,
+): Promise<void> {
+  if (!isMediaAuditEnabled()) return
+  await logMediaEvent({
+    tenant_id: item.tenant_id,
+    member_id: item.member_id,
+    media_item_id: item.id,
+    action: AuditAction.MEDIA_PIPELINE_STEP_STARTED,
+    outcome: 'success',
+    correlation_id: correlationId,
+    metadata: {
+      mime_type: item.mime_type,
+      original_filename: item.original_filename,
+      timestamp: new Date().toISOString(),
+      type: item.type,
+      pipeline_step,
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point — called by the webhook route after signature verification.
 // ---------------------------------------------------------------------------
 export async function processMediaItem(record: MediaItem): Promise<void> {
@@ -687,19 +715,23 @@ export async function processMediaItem(record: MediaItem): Promise<void> {
 
   let pipeline_step = 'await_storage_availability'
   try {
+    await logPipelineStepStarted(item, correlationId, pipeline_step)
     await waitForStorageObject(item.storage_path)
 
     switch (item.type) {
       case 'audio':
         pipeline_step = 'deepgram_transcription'
+        await logPipelineStepStarted(item, correlationId, pipeline_step)
         await processAudio(item, correlationId)
         break
       case 'image':
         pipeline_step = 'claude_vision'
+        await logPipelineStepStarted(item, correlationId, pipeline_step)
         await processImage(item, correlationId)
         break
       case 'document':
         pipeline_step = 'text_extraction'
+        await logPipelineStepStarted(item, correlationId, pipeline_step)
         await processDocument(item, correlationId)
         break
       default:
