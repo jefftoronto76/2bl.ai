@@ -11,6 +11,7 @@
 // Replace {...} with a real media_items row at status=pending.
 
 import { timingSafeEqual } from 'crypto'
+import { after } from 'next/server'
 import { processMediaItem } from '@/services/media/processor'
 import type { MediaItem } from '@/services/media'
 
@@ -84,13 +85,22 @@ export async function POST(req: Request) {
   })
 
   // Process asynchronously — do not await so Supabase gets a 200 immediately
-  // while the background job runs. Vercel maxDuration keeps the function alive.
-  void processMediaItem(record).catch((err) => {
-    console.error('[media-process] processMediaItem threw unexpectedly', {
-      media_item_id: record.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  })
+  // while the background job runs. maxDuration alone does NOT keep a
+  // fire-and-forget promise alive past the response being sent — Vercel is
+  // free to freeze/reap the invocation the moment the response flushes,
+  // silently abandoning any unawaited work (this was the root cause of
+  // media_items rows stuck at status='processing' forever, no error, no
+  // timeout — see System Docs/Utilities/Media.md). after() registers the
+  // promise with the platform's lifecycle so the invocation is kept alive
+  // until it settles, then maxDuration bounds how long that's allowed to run.
+  after(() =>
+    processMediaItem(record).catch((err) => {
+      console.error('[media-process] processMediaItem threw unexpectedly', {
+        media_item_id: record.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }),
+  )
 
   return Response.json({ ok: true })
 }

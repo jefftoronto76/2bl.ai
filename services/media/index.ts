@@ -199,6 +199,98 @@ export async function listByMember(
 }
 
 /**
+ * How long a row may sit at status='processing' before the stale-processing
+ * sweep (app/api/cron/media-sweep/route.ts) considers it stalled rather than
+ * legitimately still running, per type. `image` is data-backed (~30x the
+ * observed 10.2s max over a 14-day sample — see System Docs/Utilities/Media.md's
+ * "Known Unknowns" section). `document` and `audio` have zero completed-job
+ * samples as of this writing — both are judgment calls (document reasoned
+ * from its single-AI-call architecture similar to image; audio anchored to
+ * processAudio's own 1-hour-signed-URL design assumption for slow Deepgram
+ * queues) and should be revisited once real samples exist.
+ */
+export const MAX_PROCESSING_AGE_SECONDS: Record<MediaItemType, number> = {
+  image: 300,
+  document: 600,
+  audio: 5400,
+}
+
+/**
+ * Fixed error_message the sweep (and the retry route's stale-processing
+ * backstop) writes to a row it flips from 'processing' to 'failed' — a
+ * distinct, honest string rather than reusing one of the pipeline's own
+ * thrown-error messages, since nothing actually threw here. errorCopy.ts
+ * maps this to member-facing copy the same way it does every other
+ * error_message.
+ */
+export const STALE_PROCESSING_ERROR_MESSAGE = 'Processing stalled and timed out'
+
+export interface StaleProcessingItem {
+  id: string
+  tenant_id: string
+  member_id: string
+  type: MediaItemType
+  mime_type: string
+  original_filename: string
+  file_size_bytes: number
+  created_at: string
+}
+
+/**
+ * Defense-in-depth recovery for a media_items job that stalls at
+ * status='processing' for any reason — not tied to one root cause, since a
+ * hung upstream fetch with no timeout could still hold a kept-alive
+ * invocation open even after the after()-lifecycle fix (see
+ * app/api/webhooks/media-process/route.ts and app/api/media/[id]/retry/route.ts).
+ * Selects every 'processing' row, filters in application code against
+ * MAX_PROCESSING_AGE_SECONDS by type (a single query is simpler than three
+ * per-type date-filtered queries given how few rows are ever in this state),
+ * then flips each stale row to 'failed' with STALE_PROCESSING_ERROR_MESSAGE.
+ * The per-row update re-checks status='processing' so a job that legitimately
+ * completes in the gap between the select and this update is left alone
+ * rather than being clobbered. Returns only the rows actually swept (a
+ * failed guard update is silently skipped, not retried) so the caller can
+ * log an audit event per item without re-querying.
+ */
+export async function sweepStaleProcessingItems(): Promise<StaleProcessingItem[]> {
+  const supabase = getAdminClient()
+  const { data, error } = await supabase
+    .from('media_items')
+    .select('id, tenant_id, member_id, type, mime_type, original_filename, file_size_bytes, created_at')
+    .eq('status', 'processing')
+
+  if (error || !data) return []
+
+  const now = Date.now()
+  const stale = (data as StaleProcessingItem[]).filter((item) => {
+    const ageSeconds = (now - new Date(item.created_at).getTime()) / 1000
+    return ageSeconds > MAX_PROCESSING_AGE_SECONDS[item.type]
+  })
+
+  const swept: StaleProcessingItem[] = []
+  for (const item of stale) {
+    const { data: updated, error: updateError } = await supabase
+      .from('media_items')
+      .update({
+        status: 'failed',
+        error_message: STALE_PROCESSING_ERROR_MESSAGE,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', item.id)
+      .eq('status', 'processing')
+      .select('id')
+
+    // An empty (not erroring) result means the guard condition didn't match —
+    // the row moved off 'processing' between the select above and this
+    // update — same "no rows matched" signal backfillMediaChatId's own
+    // .update().select('id') pattern relies on.
+    if (!updateError && updated && updated.length > 0) swept.push(item)
+  }
+
+  return swept
+}
+
+/**
  * Returns true unless ENABLE_MEDIA_AUDIT_LOGGING is explicitly set to 'false'.
  * Readable from environment variables — no deploy required to toggle.
  */

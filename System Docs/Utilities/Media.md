@@ -5,10 +5,14 @@
 Server-side pipeline for member-uploaded audio/image/document attachments.
 Rows live in `media_items` (`type`, `status`, `derived_content`,
 `classification`, `error_message`, `latitude`/`longitude` — see
-`Database Schema.md`). The client uploads file bytes directly to Supabase
-Storage via a signed URL (never through our server); a Storage webhook then
-INSERTs the `media_items` row, which itself fires the processing webhook
-(`app/api/webhooks/media-process/route.ts`) into `processMediaItem`.
+`Database Schema.md`). `POST /api/media/upload-url` INSERTs the `media_items`
+row itself (status `pending`) and returns a signed Storage upload URL; the
+client then PUTs the file bytes directly to Supabase Storage (never through
+our server) — a separate, later request. That INSERT is what a Supabase
+Database Webhook fires on, into `app/api/webhooks/media-process/route.ts` →
+`processMediaItem` — which is why the job can start racing the Storage PUT
+(see `waitForStorageObject` below) rather than being triggered by Storage
+confirming the object exists.
 
 | File | Exports | Purpose |
 |------|---------|---------|
@@ -36,6 +40,87 @@ try/catch that marks the item `'failed'` with `error_message` and logs
 `'await_storage_availability'`) on any throw from any pipeline. Every
 pipeline funnels through this one catch — none of the three pipeline
 functions below has its own top-level try/catch for unexpected errors.
+
+**Execution lifecycle — why both trigger routes wrap the call in `after()`.**
+`app/api/webhooks/media-process/route.ts` and `app/api/media/[id]/retry/route.ts`
+both invoke `processMediaItem` fire-and-forget (they respond before the job
+finishes, since Supabase's webhook delivery and the retry-click UI both need
+an immediate response, not a 15-minute-long request). Root cause of media
+items getting stuck at `status: 'processing'` forever — no `error_message`,
+no terminal audit event, one for 5+ days — was that a bare
+`void processMediaItem(record).catch(...)` gives Vercel no signal to keep the
+invocation alive past the response: the platform is free to freeze/reap the
+function the instant the response flushes, silently abandoning whatever
+point the still-pending promise had reached. `maxDuration` does not prevent
+this — it only bounds how long a function is *allowed* to run once it's
+actually running; it does nothing to extend an already-fire-and-forgotten
+invocation's life. The evidence for this over a genuine hang: no timeout
+error was ever caught (a real 900s `maxDuration` kill, or a hung dependency,
+would both eventually throw into the outer `catch` and log
+`MEDIA_PROCESS_FAILED`) — total silence forever is the signature of the
+promise never being resumed at all, not of it running long.
+
+Fix: both routes now wrap the call in `after()` (`next/server`, stable since
+Next 15 — no new dependency), which registers the promise with Vercel's
+lifecycle manager so the invocation stays alive until it settles; the
+existing `maxDuration = 900` then bounds how long that's allowed to take.
+The retry route previously had no `maxDuration` at all (silently inheriting
+the project/plan default, likely far too short for a slow job) — it now
+explicitly sets `maxDuration = 900` to match the webhook route, since it
+drives the identical pipeline. `vercel.json`'s `functions` block mirrors both
+route-level exports, matching the pre-existing (redundant but harmless)
+pattern the webhook route already used.
+
+Testing note: `after()` throws when called outside a real Next.js
+request-scoped context, which a route handler invoked directly in Vitest
+doesn't have — both route test files stub it via
+`vi.mock('next/server', () => ({ after: (fn) => fn() }))`.
+
+This closes the execution-lifecycle cause of a job stalling on new uploads.
+It is not, by itself, a full guarantee against a row ever getting stuck
+`processing` again — e.g. an upstream fetch (Deepgram/Anthropic) with no
+timeout could still hold a *kept-alive* invocation open indefinitely. The
+stale-processing sweep below is the defense-in-depth recovery mechanism for
+that — independent of root cause, not a fix for this one.
+
+**Recovery: the stale-processing sweep.** `app/api/cron/media-sweep/route.ts`
+is a Vercel Cron target (`vercel.json`'s `crons`, every 5 minutes) that calls
+`sweepStaleProcessingItems()` (`services/media/index.ts`): selects every
+`status='processing'` row, and for any row older than its type's
+`MAX_PROCESSING_AGE_SECONDS` flips it to `status='failed'` with
+`error_message: 'Processing stalled and timed out'` — a per-row guarded
+update (`.eq('status', 'processing')` at update time) so a job that
+legitimately completes in the gap between the select and the update is left
+alone rather than clobbered. The route logs one `MEDIA_PROCESS_FAILED` audit
+event per swept row (`pipeline_step: 'stale_processing_sweep'`,
+`stalled_since` carrying the original `created_at`) so the audit trail
+records *why* a row resolved, not just that it changed. `errorCopy.ts` maps
+the fixed error string to member-facing copy the same way it does every
+other `error_message`.
+
+Thresholds (`MAX_PROCESSING_AGE_SECONDS`):
+
+| Type | Threshold | Basis |
+|---|---|---|
+| `image` | 300s | Data-backed — ~30x the observed 10.2s max over a 14-day `audit_events` sample of `media.process_started`→`media.process_completed` pairs. Wide headroom deliberately: the sample is thin, and a stuck row costing a few extra minutes before recovery is a non-issue against the actual failure mode (days of silence). |
+| `document` | 600s | **Provisional — no samples exist** (see "Known Unknowns" below). Reasoned from architecture, not data: single-AI-call shape similar to `image` (one Sonnet document-API call + one Haiku classification call, no external queue), doubled vs. `image` only for Sonnet processing a full multi-page PDF vs. Haiku on one photo. |
+| `audio` | 5400s (90 min) | **Provisional — no samples exist.** Anchored to `processAudio`'s own 1-hour-signed-URL design assumption for slow Deepgram queues (see that function's comment) — modest headroom above a figure the code's own author already judged plausible, rather than an unrelated number. |
+
+Auth: same shared-secret pattern as the webhook route's `verifySignature`,
+against a `CRON_SECRET` env var compared with `timingSafeEqual` — Vercel
+Cron sends it automatically as `Authorization: Bearer <CRON_SECRET>` once
+that variable is set on the project. **Needs `CRON_SECRET` added in Vercel's
+project env vars before this runs for real** (Jeff, Vercel dashboard — same
+division of labor as `SUPABASE_WEBHOOK_SECRET`).
+
+Manual backstop: `POST /api/media/[id]/retry` also accepts a `'processing'`
+item whose age is past its type's threshold (previously it rejected
+`'processing'` outright, always) — lets a member or admin unstick a stalled
+job without waiting for the next cron tick. Logged with
+`stale_processing_recovery: true` in the `MEDIA_RETRY_REQUESTED` metadata,
+since a stale `'processing'` item's `error_message` is always null (that's
+the marker of the stuck state) and wouldn't otherwise distinguish this from
+an ordinary failed-item retry in the audit trail.
 
 Mid-pipeline visibility: `logPipelineStepStarted` logs
 `MEDIA_PIPELINE_STEP_STARTED` (metadata `pipeline_step`, same key/values the
@@ -204,3 +289,37 @@ different situations:
   callers today.
 
 Neither pattern replaces the other.
+
+---
+
+## Known Unknowns
+
+**`document` and `audio` processing durations are unmeasured.** A query of
+`audit_events` for `media.process_started` → `media.process_completed` pairs
+over the most recent 14 days returned zero completed `document` or `audio`
+jobs — only `image` jobs have any real duration data at all. This is a
+standing caveat, not a one-off note: any max-age/stale-job threshold, timeout,
+or similar duration-based logic applied to `document` or `audio` items in
+this codebase is a judgment call, not something backed by observed data, and
+should be revisited once genuine samples of those two types exist. Re-run the
+duration query scoped to `metadata->>'type'` periodically to check whether
+this gap has closed.
+
+The one piece of in-code evidence bearing on this: `processAudio`'s comment
+above `generateLongLivedSignedUrl` — "Use a long-lived URL (1hr) to guard
+against slow Deepgram queues for large audio files causing URL expiry before
+the fetch completes." This describes the signed *URL's* validity window, not
+a measured or expected job duration — `processAudio` passes that URL
+directly to Deepgram's `/v1/listen` endpoint (`url` in the request body, not
+raw bytes) and `await`s the response synchronously; Deepgram fetches the
+audio itself, on its own schedule, and the whole call blocks until Deepgram
+returns the finished transcript in that same HTTP response (the code parses
+`data.results.channels[0].alternatives[0].transcript` directly off it — no
+polling, no callback). The 1-hour URL exists because the author judged
+Deepgram's own queueing + fetch + transcription of a large file plausible
+enough to approach that order of magnitude that a short-lived URL could
+expire first. That is a design-time risk assumption baked into the pipeline,
+not a measurement — but it is the only signal in the codebase that audio
+jobs' legitimate duration could be dramatically longer than an image job's,
+and any audio-specific timeout should stay consistent with it rather than
+being picked independently.

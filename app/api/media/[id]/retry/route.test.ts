@@ -45,10 +45,24 @@ vi.mock('@/services/media', () => ({
   updateMediaItem: (...args: unknown[]) => mockUpdateMediaItem(...args),
   isMediaAuditEnabled: (...args: unknown[]) => mockIsMediaAuditEnabled(...args),
   logMediaEvent: (...args: unknown[]) => mockLogMediaEvent(...args),
+  // Real values, not mocks — the route's stale-processing backstop does real
+  // arithmetic against these, and the whole point of these tests is
+  // exercising that arithmetic.
+  MAX_PROCESSING_AGE_SECONDS: { image: 300, document: 600, audio: 5400 },
 }))
 
 vi.mock('@/services/media/processor', () => ({
   processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
+}))
+
+// after() requires a real Next.js request-scoped context (AsyncLocalStorage)
+// that isn't present when calling a route handler directly in Vitest — the
+// documented approach for testing code that uses it is to stub it as an
+// immediate invocation, since what these tests actually care about is that
+// the wrapped work still runs, not the request-lifecycle extension itself
+// (that's Next's own guarantee, not this codebase's).
+vi.mock('next/server', () => ({
+  after: (fn: () => unknown) => fn(),
 }))
 
 import { POST } from './route'
@@ -130,8 +144,13 @@ describe('POST /api/media/[id]/retry', () => {
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 and does not touch the item when status is processing', async () => {
-    mockGetMediaItem.mockResolvedValue(makeItem({ status: 'processing' }))
+  it('returns 400 and does not touch the item when status is processing and still within its type\'s max age', async () => {
+    // 'document' threshold is 600s — 60s old is well within it, a genuinely
+    // in-flight job.
+    const recentCreatedAt = new Date(Date.now() - 60_000).toISOString()
+    mockGetMediaItem.mockResolvedValue(
+      makeItem({ status: 'processing', created_at: recentCreatedAt }),
+    )
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -139,6 +158,48 @@ describe('POST /api/media/[id]/retry', () => {
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
     expect(mockProcessMediaItem).not.toHaveBeenCalled()
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
+  })
+
+  it('accepts a processing item past its type\'s max age — the stale-processing backstop', async () => {
+    // 'document' threshold is 600s — 1 hour old is well past it.
+    const staleCreatedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const item = makeItem({ status: 'processing', error_message: null, created_at: staleCreatedAt })
+    mockGetMediaItem.mockResolvedValue(item)
+
+    const res = await POST(makeRequest(), makeParams('item-1'))
+
+    expect(res.status).toBe(200)
+    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
+      status: 'pending',
+      error_message: null,
+      derived_content: null,
+      classification: null,
+      processed_at: null,
+    })
+    expect(mockProcessMediaItem).toHaveBeenCalledTimes(1)
+    expect(mockLogMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_RETRY_REQUESTED,
+        metadata: expect.objectContaining({
+          previous_status: 'processing',
+          stale_processing_recovery: true,
+        }),
+      }),
+    )
+  })
+
+  it('rejects a processing item just under its threshold as still in-flight (not yet stale)', async () => {
+    // 1s under the 600s 'document' threshold — deliberately not exactly at
+    // the boundary, since real wall-clock time elapses between building this
+    // timestamp and the route computing its own age against Date.now(),
+    // which would make an exactly-600s-old fixture flaky.
+    const justUnderThreshold = new Date(Date.now() - 599_000).toISOString()
+    mockGetMediaItem.mockResolvedValue(
+      makeItem({ status: 'processing', created_at: justUnderThreshold }),
+    )
+    const res = await POST(makeRequest(), makeParams('item-1'))
+    expect(res.status).toBe(400)
+    expect(mockProcessMediaItem).not.toHaveBeenCalled()
   })
 
   it('resets a ready item to pending and reprocesses it (not just failed)', async () => {
