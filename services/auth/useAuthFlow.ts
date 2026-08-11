@@ -48,9 +48,12 @@ export interface UseAuthFlowReturn {
   /** Optional name is attached to the Clerk profile on the sign-up path
    *  (first whitespace token → firstName, remainder → lastName).
    *  Optional inviteToken is written to Clerk unsafeMetadata on the sign-up
-   *  path so the webhook can look up the invited members row by token. */
-  sendEmail: (email: string, name?: string, inviteToken?: string | null) => Promise<void>
-  sendPhone: (phone: string, name?: string, inviteToken?: string | null) => Promise<void>
+   *  path so the webhook can look up the invited members row by token.
+   *  Optional storyInviteToken is written alongside it so the webhook can
+   *  call acceptStoryInvite directly instead of racing the client's own
+   *  accept call. */
+  sendEmail: (email: string, name?: string, inviteToken?: string | null, storyInviteToken?: string | null) => Promise<void>
+  sendPhone: (phone: string, name?: string, inviteToken?: string | null, storyInviteToken?: string | null) => Promise<void>
   verifyOtp: (code: string) => Promise<void>
   resend: () => Promise<void>
   reset: () => void
@@ -95,6 +98,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
   // Name and invite token supplied with the active attempt, kept so resend() re-sends them.
   const nameRef = useRef<string | undefined>(undefined)
   const inviteTokenRef = useRef<string | null | undefined>(undefined)
+  const storyInviteTokenRef = useRef<string | null | undefined>(undefined)
 
   // Guards setState calls after unmount.
   const mountedRef = useRef(true)
@@ -114,7 +118,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
   // ── Send (shared by email + phone) ─────────────────────────────────────────
 
   const send = useCallback(
-    async (type: AuthContactType, value: string, name?: string, inviteToken?: string | null) => {
+    async (type: AuthContactType, value: string, name?: string, inviteToken?: string | null, storyInviteToken?: string | null) => {
       if (!adapter.isReady) return
 
       setStage('sending')
@@ -124,13 +128,14 @@ export function useAuthFlow(): UseAuthFlowReturn {
       setFlowType(null)
       nameRef.current = name?.trim() || undefined
       inviteTokenRef.current = inviteToken
+      storyInviteTokenRef.current = storyInviteToken
 
       try {
         // Validation gate runs BEFORE any provider call — ordering is
         // load-bearing (server-side rate limiting fronts the provider).
         await callValidationGate(type, value)
 
-        const result = await adapter.sendCode({ type, value, ...splitFullName(nameRef.current), inviteToken: inviteTokenRef.current ?? undefined })
+        const result = await adapter.sendCode({ type, value, ...splitFullName(nameRef.current), inviteToken: inviteTokenRef.current ?? undefined, storyInviteToken: storyInviteTokenRef.current ?? undefined })
         if (!result.ok) {
           if (mountedRef.current) { setError(result.message); setStage('error') }
           return
@@ -152,8 +157,8 @@ export function useAuthFlow(): UseAuthFlowReturn {
     [adapter],
   )
 
-  const sendEmail = useCallback((email: string, name?: string, inviteToken?: string | null) => send('email', email, name, inviteToken), [send])
-  const sendPhone = useCallback((phone: string, name?: string, inviteToken?: string | null) => send('phone', phone, name, inviteToken), [send])
+  const sendEmail = useCallback((email: string, name?: string, inviteToken?: string | null, storyInviteToken?: string | null) => send('email', email, name, inviteToken, storyInviteToken), [send])
+  const sendPhone = useCallback((phone: string, name?: string, inviteToken?: string | null, storyInviteToken?: string | null) => send('phone', phone, name, inviteToken, storyInviteToken), [send])
 
   // ── OTP verification ───────────────────────────────────────────────────────
 
@@ -181,7 +186,7 @@ export function useAuthFlow(): UseAuthFlowReturn {
 
   const resend = useCallback(async () => {
     if (!contactType || !contactValue) return
-    await send(contactType, contactValue, nameRef.current, inviteTokenRef.current)
+    await send(contactType, contactValue, nameRef.current, inviteTokenRef.current, storyInviteTokenRef.current)
   }, [contactType, contactValue, send])
 
   return {

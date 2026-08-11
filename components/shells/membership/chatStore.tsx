@@ -161,6 +161,12 @@ interface ChatContextType {
    *  an unused invite link. Null after sign-in (consumed). Passed to
    *  MagicLinkCard so it can write it to Clerk unsafeMetadata on sign-up. */
   inviteToken: string | null;
+  /** Raw story-invite token from the URL (?join=) — mirrors inviteToken but
+   *  for the story-invite flow. Passed to MagicLinkCard so it can write it
+   *  to Clerk unsafeMetadata on sign-up, letting the user.created webhook
+   *  become authoritative for source/primer instead of racing the client's
+   *  own POST /api/heirloom/story-invites/accept call. */
+  storyInviteToken: string | null;
   /**
    * Set once, the first time a story invite link (POST /api/heirloom/
    * story-invites/accept) resolves successfully — either right after
@@ -1277,7 +1283,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>

@@ -46,6 +46,10 @@ interface MagicLinkCardProps {
   /** Invite token from the URL — written to Clerk unsafeMetadata on sign-up so
    *  the user.created webhook can look up the invited members row by token. */
   inviteToken?: string | null;
+  /** Story-invite token from the URL (?join=) — written to Clerk unsafeMetadata
+   *  on sign-up so the user.created webhook can call acceptStoryInvite directly
+   *  instead of racing the client's own accept call. */
+  storyInviteToken?: string | null;
   /** Called when the session is established. Receives the name the visitor typed. */
   onSuccess: (name: string) => void;
 }
@@ -102,7 +106,7 @@ function FieldError({ message }: { message: string | null }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone, inviteToken, onSuccess }: MagicLinkCardProps) {
+export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone, inviteToken, storyInviteToken, onSuccess }: MagicLinkCardProps) {
   const { isSignedIn, isLoaded } = useAuthUser();
   const flow = useAuthFlow();
 
@@ -162,8 +166,8 @@ export function MagicLinkCard({ reason, initialName, initialEmail, initialPhone,
       e.preventDefault();
       const val = inputValue.trim();
       if (!val || !nameValue.trim()) return;
-      if (tab === 'email') void flow.sendEmail(val, nameValue, inviteToken);
-      else void flow.sendPhone(val, nameValue, inviteToken);
+      if (tab === 'email') void flow.sendEmail(val, nameValue, inviteToken, storyInviteToken);
+      else void flow.sendPhone(val, nameValue, inviteToken, storyInviteToken);
     },
     [inputValue, nameValue, tab, flow],
   );

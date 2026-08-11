@@ -619,6 +619,7 @@ function makeRenderUserMessage(
 interface AssistantRenderConfig {
   isAdmin: boolean;
   inviteToken: string | null;
+  storyInviteToken: string | null;
   visitorName: string | null;
   visitorEmail: string | null;
   visitorPhone: string | null;
@@ -711,6 +712,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
             initialEmail={config.visitorEmail}
             initialPhone={config.visitorPhone}
             inviteToken={config.inviteToken}
+            storyInviteToken={config.storyInviteToken}
             onSuccess={config.handleAuthSuccess}
           />
         )}
@@ -738,6 +740,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
   const {
     claimCurrentSession,
     inviteToken,
+    storyInviteToken,
     mediaItems,
     retry,
     regenerate,
@@ -919,6 +922,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
             renderAssistantMessage={makeRenderAssistantMessage({
               isAdmin,
               inviteToken,
+              storyInviteToken,
               visitorName,
               visitorEmail,
               visitorPhone,

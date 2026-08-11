@@ -79,6 +79,14 @@ export interface AuthFlowContact {
    *  members row directly by token instead of relying on email match. Non-fatal
    *  on failure — same pattern as the name update. Sign-in path: ignored. */
   inviteToken?: string | null
+  /** Story-invite token from the URL (?join=TOKEN). Written to Clerk
+   *  unsafeMetadata on the sign-up path alongside inviteToken (same
+   *  signUp.update() call — unsafeMetadata is a full-object replace, not a
+   *  merge, so both must be written together) so the user.created webhook
+   *  can call acceptStoryInvite directly instead of racing the client's own
+   *  accept call. Non-fatal on failure — same pattern as inviteToken.
+   *  Sign-in path: ignored. */
+  storyInviteToken?: string | null
 }
 
 export type SendCodeResult =
@@ -168,14 +176,20 @@ export function useAuthFlowAdapter(): {
             metadata: { auth_surface: 'custom_otp', step: 'signUp_update_name_threw', contactType: type, code: extractClerkErrorCode(e) } })
         }
       }
-      // Write the invite token to Clerk unsafeMetadata so the user.created
-      // webhook can look up the invited members row directly by token. Non-fatal
-      // by design — a metadata failure never blocks the sign-up itself.
-      if (contact.inviteToken) {
+      // Write the invite token(s) to Clerk unsafeMetadata so the user.created
+      // webhook can look up the invited members row / story invite directly
+      // instead of relying on email match or racing the client's own accept
+      // call. Both keys go in ONE signUp.update() call — unsafeMetadata is a
+      // full-object replace, not a merge, so writing them separately would let
+      // the second call silently wipe the first. Non-fatal by design — a
+      // metadata failure never blocks the sign-up itself.
+      if (contact.inviteToken || contact.storyInviteToken) {
         try {
-          const { error: tokenErr } = await signUp.update({
-            unsafeMetadata: { heirloom_invite_token: contact.inviteToken },
-          })
+          const unsafeMetadata: Record<string, string> = {}
+          if (contact.inviteToken) unsafeMetadata.heirloom_invite_token = contact.inviteToken
+          if (contact.storyInviteToken) unsafeMetadata.heirloom_story_invite_token = contact.storyInviteToken
+
+          const { error: tokenErr } = await signUp.update({ unsafeMetadata })
           if (tokenErr) {
             logAuthStep({ event_type: 'sign_up', outcome: 'failure',
               failure_reason: extractErrorMessage(tokenErr),
