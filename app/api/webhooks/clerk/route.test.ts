@@ -1,0 +1,141 @@
+// First-ever test coverage for this route. Focused on the story-invite
+// branch added alongside acceptStoryInvite's insert-race hardening
+// (services/crm/story-invites.ts) — the user.created/user.updated cascade
+// now checks Clerk unsafeMetadata for heirloom_story_invite_token BEFORE
+// falling into the pre-existing linkInvitedMember/syncMember cascade, so
+// whichever of {webhook, client} runs first performs the correctly-scoped
+// story-invite insert. Signature verification (svix) and header reads
+// (next/headers) are mocked out entirely — this file exercises the
+// post-verification branching logic only, not svix's own crypto.
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+const mockVerify = vi.fn()
+vi.mock('svix', () => ({
+  Webhook: vi.fn().mockImplementation(() => ({ verify: mockVerify })),
+}))
+
+const mockHeadersGet = vi.fn()
+vi.mock('next/headers', () => ({
+  headers: async () => ({ get: mockHeadersGet }),
+}))
+
+const mockLogAuthEvent = vi.fn()
+vi.mock('@/services/audit', () => ({
+  logAuthEvent: (...args: unknown[]) => mockLogAuthEvent(...args),
+}))
+
+vi.mock('@/services/auth/supabase-admin', () => ({
+  getAdminClient: () => ({
+    from: () => ({
+      upsert: () => Promise.resolve({ error: null }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    }),
+  }),
+}))
+
+const mockFindUserByClerkId = vi.fn()
+const mockGetTenantFromRequest = vi.fn()
+const mockSyncMember = vi.fn()
+vi.mock('@/services/auth', () => ({
+  findUserByClerkId: (...args: unknown[]) => mockFindUserByClerkId(...args),
+  getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
+  syncMember: (...args: unknown[]) => mockSyncMember(...args),
+  HEIRLOOM_TENANT_ID: 'heirloom-tenant',
+}))
+
+const mockLinkInvitedMember = vi.fn()
+vi.mock('@/services/members', () => ({
+  linkInvitedMember: (...args: unknown[]) => mockLinkInvitedMember(...args),
+}))
+
+const mockAcceptStoryInvite = vi.fn()
+vi.mock('@/services/crm/story-invites', () => ({
+  acceptStoryInvite: (...args: unknown[]) => mockAcceptStoryInvite(...args),
+}))
+
+import { POST } from './route'
+
+function makeRequest(payload: Record<string, unknown>): Request {
+  const body = JSON.stringify(payload)
+  return { text: async () => body } as unknown as Request
+}
+
+function userCreatedPayload(unsafeMetadata: Record<string, unknown> = {}) {
+  return {
+    type: 'user.created',
+    data: {
+      id: 'clerk-1',
+      email_addresses: [{ email_address: 'a@example.com' }],
+      unsafe_metadata: unsafeMetadata,
+    },
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  process.env.CLERK_WEBHOOK_SECRET = 'test-secret'
+
+  mockHeadersGet.mockImplementation((key: string) => {
+    if (key === 'svix-id') return 'id-1'
+    if (key === 'svix-timestamp') return '123'
+    if (key === 'svix-signature') return 'sig'
+    return null
+  })
+  mockVerify.mockImplementation((rawBody: string) => JSON.parse(rawBody))
+  mockGetTenantFromRequest.mockResolvedValue('heirloom-tenant')
+  mockFindUserByClerkId.mockResolvedValue({ id: 'user-1' })
+  mockSyncMember.mockResolvedValue({ ok: true })
+  mockLinkInvitedMember.mockResolvedValue(false)
+  mockAcceptStoryInvite.mockResolvedValue({
+    ok: true,
+    data: { memberId: 'member-1', storyId: 'story-1', storyTitle: 'A Life in Full', isNewMember: true },
+  })
+})
+
+afterEach(() => {
+  delete process.env.CLERK_WEBHOOK_SECRET
+})
+
+describe('POST /api/webhooks/clerk — story-invite branch', () => {
+  it('a story-invite token that accepts successfully calls acceptStoryInvite and skips linkInvitedMember/syncMember entirely', async () => {
+    const res = await POST(makeRequest(userCreatedPayload({ heirloom_story_invite_token: 'story-tok' })))
+
+    expect(res.status).toBe(200)
+    expect(mockFindUserByClerkId).toHaveBeenCalledWith('clerk-1')
+    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('story-tok', 'clerk-1', 'user-1', 'heirloom-tenant')
+    expect(mockLinkInvitedMember).not.toHaveBeenCalled()
+    expect(mockSyncMember).not.toHaveBeenCalled()
+  })
+
+  it('an invalid/expired story-invite token falls through to the existing linkInvitedMember/syncMember cascade', async () => {
+    mockAcceptStoryInvite.mockResolvedValue({ ok: false, status: 410, error: 'This invite link has expired.' })
+
+    const res = await POST(makeRequest(userCreatedPayload({ heirloom_story_invite_token: 'stale-tok' })))
+
+    expect(res.status).toBe(200)
+    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('stale-tok', 'clerk-1', 'user-1', 'heirloom-tenant')
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockSyncMember).toHaveBeenCalledTimes(1)
+  })
+
+  it('a payload with no story-invite metadata at all is completely unaffected — existing cascade runs unchanged', async () => {
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    expect(mockAcceptStoryInvite).not.toHaveBeenCalled()
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockSyncMember).toHaveBeenCalledTimes(1)
+  })
+
+  it('linkInvitedMember stamping an invited row still skips syncMember, unaffected by the new story-invite branch', async () => {
+    mockLinkInvitedMember.mockResolvedValue(true)
+
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    expect(mockAcceptStoryInvite).not.toHaveBeenCalled()
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockSyncMember).not.toHaveBeenCalled()
+  })
+})

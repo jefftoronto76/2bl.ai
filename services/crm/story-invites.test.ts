@@ -479,4 +479,62 @@ describe('acceptStoryInvite', () => {
       expect.objectContaining({ action: AuditAction.STORY_INVITE_ACCEPTED_EXISTING_MEMBER }),
     )
   })
+
+  it('concurrent insert race (23505 on members.clerk_id): re-fetches and continues as the existing-member branch instead of erroring', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+      artifacts: [STORY_ROW],
+      members: [
+        { data: null, error: null }, // existence check — none yet, so this call takes the insert path
+        { data: null, error: { message: 'duplicate key', code: '23505' } }, // insert loses the race
+        { data: { id: 'winner-member-1' }, error: null }, // re-fetch — the winner's row
+      ],
+      artifact_subscribers: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await acceptStoryInvite('tok-abc', 'clerk-1', 'user-1', 'tenant-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data.isNewMember).toBe(false)
+      expect(result.data.memberId).toBe('winner-member-1')
+    }
+    // Only the one insert attempt — the race is resolved by re-fetching, not retrying the insert.
+    expect(calls.members.filter(c => c.op === 'insert')).toHaveLength(1)
+
+    const subscriberUpsert = calls.artifact_subscribers.find(c => c.op === 'upsert')
+    expect(subscriberUpsert!.payload).toEqual({ artifact_id: 'story-1', member_id: 'winner-member-1' })
+
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.STORY_INVITE_ACCEPTED_EXISTING_MEMBER }),
+    )
+  })
+
+  it('concurrent insert race where the re-fetch itself also fails: returns a real 500 rather than throwing', async () => {
+    const { client } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+      artifacts: [STORY_ROW],
+      members: [
+        { data: null, error: null }, // existence check — none yet
+        { data: null, error: { message: 'duplicate key', code: '23505' } }, // insert loses the race
+        { data: null, error: { message: 'db down' } }, // re-fetch fails too
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await acceptStoryInvite('tok-abc', 'clerk-1', 'user-1', 'tenant-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(500)
+      expect(result.error).toBe('db down')
+    }
+    expect(logEventMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.STORY_INVITE_ACCEPTED_NEW_MEMBER }),
+    )
+    expect(logEventMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.STORY_INVITE_ACCEPTED_EXISTING_MEMBER }),
+    )
+  })
 })
