@@ -163,12 +163,16 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   outstanding: per-story collaborator invites (member-facing magic-link API
   — the existing `invites` table is the admin-created access gate, not
   this); conversation search (the sidebar field is a visible stub);
-  Uploads; Share Heirloom (sidebar item + ChatHeader icon are inert;
+  Share Heirloom (sidebar item + ChatHeader icon are inert;
   `ShareHeirloomModal` is landed but unmounted — pass the real
   `heirloom.2bl.ai` URL when mounting, its default is a placeholder);
   Writing Prompts copy review (the 4 static prompts in ChatHero are
   placeholder-grade). The v1 `Sidebar.tsx` is superseded and unmounted —
-  delete after preview verification.
+  delete after preview verification. **Uploads removed 2026-08-12**
+  (`sidebar_uploads_scrim_stories_2006` handover) — the sidebar's Uploads
+  nav row was a permanently-disabled stub with no backing feature; rather
+  than build one, the dead row was deleted outright (uploads already
+  surface inside Media).
 
   **Per-row kebab actions — resolved for conversations 2026-08-03 (PR
   #247); resolved for story delete 2026-08-09.** `ChatHero.tsx` now passes
