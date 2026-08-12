@@ -56,6 +56,13 @@ vi.mock('@/services/media/processor', () => ({
   processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
 }))
 
+// after() requires a real Next.js request-scoped context that a route
+// handler invoked directly in Vitest doesn't have — same shim as the other
+// processMediaItem trigger routes' own test files.
+vi.mock('next/server', () => ({
+  after: (fn: () => unknown) => fn(),
+}))
+
 import { POST } from './route'
 
 function makeRequest(body: unknown): Request {

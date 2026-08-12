@@ -31,6 +31,12 @@ export function sanitizeFailureReason(raw: string | null): string {
   if (message.includes('Processing stalled and timed out')) {
     return 'processing took too long and timed out'
   }
+  // Written by the pending-row sweep's abandoned bucket (sweepStalePendingItems)
+  // — a row whose trigger call never fired AND whose file never reached
+  // Storage either (a genuinely abandoned upload, not just a lost signal).
+  if (message.includes('Upload was never completed')) {
+    return "the upload didn't finish"
+  }
   if (message.includes('Deepgram API error')) {
     return "the audio transcription service couldn't process this file"
   }

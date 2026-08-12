@@ -17,17 +17,28 @@ const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
 // ---------------------------------------------------------------------------
-// The Supabase Database Webhook fires the instant the media_items row is
-// INSERTed — which happens before the signed upload URL is even returned to
-// the client, let alone before the client's PUT of the file bytes (a
-// separate, later request) lands in Storage. Without this wait, processing
-// frequently starts against an object that doesn't exist yet, and the
-// downstream STT/vision/extraction call fails with a confusing fetch error
-// that looks like an upstream API problem rather than a timing one.
+// DEFENSIVE GUARD, not the primary race-closer it used to be. Processing
+// used to be triggered by the media_items INSERT (a Supabase Database
+// Webhook), which happened before the signed upload URL was even returned
+// to the client, let alone before the client's PUT of the file bytes landed
+// in Storage — this wait existed to close THAT race, and reliably lost on
+// slow connections (confirmed: reliable success on wifi, reliable failure
+// on cellular) since PUT duration is unbounded/network-dependent while this
+// budget is fixed. As of the Step 2 trigger-ordering fix, processing is
+// only ever triggered from POST /api/media/[id]/start-processing, called by
+// the client after its PUT has already resolved successfully — so by the
+// time processMediaItem runs, the object should already be in Storage.
 //
-// Bounded retry, not a fixed sleep: most uploads land well within the first
-// attempt or two, and this keeps the common case fast while still covering
-// slower uploads. ~5.5s worst case before giving up.
+// This wait stays anyway, for a genuinely different and much smaller race:
+// Storage's own read-after-write consistency between the PUT succeeding and
+// a subsequent list() (objectExists, services/media/storage.ts) from a
+// different request seeing it. We have no data confirming this window is
+// real for Supabase Storage specifically, but removing this cheap, bounded
+// check on the chance it isn't would trade a near-zero cost for the risk of
+// reintroducing the exact failure mode this system has now spent three
+// steps fixing. Revisit the budget size below once there's real
+// post-Step-2 data — it was calibrated against a multi-second-to-tens-of-
+// seconds gap that no longer exists by design.
 // ---------------------------------------------------------------------------
 export const STORAGE_WAIT_DELAYS_MS = [0, 300, 700, 1500, 3000]
 

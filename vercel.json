@@ -5,14 +5,17 @@
   "devCommand": "next dev",
   "installCommand": "npm install",
   "functions": {
-    "app/api/webhooks/media-process/route.ts": {
-      "maxDuration": 900
-    },
     "app/api/media/[id]/retry/route.ts": {
       "maxDuration": 900
     },
+    "app/api/media/[id]/start-processing/route.ts": {
+      "maxDuration": 900
+    },
+    "app/api/media/upload-url/route.ts": {
+      "maxDuration": 900
+    },
     "app/api/cron/media-sweep/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 900
     }
   },
   "crons": [

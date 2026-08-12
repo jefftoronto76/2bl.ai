@@ -14,6 +14,7 @@
 // against a previously-failed row is reprocessed directly (same pattern as
 // the retry endpoint), rather than staying a dead, permanently-failed row.
 
+import { after } from 'next/server'
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
@@ -21,6 +22,12 @@ import { createMediaItem, findDuplicateMediaItem, isMediaAuditEnabled, logMediaE
 import { buildMediaStoragePath, generateSignedUploadUrl } from '@/services/media/storage'
 import { processMediaItem } from '@/services/media/processor'
 import { AuditAction } from '@/services/audit/types'
+
+// 15 min — Vercel Pro plan, matches the other processMediaItem trigger
+// routes. This route only needs it for the dedup-reprocess branch below
+// (a previously-failed duplicate match), which drives the same pipeline.
+export const maxDuration = 900
+export const runtime = 'nodejs'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
@@ -154,12 +161,18 @@ export async function POST(req: Request) {
           classification: null,
           processed_at: null,
         })
-        void processMediaItem(existing).catch((err) => {
-          console.error('[media/upload-url] dedup reprocess threw unexpectedly', {
-            mediaItemId: existing.id,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        })
+        // after() keeps this invocation alive until the promise settles —
+        // a bare `void` here had the same permanently-stuck-at-'processing'
+        // risk Step 1 fixed for the webhook/retry routes, just missed on
+        // this third direct-call site at the time.
+        after(() =>
+          processMediaItem(existing).catch((err) => {
+            console.error('[media/upload-url] dedup reprocess threw unexpectedly', {
+              mediaItemId: existing.id,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }),
+        )
       }
 
       if (isMediaAuditEnabled()) {
