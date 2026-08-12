@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { MediaItem } from '@/services/media/types';
+import { sanitizeFailureReason, isNeedsReupload } from '@/services/media/errorCopy';
 
 interface MediaGalleryProps {
   onClose: () => void;
@@ -59,6 +60,13 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
   const [downloading, setDownloading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Confirmed by THIS session's own retry response, checked alongside the
+  // DB-persisted signal (isNeedsReupload(item.error_message) — set by a
+  // prior attempt, this session or another one) since this gallery does a
+  // one-shot fetch on mount with no live poll, so a fresh item.error_message
+  // wouldn't otherwise reach this component after a retry click.
+  const [confirmedNeedsReupload, setConfirmedNeedsReupload] = useState(false);
+  const needsReupload = confirmedNeedsReupload || isNeedsReupload(item.error_message);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -75,10 +83,18 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
   };
 
   const handleRetry = async () => {
+    if (needsReupload) return;
     setRetrying(true);
     try {
       const res = await fetch(`/api/media/${item.id}/retry`, { method: 'POST' });
-      if (res.ok) onRetry(item.id);
+      const body = await res.json().catch(() => ({}));
+      if (body?.needsReupload) {
+        // Not a "pending, reprocessing" outcome — don't bump status via
+        // onRetry, that would misleadingly imply something is running.
+        setConfirmedNeedsReupload(true);
+      } else if (res.ok) {
+        onRetry(item.id);
+      }
     } catch (err) {
       console.error('[MediaGallery] retry failed:', err);
     } finally {
@@ -135,7 +151,9 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
 
       {item.status === 'failed' && (
         <p className="text-[11.5px] font-body text-red-400 leading-snug">
-          {item.error_message ?? 'Processing failed. You can try again below.'}
+          {needsReupload
+            ? 'This file needs to be uploaded again — remove it and attach it to a new message.'
+            : sanitizeFailureReason(item.error_message)}
         </p>
       )}
 
@@ -151,7 +169,11 @@ function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) =
             {downloading ? 'Opening…' : 'Download'}
           </button>
         )}
-        {(item.status === 'failed' || item.status === 'ready') && (
+        {/* Hidden once a reprocess attempt confirms the file is gone — a
+            second click would just fail identically forever (see
+            verifyAndReprocess, services/media/processor.ts). The message
+            above already tells the member what to do instead. */}
+        {(item.status === 'failed' || item.status === 'ready') && !needsReupload && (
           <button
             type="button"
             onClick={handleRetry}

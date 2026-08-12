@@ -19,28 +19,31 @@ route couldn't simply be deleted once that trigger moved.
 
 | File | Exports | Purpose |
 |------|---------|---------|
-| `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS` | The pipeline itself — see "The pipeline" below. |
+| `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS`, `verifyAndReprocess`, `ReprocessOutcome` | The pipeline itself — see "The pipeline" below. `verifyAndReprocess` is the sole remaining place an existing row gets reprocessed — see "Duplicate uploads". |
 | `vision-tool.ts` | `callVisionTool`, `callTextTool`, `AnthropicTool` | Generic forced-tool-use helpers for structured model output — image input and text input respectively, sharing one internal fetch/parse/fallback core. See "The tool-use pattern" below. |
-| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent`, `sweepStaleProcessingItems`, `MAX_PROCESSING_AGE_SECONDS`, `STALE_PROCESSING_ERROR_MESSAGE`, `sweepStalePendingItems`, `MAX_PENDING_AGE_SECONDS`, `STALE_PENDING_ERROR_MESSAGE` (+ types) | `media_items` CRUD, the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape), and the two stale-row sweep functions the cron route (`app/api/cron/media-sweep`) and the retry route's backstop use. `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
-| `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request — the basis for both `waitForStorageObject`'s retry loop and `sweepStalePendingItems`'s recovered-vs-abandoned check (`index.ts`). |
-| `useMediaUpload.ts` | client hook | Drives the client-side upload flow (signed URL request → direct PUT → `media_items` row creation), content-hash dedup. |
+| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent`, `sweepStaleProcessingItems`, `MAX_PROCESSING_AGE_SECONDS`, `STALE_PROCESSING_ERROR_MESSAGE`, `sweepStalePendingItems`, `MAX_PENDING_AGE_SECONDS`, `STALE_PENDING_ERROR_MESSAGE`, `NEEDS_REUPLOAD_ERROR_MESSAGE` (+ types) | `media_items` CRUD, the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape), and the two stale-row sweep functions the cron route (`app/api/cron/media-sweep`) and the retry route's backstop use. `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
+| `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request — the basis for `waitForStorageObject`'s retry loop, `sweepStalePendingItems`'s recovered-vs-abandoned check (`index.ts`), `verifyAndReprocess`'s reprocess-vs-needs_reupload check, and `upload-url/route.ts`'s dedup-vs-fresh-upload-fallback check. |
+| `useMediaUpload.ts` | client hook | Drives the client-side upload flow (signed URL request → direct PUT → `media_items` row creation), content-hash dedup. `UploadResult.duplicate` carries through whether the server reused an existing row — see "Duplicate uploads". |
 | `useFreshImageUrl.ts` | `useFreshImageUrl` | Client hook re-resolving a media item's signed display URL at render time via `GET /api/media/[id]/url`, since `sessionImages`' url (`display-url.ts`) carries `storage.ts`'s 60s-expiry signed URL and is never refreshed after session load. Shows the possibly-stale fallback url immediately while the fresh fetch is in flight, then swaps to the resolved value — no loading flicker for the common case. Wired into the memory panel's four photo-display spots (`BlockCanvas.tsx`'s `ImageBlockRow`, `MemoryCard.tsx`'s draft-state image and `MemorySavedReceipt`'s thumbnail). **Chat-transcript images (`UploadThumbnail.tsx`, the actual render spot — not `MessageList.tsx`/`ChatThread` directly) wired in 2026-08-09 too**, closing the gap this row used to flag: gated so the hook only gets a `mediaItemId` when `item.localPreviewUrl` (an instant, non-expiring local blob set at attach time in `ChatInput.tsx`) isn't already serving the image, so a live local blob never triggers a wasted re-fetch — see `System Docs/Public Site.md`'s `UploadThumbnail` row and `Known Gaps.md`'s now-resolved entry. |
 | `display-url.ts` | `withDisplayUrl`, `MediaItemWithUrl` | Signs a display URL for image items only (null for audio/document, null on signing failure). Extracted out of `app/api/media/route.ts` because a `route.ts` file may only export HTTP method handlers — see the file's own header comment and CLAUDE.md's "Next.js App Router `route.ts` files" rule. |
-| `errorCopy.ts` | `sanitizeFailureReason` | Maps a raw `media_items.error_message` to a fixed, pre-written safe phrase for member-facing display — never the raw string (no vendor names, no internal paths). Dependency-free so both server (`services/chat/server/media-context.ts`) and client upload-progress UI can use it. |
+| `errorCopy.ts` | `sanitizeFailureReason`, `isNeedsReupload` | `sanitizeFailureReason` maps a raw `media_items.error_message` to a fixed, pre-written safe phrase for member-facing display — never the raw string (no vendor names, no internal paths). `isNeedsReupload` checks for the specific `NEEDS_REUPLOAD_ERROR_MESSAGE` case so `UploadThumbnail.tsx`/`MediaGallery.tsx` can swap their retry action for a re-attach prompt. Dependency-free so both server (`services/chat/server/media-context.ts`) and client upload-progress UI can use it — literal string matches, not imports of the actual constants (`index.ts` pulls in `getAdminClient`). |
 | `types.ts` | `MediaItem`, `MediaItemStatus`, `MediaItemType` | Shared row shape. |
 
 ---
 
 ## The pipeline (`processMediaItem`)
 
-Entry point. Called from four places today: `POST /api/media/[id]/start-processing`
+Entry point. Called from three places today: `POST /api/media/[id]/start-processing`
 (the primary trigger — see "Trigger ordering" below), `POST /api/media/[id]/retry`
-(reprocessing a settled or stale-processing item), `POST /api/media/upload-url`'s
-dedup branch (reprocessing a previously-failed duplicate match), and the
-stale-pending sweep's `recovered` bucket (`app/api/cron/media-sweep`, via
-`sweepStalePendingItems`). The Supabase Database Webhook
-(`app/api/webhooks/media-process/route.ts`) does **not** call it —
-intentionally, see "Trigger ordering". Idempotency: re-fetches the row and
+(via `verifyAndReprocess` — reprocessing a settled or stale-processing item,
+or the manual duplicate-match backstop, see "Duplicate uploads" below), and
+the stale-pending sweep's `recovered` bucket (`app/api/cron/media-sweep`,
+via `sweepStalePendingItems`). `POST /api/media/upload-url`'s dedup branch
+does **not** call it — it used to, but never auto-reprocesses anything as of
+the duplicate-uploads fix (see "Duplicate uploads" below). The Supabase
+Database Webhook (`app/api/webhooks/media-process/route.ts`) does **not**
+call it either — intentionally, see "Trigger ordering". Idempotency:
+re-fetches the row and
 no-ops unless `status === 'pending'` (a defensive re-check — each caller has
 its own idempotency guard too, this is the shared last line of defense).
 Sets `status: 'processing'`, then dispatches on `item.type` inside a
@@ -137,8 +140,13 @@ route-level export, matching a pre-existing redundant-but-harmless pattern).
 This was first fixed on the webhook and retry routes; `upload-url/route.ts`'s
 dedup-reprocess branch was found to have the identical gap later (missed in
 the first pass since it wasn't one of the "obvious" trigger routes) and
-fixed the same way, and `start-processing`/the cron route's pending-recovery
-retrigger were both built with `after()` from the start.
+fixed the same way at the time — that branch has since been removed
+entirely (not just `after()`-wrapped) by the duplicate-uploads fix, see
+"Duplicate uploads" below, so this route no longer needs `after()` at all.
+`start-processing`/the cron route's pending-recovery retrigger were both
+built with `after()` from the start. `verifyAndReprocess`
+(`services/media/processor.ts`) is the current sole owner of triggering a
+reprocess against an existing row — see "Duplicate uploads".
 
 Testing note: `after()` throws when called outside a real Next.js
 request-scoped context, which a route handler invoked directly in Vitest
@@ -190,6 +198,89 @@ job without waiting for the next cron tick. Logged with
 since a stale `'processing'` item's `error_message` is always null (that's
 the marker of the stuck state) and wouldn't otherwise distinguish this from
 an ordinary failed-item retry in the audit trail.
+
+## Duplicate uploads
+
+`POST /api/media/upload-url` dedups by client-computed `content_hash`
+(`findDuplicateMediaItem`) — same member, same chat, identical file bytes.
+Two things changed here together, found during Step 2 verification:
+
+**1. A match is always just reported, never silently acted on.** This route
+previously force-reset a `failed` match to `'pending'` and auto-reprocessed
+it, transparently — the member saw no signal beyond a small warning icon,
+and it assumed the original bytes were still in Storage without checking.
+Confirmed broken in production: an upload interrupted mid-PUT on cellular
+(the row still reached `'processing'`) had every subsequent dedup-triggered
+reprocess fail identically forever with `"Storage object not available
+after 5 attempts"` — a real file-is-gone case being silently retried
+against forever, not a timing race. Now every match just reports the row's
+real, untouched status — `{ mediaItemId, duplicate: true, status }` — and
+the client decides what to show:
+- `ready` — the real thumbnail renders with a small "Already uploaded"
+  label (`UploadThumbnail.tsx`'s `duplicateLabel` prop) — not text-only.
+- `pending`/`processing` — same thumbnail treatment, "Already being
+  processed".
+- `failed` — same thumbnail, "Matches a previous upload that failed", with
+  the item's *existing* retry badge (now genuinely live, not silently
+  bypassed) as the explicit "choose to retry" action Part 1 asked for.
+
+This is carried end-to-end via `useMediaUpload.ts`'s `UploadResult.duplicate`
+(previously computed server-side and dropped at the hook boundary — nothing
+downstream could act on it even though the server always knew) and a new
+client-authored marker, `[MEDIA_UPLOAD_DUPLICATE: filename | media_item_id |
+type | status]` (`ChatInput.tsx` writes it instead of `[MEDIA_UPLOAD: ...]`
+when `result.duplicate`), parsed by `MessageList.tsx`'s
+`MEDIA_UPLOAD_DUPLICATE_RE` the same way `MEDIA_UPLOAD`/`MEDIA_UPLOAD_FAILED`
+already are. Registered in `registry.ts` (`MEDIA_UPLOAD_DUPLICATE_MARKER`,
+`dispatch: 'client'`) purely so it strips from prose everywhere else
+(`createMemoryFromAnchor`) instead of leaking raw bracket text, same
+reasoning as `MEDIA_UPLOAD_MARKER`'s own doc comment.
+
+**2. Never reprocess/retry against an assumed-present file.**
+`verifyAndReprocess` (`services/media/processor.ts`) is now the *only* place
+an existing row gets reprocessed — `objectExists` first, always:
+- File present → resets to `'pending'`, triggers `processMediaItem`
+  (`after()`-wrapped), returns `'reprocessing'`.
+- File missing → marks `'failed'` with `NEEDS_REUPLOAD_ERROR_MESSAGE`
+  (`'This file needs to be uploaded again'`), returns `'needs_reupload'`
+  **without** calling `processMediaItem` — retrying again would fail
+  identically forever. `POST /api/media/[id]/retry` surfaces this as
+  `{ ok: true, needsReupload: true }`; both `UploadThumbnail.tsx` and
+  `MediaGallery.tsx` check this (via `errorCopy.ts`'s `isNeedsReupload`,
+  checked against the response directly for instant feedback, or against
+  the DB-persisted `error_message` for an item that already carries it from
+  a prior attempt) and swap the retry action for a disabled badge / hidden
+  button plus a "please re-attach" message — a doomed retry is never
+  offered twice.
+
+One exception where a match skips the dedup-report path entirely: a
+`failed` match whose file is confirmed missing (`objectExists` false) is a
+non-match for practical purposes — there's nothing to point the member at.
+`upload-url/route.ts` falls through to an ordinary fresh-upload response
+(`{ signedUrl, mediaItemId }`, reusing the existing row's id/storage_path
+rather than minting a new one) instead of a `duplicate: true` response,
+since the client already has real bytes in hand right now, mid-attach — no
+reason to make the member click a retry badge first when a real upload can
+just happen immediately. `useMediaUpload.ts` needs zero special-case code
+for this: it's indistinguishable from a genuinely fresh upload from that
+point on.
+
+As a consequence, `upload-url/route.ts` no longer calls `processMediaItem`
+at all (its old dedup-reprocess branch and the `after()`/`maxDuration=900`
+it needed are both gone) — reprocessing an existing row only ever happens
+through `verifyAndReprocess`, called from `retry/route.ts`.
+
+A second, pre-existing gap found and fixed alongside this: `stripMediaMarkers`
+(`services/chat/server/media-context.ts`, the function that strips marker
+syntax out of what's actually sent to the model) had its own hand-rolled
+pattern that only matched `MEDIA_UPLOAD` — `MEDIA_UPLOAD_FAILED` was never
+stripped and leaked as raw bracket text straight into the model's own
+context on any client-side pre-upload failure, undetected until this fix
+went looking for the same class of leak in the new `MEDIA_UPLOAD_DUPLICATE`
+marker. Rebuilt to import the same canonical pattern sources
+(`mediaMarkerPatterns.ts`) `registry.ts` and `MessageList.tsx` already use,
+so a fourth marker can't silently repeat this — verified with explicit
+tests (`media-context.test.ts`), not assumed safe by construction.
 
 Mid-pipeline visibility: `logPipelineStepStarted` logs
 `MEDIA_PIPELINE_STEP_STARTED` (metadata `pipeline_step`, same key/values the

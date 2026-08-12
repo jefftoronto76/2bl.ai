@@ -11,9 +11,6 @@
     "app/api/media/[id]/start-processing/route.ts": {
       "maxDuration": 900
     },
-    "app/api/media/upload-url/route.ts": {
-      "maxDuration": 900
-    },
     "app/api/cron/media-sweep/route.ts": {
       "maxDuration": 900
     }

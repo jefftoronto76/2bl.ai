@@ -10,24 +10,34 @@
 // Dedup: if the client supplies a contentHash (SHA-256 of the file bytes,
 // computed client-side in useMediaUpload.ts — bytes never reach this server),
 // an existing media_items row from the same member, in the same chat, with
-// the same hash is reused instead of creating an independent row. A match
-// against a previously-failed row is reprocessed directly (same pattern as
-// the retry endpoint), rather than staying a dead, permanently-failed row.
+// the same hash is reused instead of creating an independent row.
+//
+// This route NEVER auto-reprocesses a matched row, for any status —
+// previously a `failed` match was silently reset to pending and
+// reprocessed here, transparently, with no member-visible signal beyond a
+// small warning icon. That looked safe but wasn't: it assumed the original
+// file bytes were still in Storage without checking, and a confirmed
+// production case (an upload interrupted mid-PUT on cellular, whose row
+// still reached 'processing') showed it retrying forever against a file
+// that was never actually there, always failing with the same misleading
+// "Storage object not available" message. Every match is now just reported
+// honestly (real status, untouched) so the member can see what actually
+// happened and choose to retry via POST /api/media/[id]/retry (which does
+// verify Storage first — see verifyAndReprocess, services/media/processor.ts).
+//
+// One exception: a `failed` match whose file is confirmed missing skips the
+// "report as duplicate" response entirely and instead falls through to an
+// ordinary fresh-upload response (reusing the same row/storage_path) — the
+// client already has real bytes in hand right now, mid-attach, so there's
+// no reason to make the member click a doomed retry badge first when a real
+// upload can just happen immediately.
 
-import { after } from 'next/server'
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMediaItem, findDuplicateMediaItem, isMediaAuditEnabled, logMediaEvent, updateMediaItem, type MediaItemType } from '@/services/media'
-import { buildMediaStoragePath, generateSignedUploadUrl } from '@/services/media/storage'
-import { processMediaItem } from '@/services/media/processor'
+import { buildMediaStoragePath, generateSignedUploadUrl, objectExists } from '@/services/media/storage'
 import { AuditAction } from '@/services/audit/types'
-
-// 15 min — Vercel Pro plan, matches the other processMediaItem trigger
-// routes. This route only needs it for the dedup-reprocess branch below
-// (a previously-failed duplicate match), which drives the same pipeline.
-export const maxDuration = 900
-export const runtime = 'nodejs'
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
@@ -149,11 +159,12 @@ export async function POST(req: Request) {
   if (contentHash) {
     const existing = await findDuplicateMediaItem({ tenantId, memberId, chatId, contentHash })
     if (existing) {
-      // A previously-failed match is reprocessed directly (same pattern as
-      // POST /api/media/[id]/retry) rather than reused as a dead row — the
-      // original bytes are assumed still in Storage, matching retry's own
-      // assumption. ready/pending/processing matches need no action at all.
-      if (existing.status === 'failed') {
+      // A `failed` match whose file never actually reached Storage isn't a
+      // real duplicate to report — there is nothing to point the member at.
+      // Skip the dedup response entirely and fall through to an ordinary
+      // fresh upload, reusing this row's id/storage_path instead of minting
+      // a new one, since the client has real bytes in hand right now.
+      if (existing.status === 'failed' && !(await objectExists(existing.storage_path))) {
         await updateMediaItem(existing.id, {
           status: 'pending',
           error_message: null,
@@ -161,20 +172,46 @@ export async function POST(req: Request) {
           classification: null,
           processed_at: null,
         })
-        // after() keeps this invocation alive until the promise settles —
-        // a bare `void` here had the same permanently-stuck-at-'processing'
-        // risk Step 1 fixed for the webhook/retry routes, just missed on
-        // this third direct-call site at the time.
-        after(() =>
-          processMediaItem(existing).catch((err) => {
-            console.error('[media/upload-url] dedup reprocess threw unexpectedly', {
-              mediaItemId: existing.id,
-              error: err instanceof Error ? err.message : String(err),
-            })
-          }),
-        )
+
+        const { signedUrl } = await generateSignedUploadUrl(existing.storage_path)
+
+        if (isMediaAuditEnabled()) {
+          await logMediaEvent({
+            tenant_id: tenantId,
+            member_id: memberId,
+            media_item_id: existing.id,
+            action: AuditAction.MEDIA_UPLOAD_DEDUPED,
+            outcome: 'success',
+            correlation_id: crypto.randomUUID(),
+            metadata: {
+              original_filename: filename,
+              mime_type: mimeType,
+              file_size_bytes: fileSize,
+              chat_id: chatId,
+              matched_previous_status: existing.status,
+              reprocessed: false,
+              needs_reupload: true,
+              fresh_upload_fallback: true,
+              timestamp: new Date().toISOString(),
+            },
+          })
+        }
+
+        console.log('[media/upload-url] duplicate matched a failed row with no file in Storage — falling back to a fresh upload against the same row', {
+          mediaItemId: existing.id,
+          chatId,
+          memberId,
+          tenantId,
+        })
+
+        return Response.json({ signedUrl, mediaItemId: existing.id })
       }
 
+      // Every other match (ready/pending/processing, or a failed match
+      // whose file IS present) is just reported honestly — this route never
+      // auto-reprocesses. A failed match keeps its real 'failed' status (not
+      // silently reset to 'pending') so the client can show a real retry
+      // affordance instead of silently reprocessing behind the member's back.
       if (isMediaAuditEnabled()) {
         await logMediaEvent({
           tenant_id: tenantId,
@@ -189,7 +226,7 @@ export async function POST(req: Request) {
             file_size_bytes: fileSize,
             chat_id: chatId,
             matched_previous_status: existing.status,
-            reprocessed: existing.status === 'failed',
+            reprocessed: false,
             timestamp: new Date().toISOString(),
           },
         })
@@ -203,17 +240,7 @@ export async function POST(req: Request) {
         tenantId,
       })
 
-      // Report the item's ACTUAL current status back to the client — a
-      // failed match was just reset to pending above (and reprocessing
-      // kicked off), so that's what's reported for that case; ready/pending/
-      // processing matches are untouched and reported as-is. The client uses
-      // this to seed its local media-item state correctly instead of
-      // assuming every dedup response means "brand new, still pending" —
-      // that assumption previously reset an already-`ready` item back to
-      // `pending` client-side on every re-attach.
-      const status = existing.status === 'failed' ? 'pending' : existing.status
-
-      return Response.json({ mediaItemId: existing.id, duplicate: true, status })
+      return Response.json({ mediaItemId: existing.id, duplicate: true, status: existing.status })
     }
   }
 

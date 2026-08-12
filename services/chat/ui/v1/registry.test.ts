@@ -11,6 +11,7 @@ import {
   MEMORY_TITLE_MARKER,
   MEDIA_UPLOAD_MARKER,
   MEDIA_UPLOAD_FAILED_MARKER,
+  MEDIA_UPLOAD_DUPLICATE_MARKER,
 } from './registry'
 
 function bookingRegistry() {
@@ -264,14 +265,50 @@ describe('MEDIA_UPLOAD_FAILED_MARKER definition', () => {
   })
 })
 
+describe('MEDIA_UPLOAD_DUPLICATE_MARKER definition', () => {
+  it('is a four-field client-dispatch marker', () => {
+    expect(MEDIA_UPLOAD_DUPLICATE_MARKER.type).toBe('MEDIA_UPLOAD_DUPLICATE')
+    expect(MEDIA_UPLOAD_DUPLICATE_MARKER.fieldCount).toBe(4)
+    expect(MEDIA_UPLOAD_DUPLICATE_MARKER.dispatch).toBe('client')
+  })
+
+  it('extracts a [MEDIA_UPLOAD_DUPLICATE: filename | media_item_id | type | status] marker and strips it from prose', () => {
+    const r = createMarkerRegistry()
+    r.register(MEDIA_UPLOAD_DUPLICATE_MARKER)
+    const { prose, markers } = r.parse(
+      '[MEDIA_UPLOAD_DUPLICATE: dog.jpg | c6791970-5a98-4681-a20c-32867de9d153 | image | ready] Same photo again?',
+    )
+    expect(prose).toBe('Same photo again?')
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toEqual({
+      type: 'MEDIA_UPLOAD_DUPLICATE',
+      fields: ['dog.jpg', 'c6791970-5a98-4681-a20c-32867de9d153', 'image', 'ready'],
+      raw: '[MEDIA_UPLOAD_DUPLICATE: dog.jpg | c6791970-5a98-4681-a20c-32867de9d153 | image | ready]',
+    })
+  })
+
+  // Same class of bug MEDIA_UPLOAD_MARKER was registered here to prevent
+  // (see its own doc comment, registry.ts) — a raw [MEDIA_UPLOAD_DUPLICATE: ...]
+  // string must never leak into a memory's title/body via createMemoryFromAnchor,
+  // which reads a message's raw stored content through this shared registry.
+  it('strips cleanly from prose with no other markers registered alongside it', () => {
+    const r = createMarkerRegistry()
+    r.register(MEDIA_UPLOAD_DUPLICATE_MARKER)
+    const { prose } = r.parse('[MEDIA_UPLOAD_DUPLICATE: dog.jpg | id-1 | image | failed]')
+    expect(prose).toBe('')
+    expect(prose).not.toContain('MEDIA_UPLOAD_DUPLICATE')
+  })
+})
+
 describe('createDefaultRegistry — NAME/EMAIL/PHONE stripping + BOOKING coexistence', () => {
-  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, SAVE_MEMORY, MEMORY_TITLE, MEDIA_UPLOAD, and MEDIA_UPLOAD_FAILED', () => {
+  it('registers BOOKING, NAME, EMAIL, PHONE, ACCOUNT_CREATE, SAVE_MEMORY, MEMORY_TITLE, MEDIA_UPLOAD, MEDIA_UPLOAD_FAILED, and MEDIA_UPLOAD_DUPLICATE', () => {
     const defs = createDefaultRegistry().getDefinitions()
     expect(defs.map(d => d.type).sort()).toEqual([
       'ACCOUNT_CREATE',
       'BOOKING',
       'EMAIL',
       'MEDIA_UPLOAD',
+      'MEDIA_UPLOAD_DUPLICATE',
       'MEDIA_UPLOAD_FAILED',
       'MEMORY_TITLE',
       'NAME',
