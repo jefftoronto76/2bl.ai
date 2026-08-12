@@ -9,7 +9,7 @@
 // Layout (top → bottom):
 //   • collapse toggle
 //   • Search        — subtle until recentSessions.length >= searchThreshold
-//   • New Chat · Uploads · Share Heirloom
+//   • New Chat · Share Heirloom
 //   • Conversations — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
 //   • Stories       — Create action, then the story list, each row carrying
@@ -40,7 +40,6 @@ import {
   SquarePen,
   Star,
   Trash2,
-  Upload,
   UserPlus,
 } from 'lucide-react';
 import { useChatStore } from '../chatStore';
@@ -67,7 +66,6 @@ export interface SidebarV2Props {
 
   // Nav actions (New Chat + the conversation list come from the store)
   onMedia?: () => void;
-  onUploads?: () => void;
   onShareHeirloom?: () => void;
   onSearch?: (query: string) => void;
 
@@ -343,7 +341,6 @@ export function SidebarV2({
   starredStoryIds = [],
   storiesDisabled = false,
   onMedia,
-  onUploads,
   onShareHeirloom,
   onSearch,
   onCreateStory,
@@ -456,15 +453,6 @@ export function SidebarV2({
         >
           <Images size={16} className="flex-shrink-0" />
           {isExpanded && <span className="font-body text-sm font-normal truncate">Media</span>}
-        </button>
-        <button
-          type="button"
-          aria-label="Uploads"
-          onClick={onUploads}
-          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
-        >
-          <Upload size={16} className="flex-shrink-0" />
-          {isExpanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
         </button>
         <button
           type="button"
