@@ -270,6 +270,27 @@ at all (its old dedup-reprocess branch and the `after()`/`maxDuration=900`
 it needed are both gone) — reprocessing an existing row only ever happens
 through `verifyAndReprocess`, called from `retry/route.ts`.
 
+## Upload-url rejections (before a row exists)
+
+`POST /api/media/upload-url` can reject a request before any `media_items`
+row is created — invalid JSON, a missing required field, HEIC, an
+unsupported mime type, an oversized file, or a member lookup failure. Found
+during the `MEDIA_UPLOAD_FAILED`-leak investigation above: none of these had
+any audit trail at all, under any action, which is also why that
+investigation could only give a partial picture of how often client-side
+pre-upload failures actually happen. `logUploadRejected` (a local helper in
+`upload-url/route.ts`) now logs each of these via the base `logEvent`
+directly — `AuditAction.MEDIA_UPLOAD_REJECTED`, one shared action with
+`metadata.reason` distinguishing which of the 9 cases fired (not one action
+per case — same reasoning as `MEDIA_PROCESS_FAILED`'s `pipeline_step`), and
+`target_type: 'upload_attempt'` / `target_id: null` since there's no row yet
+to attach to. `logMediaEvent` doesn't fit here — it hardcodes `target_type:
+'media_item'` and requires a `media_item_id` neither of which exist at this
+point in the request. Deliberately excludes the route's two earlier failure
+points, unauthenticated (401) and tenant-not-found (400) — a different
+category of failure, out of scope for this action. See `Utilities/Audit.md`
+for the full reason-value list.
+
 A second, pre-existing gap found and fixed alongside this: `stripMediaMarkers`
 (`services/chat/server/media-context.ts`, the function that strips marker
 syntax out of what's actually sent to the model) had its own hand-rolled

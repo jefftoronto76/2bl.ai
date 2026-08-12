@@ -37,6 +37,15 @@ export const AuditAction = {
   MEDIA_UPLOAD_COMPLETED: 'media.upload_completed',
   MEDIA_UPLOAD_FAILED: 'media.upload_failed',
   MEDIA_UPLOAD_DEDUPED: 'media.upload_deduped',
+  // A POST /api/media/upload-url rejection that happens before a
+  // media_items row exists (invalid request, HEIC, unsupported type,
+  // oversized, member not found) — previously had no audit trail at all,
+  // under any action. One action, metadata.reason distinguishes which —
+  // same reasoning as MEDIA_PROCESS_FAILED's pipeline_step: these are all
+  // the same kind of event (an upload attempt was rejected), not different
+  // kinds. target_type: 'upload_attempt', target_id: null — no row to
+  // attach to yet, see upload-url/route.ts.
+  MEDIA_UPLOAD_REJECTED: 'media.upload_rejected',
   // chat_id backfill for items uploaded before their session existed (the
   // first message of a brand-new conversation always uploads before the
   // session is created — see app/api/sessions/route.ts POST)

@@ -37,7 +37,44 @@ import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMediaItem, findDuplicateMediaItem, isMediaAuditEnabled, logMediaEvent, updateMediaItem, type MediaItemType } from '@/services/media'
 import { buildMediaStoragePath, generateSignedUploadUrl, objectExists } from '@/services/media/storage'
+import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
+
+// Rejections here happen before a media_items row exists, so there's no
+// media_item_id to log against — logMediaEvent (the wrapper every other
+// call in this file uses) requires one and hardcodes target_type:
+// 'media_item', so it doesn't fit. Calls the base logEvent directly
+// instead, same as resolveMediaContext (services/chat/server/media-context.ts)
+// already does for CHAT_MEDIA_CONTEXT_RESOLVED — an existing precedent for
+// "doesn't fit the media-item envelope, call the base function directly."
+// One shared action (MEDIA_UPLOAD_REJECTED) for all reasons, not one per
+// reason — same call as MEDIA_PROCESS_FAILED's pipeline_step: these are all
+// the same kind of event, distinguished by metadata.reason, not different
+// kinds of event. 401 (no session) and tenant-not-found are deliberately
+// NOT covered here — auth/tenant-resolution failures, a different category
+// from "this upload attempt was rejected," and out of scope for this fix.
+async function logUploadRejected(
+  tenantId: string,
+  clerkUserId: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  if (!isMediaAuditEnabled()) return
+  await logEvent({
+    action: AuditAction.MEDIA_UPLOAD_REJECTED,
+    tenant_id: tenantId,
+    actor_type: 'user',
+    clerk_user_id: clerkUserId,
+    target_type: 'upload_attempt',
+    target_id: null,
+    outcome: 'failure',
+    metadata: {
+      reason,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    },
+  })
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
@@ -91,6 +128,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json()
   } catch {
+    await logUploadRejected(tenantId, user.providerUserId, 'invalid_json')
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
@@ -108,12 +146,39 @@ export async function POST(req: Request) {
   // useMediaUpload.ts's sha256Hex). No hash means no dedup check for this upload.
   const contentHash = typeof body.contentHash === 'string' ? body.contentHash : null
 
-  if (!filename) return Response.json({ error: 'filename is required' }, { status: 400 })
-  if (!mimeType) return Response.json({ error: 'mimeType is required' }, { status: 400 })
-  if (fileSize === null) return Response.json({ error: 'fileSize is required' }, { status: 400 })
+  if (!filename) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_filename', {
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'filename is required' }, { status: 400 })
+  }
+  if (!mimeType) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_mime_type', {
+      original_filename: filename,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'mimeType is required' }, { status: 400 })
+  }
+  if (fileSize === null) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_file_size', {
+      original_filename: filename,
+      mime_type: mimeType,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'fileSize is required' }, { status: 400 })
+  }
 
   // HEIC rejection — clear user-friendly message
   if (mimeType === 'image/heic' || mimeType === 'image/heif' || filename.toLowerCase().endsWith('.heic')) {
+    await logUploadRejected(tenantId, user.providerUserId, 'heic_unsupported', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json(
       {
         error:
@@ -124,15 +189,36 @@ export async function POST(req: Request) {
   }
 
   if (!ACCEPTED_MIME_TYPES.has(mimeType)) {
+    await logUploadRejected(tenantId, user.providerUserId, 'unsupported_mime_type', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: `File type not supported: ${mimeType}` }, { status: 415 })
   }
 
   if (fileSize > MAX_FILE_SIZE) {
+    await logUploadRejected(tenantId, user.providerUserId, 'file_too_large', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: 'File exceeds the 50 MB size limit' }, { status: 413 })
   }
 
   const type = classifyMimeType(mimeType)
   if (!type) {
+    // Currently unreachable in practice — every entry in ACCEPTED_MIME_TYPES
+    // already classifies successfully — but logged anyway in case the two
+    // sets ever drift apart.
+    await logUploadRejected(tenantId, user.providerUserId, 'unclassifiable_mime_type', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: 'Unable to classify file type' }, { status: 415 })
   }
 
@@ -150,6 +236,12 @@ export async function POST(req: Request) {
       clerkUserId: user.providerUserId,
       tenantId,
       error: memberErr?.message,
+    })
+    await logUploadRejected(tenantId, user.providerUserId, 'member_not_found', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
     })
     return Response.json({ error: 'Member record not found' }, { status: 403 })
   }

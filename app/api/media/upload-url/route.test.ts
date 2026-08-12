@@ -18,6 +18,7 @@ const mockFindDuplicateMediaItem = vi.fn()
 const mockUpdateMediaItem = vi.fn()
 const mockIsMediaAuditEnabled = vi.fn()
 const mockLogMediaEvent = vi.fn()
+const mockLogEvent = vi.fn()
 const mockBuildMediaStoragePath = vi.fn()
 const mockGenerateSignedUploadUrl = vi.fn()
 const mockObjectExists = vi.fn()
@@ -26,6 +27,10 @@ const mockSingle = vi.fn()
 vi.mock('@/services/auth', () => ({
   getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
+}))
+
+vi.mock('@/services/audit', () => ({
+  logEvent: (...args: unknown[]) => mockLogEvent(...args),
 }))
 
 vi.mock('@/services/auth/supabase-admin', () => ({
@@ -112,6 +117,7 @@ beforeEach(() => {
   mockUpdateMediaItem.mockReset().mockResolvedValue(undefined)
   mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
   mockLogMediaEvent.mockReset().mockResolvedValue(undefined)
+  mockLogEvent.mockReset().mockResolvedValue(undefined)
   mockBuildMediaStoragePath.mockReset().mockReturnValue(`tenant-1/media/member-1/${FIXED_UUID}/letter.pdf`)
   mockGenerateSignedUploadUrl.mockReset().mockResolvedValue({ signedUrl: 'https://signed.example/upload', token: 'tok' })
   mockObjectExists.mockReset().mockResolvedValue(true)
@@ -119,42 +125,113 @@ beforeEach(() => {
 })
 
 describe('POST /api/media/upload-url — existing validation, unaffected by dedup', () => {
-  it('returns 401 when there is no authenticated user', async () => {
+  it('returns 401 when there is no authenticated user, and logs nothing (out of scope for MEDIA_UPLOAD_REJECTED)', async () => {
     mockGetCurrentUser.mockResolvedValue(null)
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(401)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when no tenant resolves', async () => {
+  it('returns 400 when no tenant resolves, and logs nothing (out of scope for MEDIA_UPLOAD_REJECTED)', async () => {
     mockGetTenantFromRequest.mockResolvedValue(null)
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(400)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 on invalid JSON body', async () => {
+  it('returns 400 on invalid JSON body and logs MEDIA_UPLOAD_REJECTED (invalid_json)', async () => {
     const res = await POST(makeInvalidJsonRequest())
     expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_UPLOAD_REJECTED,
+        tenant_id: 'tenant-1',
+        actor_type: 'user',
+        clerk_user_id: 'clerk-1',
+        target_type: 'upload_attempt',
+        target_id: null,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ reason: 'invalid_json' }),
+      }),
+    )
   })
 
-  it('returns 400 when a required field is missing', async () => {
+  it('returns 400 when filename is missing and logs MEDIA_UPLOAD_REJECTED (missing_filename)', async () => {
     const res = await POST(makeRequest({ ...validBody, filename: undefined }))
     expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_filename' }),
+      }),
+    )
   })
 
-  it('rejects HEIC with a friendly message', async () => {
+  it('returns 400 when mimeType is missing and logs MEDIA_UPLOAD_REJECTED (missing_mime_type)', async () => {
+    const res = await POST(makeRequest({ ...validBody, mimeType: undefined }))
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_mime_type' }),
+      }),
+    )
+  })
+
+  it('returns 400 when fileSize is missing and logs MEDIA_UPLOAD_REJECTED (missing_file_size)', async () => {
+    const res = await POST(makeRequest({ ...validBody, fileSize: undefined }))
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_file_size' }),
+      }),
+    )
+  })
+
+  it('rejects HEIC with a friendly message and logs MEDIA_UPLOAD_REJECTED (heic_unsupported)', async () => {
     const res = await POST(makeRequest({ ...validBody, filename: 'photo.heic', mimeType: 'image/heic' }))
     expect(res.status).toBe(415)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'heic_unsupported' }),
+      }),
+    )
   })
 
-  it('rejects an oversized file', async () => {
+  it('rejects an unsupported (non-HEIC) mime type and logs MEDIA_UPLOAD_REJECTED (unsupported_mime_type)', async () => {
+    const res = await POST(makeRequest({ ...validBody, filename: 'clip.mov', mimeType: 'video/quicktime' }))
+    expect(res.status).toBe(415)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'unsupported_mime_type' }),
+      }),
+    )
+  })
+
+  it('rejects an oversized file and logs MEDIA_UPLOAD_REJECTED (file_too_large)', async () => {
     const res = await POST(makeRequest({ ...validBody, fileSize: 51 * 1024 * 1024 }))
     expect(res.status).toBe(413)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'file_too_large' }),
+      }),
+    )
   })
 
-  it('returns 403 when the member record cannot be resolved', async () => {
+  it('returns 403 when the member record cannot be resolved and logs MEDIA_UPLOAD_REJECTED (member_not_found)', async () => {
     mockSingle.mockResolvedValue({ data: null, error: { message: 'not found' } })
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(403)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'member_not_found' }),
+      }),
+    )
+  })
+
+  it('skips MEDIA_UPLOAD_REJECTED logging entirely when media audit logging is disabled', async () => {
+    mockIsMediaAuditEnabled.mockReturnValue(false)
+    const res = await POST(makeInvalidJsonRequest())
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 })
 
