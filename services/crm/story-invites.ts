@@ -7,8 +7,9 @@
 // row that gets claimed exactly once. A story invite link is a durable
 // pointer — "this token grants access to this story" — that many different
 // people can each click independently and get added, without ever
-// consuming or mutating a shared row. See CLAUDE.md's hard constraint on
-// this feature: zero shared code path with createMemberInvite/
+// consuming or mutating a shared row. This feature's own deliberate design
+// constraint (not a CLAUDE.md rule — CLAUDE.md has no story-invite-specific
+// constraint of any kind): zero shared code path with createMemberInvite/
 // validateMemberToken/acceptInvite/linkInvitedMember.
 //
 // Grants are recorded on artifact_subscribers (artifact_id, member_id) —
