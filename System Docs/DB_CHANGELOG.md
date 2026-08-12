@@ -36,9 +36,6 @@ row (`artifacts.member_id`/`artifacts.user_id`); this table only holds
 grants to members *beyond* the creator.
 
 **Notes:**
-- **Zero application code references this table as of 2026-08-10**
-  (repo-wide grep confirmed) — the schema exists, but nothing reads or
-  writes it yet. Do not assume this is wired into the app.
 - Unique on `(artifact_id, member_id)` — a member can be granted access to
   a given artifact at most once; a repeat grant is idempotent-shaped, not
   stackable.
@@ -46,6 +43,36 @@ grants to members *beyond* the creator.
   to independently re-run this check against the live schema — the shape
   above is Jeff's own confirmed DDL, supplied directly for this entry, not
   inferred or copied without verification.
+- **Corrected 2026-08-11 — no longer schema-only.** This entry originally
+  said "zero application code references this table... do not assume this
+  is wired into the app," accurate the same day it was written. As of the
+  same-day reusable-story-invite-links feature (see the `story_invite_links`
+  entry directly below), `services/crm/story-invites.ts`'s `acceptStoryInvite`
+  writes a row here on every story-invite grant, and `stories.ts`'s
+  `listStories`/`listStoryCollaborators` read it back — live and wired, not
+  scaffolding. See `System Docs/Database Schema.md`'s own `artifact_subscribers`
+  row, corrected the same way.
+
+---
+
+## 2026-08-09 — No schema change — Real Story Creation
+
+**Type:** Note (no schema change)
+
+A story is an `artifacts` row with `type='story'` — a new value on an
+existing general-purpose, unconstrained `text` column (no CHECK constraint,
+confirmed via `information_schema.columns`), sibling to memories'
+`type='memory'` rows on the same table. Logged here, same as the
+`auth_surface` and Heirloom-modal-retheme notes below, so no one goes
+hunting for a migration that doesn't exist — this shipped with zero DDL.
+
+**Implemented in:** `services/crm/stories.ts` (`createStory`/`listStories`/
+`discardStory`), mirroring `services/crm/memories.ts`'s structure. See
+`System Docs/Database Schema.md`'s `artifacts` row and
+`System Docs/Known Gaps.md`'s "Real story creation and persistence" entry
+for the full mechanics.
+
+---
 
 ## 2026-08-10 — story_invite_links (reusable-story-invite-links)
 

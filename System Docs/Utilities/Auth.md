@@ -114,6 +114,30 @@ the error is surfaced to the user — a transient failure is never misread as
 `#clerk-captcha` div must be present for sign-ins as well — `CaptchaSlot`
 renders unconditionally in the MagicLinkCard form.
 
+**Invite-token → Clerk `unsafeMetadata` write (added 2026-08-11, PR #351;
+`heirloom_invite_token` predates this doc entry, `heirloom_story_invite_token`
+is new):** on the sign-up path only (never sign-in — an existing profile is
+never touched), `sendCode` (`services/auth/providers/clerk/client.ts`) writes
+whichever of `contact.inviteToken`/`contact.storyInviteToken` are present
+into Clerk `unsafeMetadata` as `heirloom_invite_token`/
+`heirloom_story_invite_token`, in **one** `signUp.update({ unsafeMetadata })`
+call — never two separate calls, since `unsafeMetadata` is a full-object
+**replace**, not a merge, and a second call would silently wipe whatever the
+first one wrote. Non-fatal by design, same posture as the name-attachment
+write immediately above it in the same function: a failure is logged
+(`logAuthStep`, step `signUp_update_invite_token`) but never blocks the
+sign-up itself. The Clerk `user.created`/`user.updated` webhook
+(`app/api/webhooks/clerk/route.ts`) reads these two keys back off
+`unsafe_metadata` to become authoritative for the resulting `members` row —
+`heirloom_invite_token` drives `linkInvitedMember` (`services/members`),
+`heirloom_story_invite_token` drives `acceptStoryInvite`
+(`services/crm/story-invites.ts`) directly, checked in that priority order.
+See `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
+`System Docs/Known Gaps.md`'s webhook-race entry for why the story-invite
+half of this was added — briefly, so the webhook could stop losing a race
+against the client's own accept call and falling through to a generic,
+story-invite-unaware member upsert.
+
 **Required in sign-up form:** `<div id="clerk-captcha" />` (Clerk bot-protection; silently fails without it).
 
 **`middleware.ts` must include** `'/__clerk/(.*)'` in its matcher array (verification callback paths).
