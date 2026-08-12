@@ -601,11 +601,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
         {isMobile && state.isSidebarExpanded && (
           <>
-            <div
-              className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
-              aria-hidden="true"
-              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-            />
             <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
               <SidebarV2
                 stories={stories}
