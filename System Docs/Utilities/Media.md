@@ -8,18 +8,21 @@ Rows live in `media_items` (`type`, `status`, `derived_content`,
 `Database Schema.md`). `POST /api/media/upload-url` INSERTs the `media_items`
 row itself (status `pending`) and returns a signed Storage upload URL; the
 client then PUTs the file bytes directly to Supabase Storage (never through
-our server) — a separate, later request. That INSERT is what a Supabase
-Database Webhook fires on, into `app/api/webhooks/media-process/route.ts` →
-`processMediaItem` — which is why the job can start racing the Storage PUT
-(see `waitForStorageObject` below) rather than being triggered by Storage
-confirming the object exists.
+our server) — a separate, later request. Once that PUT resolves
+successfully, the client calls `POST /api/media/[id]/start-processing`,
+which is what actually triggers `processMediaItem` today. A Supabase
+Database Webhook also still fires on the INSERT itself
+(`app/api/webhooks/media-process/route.ts`), but that route is now an
+intentional no-op — see "Trigger ordering" below for why triggering from the
+INSERT was the root cause of a real production bug, and why the webhook
+route couldn't simply be deleted once that trigger moved.
 
 | File | Exports | Purpose |
 |------|---------|---------|
 | `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS` | The pipeline itself — see "The pipeline" below. |
 | `vision-tool.ts` | `callVisionTool`, `callTextTool`, `AnthropicTool` | Generic forced-tool-use helpers for structured model output — image input and text input respectively, sharing one internal fetch/parse/fallback core. See "The tool-use pattern" below. |
-| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent` (+ types) | `media_items` CRUD and the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape). `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
-| `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request, as the basis for `waitForStorageObject`'s retry loop. |
+| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent`, `sweepStaleProcessingItems`, `MAX_PROCESSING_AGE_SECONDS`, `STALE_PROCESSING_ERROR_MESSAGE`, `sweepStalePendingItems`, `MAX_PENDING_AGE_SECONDS`, `STALE_PENDING_ERROR_MESSAGE` (+ types) | `media_items` CRUD, the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape), and the two stale-row sweep functions the cron route (`app/api/cron/media-sweep`) and the retry route's backstop use. `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
+| `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request — the basis for both `waitForStorageObject`'s retry loop and `sweepStalePendingItems`'s recovered-vs-abandoned check (`index.ts`). |
 | `useMediaUpload.ts` | client hook | Drives the client-side upload flow (signed URL request → direct PUT → `media_items` row creation), content-hash dedup. |
 | `useFreshImageUrl.ts` | `useFreshImageUrl` | Client hook re-resolving a media item's signed display URL at render time via `GET /api/media/[id]/url`, since `sessionImages`' url (`display-url.ts`) carries `storage.ts`'s 60s-expiry signed URL and is never refreshed after session load. Shows the possibly-stale fallback url immediately while the fresh fetch is in flight, then swaps to the resolved value — no loading flicker for the common case. Wired into the memory panel's four photo-display spots (`BlockCanvas.tsx`'s `ImageBlockRow`, `MemoryCard.tsx`'s draft-state image and `MemorySavedReceipt`'s thumbnail). **Chat-transcript images (`UploadThumbnail.tsx`, the actual render spot — not `MessageList.tsx`/`ChatThread` directly) wired in 2026-08-09 too**, closing the gap this row used to flag: gated so the hook only gets a `mediaItemId` when `item.localPreviewUrl` (an instant, non-expiring local blob set at attach time in `ChatInput.tsx`) isn't already serving the image, so a live local blob never triggers a wasted re-fetch — see `System Docs/Public Site.md`'s `UploadThumbnail` row and `Known Gaps.md`'s now-resolved entry. |
 | `display-url.ts` | `withDisplayUrl`, `MediaItemWithUrl` | Signs a display URL for image items only (null for audio/document, null on signing failure). Extracted out of `app/api/media/route.ts` because a `route.ts` file may only export HTTP method handlers — see the file's own header comment and CLAUDE.md's "Next.js App Router `route.ts` files" rule. |
@@ -30,10 +33,17 @@ confirming the object exists.
 
 ## The pipeline (`processMediaItem`)
 
-Entry point, called by the webhook route after signature verification.
-Idempotency: re-fetches the row and no-ops unless `status === 'pending'`
-(a defensive re-check — the route's own idempotency guard is the primary
-one). Sets `status: 'processing'`, then dispatches on `item.type` inside a
+Entry point. Called from four places today: `POST /api/media/[id]/start-processing`
+(the primary trigger — see "Trigger ordering" below), `POST /api/media/[id]/retry`
+(reprocessing a settled or stale-processing item), `POST /api/media/upload-url`'s
+dedup branch (reprocessing a previously-failed duplicate match), and the
+stale-pending sweep's `recovered` bucket (`app/api/cron/media-sweep`, via
+`sweepStalePendingItems`). The Supabase Database Webhook
+(`app/api/webhooks/media-process/route.ts`) does **not** call it —
+intentionally, see "Trigger ordering". Idempotency: re-fetches the row and
+no-ops unless `status === 'pending'` (a defensive re-check — each caller has
+its own idempotency guard too, this is the shared last line of defense).
+Sets `status: 'processing'`, then dispatches on `item.type` inside a
 try/catch that marks the item `'failed'` with `error_message` and logs
 `MEDIA_PROCESS_FAILED` (with a `pipeline_step` breadcrumb — e.g.
 `'claude_vision'`, `'deepgram_transcription'`, `'text_extraction'`,
@@ -41,47 +51,106 @@ try/catch that marks the item `'failed'` with `error_message` and logs
 pipeline funnels through this one catch — none of the three pipeline
 functions below has its own top-level try/catch for unexpected errors.
 
-**Execution lifecycle — why both trigger routes wrap the call in `after()`.**
-`app/api/webhooks/media-process/route.ts` and `app/api/media/[id]/retry/route.ts`
-both invoke `processMediaItem` fire-and-forget (they respond before the job
-finishes, since Supabase's webhook delivery and the retry-click UI both need
-an immediate response, not a 15-minute-long request). Root cause of media
-items getting stuck at `status: 'processing'` forever — no `error_message`,
-no terminal audit event, one for 5+ days — was that a bare
-`void processMediaItem(record).catch(...)` gives Vercel no signal to keep the
-invocation alive past the response: the platform is free to freeze/reap the
-function the instant the response flushes, silently abandoning whatever
-point the still-pending promise had reached. `maxDuration` does not prevent
-this — it only bounds how long a function is *allowed* to run once it's
-actually running; it does nothing to extend an already-fire-and-forgotten
-invocation's life. The evidence for this over a genuine hang: no timeout
-error was ever caught (a real 900s `maxDuration` kill, or a hung dependency,
-would both eventually throw into the outer `catch` and log
-`MEDIA_PROCESS_FAILED`) — total silence forever is the signature of the
-promise never being resumed at all, not of it running long.
+**Trigger ordering — why the webhook is a no-op and `start-processing` exists.**
+Processing used to be triggered by the Supabase Database Webhook firing on
+the `media_items` INSERT — but that INSERT happens inside
+`POST /api/media/upload-url`, before the signed upload URL is even returned
+to the client, let alone before the client's PUT of the file bytes (a
+separate, later request) lands in Storage. `waitForStorageObject` (below)
+existed to close that race with a bounded wait, but PUT duration is
+unbounded and network-dependent while the wait budget is fixed — reproduced
+on demand: same device, same file, same account, reliable success on wifi,
+reliable failure on cellular with `"Storage object not available after 5
+attempts"`. Widening the wait budget doesn't fix this class of bug; only
+triggering after the PUT is confirmed does.
 
-Fix: both routes now wrap the call in `after()` (`next/server`, stable since
-Next 15 — no new dependency), which registers the promise with Vercel's
-lifecycle manager so the invocation stays alive until it settles; the
-existing `maxDuration = 900` then bounds how long that's allowed to take.
-The retry route previously had no `maxDuration` at all (silently inheriting
-the project/plan default, likely far too short for a slow job) — it now
-explicitly sets `maxDuration = 900` to match the webhook route, since it
-drives the identical pipeline. `vercel.json`'s `functions` block mirrors both
-route-level exports, matching the pre-existing (redundant but harmless)
-pattern the webhook route already used.
+Fix: `POST /api/media/[id]/start-processing/route.ts` is now the only
+trigger for a fresh upload. The client (`useMediaUpload.ts`) calls it
+immediately after its own `PUT` to Storage resolves with an ok response —
+so by the time `processMediaItem` runs, the file is already there. It's
+member-authenticated (ownership-checked against the row, same pattern as
+`retry/route.ts` — this is called from the member's own browser, not
+server-to-server) and also absorbs what a separate `media.upload_completed`
+audit event used to log on its own via `POST /api/events/media`; that event
+was deliberately *not* left on the generic events route, since that route
+short-circuits entirely when `ENABLE_MEDIA_AUDIT_LOGGING` is off — keeping
+the trigger there would have meant a logging toggle could silently disable
+the whole media pipeline.
+
+The webhook route can't simply be deleted, or have its Supabase trigger
+config changed from here — Database Webhook configuration lives in Supabase
+Studio, outside this codebase, and Supabase will keep POSTing to whatever
+URL is configured regardless of what this route does with the request. So
+it stays wired but inert: verify the signature, log receipt for
+observability, respond `200` so Supabase doesn't retry-storm it, and stop —
+see the route file's own header comment.
+
+**The gap this opens, and its close: the stale-pending sweep.** Moving the
+trigger to a client-initiated call after the PUT introduces a narrower
+failure mode of its own — a client that closes/crashes between the PUT
+resolving and that follow-up call firing leaves the row at `status='pending'`
+forever, with no error and (unlike a stuck `'processing'` row) no path to
+the stale-processing sweep either, since that only ever looks at
+`'processing'` rows. `sweepStalePendingItems()` (`services/media/index.ts`),
+run by the same cron as the stale-processing sweep, closes this: it selects
+every `'pending'` row older than `MAX_PENDING_AGE_SECONDS` (120s — flat, not
+per-type, since this isn't about how long a pipeline step legitimately
+takes, it's about how long the gap between the PUT resolving and a small,
+file-free POST request should ever plausibly be) and calls `objectExists`
+(the same check `waitForStorageObject` uses) on each to tell two real cases
+apart:
+- **File present in Storage** → only the trigger call was lost, not the
+  upload. Not touched in the DB — `app/api/cron/media-sweep/route.ts`
+  retriggers `processMediaItem` for it directly (`after()`-wrapped, same as
+  every other trigger site).
+- **File not present** → a genuinely abandoned upload (tab closed mid-PUT).
+  Flipped straight to `status='failed'` with
+  `error_message: 'Upload was never completed'` (`STALE_PENDING_ERROR_MESSAGE`),
+  logged the same way the stale-processing sweep logs its own flips
+  (`MEDIA_PROCESS_FAILED`, `pipeline_step: 'stale_pending_sweep'`).
+
+**Execution lifecycle — why every trigger site wraps the call in `after()`.**
+All four call sites above invoke `processMediaItem` fire-and-forget (they
+respond before the job finishes, since a webhook delivery, a retry click, an
+upload request, and a cron tick all need an immediate response, not a
+15-minute-long request). Root cause of media items getting stuck at
+`status: 'processing'` forever — no `error_message`, no terminal audit
+event, one for 5+ days — was that a bare `void processMediaItem(record).catch(...)`
+gives Vercel no signal to keep the invocation alive past the response: the
+platform is free to freeze/reap the function the instant the response
+flushes, silently abandoning whatever point the still-pending promise had
+reached. `maxDuration` does not prevent this — it only bounds how long a
+function is *allowed* to run once it's actually running; it does nothing to
+extend an already-fire-and-forgotten invocation's life. The evidence for
+this over a genuine hang: no timeout error was ever caught (a real 900s
+`maxDuration` kill, or a hung dependency, would both eventually throw into
+the outer `catch` and log `MEDIA_PROCESS_FAILED`) — total silence forever is
+the signature of the promise never being resumed at all, not of it running
+long.
+
+Fix: every trigger site wraps the call in `after()` (`next/server`, stable
+since Next 15 — no new dependency), which registers the promise with
+Vercel's lifecycle manager so the invocation stays alive until it settles;
+an explicit `maxDuration = 900` on that same route then bounds how long
+that's allowed to take (`vercel.json`'s `functions` block mirrors each
+route-level export, matching a pre-existing redundant-but-harmless pattern).
+This was first fixed on the webhook and retry routes; `upload-url/route.ts`'s
+dedup-reprocess branch was found to have the identical gap later (missed in
+the first pass since it wasn't one of the "obvious" trigger routes) and
+fixed the same way, and `start-processing`/the cron route's pending-recovery
+retrigger were both built with `after()` from the start.
 
 Testing note: `after()` throws when called outside a real Next.js
 request-scoped context, which a route handler invoked directly in Vitest
-doesn't have — both route test files stub it via
+doesn't have — every affected route's test file stubs it via
 `vi.mock('next/server', () => ({ after: (fn) => fn() }))`.
 
-This closes the execution-lifecycle cause of a job stalling on new uploads.
-It is not, by itself, a full guarantee against a row ever getting stuck
-`processing` again — e.g. an upstream fetch (Deepgram/Anthropic) with no
-timeout could still hold a *kept-alive* invocation open indefinitely. The
-stale-processing sweep below is the defense-in-depth recovery mechanism for
-that — independent of root cause, not a fix for this one.
+This closes the execution-lifecycle cause of a job stalling. It is not, by
+itself, a full guarantee against a row ever getting stuck `processing`
+again — e.g. an upstream fetch (Deepgram/Anthropic) with no timeout could
+still hold a *kept-alive* invocation open indefinitely. The stale-processing
+sweep below is the defense-in-depth recovery mechanism for that —
+independent of root cause, not a fix for this one.
 
 **Recovery: the stale-processing sweep.** `app/api/cron/media-sweep/route.ts`
 is a Vercel Cron target (`vercel.json`'s `crons`, every 5 minutes) that calls
@@ -141,11 +210,22 @@ order by created_at;
 ```
 
 Before dispatch, `waitForStorageObject` polls `objectExists` with bounded
-backoff (`STORAGE_WAIT_DELAYS_MS`, ~5.5s worst case) to close the race
-between the `media_items` INSERT (fires the webhook immediately) and the
-client's PUT of the file bytes landing in Storage (a separate, later
-request) — without this, processing routinely started against an object
-that didn't exist yet.
+backoff (`STORAGE_WAIT_DELAYS_MS`, ~5.5s worst case) — now a **defensive
+guard**, not the primary race-closer it used to be. It used to exist to
+close the gap between the `media_items` INSERT (which used to fire
+processing immediately) and the client's PUT landing in Storage; see
+"Trigger ordering" above for why that was the actual root cause of a real
+production bug and why triggering is no longer INSERT-based. It stays in
+place for a genuinely different, much smaller race: Storage's own
+read-after-write consistency between the PUT succeeding and a subsequent
+`list()` call (`objectExists`) from a different request seeing it. No data
+confirms this window is real for Supabase Storage specifically, but removing
+a cheap, bounded, already-tested check on the chance it isn't would trade a
+near-zero cost for the risk of reintroducing the exact failure mode this
+system has now spent multiple fixes on. `STORAGE_WAIT_DELAYS_MS` is left
+unchanged for now — it was sized against a multi-second-to-tens-of-seconds
+gap that no longer exists by design, so it's worth revisiting once there's
+real post-fix data, not bundled into this same change.
 
 **`processImage`** (image type): generates a 60s signed download URL, then:
 1. **GPS extraction** (`extractGpsCoordinates`) — downloads the photo's own

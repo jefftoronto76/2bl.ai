@@ -1,21 +1,34 @@
 // POST /api/webhooks/media-process
 // Supabase Database Webhook receiver for media_items INSERT.
-// Verifies the shared-secret header, checks idempotency, then delegates
-// to services/media/processor.ts for the full job lifecycle.
 //
-// To test locally / on preview without waiting for a real Supabase INSERT:
+// INTENTIONAL NO-OP as of the Step 2 trigger-ordering fix: this used to call
+// processMediaItem directly on every pending INSERT, but the INSERT this
+// fires on happens in POST /api/media/upload-url — before the signed
+// upload URL is even returned to the client, let alone before the client's
+// PUT of the file bytes (a separate, later request) lands in Storage. On a
+// slow connection (confirmed: reliable success on wifi, reliable failure on
+// cellular) the PUT can easily outlast the pipeline's bounded wait for the
+// object to appear, failing the job with "Storage object not available
+// after N attempts" even though the upload was simply still in flight.
+//
+// The real trigger is now POST /api/media/[id]/start-processing, called by
+// the client only once its own PUT has actually resolved — see that route's
+// header comment. This route can't simply be deleted or have its Supabase
+// trigger removed from here (DB webhook configuration lives in Supabase
+// Studio, outside this codebase's control, and Supabase will keep POSTing
+// to whatever URL is configured regardless), so it stays wired but inert:
+// verify the signature, log receipt for observability, respond 200 so
+// Supabase doesn't retry-storm it, and stop there.
+//
+// To test locally / on preview:
 // curl -X POST https://{preview-url}/api/webhooks/media-process \
 //   -H "Content-Type: application/json" \
 //   -H "x-supabase-signature: <SUPABASE_WEBHOOK_SECRET>" \
 //   -d '{"type":"INSERT","table":"media_items","schema":"public","record":{...},"old_record":null}'
-// Replace {...} with a real media_items row at status=pending.
 
 import { timingSafeEqual } from 'crypto'
-import { after } from 'next/server'
-import { processMediaItem } from '@/services/media/processor'
 import type { MediaItem } from '@/services/media'
 
-export const maxDuration = 900 // 15 min — Vercel Pro plan
 export const runtime = 'nodejs'
 
 interface SupabaseWebhookPayload {
@@ -68,39 +81,12 @@ export async function POST(req: Request) {
 
   const record = payload.record as unknown as MediaItem
 
-  // Idempotency guard — if status is not 'pending' this is a duplicate delivery
-  // (Supabase retries on non-2xx). Return 200 immediately without reprocessing.
-  if (record.status !== 'pending') {
-    console.log('[media-process] skipping non-pending record', {
-      media_item_id: record.id,
-      status: record.status,
-    })
-    return Response.json({ ok: true, skipped: true })
-  }
-
-  console.log('[media-process] processing', {
+  console.log('[media-process] received INSERT — no-op, processing triggers from POST /api/media/[id]/start-processing instead', {
     media_item_id: record.id,
     type: record.type,
     tenant_id: record.tenant_id,
+    status: record.status,
   })
 
-  // Process asynchronously — do not await so Supabase gets a 200 immediately
-  // while the background job runs. maxDuration alone does NOT keep a
-  // fire-and-forget promise alive past the response being sent — Vercel is
-  // free to freeze/reap the invocation the moment the response flushes,
-  // silently abandoning any unawaited work (this was the root cause of
-  // media_items rows stuck at status='processing' forever, no error, no
-  // timeout — see System Docs/Utilities/Media.md). after() registers the
-  // promise with the platform's lifecycle so the invocation is kept alive
-  // until it settles, then maxDuration bounds how long that's allowed to run.
-  after(() =>
-    processMediaItem(record).catch((err) => {
-      console.error('[media-process] processMediaItem threw unexpectedly', {
-        media_item_id: record.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }),
-  )
-
-  return Response.json({ ok: true })
+  return Response.json({ ok: true, skipped: true })
 }

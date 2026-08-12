@@ -120,10 +120,14 @@ interface ChatContextType {
   /** Clear the active conversation and start fresh (New Chat). History stays. */
   newChat: () => void;
   /**
-   * Inject a synthetic assistant message carrying an ACCOUNT_CREATE marker so
-   * the chat surface renders a MagicLinkCard without a round-trip to the API.
-   * Called when a guest deliberately initiates sign-in (e.g. taps "Sign in"
-   * in the ChatHeader dropdown).
+   * Sends a hidden `[SYSTEM: signal]` turn so the guide responds
+   * conversationally and can eventually emit its own ACCOUNT_CREATE marker
+   * (see the implementation's own comment below) — NOT a synthetic
+   * client-constructed message, despite what this doc once claimed.
+   * Currently unused: confirmed via repo-wide grep to have zero call sites
+   * anywhere outside its own definition/export — `ChatHeader`'s "Sign in"
+   * control calls Clerk's `openSignIn()` directly instead. Dead code, kept
+   * as-is; removing it is a separate decision, not made here.
    */
   dispatchSystemSignal: (signal: string) => void;
   /**

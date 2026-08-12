@@ -3,6 +3,16 @@
 // them to audit_events. Resolves all metadata server-side from the media_items
 // record — the client only supplies mediaItemId and the event name.
 //
+// 'upload_completed' is deliberately NOT one of the accepted events here —
+// it used to be, but that logging call is also the moment processing must
+// be triggered from (see app/api/media/[id]/start-processing/route.ts), and
+// this route short-circuits entirely when ENABLE_MEDIA_AUDIT_LOGGING is off
+// (below). Keeping the trigger on a logging-gated endpoint would mean
+// flipping that env var off silently disabled the whole media pipeline —
+// so start-processing logs MEDIA_UPLOAD_COMPLETED itself instead, and this
+// route only ever sees 'upload_started'/'upload_failed', neither of which
+// gates anything business-critical.
+//
 // Gated by ENABLE_MEDIA_AUDIT_LOGGING (see services/media/index.ts).
 
 import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
@@ -10,11 +20,10 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { AuditAction } from '@/services/audit/types'
 import { isMediaAuditEnabled, logMediaEvent } from '@/services/media'
 
-type UploadEvent = 'upload_started' | 'upload_completed' | 'upload_failed'
+type UploadEvent = 'upload_started' | 'upload_failed'
 
 const EVENT_ACTION: Record<UploadEvent, AuditAction> = {
   upload_started: AuditAction.MEDIA_UPLOAD_STARTED,
-  upload_completed: AuditAction.MEDIA_UPLOAD_COMPLETED,
   upload_failed: AuditAction.MEDIA_UPLOAD_FAILED,
 }
 
