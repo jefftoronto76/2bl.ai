@@ -184,10 +184,35 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   /api/stories/[id]`, see below) — no revert-on-failure yet, unlike the
   conversation path (a failed delete toasts and leaves the row in place,
   it doesn't retry). Still not built: `moveToChapter` / `removeFromChapter`
-  remain deliberate no-ops for both row types, and `star` / `rename`
-  remain no-ops for story rows specifically (only ever wired for
-  conversations). `invite` is no longer a kebab item at all — see "Invite
-  — real as of 2026-08-10" below for its own dedicated entry point.
+  remain deliberate no-ops (now conversation-only in the menu — see the
+  2026-08-13 entry immediately below), and `star` / `rename` remain no-ops
+  for story rows specifically (only ever wired for conversations). `invite`
+  is no longer a kebab item at all — see "Invite — real as of 2026-08-10"
+  below for its own dedicated entry point.
+
+  **`RowMenu` is now target-aware, and a new story-only `admin` item was
+  added — story-admin-menu-item (2026-08-13).** Before this pass,
+  `MENU_ITEMS` was one flat, unfiltered array rendered identically at both
+  `RowMenu` call sites — `moveToChapter`/`removeFromChapter` showed on
+  story rows too, purely by omission (no evidence of intentional design;
+  they're chapter-related, not story-related, and were already deliberate
+  no-ops for stories per the paragraph above). `RowMenu` now takes a
+  `target: RowTarget` prop (threaded from each call site's own known
+  `'conversation'`/`'story'` value) and each `MENU_ITEMS` entry carries a
+  `targets: RowTarget[]` array it's filtered against — `moveToChapter`/
+  `removeFromChapter` are now `['conversation']`-only, `star`/`rename`/
+  `delete` stay on both. New entry: `{ key: 'admin', icon: Shield, label:
+  'Admin', targets: ['story'] }`, positioned between Rename and the delete
+  divider, matching the `Design Handovers/ Aug 2026 Atomic Updates/Updated
+  Story Kebabs/` handover's spec. `'admin'` was added to `RowAction`
+  (`types.ts`). The click is wired end to end — `ChatHero.tsx`'s
+  `handleRowAction` sets a new `adminStoryId: string | null` state on
+  `action === 'admin'` — **but nothing renders it yet.** No `StoryAdminPanel`
+  exists; `adminStoryId` is read by nothing beyond its own setter (a
+  `console.log` confirms the click fires). Clicking "Admin" today is a real,
+  gated, correctly-target-scoped kebab item that visibly does nothing
+  further — the panel (member roster + editable description, per the
+  handover) is a separate, later task.
 
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
