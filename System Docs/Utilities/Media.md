@@ -17,6 +17,36 @@ intentional no-op — see "Trigger ordering" below for why triggering from the
 INSERT was the root cause of a real production bug, and why the webhook
 route couldn't simply be deleted once that trigger moved.
 
+## Status: Heirloom media upload failures effort
+
+A multi-step investigation into upload/processing reliability, tracked
+informally as "Steps," not all shipped yet:
+
+- **Step 0 — mid-pipeline logging.** Merged (PR #345). See "Mid-pipeline
+  visibility" below.
+- **Step 1 — jobs freezing permanently at `status='processing'`.** Merged
+  (PR #352). Root cause and fix in "Execution lifecycle" / "Recovery: the
+  stale-processing sweep" below.
+- **Step 2 — the storage-availability race** (`"Storage object not
+  available after 5 attempts"`). Merged (PR #353). See "Trigger ordering"
+  below.
+- **Duplicate-uploads fix + upload-rejection audit logging.** Merged
+  (PR #358). See "Duplicate uploads" and "Upload-url rejections" below.
+- **Step 3 — signed-URL reuse across the vision-processing pipeline —
+  NOT YET IMPLEMENTED.** Scoped but not started: `BlockCanvas.tsx`'s
+  photo-picker grid renders a `sessionImages` URL without
+  `useFreshImageUrl` (the fix landed everywhere else its sibling
+  `ImageBlockRow` renders, but was missed here); `processImage`'s 60s
+  signed URL is spent across two sequential hops (EXIF GPS fetch, then
+  handed to Anthropic vision by reference) with none of the headroom
+  `processAudio` was deliberately given for the identical risk shape. Do
+  not read `useFreshImageUrl.ts`'s existing, already-live wiring (this
+  file's own file-table row above) as Step 3 being done — that hook
+  predates this investigation and only covers the spots it was
+  originally wired into; Step 3 is the *remaining* gap on top of it.
+
+---
+
 | File | Exports | Purpose |
 |------|---------|---------|
 | `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS`, `verifyAndReprocess`, `ReprocessOutcome` | The pipeline itself — see "The pipeline" below. `verifyAndReprocess` is the sole remaining place an existing row gets reprocessed — see "Duplicate uploads". |
@@ -485,6 +515,21 @@ Neither pattern replaces the other.
 ---
 
 ## Known Unknowns
+
+**Historical data note (2026-08-13): 3 orphaned rows manually repaired.**
+Three `media_items` rows (`81c0abb5-c799-4cab-8d33-b3986d7fecd0`,
+`2cdd198d-36a1-4c0e-99b3-90819a90e862`, `c8c6f305-2afa-4e99-b55c-32e34dab64de`)
+were created 2026-08-06 with `chat_id: null` and never backfilled — a
+one-time skip in the `POST /api/sessions` chat_id-backfill path
+(`resolveMemberId(tenantId, null)` returning null for that specific
+request; root cause not fully pinned down — see git history on this file
+for the investigation, the write path itself was deliberately left
+unchanged). Recovered by matching each row's id against a
+`[MEDIA_UPLOAD: filename | id | type]` marker in `chat_sessions.messages`
+(markers store the id verbatim) and running a direct `UPDATE` in Studio to
+set `chat_id`. If you find rows with an `updated_at` that doesn't line up
+with any code-driven write, this is why — a manual data repair, not a
+pipeline bug still in effect.
 
 **`document` and `audio` processing durations are unmeasured.** A query of
 `audit_events` for `media.process_started` → `media.process_completed` pairs
