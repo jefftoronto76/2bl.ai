@@ -1145,25 +1145,11 @@ export function ChatProvider({
   // Catch-up: on session load, fetch any items whose Realtime completion event
   // was missed (tab closed during processing). Runs whenever sessionId changes.
   useEffect(() => {
-    // TEMP DIAGNOSTIC — remove once the stuck-media-items investigation is
-    // resolved (see Heirloom media upload failures thread). Unconditional,
-    // before the guard, so it fires on every effect run regardless of outcome.
-    console.log('[heirloom/chat] media catch-up effect ran', { sessionId, isSignedIn });
     if (!sessionId || !isSignedIn) return;
     let cancelled = false;
     fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
       .then(r => r.json())
       .then((data: { items?: ClientMediaItem[] }) => {
-        // TEMP DIAGNOSTIC — remove alongside the effect-entry log above.
-        // Logs whether the response was discarded by the cancelled guard
-        // (a stale-closure race would show cancelled: true here despite a
-        // real, correct network response) and, if applied, the ids that
-        // actually made it into the merged array.
-        console.log('[heirloom/chat] media catch-up response', {
-          cancelled,
-          receivedCount: data.items?.length ?? 0,
-          receivedIds: data.items?.map(i => i.id) ?? [],
-        });
         if (!cancelled && Array.isArray(data.items) && data.items.length > 0) {
           setMediaItems(prev => {
             const merged = [...prev];
@@ -1172,11 +1158,6 @@ export function ChatProvider({
               if (idx >= 0) merged[idx] = mergeMediaItem(merged[idx], item);
               else merged.push(mergeMediaItem(undefined, item));
             }
-            console.log('[heirloom/chat] media catch-up merged', {
-              mergedCount: merged.length,
-              mergedIds: merged.map(m => m.id),
-              mergedStatuses: merged.map(m => `${m.id.slice(0, 8)}:${m.status}`),
-            });
             return merged;
           });
         }
