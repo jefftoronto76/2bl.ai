@@ -513,7 +513,7 @@ describe('acceptInvite', () => {
     expect(update.status).toBe('active')
   })
 
-  it('does not log an orphan-reconciled event when no orphan row existed', async () => {
+  it('logs only MEMBER_INVITE_ACCEPTED (no orphan event) when no orphan row existed', async () => {
     const { client } = makeAcceptInviteClient({
       invitedRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
       orphanRows: [],
@@ -522,10 +522,12 @@ describe('acceptInvite', () => {
 
     await acceptInvite('tok', 'clerk-2', 'user-2')
 
-    expect(logEventMock).not.toHaveBeenCalled()
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.invite_accepted')
   })
 
-  it('logs MEMBER_ORPHAN_RECONCILED with the deleted count when a syncMember-created orphan row is deleted', async () => {
+  it('logs MEMBER_ORPHAN_RECONCILED with the deleted count when a syncMember-created orphan row is deleted, then MEMBER_INVITE_ACCEPTED', async () => {
     const { client } = makeAcceptInviteClient({
       invitedRow: { id: 'member-3', tenant_id: HEIRLOOM_TENANT_ID },
       orphanRows: [{ id: 'orphan-1' }],
@@ -534,13 +536,15 @@ describe('acceptInvite', () => {
 
     await acceptInvite('tok', 'clerk-3', 'user-3')
 
-    expect(logEventMock).toHaveBeenCalledOnce()
-    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
-    expect(arg.action).toBe('member.orphan_reconciled')
-    expect((arg.metadata as Record<string, unknown>).deleted_count).toBe(1)
+    expect(logEventMock).toHaveBeenCalledTimes(2)
+    const [orphanArg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(orphanArg.action).toBe('member.orphan_reconciled')
+    expect((orphanArg.metadata as Record<string, unknown>).deleted_count).toBe(1)
+    const [acceptedArg] = logEventMock.mock.calls[1] as [Record<string, unknown>]
+    expect(acceptedArg.action).toBe('member.invite_accepted')
   })
 
-  it('logs MEMBER_ORPHAN_CLEANUP_FAILED but still stamps the invited row when the orphan delete fails', async () => {
+  it('logs MEMBER_ORPHAN_CLEANUP_FAILED but still stamps the invited row and logs MEMBER_INVITE_ACCEPTED when the orphan delete fails', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
       invitedRow: { id: 'member-4', tenant_id: HEIRLOOM_TENANT_ID },
       orphanError: { message: 'delete failed' },
@@ -552,10 +556,12 @@ describe('acceptInvite', () => {
     expect(result.ok).toBe(true)
     expect(getUpdateCalls()).toHaveLength(1)
 
-    expect(logEventMock).toHaveBeenCalledOnce()
-    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
-    expect(arg.action).toBe('member.orphan_cleanup_failed')
-    expect(arg.outcome).toBe('failure')
+    expect(logEventMock).toHaveBeenCalledTimes(2)
+    const [failedArg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(failedArg.action).toBe('member.orphan_cleanup_failed')
+    expect(failedArg.outcome).toBe('failure')
+    const [acceptedArg] = logEventMock.mock.calls[1] as [Record<string, unknown>]
+    expect(acceptedArg.action).toBe('member.invite_accepted')
   })
 
   it('returns ok:false when the final stamp update fails', async () => {

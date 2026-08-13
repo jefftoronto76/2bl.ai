@@ -13,8 +13,6 @@
 
 import { getCurrentUser, ensureClerkUser } from '@/services/auth'
 import { acceptInvite } from '@/services/members'
-import { logEvent } from '@/services/audit'
-import { AuditAction } from '@/services/audit/types'
 
 export async function POST(req: Request) {
   const user = await getCurrentUser()
@@ -70,18 +68,6 @@ export async function POST(req: Request) {
   console.log('[heirloom/invites/accept] complete', {
     memberId: result.data.memberId,
     clerkUserId: user.providerUserId,
-  })
-
-  void logEvent({
-    action: AuditAction.MEMBER_INVITE_ACCEPTED,
-    tenant_id: null, // HEIRLOOM_TENANT_ID stamped inside acceptInvite on the members row
-    actor_id: supabaseUserId,
-    actor_type: 'user',
-    clerk_user_id: user.providerUserId,
-    target_type: 'member',
-    target_id: result.data.memberId,
-    correlation_id: req.headers.get('x-correlation-id'),
-    metadata: {},
   })
 
   return Response.json({ ok: true })
