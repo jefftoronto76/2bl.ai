@@ -1,192 +1,44 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  AudioLines,
-  FileText,
-  Image as ImageIcon,
-  Loader2,
-  CheckCircle,
-  XCircle,
-  Download,
-  RefreshCw,
-  X,
-} from 'lucide-react';
+import { Image as ImageIcon, Loader2, X } from 'lucide-react';
 import type { MediaItem } from '@/services/media/types';
+import { MediaItemsGrid } from './media/MediaItemsGrid';
 
 interface MediaGalleryProps {
   onClose: () => void;
+  /**
+   * Active chat session — scopes the fetch to this session's own media via
+   * `/api/media?chat_id=`, matching the query param chatStore.tsx's own
+   * hydration/polling already uses (services/media's listByChat). Null for a
+   * brand-new, not-yet-saved chat — nothing to fetch yet, so the gallery just
+   * shows empty rather than falling back to every account file (that's the
+   * standalone page's job, see MediaPage.tsx). Stage 1
+   * (media_stages_08_2026/stage-1-media-page-layout): this in-chat panel is
+   * scoped to the active session; the standalone page is not.
+   */
+  sessionId: string | null;
 }
 
-function prettySize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function MediaTypeIcon({ type }: { type: MediaItem['type'] }) {
-  if (type === 'audio') return <AudioLines size={16} className="text-accent" />;
-  if (type === 'image') return <ImageIcon size={16} className="text-accent" />;
-  return <FileText size={16} className="text-accent" />;
-}
-
-function StatusBadge({ status }: { status: MediaItem['status'] }) {
-  if (status === 'ready') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/15 text-accent font-mono text-[9.5px] uppercase tracking-wide">
-        <CheckCircle size={9} />
-        Ready
-      </span>
-    );
-  }
-  if (status === 'failed') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-400 font-mono text-[9.5px] uppercase tracking-wide">
-        <XCircle size={9} />
-        Failed
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-text-muted/15 text-text-muted font-mono text-[9.5px] uppercase tracking-wide">
-      <Loader2 size={9} className="animate-spin" />
-      Processing
-    </span>
-  );
-}
-
-function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) => void }) {
-  const [downloading, setDownloading] = useState(false);
-  const [retrying, setRetrying] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      const res = await fetch(`/api/media/${item.id}/url`);
-      if (!res.ok) throw new Error(`${res.status}`);
-      const { url } = await res.json();
-      window.open(url, '_blank', 'noopener noreferrer');
-    } catch (err) {
-      console.error('[MediaGallery] download failed:', err);
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const handleRetry = async () => {
-    setRetrying(true);
-    try {
-      const res = await fetch(`/api/media/${item.id}/retry`, { method: 'POST' });
-      if (res.ok) onRetry(item.id);
-    } catch (err) {
-      console.error('[MediaGallery] retry failed:', err);
-    } finally {
-      setRetrying(false);
-    }
-  };
-
-  const date = new Date(item.created_at).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-  return (
-    <div className="border border-border rounded-xl bg-surface p-3.5 flex flex-col gap-2.5">
-      <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent/10 grid place-items-center">
-          <MediaTypeIcon type={item.type} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-body text-text-primary leading-tight truncate">
-            {item.original_filename}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <StatusBadge status={item.status} />
-            {item.classification && (
-              <span className="font-mono text-[9.5px] text-text-muted capitalize">
-                {item.classification.replace(/_/g, ' ')}
-              </span>
-            )}
-            <span className="font-mono text-[9.5px] text-text-muted ml-auto">
-              {prettySize(item.file_size_bytes)} · {date}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {item.derived_content && (
-        <div className="border-t border-border pt-2.5">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[10px] uppercase tracking-wide text-text-muted hover:text-text-primary transition-colors"
-          >
-            {expanded ? 'Hide' : 'Show'} extracted content
-          </button>
-          {expanded && (
-            <p className="mt-2 font-body text-[12.5px] text-text-primary leading-relaxed whitespace-pre-wrap line-clamp-6">
-              {item.derived_content}
-            </p>
-          )}
-        </div>
-      )}
-
-      {item.status === 'failed' && (
-        <p className="text-[11.5px] font-body text-red-400 leading-snug">
-          {item.error_message ?? 'Processing failed. You can try again below.'}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 pt-0.5">
-        {item.status === 'ready' && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-border/80 font-body text-[11.5px] transition-colors disabled:opacity-50"
-          >
-            <Download size={12} />
-            {downloading ? 'Opening…' : 'Download'}
-          </button>
-        )}
-        {(item.status === 'failed' || item.status === 'ready') && (
-          <button
-            type="button"
-            onClick={handleRetry}
-            disabled={retrying}
-            title={item.status === 'ready' ? 'Re-run analysis on this file' : undefined}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 font-body text-[11.5px] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
-            {item.status === 'ready'
-              ? retrying
-                ? 'Reprocessing…'
-                : 'Reprocess'
-              : retrying
-                ? 'Retrying…'
-                : 'Try again'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export function MediaGallery({ onClose }: MediaGalleryProps) {
+export function MediaGallery({ onClose, sessionId }: MediaGalleryProps) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/media')
+    if (!sessionId) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    fetch(`/api/media?chat_id=${sessionId}`)
       .then((r) => r.json())
       .then((data: { items?: MediaItem[] }) => {
         setItems(Array.isArray(data.items) ? data.items : []);
       })
       .catch((err) => console.error('[MediaGallery] fetch failed:', err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [sessionId]);
 
   const handleRetry = (id: string) => {
     setItems((prev) =>
@@ -221,11 +73,7 @@ export function MediaGallery({ onClose }: MediaGalleryProps) {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            {items.map((item) => (
-              <MediaCard key={item.id} item={item} onRetry={handleRetry} />
-            ))}
-          </div>
+          <MediaItemsGrid items={items} onRetry={handleRetry} />
         )}
       </div>
     </div>
