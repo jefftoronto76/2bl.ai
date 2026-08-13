@@ -240,6 +240,62 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     fabricating a number nothing tracks was already rejected in the
     collaborator-removal pass, and this pass didn't revisit that call.
 
+  **Story kebab is now owner-only (2026-08-13).** The OR-subscribed
+  widening in `listStories` (see "Real story creation and persistence"
+  below) means a story-scoped collaborator now sees stories they don't
+  own in their own sidebar. `SidebarV2`'s story rows previously rendered
+  the kebab trigger unconditionally, which — combined with the no-op
+  actions above — meant a collaborator could reach a menu of dead buttons
+  plus a live, owner-scoped `delete` that would 404 silently-ish (toast
+  only) rather than succeed. `listStories`/`createStory` now return
+  `isOwner` per row (`row.user_id === caller`), threaded through `GET`/
+  `POST /api/stories` and `Story.isOwner` (`types.ts`); `SidebarV2` hides
+  the story-row kebab trigger entirely — not a filtered/empty `RowMenu` —
+  when `isOwner` is false. One check (`story.isOwner`), no per-action
+  gating: every current and near-term row action (star/rename/invite/
+  delete/admin) is owner-only by the same reasoning, and there's no
+  inter-member chat for a collaborator to coordinate one of these actions
+  with the owner anyway. Scoped to the kebab only — the separate
+  `onInviteStory` icon (own dedicated entry point, see "Invite — real as
+  of 2026-08-10" below) is untouched by this pass; its own `createInviteLink`
+  is already owner-scoped server-side (`services/crm/story-invites.ts`),
+  same as `discardStory`, so a non-owner's click already fails server-side
+  today — hiding it client-side too is a reasonable follow-up, not done
+  here.
+
+  **Collapsed-rail search icon does nothing, and a related chevron symptom
+  needs a live look — found in testing (2026-08-13), Search and Collapse
+  Bar combined header row.** When the sidebar is collapsed to its icon
+  rail (`isExpanded=false`, desktop only — the mobile drawer never renders
+  the collapse toggle at all, see the `SidebarV2` row above), `SearchField`'s
+  collapsed branch renders a bare `<button aria-label="Search">` with no
+  `onClick` at all — confirmed by reading the component: the collapsed
+  early-return has no click handler whatsoever, so clicking it is a genuine
+  no-op, not a stub that logs or defers. **Reported, not yet
+  root-caused:** clicking that search icon also makes the collapse-toggle
+  chevron `IconButton` — which sits directly below it in the collapsed
+  vertical stack — visually disappear. Nothing in the file supports a
+  mechanism for this: `expanded` (the only state either button could
+  plausibly touch) has exactly one setter call in the whole component, the
+  chevron's own `onClick={() => setExpanded((v) => !v)}`; the search
+  button has no `onClick` prop at all, so it cannot be the one flipping
+  `expanded`. This needs an actual browser/devtools reproduction, not a
+  guess from a static read — flagged as unconfirmed rather than inventing
+  a cause. **Net effect and recovery-path check:** once collapsed, there
+  is no way back to the expanded rail via either control in the header
+  row — the search icon does nothing, and the chevron (the only other
+  affordance there) becomes invisible per the report above. Checked for
+  any other way to re-expand: `expanded` is local `useState` inside
+  `SidebarV2`, never lifted to a prop, and `setExpanded` is called from
+  exactly one place in the file — no other button, keyboard shortcut, or
+  `ChatHero.tsx`-side control can set it. `forceCollapsed` (`ChatHero.tsx`'s
+  memory-panel/media-pane/admin-panel gate) only ever forces `isExpanded`
+  to `false` on top of whatever `expanded` already is — it never sets
+  `expanded` back to `true`, so toggling it off doesn't recover a
+  stuck-collapsed sidebar either. The only confirmed recovery found is a
+  hard reload/remount, which resets `expanded` back to its
+  `useState(true)` default.
+
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
   `type='memory'` rows on the same table, **not** the dedicated `stories`
@@ -1401,3 +1457,61 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   as a different user intent than recovering a failure. See
   `Utilities/Media.md`'s "The pipeline" section and `Public Site.md`'s
   `MediaGallery` row for the current behavior.
+
+- **Media delete is local-state only — no `DELETE /api/media/[id]` endpoint
+  exists (Stage 3 of `media_stages_08_2026`, 2026-08-13).** `MediaCard`'s
+  trash icon opens a real confirmation dialog (generalized
+  `ConfirmDeleteModal`), but confirming only removes the item from
+  `MediaGallery`/`MediaPage`'s local `items` state — nothing hits the
+  server, and a page refresh brings the file back. This matches the design
+  prototype's own spec exactly ("no backend call"), not a corner cut beyond
+  it — investigated and confirmed no endpoint exists under `app/api/media/
+  [id]/` (only `url`, `retry`, `start-processing`). The confirmation copy
+  was written to avoid claiming permanence it doesn't have (no "permanently
+  removed, can't be undone" wording, unlike the default chat/story/memory
+  delete copy). **Needs, before this is production-real:** a real DELETE
+  endpoint plus a soft-vs-hard-delete decision — not made here per CLAUDE.md
+  (Jeff owns schema/backend-shape calls), and explicitly out of scope per
+  this stage's own instructions ("stop and report rather than building
+  one").
+
+- **Media rename is local-state only — no `PATCH` endpoint exists for media
+  items (Stage 3 of `media_stages_08_2026`, folding in the Aug 2026 Atomic
+  Updates `09_media_metadata_lazyload` handover, 2026-08-13).** Clicking a
+  file's name in `MediaCard` opens an inline `<input>`; committing (Enter or
+  blur) only patches `original_filename` in the caller's local `items`
+  array via a new `onRename` prop — same gap the handover itself flagged
+  ("no rename API confirmed on main"). A page refresh reverts to the stored
+  filename. **Needs a real endpoint before this is production-real** — no
+  filename-validation/extension-preservation decision has been made either
+  (the handover flagged this too; this pass accepts any non-empty trimmed
+  string, same as the prototype).
+
+- **"Add to memory" (MediaCard's "+" icon) is UI-only — there is no
+  many-to-many mechanism to attach an existing media item to an existing
+  memory (Stage 3 of `media_stages_08_2026`, 2026-08-13).** The panel
+  (`media/AddToMemoryPanel.tsx`) lists the item's own originating chat's
+  real saved memories (`useMemories(item.chat_id)`) and lets a member
+  select one or more, but confirming only shows a toast and closes — no
+  write, matching the design's own explicit spec. Investigated whether a
+  real mechanism already existed to reuse instead of stubbing it (memories
+  are a real feature, unlike Edit/Upload): the only real media↔memory
+  relationship in this schema, `memories.media_item_id`, is a **1:1 FK set
+  only at memory-creation time** (`createPhotoMemoryFromMedia` —
+  "create a new memory from this photo"), not an attach-to-an-existing-
+  memory operation. The many-to-many table that would support the latter,
+  `photo_artifacts`, is confirmed schema-only — zero application code
+  references it (`System Docs/Database Schema.md`). **Needs, before this is
+  production-real:** either wiring `photo_artifacts` up for real, or some
+  other real attach mechanism — a product/schema decision, not made here.
+
+- **Image rotate is not implemented — placeholder only, so it doesn't get
+  lost (media mobile-fix pass, 2026-08-13).** `MediaCard` has no rotate
+  action of any kind today. Two flavors were discussed and both deferred,
+  neither scheduled: **(a) display-only rotate** — a CSS `transform`
+  applied client-side, no file change, same non-persistence posture as
+  rename/delete above; and **(b) persisted rotate** — actually re-encoding
+  and overwriting the stored file, which would need a new endpoint similar
+  in shape to the missing delete/rename ones (own entries above). Neither
+  is built here — this entry exists only so the idea isn't lost, not as a
+  commitment to either flavor.

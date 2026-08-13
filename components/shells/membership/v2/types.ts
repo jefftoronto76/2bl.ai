@@ -30,9 +30,18 @@ export interface Story {
   collaborators?: Collaborator[];
   /** True when the story has an active invite link and/or any subscriber —
    *  from GET/POST /api/stories (services/crm/stories.ts's listStories).
-   *  Drives ConfirmDeleteModal's extra warning line; not used to gate the
-   *  Invite/Delete controls themselves (deliberately unrestricted in V1). */
+   *  Drives ConfirmDeleteModal's extra warning line. */
   hasActiveInviteOrSubscribers?: boolean;
+  /** True when the signed-in caller is this story's owner (its artifacts
+   *  row's user_id) — from GET/POST /api/stories (services/crm/stories.ts's
+   *  listStories/createStory). Drives SidebarV2's story-row kebab: a
+   *  collaborator reached the story only via artifact_subscribers and has no
+   *  way to coordinate row-level actions (star/rename/invite/delete/admin)
+   *  with the owner (no inter-member chat exists), so the kebab trigger is
+   *  hidden entirely when this is false rather than gating individual menu
+   *  items (2026-08-13, supersedes the old "deliberately unrestricted in
+   *  V1" note this field used to carry). */
+  isOwner?: boolean;
 }
 
 export interface WritingPrompt {

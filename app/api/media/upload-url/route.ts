@@ -10,24 +10,71 @@
 // Dedup: if the client supplies a contentHash (SHA-256 of the file bytes,
 // computed client-side in useMediaUpload.ts — bytes never reach this server),
 // an existing media_items row from the same member, in the same chat, with
-// the same hash is reused instead of creating an independent row. A match
-// against a previously-failed row is reprocessed directly (same pattern as
-// the retry endpoint), rather than staying a dead, permanently-failed row.
+// the same hash is reused instead of creating an independent row.
+//
+// This route NEVER auto-reprocesses a matched row, for any status —
+// previously a `failed` match was silently reset to pending and
+// reprocessed here, transparently, with no member-visible signal beyond a
+// small warning icon. That looked safe but wasn't: it assumed the original
+// file bytes were still in Storage without checking, and a confirmed
+// production case (an upload interrupted mid-PUT on cellular, whose row
+// still reached 'processing') showed it retrying forever against a file
+// that was never actually there, always failing with the same misleading
+// "Storage object not available" message. Every match is now just reported
+// honestly (real status, untouched) so the member can see what actually
+// happened and choose to retry via POST /api/media/[id]/retry (which does
+// verify Storage first — see verifyAndReprocess, services/media/processor.ts).
+//
+// One exception: a `failed` match whose file is confirmed missing skips the
+// "report as duplicate" response entirely and instead falls through to an
+// ordinary fresh-upload response (reusing the same row/storage_path) — the
+// client already has real bytes in hand right now, mid-attach, so there's
+// no reason to make the member click a doomed retry badge first when a real
+// upload can just happen immediately.
 
-import { after } from 'next/server'
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMediaItem, findDuplicateMediaItem, isMediaAuditEnabled, logMediaEvent, updateMediaItem, type MediaItemType } from '@/services/media'
-import { buildMediaStoragePath, generateSignedUploadUrl } from '@/services/media/storage'
-import { processMediaItem } from '@/services/media/processor'
+import { buildMediaStoragePath, generateSignedUploadUrl, objectExists } from '@/services/media/storage'
+import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
-// 15 min — Vercel Pro plan, matches the other processMediaItem trigger
-// routes. This route only needs it for the dedup-reprocess branch below
-// (a previously-failed duplicate match), which drives the same pipeline.
-export const maxDuration = 900
-export const runtime = 'nodejs'
+// Rejections here happen before a media_items row exists, so there's no
+// media_item_id to log against — logMediaEvent (the wrapper every other
+// call in this file uses) requires one and hardcodes target_type:
+// 'media_item', so it doesn't fit. Calls the base logEvent directly
+// instead, same as resolveMediaContext (services/chat/server/media-context.ts)
+// already does for CHAT_MEDIA_CONTEXT_RESOLVED — an existing precedent for
+// "doesn't fit the media-item envelope, call the base function directly."
+// One shared action (MEDIA_UPLOAD_REJECTED) for all reasons, not one per
+// reason — same call as MEDIA_PROCESS_FAILED's pipeline_step: these are all
+// the same kind of event, distinguished by metadata.reason, not different
+// kinds of event. 401 (no session) and tenant-not-found are deliberately
+// NOT covered here — auth/tenant-resolution failures, a different category
+// from "this upload attempt was rejected," and out of scope for this fix.
+async function logUploadRejected(
+  tenantId: string,
+  clerkUserId: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
+  if (!isMediaAuditEnabled()) return
+  await logEvent({
+    action: AuditAction.MEDIA_UPLOAD_REJECTED,
+    tenant_id: tenantId,
+    actor_type: 'user',
+    clerk_user_id: clerkUserId,
+    target_type: 'upload_attempt',
+    target_id: null,
+    outcome: 'failure',
+    metadata: {
+      reason,
+      timestamp: new Date().toISOString(),
+      ...extra,
+    },
+  })
+}
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 
@@ -81,6 +128,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json()
   } catch {
+    await logUploadRejected(tenantId, user.providerUserId, 'invalid_json')
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
@@ -98,12 +146,39 @@ export async function POST(req: Request) {
   // useMediaUpload.ts's sha256Hex). No hash means no dedup check for this upload.
   const contentHash = typeof body.contentHash === 'string' ? body.contentHash : null
 
-  if (!filename) return Response.json({ error: 'filename is required' }, { status: 400 })
-  if (!mimeType) return Response.json({ error: 'mimeType is required' }, { status: 400 })
-  if (fileSize === null) return Response.json({ error: 'fileSize is required' }, { status: 400 })
+  if (!filename) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_filename', {
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'filename is required' }, { status: 400 })
+  }
+  if (!mimeType) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_mime_type', {
+      original_filename: filename,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'mimeType is required' }, { status: 400 })
+  }
+  if (fileSize === null) {
+    await logUploadRejected(tenantId, user.providerUserId, 'missing_file_size', {
+      original_filename: filename,
+      mime_type: mimeType,
+      chat_id: chatId,
+    })
+    return Response.json({ error: 'fileSize is required' }, { status: 400 })
+  }
 
   // HEIC rejection — clear user-friendly message
   if (mimeType === 'image/heic' || mimeType === 'image/heif' || filename.toLowerCase().endsWith('.heic')) {
+    await logUploadRejected(tenantId, user.providerUserId, 'heic_unsupported', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json(
       {
         error:
@@ -114,15 +189,36 @@ export async function POST(req: Request) {
   }
 
   if (!ACCEPTED_MIME_TYPES.has(mimeType)) {
+    await logUploadRejected(tenantId, user.providerUserId, 'unsupported_mime_type', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: `File type not supported: ${mimeType}` }, { status: 415 })
   }
 
   if (fileSize > MAX_FILE_SIZE) {
+    await logUploadRejected(tenantId, user.providerUserId, 'file_too_large', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: 'File exceeds the 50 MB size limit' }, { status: 413 })
   }
 
   const type = classifyMimeType(mimeType)
   if (!type) {
+    // Currently unreachable in practice — every entry in ACCEPTED_MIME_TYPES
+    // already classifies successfully — but logged anyway in case the two
+    // sets ever drift apart.
+    await logUploadRejected(tenantId, user.providerUserId, 'unclassifiable_mime_type', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: 'Unable to classify file type' }, { status: 415 })
   }
 
@@ -141,6 +237,12 @@ export async function POST(req: Request) {
       tenantId,
       error: memberErr?.message,
     })
+    await logUploadRejected(tenantId, user.providerUserId, 'member_not_found', {
+      original_filename: filename,
+      mime_type: mimeType,
+      file_size_bytes: fileSize,
+      chat_id: chatId,
+    })
     return Response.json({ error: 'Member record not found' }, { status: 403 })
   }
 
@@ -149,11 +251,12 @@ export async function POST(req: Request) {
   if (contentHash) {
     const existing = await findDuplicateMediaItem({ tenantId, memberId, chatId, contentHash })
     if (existing) {
-      // A previously-failed match is reprocessed directly (same pattern as
-      // POST /api/media/[id]/retry) rather than reused as a dead row — the
-      // original bytes are assumed still in Storage, matching retry's own
-      // assumption. ready/pending/processing matches need no action at all.
-      if (existing.status === 'failed') {
+      // A `failed` match whose file never actually reached Storage isn't a
+      // real duplicate to report — there is nothing to point the member at.
+      // Skip the dedup response entirely and fall through to an ordinary
+      // fresh upload, reusing this row's id/storage_path instead of minting
+      // a new one, since the client has real bytes in hand right now.
+      if (existing.status === 'failed' && !(await objectExists(existing.storage_path))) {
         await updateMediaItem(existing.id, {
           status: 'pending',
           error_message: null,
@@ -161,20 +264,46 @@ export async function POST(req: Request) {
           classification: null,
           processed_at: null,
         })
-        // after() keeps this invocation alive until the promise settles —
-        // a bare `void` here had the same permanently-stuck-at-'processing'
-        // risk Step 1 fixed for the webhook/retry routes, just missed on
-        // this third direct-call site at the time.
-        after(() =>
-          processMediaItem(existing).catch((err) => {
-            console.error('[media/upload-url] dedup reprocess threw unexpectedly', {
-              mediaItemId: existing.id,
-              error: err instanceof Error ? err.message : String(err),
-            })
-          }),
-        )
+
+        const { signedUrl } = await generateSignedUploadUrl(existing.storage_path)
+
+        if (isMediaAuditEnabled()) {
+          await logMediaEvent({
+            tenant_id: tenantId,
+            member_id: memberId,
+            media_item_id: existing.id,
+            action: AuditAction.MEDIA_UPLOAD_DEDUPED,
+            outcome: 'success',
+            correlation_id: crypto.randomUUID(),
+            metadata: {
+              original_filename: filename,
+              mime_type: mimeType,
+              file_size_bytes: fileSize,
+              chat_id: chatId,
+              matched_previous_status: existing.status,
+              reprocessed: false,
+              needs_reupload: true,
+              fresh_upload_fallback: true,
+              timestamp: new Date().toISOString(),
+            },
+          })
+        }
+
+        console.log('[media/upload-url] duplicate matched a failed row with no file in Storage — falling back to a fresh upload against the same row', {
+          mediaItemId: existing.id,
+          chatId,
+          memberId,
+          tenantId,
+        })
+
+        return Response.json({ signedUrl, mediaItemId: existing.id })
       }
 
+      // Every other match (ready/pending/processing, or a failed match
+      // whose file IS present) is just reported honestly — this route never
+      // auto-reprocesses. A failed match keeps its real 'failed' status (not
+      // silently reset to 'pending') so the client can show a real retry
+      // affordance instead of silently reprocessing behind the member's back.
       if (isMediaAuditEnabled()) {
         await logMediaEvent({
           tenant_id: tenantId,
@@ -189,7 +318,7 @@ export async function POST(req: Request) {
             file_size_bytes: fileSize,
             chat_id: chatId,
             matched_previous_status: existing.status,
-            reprocessed: existing.status === 'failed',
+            reprocessed: false,
             timestamp: new Date().toISOString(),
           },
         })
@@ -203,17 +332,7 @@ export async function POST(req: Request) {
         tenantId,
       })
 
-      // Report the item's ACTUAL current status back to the client — a
-      // failed match was just reset to pending above (and reprocessing
-      // kicked off), so that's what's reported for that case; ready/pending/
-      // processing matches are untouched and reported as-is. The client uses
-      // this to seed its local media-item state correctly instead of
-      // assuming every dedup response means "brand new, still pending" —
-      // that assumption previously reset an already-`ready` item back to
-      // `pending` client-side on every re-attach.
-      const status = existing.status === 'failed' ? 'pending' : existing.status
-
-      return Response.json({ mediaItemId: existing.id, duplicate: true, status })
+      return Response.json({ mediaItemId: existing.id, duplicate: true, status: existing.status })
     }
   }
 

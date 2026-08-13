@@ -145,24 +145,31 @@ describe('Memory panel — Stage F (390px full-screen overlay)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Memory' })).toBeNull());
   });
 
-  it('opening Media closes the mobile memory panel, and opening a memory closes Media', async () => {
+  it('opening the standalone Media page closes the mobile memory panel, and opening a memory closes it back', async () => {
     await renderReady();
+    // MediaPage (Stage 1, media_stages_08_2026) is always mounted so its
+    // slide-in transform can animate — `inert` (not DOM presence) tracks
+    // open/closed, same contract ChatHero.mediaPanel.test.tsx uses.
+    const mediaDialog = screen.getByRole('dialog', { name: 'Media' });
+    expect(mediaDialog).toHaveAttribute('inert');
 
     fireEvent.click(screen.getByRole('button', { name: /The Lake House/i }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Memory' })).toBeInTheDocument());
 
     // Media's own mobile entry point is the sidebar's Media button, reached
     // through the hamburger — same path ChatHero.mediaPanel.test.tsx uses.
+    // It opens the standalone top-level page, not the in-chat panel — that's
+    // reached via ChatHeader's own "Media from this chat" icon instead.
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
     await screen.findByRole('button', { name: 'Media' });
     fireEvent.click(screen.getByRole('button', { name: 'Media' }));
 
-    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Media' })).toBeInTheDocument());
+    await waitFor(() => expect(mediaDialog).not.toHaveAttribute('inert'));
     expect(screen.queryByRole('dialog', { name: 'Memory' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /The Lake House/i }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Memory' })).toBeInTheDocument());
-    expect(screen.queryByRole('dialog', { name: 'Media' })).toBeNull();
+    expect(mediaDialog).toHaveAttribute('inert');
   });
 });
 

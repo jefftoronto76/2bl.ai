@@ -126,10 +126,11 @@ export interface UIMessage {
 
 /**
  * Known structured markers the registry strips from prose. Most are
- * AI-emitted in an assistant message; MEDIA_UPLOAD/MEDIA_UPLOAD_FAILED are
- * the exception — written into a VISITOR message's own stored content by
- * the client-side upload flow (ChatInput.tsx), registered here (2026-08-08)
- * purely so any OTHER consumer of the shared registry (e.g.
+ * AI-emitted in an assistant message; MEDIA_UPLOAD/MEDIA_UPLOAD_FAILED/
+ * MEDIA_UPLOAD_DUPLICATE are the exception — written into a VISITOR
+ * message's own stored content by the client-side upload flow
+ * (ChatInput.tsx), registered here (2026-08-08, MEDIA_UPLOAD_DUPLICATE added
+ * later) purely so any OTHER consumer of the shared registry (e.g.
  * createMemoryFromAnchor, services/crm/memories.ts) strips them from prose
  * instead of leaking raw bracket text — see MEDIA_UPLOAD_MARKER's own doc
  * comment (registry.ts) for the bug this fixed.
@@ -145,6 +146,7 @@ export type MarkerType =
   | 'MEMORY_TITLE'
   | 'MEDIA_UPLOAD'
   | 'MEDIA_UPLOAD_FAILED'
+  | 'MEDIA_UPLOAD_DUPLICATE'
 
 /**
  * Parsed data for an ACCOUNT_CREATE marker — `[ACCOUNT_CREATE: reason]`.

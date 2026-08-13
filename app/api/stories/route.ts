@@ -29,6 +29,7 @@ export async function GET(req: Request) {
       name: s.title,
       description: s.body || undefined,
       hasActiveInviteOrSubscribers: s.hasActiveInviteOrSubscribers,
+      isOwner: s.isOwner,
     })),
   })
 }
@@ -89,6 +90,7 @@ export async function POST(req: Request) {
       name: result.data.title,
       description: result.data.body || undefined,
       hasActiveInviteOrSubscribers: result.data.hasActiveInviteOrSubscribers,
+      isOwner: result.data.isOwner,
     },
   })
 }

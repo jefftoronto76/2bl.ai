@@ -43,11 +43,20 @@ export interface StoryRow {
    *  false on a freshly-created row (toStoryRow's default) — listStories
    *  below is the only place that computes a real value. */
   hasActiveInviteOrSubscribers: boolean
+  /** True when the row's own user_id matches the caller — the story-kebab
+   *  ownership check (2026-08-13). A collaborator reached a story only via
+   *  artifact_subscribers (see listStories' doc comment) and has no way to
+   *  coordinate row-level actions (star/rename/invite/delete/admin) with the
+   *  owner, so the UI hides the whole kebab rather than gating actions one
+   *  at a time. Always true on a freshly-created row (toStoryRow's default
+   *  is overridden to true in createStory) since the creator is always the
+   *  owner; listStories computes the real per-row value against its caller. */
+  isOwner: boolean
 }
 
 const ARTIFACT_TYPE = 'story' as const
 
-const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at'
+const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at, user_id'
 
 function toStoryRow(row: Record<string, unknown>): StoryRow {
   return {
@@ -57,6 +66,7 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
     hasActiveInviteOrSubscribers: false,
+    isOwner: false,
   }
 }
 
@@ -152,6 +162,7 @@ export async function listStories(
     data: storyRows.map(row => ({
       ...toStoryRow(row),
       hasActiveInviteOrSubscribers: idsWithActiveLink.has(row.id as string) || idsWithSubscribers.has(row.id as string),
+      isOwner: (row.user_id as string) === userId,
     })),
   }
 }
@@ -260,7 +271,9 @@ export async function createStory(
     target_id: data.id,
     outcome: 'success',
   })
-  return { ok: true, data: toStoryRow(data) }
+  // The insert above set user_id: userId — the creator is always the owner
+  // of a story they just created, no comparison needed.
+  return { ok: true, data: { ...toStoryRow(data), isOwner: true } }
 }
 
 /**

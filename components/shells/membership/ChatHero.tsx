@@ -19,6 +19,7 @@ import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
 import { MediaGallery } from './MediaGallery';
+import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
@@ -158,11 +159,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     ? memories.memories.find(m => m.id === openMemory.id) ?? openMemory
     : null;
 
-  // Media pane — no "which item" concept (MediaGallery fetches its own full
-  // list from /api/media), so a plain boolean is enough here, unlike
-  // openMemory's MemoryRow | null. Mutually exclusive with the memory panel
-  // via the wrapping handlers below, not a shared enum — keeps this additive
-  // rather than touching openMemory's existing call sites.
+  // In-chat Media panel — no "which item" concept (MediaGallery fetches its
+  // own list scoped to state.sessionId), so a plain boolean is enough here,
+  // unlike openMemory's MemoryRow | null. Mutually exclusive with the memory
+  // panel via the wrapping handlers below, not a shared enum — keeps this
+  // additive rather than touching openMemory's existing call sites. Opened
+  // via ChatHeader's own icon (Stage 1, media_stages_08_2026) — the sidebar's
+  // "Media" row no longer opens this surface, see mediaPageOpen below.
   const [mediaOpen, setMediaOpen] = useState(false);
 
   const handleOpenMedia = useCallback(() => {
@@ -171,10 +174,30 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setAdminStoryId(null);
   }, []);
 
+  // Standalone top-level Media page (MediaPage.tsx) — independent of any
+  // chat session, shows every account file. Separate state from mediaOpen
+  // (it's a different surface entirely, not the third-pane/bottom-sheet
+  // mediaOpen drives), but still closes openMemory/mediaOpen on open: on
+  // mobile both the memory full-screen overlay and MediaPage itself render
+  // at the same absolute-inset-0 z-40 layer (see MediaPage.tsx's own comment
+  // on why it can't be position:fixed here), so leaving one of those open
+  // underneath would either stack two interactive full-screen dialogs or
+  // silently strand the covered one — closing them is what "Media is a
+  // top-level page, not a chat-scoped view" actually requires in practice.
+  const [mediaPageOpen, setMediaPageOpen] = useState(false);
+
+  const handleOpenMediaPage = useCallback(() => {
+    setMediaPageOpen(true);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setAdminStoryId(null);
+  }, []);
+
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
     setOpenMemory(row);
     if (row) {
       setMediaOpen(false);
+      setMediaPageOpen(false);
       setAdminStoryId(null);
     }
   }, []);
@@ -285,12 +308,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     // `targets`, so target should always be 'story' here — the check is
     // defensive, not load-bearing). Opens StoryAdminPanel as the third pane,
     // closing the memory/media panes the same way handleOpenMedia/
-    // handleOpenMemory close each other and this one.
+    // handleOpenMemory close each other and this one — including the
+    // standalone Media page (mediaPageOpen), added when merging main's
+    // StoryAdminPanel work into the media_stages_08_2026 branch: without
+    // this, opening Admin while the standalone page was open would leave it
+    // stranded underneath instead of replaced, the same stacking problem
+    // handleOpenMediaPage/handleOpenMemory already guard against elsewhere.
     if (action === 'admin') {
       if (target === 'story') {
         setAdminStoryId(id);
         setOpenMemory(null);
         setMediaOpen(false);
+        setMediaPageOpen(false);
       }
       return;
     }
@@ -621,6 +650,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         isFullScreen={isFullScreen}
         onToggleFullScreen={onToggleFullScreen}
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
+        onOpenMedia={handleOpenMedia}
       />
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
@@ -654,7 +684,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             starredConversationIds={starredIds}
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
-            onMedia={handleOpenMedia}
+            onMedia={handleOpenMediaPage}
             forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId}
           />
         )}
@@ -674,7 +704,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
                 onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-                onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMedia(); }}
+                onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMediaPage(); }}
               />
             </div>
           </>
@@ -686,14 +716,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             than inventing a new mechanism. z-40 clears the drawer's own
             z-20/z-30 in case its close animation is still resolving. */}
         {isMobile && mediaOpen && (
-          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Media">
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Media from this chat">
             <div
               className="hl-animate-fade absolute inset-0 bg-black/45"
               aria-hidden="true"
               onClick={() => setMediaOpen(false)}
             />
             <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
-              <MediaGallery onClose={() => setMediaOpen(false)} />
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
             </div>
           </div>
         )}
@@ -840,7 +870,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 sessionImages={sessionImages}
               />
             )}
-            {mediaOpen && <MediaGallery onClose={() => setMediaOpen(false)} />}
+            {mediaOpen && (
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
+            )}
             {adminStory && (
               <StoryAdminPanel
                 story={adminStory}
@@ -851,6 +883,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         )}
       </div>
+
+      {/* Standalone Media page (Stage 1, media_stages_08_2026) — same
+          absolute-inset-0-resolves-to-the-drawer's-relative-body pattern as
+          the modals below and the mobile Media/memory overlays above, just
+          mounted unconditionally (not gated on isMobile) since this surface
+          is identical across viewport sizes. Always rendered so its
+          translate-x transition can animate; `open` controls visibility. */}
+      <MediaPage open={mediaPageOpen} onClose={() => setMediaPageOpen(false)} onFlash={showToast} />
 
       {/* absolute inset-0 — resolves to the drawer's relative body (this
           section is static), so modals overlay the whole drawer. */}

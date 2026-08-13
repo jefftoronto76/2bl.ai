@@ -16,6 +16,13 @@ import { Trash2 } from 'lucide-react';
 import { useModalA11y } from './useModalA11y';
 import type { RowTarget } from './types';
 
+// 'media' — added Stage 3 of media_stages_08_2026 (MediaCard's trash icon).
+// Not part of the shared v2/types.ts RowTarget (SidebarV2's kebab never
+// produces it, so extending that shared union would mean touching switches
+// that will never see this value) — local to this modal's own prop type
+// only.
+type ConfirmDeleteTarget = RowTarget | 'media';
+
 export interface ConfirmDeleteModalProps {
   /** The row to be deleted, or null when the dialog is closed.
    *  hasActiveInviteOrSubscribers (story only) adds one more warning
@@ -23,12 +30,26 @@ export interface ConfirmDeleteModalProps {
    *  active invite link or subscribers should warn before removing the
    *  access those people currently have. UI-only: no backend behavior
    *  changes based on this flag, deletion proceeds identically either way. */
-  item: { target: RowTarget; id: string; title?: string; hasActiveInviteOrSubscribers?: boolean } | null;
+  item: { target: ConfirmDeleteTarget; id: string; title?: string; hasActiveInviteOrSubscribers?: boolean } | null;
   onClose: () => void;
   onConfirm: () => void;
+  /**
+   * Override the target-derived default copy — added Stage 3 of
+   * media_stages_08_2026 for media delete, which needs file-specific
+   * wording ("Delete this file?" + filename in italics) the noun-based
+   * defaults below don't produce, and can't honestly reuse the default
+   * body's "permanently removed, can't be undone" claim — there is no
+   * DELETE /api/media/[id] endpoint yet (see Known Gaps.md), so a media
+   * delete only removes the item from local state; the copy must not
+   * promise persistence it doesn't have. Omitted for every existing
+   * chat/story/memory call site — their copy is byte-for-byte unchanged.
+   */
+  heading?: string;
+  body?: React.ReactNode;
+  confirmLabel?: string;
 }
 
-export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteModalProps) {
+export function ConfirmDeleteModal({ item, onClose, onConfirm, heading, body, confirmLabel }: ConfirmDeleteModalProps) {
   const open = item !== null;
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -39,7 +60,8 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
 
   if (!open) return null;
 
-  const noun = item.target === 'story' ? 'story' : item.target === 'memory' ? 'memory' : 'chat';
+  const noun =
+    item.target === 'story' ? 'story' : item.target === 'memory' ? 'memory' : item.target === 'media' ? 'file' : 'chat';
   const title = item.title;
   // Deleting a conversation or a story cascades to every memory anchored to
   // it — worth the extra warning line. Deleting a single memory doesn't
@@ -69,8 +91,16 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
-        aria-label={`Delete ${noun}`}
-        className="w-[min(418px,100%)] bg-surface border border-[rgba(245,239,230,0.20)] rounded-[20px] p-7 shadow-[0_40px_100px_-24px_rgba(0,0,0,.75),0_0_0_.5px_rgba(0,0,0,.4)] focus:outline-none hl-animate-modal"
+        aria-label={heading ?? `Delete ${noun}`}
+        // min-w-0 overrides the flex item default (min-width: auto), which
+        // otherwise lets the dialog grow past w-[min(418px,100%)] on narrow
+        // viewports. break-words on the title span below (not this wrapper)
+        // is what actually stops a single long, space/hyphen-less filename
+        // (a real shape — phone-camera and hashed upload filenames commonly
+        // have no break points) from visually overflowing its own box even
+        // when the wrapper itself is sized correctly — confirmed both were
+        // needed via a real repro, not just one.
+        className="w-[min(418px,100%)] min-w-0 bg-surface border border-[rgba(245,239,230,0.20)] rounded-[20px] p-7 shadow-[0_40px_100px_-24px_rgba(0,0,0,.75),0_0_0_.5px_rgba(0,0,0,.4)] focus:outline-none hl-animate-modal"
       >
         {/* Danger badge */}
         <div className="w-[46px] h-[46px] rounded-[13px] bg-[#E58D80]/[0.14] border border-[#E58D80]/[0.34] flex items-center justify-center text-[#E58D80] mb-4">
@@ -79,25 +109,31 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
 
         {/* Title */}
         <h4 className="font-display font-medium text-[25px] leading-[1.12] tracking-[-0.01em] text-text-primary m-0">
-          Delete this {noun}?
+          {heading ?? `Delete this ${noun}?`}
         </h4>
 
-        {/* Body */}
-        <p className="font-body text-[14.5px] leading-[1.55] text-text-muted mt-[9px] mb-0">
-          {title ? (
-            <>
-              <span className="font-display italic text-base text-text-primary">
-                &ldquo;{title}&rdquo;
-              </span>{' '}
-              {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}
-            </>
-          ) : (
-            <>This {noun} {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}</>
-          )}
+        {/* Body — break-words: a filename/title can be one long unbroken run
+            (no spaces or hyphens for the browser's default line-breaking to
+            use), which otherwise paints past this card's edge regardless of
+            how correctly the card itself is sized. */}
+        <p className="font-body text-[14.5px] leading-[1.55] text-text-muted mt-[9px] mb-0 break-words">
+          {body ??
+            (title ? (
+              <>
+                <span className="font-display italic text-base text-text-primary">
+                  &ldquo;{title}&rdquo;
+                </span>{' '}
+                {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}
+              </>
+            ) : (
+              <>This {noun} {cascadeWarning}will be permanently removed. This can&rsquo;t be undone.{grantWarning}</>
+            ))}
         </p>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-[10px] mt-6">
+        {/* Actions — flex-wrap as a safety net: stacks rather than overflows
+            if the row is ever squeezed narrower than both buttons' natural
+            width (e.g. a long custom confirmLabel). */}
+        <div className="flex flex-wrap justify-end gap-[10px] mt-6">
           <button
             ref={cancelRef}
             type="button"
@@ -112,7 +148,7 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm }: ConfirmDeleteMo
             className="flex items-center gap-2 rounded-[11px] bg-[#E58D80] border border-[#E58D80] px-5 py-[11px] font-body text-sm font-semibold text-white hover:bg-[#cc7d72] hover:border-[#cc7d72] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E58D80]"
           >
             <Trash2 size={15} />
-            Delete
+            {confirmLabel ?? 'Delete'}
           </button>
         </div>
       </div>

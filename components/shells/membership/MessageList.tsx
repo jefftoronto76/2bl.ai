@@ -7,7 +7,11 @@ import { useAuthUser } from '@/services/auth/client';
 import { Message, useChatStore, type ClientMediaItem, type PendingEcho } from './chatStore';
 import { MagicLinkCard } from './MagicLinkCard';
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry';
-import { MEDIA_UPLOAD_PATTERN_SOURCE, MEDIA_UPLOAD_FAILED_PATTERN_SOURCE } from '@/services/chat/ui/v1/mediaMarkerPatterns';
+import {
+  MEDIA_UPLOAD_PATTERN_SOURCE,
+  MEDIA_UPLOAD_FAILED_PATTERN_SOURCE,
+  MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE,
+} from '@/services/chat/ui/v1/mediaMarkerPatterns';
 import { ChatThread } from '@/components/chat/ChatThread';
 import { DeliveryStatus } from '@/components/chat/DeliveryStatus';
 import { MessageActions } from '@/components/chat/MessageActions';
@@ -91,21 +95,25 @@ function DebugPill({ raw }: { raw: string }) {
 // ── Media parsing ─────────────────────────────────────────────────────────────
 
 // Pattern source is canonical in mediaMarkerPatterns.ts, shared with
-// registry.ts's MEDIA_UPLOAD_MARKER/MEDIA_UPLOAD_FAILED_MARKER — each
-// consumer builds its own RegExp instance so `.lastIndex` state never leaks
-// between the two.
+// registry.ts's MEDIA_UPLOAD_MARKER/MEDIA_UPLOAD_FAILED_MARKER/
+// MEDIA_UPLOAD_DUPLICATE_MARKER — each consumer builds its own RegExp
+// instance so `.lastIndex` state never leaks between them.
 const MEDIA_UPLOAD_RE = new RegExp(MEDIA_UPLOAD_PATTERN_SOURCE, 'g');
 const MEDIA_FAILED_RE = new RegExp(MEDIA_UPLOAD_FAILED_PATTERN_SOURCE, 'g');
+const MEDIA_UPLOAD_DUPLICATE_RE = new RegExp(MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE, 'g');
 
 interface ParsedUserMessage {
   uploads: Array<{ filename: string; mediaItemId: string; type: string }>;
   failures: Array<{ filename: string }>;
+  /** A content-hash match reused an existing row instead of a fresh upload — `status` is captured AT MATCH TIME, a fallback for before the live mediaItems lookup catches up (see UploadThumbnail.tsx's duplicateLabel prop doc). */
+  duplicates: Array<{ filename: string; mediaItemId: string; type: string; status: string }>;
   text: string;
 }
 
 function parseUserMessage(content: string): ParsedUserMessage {
   const uploads: ParsedUserMessage['uploads'] = [];
   const failures: ParsedUserMessage['failures'] = [];
+  const duplicates: ParsedUserMessage['duplicates'] = [];
 
   let m: RegExpExecArray | null;
   MEDIA_UPLOAD_RE.lastIndex = 0;
@@ -116,20 +124,39 @@ function parseUserMessage(content: string): ParsedUserMessage {
   while ((m = MEDIA_FAILED_RE.exec(content)) !== null) {
     failures.push({ filename: m[1].trim() });
   }
+  MEDIA_UPLOAD_DUPLICATE_RE.lastIndex = 0;
+  while ((m = MEDIA_UPLOAD_DUPLICATE_RE.exec(content)) !== null) {
+    duplicates.push({ filename: m[1].trim(), mediaItemId: m[2].trim(), type: m[3].trim(), status: m[4].trim() });
+  }
 
   const text = content
     .replace(/\[MEDIA_UPLOAD:[^\]]+\]/g, '')
     .replace(/\[MEDIA_UPLOAD_FAILED:[^\]]+\]/g, '')
+    .replace(/\[MEDIA_UPLOAD_DUPLICATE:[^\]]+\]/g, '')
     .trim();
 
-  return { uploads, failures, text };
+  return { uploads, failures, duplicates, text };
 }
 
-/** A user message's own upload (if any) drives the memory's source kind — see parseUserMessage above. Video has no upload path yet, so it's never derived here. */
+/** Status-specific copy for a MEDIA_UPLOAD_DUPLICATE thumbnail's small label — prefers the live mediaItems status over the marker's captured one, see the marker's own doc comment. */
+function duplicateLabelForStatus(status: string): string {
+  if (status === 'ready') return 'Already uploaded';
+  if (status === 'failed') return 'Matches a previous upload that failed';
+  return 'Already being processed';
+}
+
+/**
+ * A user message's own upload (if any) drives the memory's source kind — see
+ * parseUserMessage above. Checks duplicates alongside uploads (not just
+ * uploads) so UploadThumbnail.tsx's isImage check resolves correctly for a
+ * duplicate match too — without this a duplicate image would render as a
+ * generic file-icon row instead of the actual photo thumbnail. Video has no
+ * upload path yet, so it's never derived here.
+ */
 function sourceKindForUserMessage(userMsg: ParsedUserMessage): MemorySourceKind {
-  if (userMsg.uploads.some(u => u.type === 'image')) return 'photo';
-  if (userMsg.uploads.some(u => u.type === 'audio')) return 'audio';
-  if (userMsg.uploads.some(u => u.type === 'document')) return 'document';
+  if (userMsg.uploads.some(u => u.type === 'image') || userMsg.duplicates.some(d => d.type === 'image')) return 'photo';
+  if (userMsg.uploads.some(u => u.type === 'audio') || userMsg.duplicates.some(d => d.type === 'audio')) return 'audio';
+  if (userMsg.uploads.some(u => u.type === 'document') || userMsg.duplicates.some(d => d.type === 'document')) return 'document';
   return 'conversation';
 }
 
@@ -546,7 +573,7 @@ function makeRenderUserMessage(
           const thumbnail = (
             <UploadThumbnail
               item={mediaItem}
-              sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], text: '' })}
+              sourceKind={sourceKindForUserMessage({ uploads: [u], failures: [], duplicates: [], text: '' })}
               filename={u.filename}
               onEnlarge={onEnlarge}
             />
@@ -580,6 +607,27 @@ function makeRenderUserMessage(
         {userMsg.failures.map((f, idx) => (
           <FailedUploadChip key={idx} filename={f.filename} />
         ))}
+        {/* Content-hash duplicate matches — the real thumbnail (same
+            mediaItems lookup as a fresh upload, since it's the same live
+            item), with a small label instead of no signal at all. No
+            PhotoUploadActions/memory slot: the ORIGINAL upload already has
+            those, this is a reused reference to it, not a new bookmarkable
+            moment. Status prefers the live mediaItems entry over the
+            marker's captured one (duplicateLabelForStatus). */}
+        {userMsg.duplicates.map(d => {
+          const mediaItem = mediaItems.find(m => m.id === d.mediaItemId);
+          return (
+            <div key={d.mediaItemId}>
+              <UploadThumbnail
+                item={mediaItem}
+                sourceKind={sourceKindForUserMessage({ uploads: [], failures: [], duplicates: [d], text: '' })}
+                filename={d.filename}
+                onEnlarge={onEnlarge}
+                duplicateLabel={duplicateLabelForStatus(mediaItem?.status ?? d.status)}
+              />
+            </div>
+          );
+        })}
         {/* Prose — only when there's actual text alongside the upload */}
         {userMsg.text && (
           <MessageBubble

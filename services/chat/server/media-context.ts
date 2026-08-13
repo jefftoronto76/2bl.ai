@@ -2,6 +2,11 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 import { sanitizeFailureReason } from '@/services/media/errorCopy'
+import {
+  MEDIA_UPLOAD_PATTERN_SOURCE,
+  MEDIA_UPLOAD_FAILED_PATTERN_SOURCE,
+  MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE,
+} from '@/services/chat/ui/v1/mediaMarkerPatterns'
 import type { ChatMessage } from './types'
 import type { MediaAttachmentInput } from './types'
 
@@ -11,10 +16,24 @@ import type { MediaAttachmentInput } from './types'
 // classification without pulling in this module's getAdminClient import.
 export { sanitizeFailureReason }
 
-// Captures the filename out of `[MEDIA_UPLOAD: filename | mediaItemId | type]`
-// (group 1) so stripMediaMarkers can build a fallback from it without a
-// separate lookup.
-const MEDIA_UPLOAD_PATTERN = /\[MEDIA_UPLOAD:\s*([^|]+?)\s*\|[^\]]*\]/g
+// Built off the same canonical sources registry.ts and MessageList.tsx use
+// (mediaMarkerPatterns.ts) — this used to be a fourth, hand-rolled copy that
+// only matched MEDIA_UPLOAD, which meant a MEDIA_UPLOAD_FAILED marker (also
+// written into real message content by ChatInput.tsx, on any client-side
+// pre-upload failure) was never stripped here and leaked as raw bracket
+// text straight into the model's own context — a real, confirmed gap, not
+// hypothetical (see media-context.test.ts's coverage). Building off the
+// shared sources means a fourth marker can never silently repeat this.
+// Group 1 in each is the filename, used below to build a fallback when
+// stripping empties a message out entirely.
+const MEDIA_UPLOAD_PATTERN = new RegExp(MEDIA_UPLOAD_PATTERN_SOURCE, 'g')
+const MEDIA_UPLOAD_FAILED_PATTERN = new RegExp(MEDIA_UPLOAD_FAILED_PATTERN_SOURCE, 'g')
+const MEDIA_UPLOAD_DUPLICATE_PATTERN = new RegExp(MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE, 'g')
+const ALL_MEDIA_MARKER_PATTERNS = [
+  MEDIA_UPLOAD_PATTERN,
+  MEDIA_UPLOAD_FAILED_PATTERN,
+  MEDIA_UPLOAD_DUPLICATE_PATTERN,
+]
 
 /**
  * Fetches status/derived_content/error_message for every attached media item
@@ -117,9 +136,12 @@ export async function resolveMediaContext(
 }
 
 /**
- * Returns a new messages array with all [MEDIA_UPLOAD: …] marker strings
- * removed from user message content. Applied to all messages, not just the
- * last. Returns the original array unchanged when no markers are present.
+ * Returns a new messages array with all [MEDIA_UPLOAD: …] / [MEDIA_UPLOAD_FAILED: …] /
+ * [MEDIA_UPLOAD_DUPLICATE: …] marker strings removed from user message
+ * content — every marker ChatInput.tsx can write into real message content,
+ * not just the original one. Applied to all messages, not just the last.
+ * Returns the original array unchanged when no markers of any of the three
+ * types are present.
  *
  * A turn that consisted ONLY of attachment markers (no typed caption) must
  * never reach the model as empty content once the markers are stripped —
@@ -132,14 +154,24 @@ export function stripMediaMarkers(messages: ChatMessage[]): ChatMessage[] {
   let changed = false
   const result = messages.map(m => {
     if (m.role !== 'user') return m
-    MEDIA_UPLOAD_PATTERN.lastIndex = 0
-    if (!MEDIA_UPLOAD_PATTERN.test(m.content)) return m
 
-    MEDIA_UPLOAD_PATTERN.lastIndex = 0
-    const filenames = Array.from(m.content.matchAll(MEDIA_UPLOAD_PATTERN), match => match[1])
+    const hasAnyMarker = ALL_MEDIA_MARKER_PATTERNS.some(pattern => {
+      pattern.lastIndex = 0
+      return pattern.test(m.content)
+    })
+    if (!hasAnyMarker) return m
 
-    MEDIA_UPLOAD_PATTERN.lastIndex = 0
-    const stripped = m.content.replace(MEDIA_UPLOAD_PATTERN, '').trim()
+    const filenames = ALL_MEDIA_MARKER_PATTERNS.flatMap(pattern => {
+      pattern.lastIndex = 0
+      return Array.from(m.content.matchAll(pattern), match => match[1])
+    })
+
+    let stripped = m.content
+    for (const pattern of ALL_MEDIA_MARKER_PATTERNS) {
+      pattern.lastIndex = 0
+      stripped = stripped.replace(pattern, '')
+    }
+    stripped = stripped.trim()
     changed = true
 
     return {
