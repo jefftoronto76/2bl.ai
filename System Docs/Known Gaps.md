@@ -1457,3 +1457,61 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   as a different user intent than recovering a failure. See
   `Utilities/Media.md`'s "The pipeline" section and `Public Site.md`'s
   `MediaGallery` row for the current behavior.
+
+- **Media delete is local-state only — no `DELETE /api/media/[id]` endpoint
+  exists (Stage 3 of `media_stages_08_2026`, 2026-08-13).** `MediaCard`'s
+  trash icon opens a real confirmation dialog (generalized
+  `ConfirmDeleteModal`), but confirming only removes the item from
+  `MediaGallery`/`MediaPage`'s local `items` state — nothing hits the
+  server, and a page refresh brings the file back. This matches the design
+  prototype's own spec exactly ("no backend call"), not a corner cut beyond
+  it — investigated and confirmed no endpoint exists under `app/api/media/
+  [id]/` (only `url`, `retry`, `start-processing`). The confirmation copy
+  was written to avoid claiming permanence it doesn't have (no "permanently
+  removed, can't be undone" wording, unlike the default chat/story/memory
+  delete copy). **Needs, before this is production-real:** a real DELETE
+  endpoint plus a soft-vs-hard-delete decision — not made here per CLAUDE.md
+  (Jeff owns schema/backend-shape calls), and explicitly out of scope per
+  this stage's own instructions ("stop and report rather than building
+  one").
+
+- **Media rename is local-state only — no `PATCH` endpoint exists for media
+  items (Stage 3 of `media_stages_08_2026`, folding in the Aug 2026 Atomic
+  Updates `09_media_metadata_lazyload` handover, 2026-08-13).** Clicking a
+  file's name in `MediaCard` opens an inline `<input>`; committing (Enter or
+  blur) only patches `original_filename` in the caller's local `items`
+  array via a new `onRename` prop — same gap the handover itself flagged
+  ("no rename API confirmed on main"). A page refresh reverts to the stored
+  filename. **Needs a real endpoint before this is production-real** — no
+  filename-validation/extension-preservation decision has been made either
+  (the handover flagged this too; this pass accepts any non-empty trimmed
+  string, same as the prototype).
+
+- **"Add to memory" (MediaCard's "+" icon) is UI-only — there is no
+  many-to-many mechanism to attach an existing media item to an existing
+  memory (Stage 3 of `media_stages_08_2026`, 2026-08-13).** The panel
+  (`media/AddToMemoryPanel.tsx`) lists the item's own originating chat's
+  real saved memories (`useMemories(item.chat_id)`) and lets a member
+  select one or more, but confirming only shows a toast and closes — no
+  write, matching the design's own explicit spec. Investigated whether a
+  real mechanism already existed to reuse instead of stubbing it (memories
+  are a real feature, unlike Edit/Upload): the only real media↔memory
+  relationship in this schema, `memories.media_item_id`, is a **1:1 FK set
+  only at memory-creation time** (`createPhotoMemoryFromMedia` —
+  "create a new memory from this photo"), not an attach-to-an-existing-
+  memory operation. The many-to-many table that would support the latter,
+  `photo_artifacts`, is confirmed schema-only — zero application code
+  references it (`System Docs/Database Schema.md`). **Needs, before this is
+  production-real:** either wiring `photo_artifacts` up for real, or some
+  other real attach mechanism — a product/schema decision, not made here.
+
+- **Image rotate is not implemented — placeholder only, so it doesn't get
+  lost (media mobile-fix pass, 2026-08-13).** `MediaCard` has no rotate
+  action of any kind today. Two flavors were discussed and both deferred,
+  neither scheduled: **(a) display-only rotate** — a CSS `transform`
+  applied client-side, no file change, same non-persistence posture as
+  rename/delete above; and **(b) persisted rotate** — actually re-encoding
+  and overwriting the stored file, which would need a new endpoint similar
+  in shape to the missing delete/rename ones (own entries above). Neither
+  is built here — this entry exists only so the idea isn't lost, not as a
+  commitment to either flavor.

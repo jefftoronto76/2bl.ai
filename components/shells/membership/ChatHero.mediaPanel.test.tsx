@@ -4,12 +4,21 @@ import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 
-// Integration coverage for wiring MediaGallery into ChatHero (2026-08-09):
-// the sidebar's previously-inert "Media" button (onMedia prop, always
-// undefined before this change) now opens the gallery — in the same
-// third-pane slot the memory panel uses on desktop, or a bottom sheet on
-// mobile (no third-pane host exists there) — and is mutually exclusive with
-// an open memory panel.
+// Integration coverage for the Media surfaces (Stage 1,
+// Design Handovers/media_stages_08_2026): two distinct entry points now
+// exist, previously conflated into one (`ChatHero.mediaPanel.test.tsx`'s
+// original pre-Stage-1 version tested only the sidebar → in-chat-panel path).
+//
+// - Sidebar "Media" row (SidebarV2) opens the standalone MediaPage — a
+//   full-screen overlay independent of any chat session, showing every
+//   account file. Not mutually exclusive with the memory panel (it visually
+//   covers everything regardless).
+// - ChatHeader's "Media from this chat" icon (new in this stage — see the
+//   investigation notes in the Stage 1 PR: no such icon existed before this
+//   change) opens the in-chat MediaGallery panel, scoped to the active
+//   session — same third-pane/bottom-sheet slot the memory panel uses,
+//   mutually exclusive with it, exactly as the pre-Stage-1 sidebar-triggered
+//   panel used to behave.
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -105,26 +114,56 @@ async function renderReady() {
   await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
 }
 
-describe('Media pane — desktop', () => {
+describe('Standalone Media page — desktop', () => {
+  // MediaPage is always mounted (so its slide-in transform can animate) —
+  // `inert` (not DOM presence) is what tracks open/closed, same contract
+  // ChatDrawerV2 uses for its own closed state.
   it('opens via the sidebar Media button and closes via its own close button', async () => {
+    await renderReady();
+    const dialog = screen.getByRole('dialog', { name: 'Media' });
+
+    expect(dialog).toHaveAttribute('inert');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('inert'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close media page' }));
+    await waitFor(() => expect(dialog).toHaveAttribute('inert'));
+  });
+
+  it('does not open the in-chat Media panel or force-collapse the sidebar', async () => {
+    await renderReady();
+    const aside = document.querySelector('aside');
+    const dialog = screen.getByRole('dialog', { name: 'Media' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media' }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute('inert'));
+
+    expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull();
+    expect(aside?.className).toContain('w-64');
+  });
+});
+
+describe('In-chat Media panel — desktop', () => {
+  it('opens via the chat-header icon and closes via its own close button', async () => {
     await renderReady();
 
     expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull());
   });
 
-  it('opening Media closes an open memory panel, and opening a memory closes Media', async () => {
+  it('opening the panel closes an open memory panel, and opening a memory closes the panel', async () => {
     await renderReady();
 
     fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
     expect(screen.queryByRole('textbox', { name: 'Memory title' })).toBeNull();
 
@@ -139,19 +178,30 @@ describe('Media pane — desktop', () => {
 
     expect(aside?.className).toContain('w-64');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Media' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
     expect(aside?.className).toContain('w-12');
 
     fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
     await waitFor(() => expect(aside?.className).toContain('w-64'));
   });
+
+  it('scopes the fetch to the active session via chat_id', async () => {
+    await renderReady();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/media?chat_id=sess-media')),
+    );
+  });
 });
 
 // happy-dom's real matchMedia evaluates `(max-width: 768px)` against
 // window.innerWidth — same technique ChatHero.kebabDelete.test.tsx and
 // ChatHero.memoryPanel.test.tsx already use to reach the mobile branch.
-describe('Media pane — mobile (390px) bottom sheet', () => {
+describe('Media — mobile (390px)', () => {
   beforeEach(() => {
     (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
       width: 390,
@@ -164,7 +214,7 @@ describe('Media pane — mobile (390px) bottom sheet', () => {
     });
   });
 
-  it('tapping Media closes the drawer and opens the bottom sheet; closing the sheet reverses it', async () => {
+  it('tapping the sidebar Media row closes the drawer and opens the standalone page', async () => {
     // Can't reuse renderReady() here — at mobile widths the memory receipt
     // has no button role (Stage A is desktop-only), same as
     // ChatHero.memoryPanel.test.tsx's own mobile-width test confirms.
@@ -180,12 +230,29 @@ describe('Media pane — mobile (390px) bottom sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
     await screen.findByRole('button', { name: 'New Chat' }); // drawer overlay mounted
 
+    const dialog = screen.getByRole('dialog', { name: 'Media' });
     fireEvent.click(screen.getByRole('button', { name: 'Media' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+    await waitFor(() => expect(dialog).not.toHaveAttribute('inert'));
     // The drawer overlay itself unmounts once Media takes over the screen.
     expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Close media page' }));
+    await waitFor(() => expect(dialog).toHaveAttribute('inert'));
+  });
+
+  it('tapping the chat-header icon opens the in-chat panel as a bottom sheet', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getAllByText('The Lake House').length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Media from this chat' })).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Media from this chat' })).toBeNull());
   });
 });

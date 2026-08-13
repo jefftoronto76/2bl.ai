@@ -5,6 +5,7 @@ import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
   ChevronDown,
   CircleUser as UserCircle,
+  Images,
   LayoutDashboard,
   LogOut,
   Maximize2,
@@ -40,9 +41,19 @@ export interface ChatHeaderProps {
   /** When provided, renders a hamburger button (mobile-only via md:hidden)
    *  to the left of the title. Desktop passes undefined — no button rendered. */
   onMenuOpen?: () => void;
+  /**
+   * Opens the in-chat Media panel scoped to the active session — distinct
+   * from the sidebar's "Media" row, which opens the standalone top-level
+   * page covering every account file (MediaPage.tsx). Renders in the icon
+   * cluster, left of Share Heirloom, whenever provided (Stage 1,
+   * media_stages_08_2026 — this icon didn't exist before that handover; see
+   * its investigation notes for why it's needed now that the sidebar button
+   * no longer opens this surface).
+   */
+  onOpenMedia?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -196,6 +207,16 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             Close — half-gap (2px) horizontally on every button (uniform,
             not first/last-optimized, to stay correct regardless of which
             optional buttons render); vertical is open so it expands fully. */}
+        {onOpenMedia && (
+          <IconButton
+            label="Media from this chat"
+            onClick={onOpenMedia}
+            className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+          >
+            <Images size={16} />
+          </IconButton>
+        )}
+
         {/* Share Heirloom — deliberately inert in this pass (decision: item
             visible, action stubbed; no share backend/modal mounted yet). */}
         <IconButton
