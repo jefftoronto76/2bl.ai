@@ -470,7 +470,14 @@ export async function revokeStoryCollaborator(
  *   already completed synchronously, so there is no placeholder/pending
  *   period to model the way the single-use admin mechanism's 'invited'
  *   state does), source='story_invite', primer copied from the link, then
- *   the same artifact_subscribers grant.
+ *   the same artifact_subscribers grant. `name` (caller-supplied — see
+ *   param doc) is included on this insert; no rescue/orphan-cleanup logic
+ *   is needed here the way acceptInvite (services/members/members.ts)
+ *   needed one — this function never deletes another row. A 23505 unique
+ *   violation on this insert (another process created the row for this
+ *   clerk_id first, e.g. /api/members/sync's syncMember upsert) falls
+ *   through to the existing-member branch below, which never touches
+ *   `name` — whatever that other write already set is left alone.
  *
  * clerk_id is globally unique on `members`, so "does a members row already
  * exist for this clerk_id" is the only safe existing-vs-new test — status
@@ -483,6 +490,12 @@ export async function acceptStoryInvite(
   clerkUserId: string,
   supabaseUserId: string,
   tenantId: string,
+  /** From Clerk's firstName + lastName (same derivation as syncMember's
+   *  webhook-fallback caller, app/api/webhooks/clerk/route.ts, and the
+   *  shared mapClerkUser boundary mapping) — null/undefined when Clerk has
+   *  no name on file. Optional and trailing so existing callers/tests that
+   *  predate this param keep working unchanged. */
+  name?: string | null,
 ): Promise<StoryInviteResult<AcceptStoryInviteResult>> {
   if (!token || !clerkUserId || !supabaseUserId) {
     return { ok: false, status: 400, error: 'Missing required parameters' }
@@ -564,6 +577,7 @@ export async function acceptStoryInvite(
         status: 'active',
         source: 'story_invite',
         primer: link.primer,
+        name: name ?? null,
       })
       .select('id')
       .single()

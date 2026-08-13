@@ -179,7 +179,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (storyInviteToken) {
       const user = await findUserByClerkId(clerkUserId)
       const result = user
-        ? await acceptStoryInvite(storyInviteToken, clerkUserId, user.id, HEIRLOOM_TENANT_ID)
+        ? await acceptStoryInvite(storyInviteToken, clerkUserId, user.id, HEIRLOOM_TENANT_ID, name)
         : { ok: false as const, status: 500, error: 'could not resolve users.id after users upsert' }
 
       if (result.ok) {

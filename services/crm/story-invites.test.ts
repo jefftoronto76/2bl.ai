@@ -530,6 +530,61 @@ describe('acceptStoryInvite', () => {
     )
   })
 
+  it('brand-new person with a Clerk name: includes it on the insert', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+      artifacts: [STORY_ROW],
+      members: [
+        { data: null, error: null },
+        { data: { id: 'new-member-2' }, error: null },
+      ],
+      artifact_subscribers: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    await acceptStoryInvite('tok-abc', 'clerk-2', 'user-2', 'tenant-1', 'Ada Lovelace')
+
+    const memberInsert = calls.members.find(c => c.op === 'insert')
+    expect(memberInsert!.payload).toEqual(
+      expect.objectContaining({ name: 'Ada Lovelace' }),
+    )
+  })
+
+  it('brand-new person with no Clerk name: leaves it null, no placeholder text', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+      artifacts: [STORY_ROW],
+      members: [
+        { data: null, error: null },
+        { data: { id: 'new-member-3' }, error: null },
+      ],
+      artifact_subscribers: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    await acceptStoryInvite('tok-abc', 'clerk-3', 'user-3', 'tenant-1')
+
+    const memberInsert = calls.members.find(c => c.op === 'insert')
+    expect(memberInsert!.payload).toEqual(
+      expect.objectContaining({ name: null }),
+    )
+  })
+
+  it('existing member: a supplied name is never written — no members insert or update at all', async () => {
+    const { client, calls } = makeClient({
+      story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
+      artifacts: [STORY_ROW],
+      members: [{ data: { id: 'existing-member-2' }, error: null }],
+      artifact_subscribers: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    await acceptStoryInvite('tok-abc', 'clerk-4', 'user-4', 'tenant-1', 'Should Not Be Written')
+
+    expect(calls.members.filter(c => c.op === 'insert')).toHaveLength(0)
+    expect(calls.members.filter(c => c.op === 'update')).toHaveLength(0)
+  })
+
   it('existing member: only writes an artifact_subscribers grant — no members insert, no status change', async () => {
     const { client, calls } = makeClient({
       story_invite_links: [{ data: LINK_COLUMNS_ROW, error: null }],
