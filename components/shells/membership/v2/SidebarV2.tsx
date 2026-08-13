@@ -17,7 +17,7 @@
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
@@ -371,6 +371,22 @@ export function SidebarV2({
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
 
+  // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
+  // by updated_at DESC (services/crm/sessions.ts) and just switching to an
+  // older session (no new message sent) never touches updated_at, so without
+  // this the active row stays wherever it naturally falls instead of
+  // surfacing at the top. Derived, not mutated in place — recentSessions
+  // itself stays server-order for every other consumer (searchRevealed/
+  // totalMemoryCount below don't care about order at all). No match (or
+  // already first) returns the original array as-is, so nothing downstream
+  // that relies on referential stability sees a needless new array.
+  const orderedSessions = useMemo(() => {
+    const activeIndex = recentSessions.findIndex((s) => s.id === state.sessionId);
+    if (activeIndex <= 0) return recentSessions;
+    const active = recentSessions[activeIndex];
+    return [active, ...recentSessions.slice(0, activeIndex), ...recentSessions.slice(activeIndex + 1)];
+  }, [recentSessions, state.sessionId]);
+
   // Whether this docked/overlay instance shows full labels + lists (w-64) or
   // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
   // that flag means "is the mobile overlay open at all" (owned by ChatHero /
@@ -507,12 +523,12 @@ export function SidebarV2({
 
           {isExpanded && convosOpen && (
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
-              {recentSessions.length === 0 ? (
+              {orderedSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
                   No memories yet
                 </span>
               ) : (
-                recentSessions.map((session) => {
+                orderedSessions.map((session) => {
                   const id = `conversation:${session.id}`;
                   const isMenuOpen = menuId === id;
                   return (
