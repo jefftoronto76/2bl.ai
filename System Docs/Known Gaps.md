@@ -1376,3 +1376,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   references it (`System Docs/Database Schema.md`). **Needs, before this is
   production-real:** either wiring `photo_artifacts` up for real, or some
   other real attach mechanism — a product/schema decision, not made here.
+
+- **Image rotate is not implemented — placeholder only, so it doesn't get
+  lost (media mobile-fix pass, 2026-08-13).** `MediaCard` has no rotate
+  action of any kind today. Two flavors were discussed and both deferred,
+  neither scheduled: **(a) display-only rotate** — a CSS `transform`
+  applied client-side, no file change, same non-persistence posture as
+  rename/delete above; and **(b) persisted rotate** — actually re-encoding
+  and overwriting the stored file, which would need a new endpoint similar
+  in shape to the missing delete/rename ones (own entries above). Neither
+  is built here — this entry exists only so the idea isn't lost, not as a
+  commitment to either flavor.

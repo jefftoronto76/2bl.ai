@@ -92,7 +92,15 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm, heading, body, co
         role="alertdialog"
         aria-modal="true"
         aria-label={heading ?? `Delete ${noun}`}
-        className="w-[min(418px,100%)] bg-surface border border-[rgba(245,239,230,0.20)] rounded-[20px] p-7 shadow-[0_40px_100px_-24px_rgba(0,0,0,.75),0_0_0_.5px_rgba(0,0,0,.4)] focus:outline-none hl-animate-modal"
+        // min-w-0 overrides the flex item default (min-width: auto), which
+        // otherwise lets the dialog grow past w-[min(418px,100%)] on narrow
+        // viewports. break-words on the title span below (not this wrapper)
+        // is what actually stops a single long, space/hyphen-less filename
+        // (a real shape — phone-camera and hashed upload filenames commonly
+        // have no break points) from visually overflowing its own box even
+        // when the wrapper itself is sized correctly — confirmed both were
+        // needed via a real repro, not just one.
+        className="w-[min(418px,100%)] min-w-0 bg-surface border border-[rgba(245,239,230,0.20)] rounded-[20px] p-7 shadow-[0_40px_100px_-24px_rgba(0,0,0,.75),0_0_0_.5px_rgba(0,0,0,.4)] focus:outline-none hl-animate-modal"
       >
         {/* Danger badge */}
         <div className="w-[46px] h-[46px] rounded-[13px] bg-[#E58D80]/[0.14] border border-[#E58D80]/[0.34] flex items-center justify-center text-[#E58D80] mb-4">
@@ -104,8 +112,11 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm, heading, body, co
           {heading ?? `Delete this ${noun}?`}
         </h4>
 
-        {/* Body */}
-        <p className="font-body text-[14.5px] leading-[1.55] text-text-muted mt-[9px] mb-0">
+        {/* Body — break-words: a filename/title can be one long unbroken run
+            (no spaces or hyphens for the browser's default line-breaking to
+            use), which otherwise paints past this card's edge regardless of
+            how correctly the card itself is sized. */}
+        <p className="font-body text-[14.5px] leading-[1.55] text-text-muted mt-[9px] mb-0 break-words">
           {body ??
             (title ? (
               <>
@@ -119,8 +130,10 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm, heading, body, co
             ))}
         </p>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-[10px] mt-6">
+        {/* Actions — flex-wrap as a safety net: stacks rather than overflows
+            if the row is ever squeezed narrower than both buttons' natural
+            width (e.g. a long custom confirmLabel). */}
+        <div className="flex flex-wrap justify-end gap-[10px] mt-6">
           <button
             ref={cancelRef}
             type="button"
