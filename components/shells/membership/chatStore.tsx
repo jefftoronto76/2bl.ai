@@ -1145,6 +1145,10 @@ export function ChatProvider({
   // Catch-up: on session load, fetch any items whose Realtime completion event
   // was missed (tab closed during processing). Runs whenever sessionId changes.
   useEffect(() => {
+    // TEMP DIAGNOSTIC — remove once the stuck-media-items investigation is
+    // resolved (see Heirloom media upload failures thread). Unconditional,
+    // before the guard, so it fires on every effect run regardless of outcome.
+    console.log('[heirloom/chat] media catch-up effect ran', { sessionId, isSignedIn });
     if (!sessionId || !isSignedIn) return;
     let cancelled = false;
     fetch(`/api/media?chat_id=${sessionId}&status=ready,failed`)
