@@ -163,6 +163,29 @@ session's genuine first assistant turn, not repeatedly.
   construct their own `RegExp` from that one shared source string, so the
   syntax can only be changed in one place.
 
+### `[MEDIA_UPLOAD_DUPLICATE: filename | media_item_id | type | status]` — dispatch `client`
+
+- Sibling to `[MEDIA_UPLOAD: ...]` above, same client-authored (not
+  AI-emitted) treatment — written by `ChatInput.tsx` (2026-08-12,
+  duplicate-upload-surfacing pass) in place of `[MEDIA_UPLOAD: ...]` when
+  `POST /api/media/upload-url` reports a `content_hash` match against an
+  existing row, instead of the prior behavior of silently auto-reprocessing
+  it. `MessageList.tsx`'s parser extracts the extra `status` field (the
+  matched row's real status — `'ready'`/`'processing'`/`'failed'`) to render
+  a status-specific label ("Already uploaded" / "Already being processed" /
+  "Matches a previous upload that failed") next to the real thumbnail,
+  instead of treating it as a brand-new attachment.
+- Pattern source is `MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE`
+  (`services/chat/ui/v1/mediaMarkerPatterns.ts`), same one-source-of-truth
+  convention as `[MEDIA_UPLOAD: ...]`'s pattern. Registered as
+  `MEDIA_UPLOAD_DUPLICATE_MARKER` (`services/chat/ui/v1/registry.ts`) so
+  every registry consumer strips it the same way. A third consumer beyond
+  the two above — `services/chat/server/media-context.ts`'s
+  `stripMediaMarkers` — also strips it before any message content reaches
+  the model, same fix as the adjacent `MEDIA_UPLOAD_FAILED` marker-leak bug
+  this pass found and closed (see `System Docs/Utilities/Media.md`'s
+  "Duplicate uploads" section).
+
 ### `[CONTACT: phone]` — **retired**
 
 - The `[CONTACT:]` marker, its `'CONTACT'` `MarkerType` member, and the entire

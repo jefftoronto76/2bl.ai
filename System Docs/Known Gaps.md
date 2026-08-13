@@ -215,7 +215,12 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   like `MediaGallery`/`MemoryCardView` (same fixed `MEDIA_PANEL_WIDTH`
   desktop slot, same full-screen mobile overlay treatment, mutually
   exclusive with `openMemory`/`mediaOpen` via the same wrapping-handler
-  pattern, not a shared enum). Two real pieces:
+  pattern, not a shared enum). **Also mutually exclusive with the standalone
+  `mediaPageOpen` (`MediaPage`, Stage 1 of `media_stages_08_2026`, own entry
+  below) — opening Admin closes it too**, the same fix `handleOpenMediaPage`
+  already needed against the mobile full-screen memory overlay (both share
+  the `absolute inset-0 z-40` layer); omitted from this paragraph's own list
+  until this pass, found during the 2026-08-13 docs audit. Two real pieces:
   - **Description** — the story's `body` column, editable for the first
     time since creation. Commits on blur, only when the trimmed value
     actually changed, via a new `updateStoryDescription`
