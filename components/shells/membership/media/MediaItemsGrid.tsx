@@ -7,14 +7,14 @@
 // that's 3 columns. Used by both the standalone page and the in-chat panel;
 // Stage 2 owns what renders inside each MediaCard.
 
-import type { MediaItem } from '@/services/media/types';
+import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaCard } from './MediaCard';
 
 export function MediaItemsGrid({
   items,
   onRetry,
 }: {
-  items: MediaItem[];
+  items: MediaItemWithUrl[];
   onRetry: (id: string) => void;
 }) {
   return (

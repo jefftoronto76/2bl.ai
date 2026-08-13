@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Image as ImageIcon, Loader2, X } from 'lucide-react';
-import type { MediaItem } from '@/services/media/types';
+import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 
 interface MediaGalleryProps {
@@ -21,7 +21,7 @@ interface MediaGalleryProps {
 }
 
 export function MediaGallery({ onClose, sessionId }: MediaGalleryProps) {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [items, setItems] = useState<MediaItemWithUrl[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function MediaGallery({ onClose, sessionId }: MediaGalleryProps) {
     setLoading(true);
     fetch(`/api/media?chat_id=${sessionId}`)
       .then((r) => r.json())
-      .then((data: { items?: MediaItem[] }) => {
+      .then((data: { items?: MediaItemWithUrl[] }) => {
         setItems(Array.isArray(data.items) ? data.items : []);
       })
       .catch((err) => console.error('[MediaGallery] fetch failed:', err))

@@ -25,7 +25,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Feather, Loader2, Image as ImageIcon, Upload, X } from 'lucide-react';
-import type { MediaItem } from '@/services/media/types';
+import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 
 interface MediaPageProps {
@@ -35,7 +35,7 @@ interface MediaPageProps {
 }
 
 export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [items, setItems] = useState<MediaItemWithUrl[]>([]);
   const [loading, setLoading] = useState(true);
   const hasFetchedRef = useRef(false);
 
@@ -44,7 +44,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
     hasFetchedRef.current = true;
     fetch('/api/media')
       .then((r) => r.json())
-      .then((data: { items?: MediaItem[] }) => {
+      .then((data: { items?: MediaItemWithUrl[] }) => {
         setItems(Array.isArray(data.items) ? data.items : []);
       })
       .catch((err) => console.error('[MediaPage] fetch failed:', err))

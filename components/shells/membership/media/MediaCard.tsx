@@ -1,10 +1,10 @@
 'use client';
 
-// Card content extracted as-is from the pre-Stage-1 MediaGallery.tsx so both
-// the in-chat panel and the new standalone page (ChatHero.tsx / MediaPage.tsx)
-// render identical cards inside MediaItemsGrid's flex-wrap layout. Card
-// anatomy itself (thumbnail, status badge, footer actions) is Stage 2/3 scope
-// — untouched here.
+// Card anatomy — Stage 2 (Design Handovers/media_stages_08_2026/
+// stage-2-card-anatomy-icons/README_stage.md): vertical, image-forward card
+// with a 16/10 thumbnail area on top (real photo when available, a per-type
+// tinted tile otherwise) and the existing body/footer below it, unchanged.
+// Shared by the in-chat panel and the standalone page via MediaItemsGrid.
 
 import { useState } from 'react';
 import {
@@ -17,7 +17,8 @@ import {
   Download,
   RefreshCw,
 } from 'lucide-react';
-import type { MediaItem } from '@/services/media/types';
+import type { MediaItemWithUrl } from '@/services/media/display-url';
+import { useFreshImageUrl } from '@/services/media/useFreshImageUrl';
 
 function prettySize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -25,13 +26,27 @@ function prettySize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function MediaTypeIcon({ type }: { type: MediaItem['type'] }) {
-  if (type === 'audio') return <AudioLines size={16} className="text-accent" />;
-  if (type === 'image') return <ImageIcon size={16} className="text-accent" />;
-  return <FileText size={16} className="text-accent" />;
+export function MediaTypeIcon({ type, size = 16 }: { type: MediaItemWithUrl['type']; size?: number }) {
+  if (type === 'audio') return <AudioLines size={size} className="text-accent" />;
+  if (type === 'image') return <ImageIcon size={size} className="text-accent" />;
+  return <FileText size={size} className="text-accent" />;
 }
 
-export function StatusBadge({ status }: { status: MediaItem['status'] }) {
+// Accent tint mixed into the surface-2 tile background, per type — 8% for
+// image (no 'video' member exists on MediaItemType today, see the Stage 2
+// investigation notes; add one here if/when that type ships), 5% audio, 3%
+// document. A translucent overlay layered on the opaque bg-surface-2 base
+// (below), not CSS color-mix() — avoids any browser-support question and
+// matches the layered-tint pattern already used elsewhere (e.g. bg-accent/10
+// icon chips). Static literal classes, not string-built, so Tailwind's
+// content scanner can actually see them.
+const MEDIA_TILE_TINT: Record<MediaItemWithUrl['type'], string> = {
+  image: 'bg-accent/[0.08]',
+  audio: 'bg-accent/[0.05]',
+  document: 'bg-accent/[0.03]',
+};
+
+export function StatusBadge({ status }: { status: MediaItemWithUrl['status'] }) {
   if (status === 'ready') {
     return (
       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/15 text-accent font-mono text-[9.5px] uppercase tracking-wide">
@@ -56,10 +71,22 @@ export function StatusBadge({ status }: { status: MediaItem['status'] }) {
   );
 }
 
-export function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: string) => void }) {
+export function MediaCard({ item, onRetry }: { item: MediaItemWithUrl; onRetry: (id: string) => void }) {
   const [downloading, setDownloading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [expanded, setExpanded] = useState(false);
+
+  // Real thumbnail: image items only — 'video' isn't a MediaItemType member
+  // today (Stage 2 investigation notes), so there's no reachable code path
+  // for a video thumbnail/play-badge to build against. item.url is the
+  // batched signed url from GET /api/media (services/media/display-url.ts,
+  // image items only) — 60s-expiry, so useFreshImageUrl shows it immediately
+  // (no flicker) then re-resolves a fresh one via GET /api/media/[id]/url on
+  // mount, same pattern already used for chat-transcript and memory-panel
+  // images (services/media/useFreshImageUrl.ts).
+  const isImage = item.type === 'image';
+  const { url: freshUrl } = useFreshImageUrl(isImage ? item.id : undefined, item.url ?? undefined);
+  const hasThumbnail = isImage && !!freshUrl;
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -94,17 +121,40 @@ export function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: st
   });
 
   return (
-    <div className="border border-border rounded-xl bg-surface p-3.5 flex flex-col gap-2.5 h-full">
-      <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-accent/10 grid place-items-center">
-          <MediaTypeIcon type={item.type} />
+    <div className="border border-border rounded-xl bg-surface overflow-hidden flex flex-col h-full">
+      {/* Thumbnail area — 16/10, image-forward. Real photo when available;
+          otherwise a per-type tinted tile with a centered icon badge, never
+          a bare icon on flat gray (explicit design requirement). */}
+      <div className="relative w-full flex-shrink-0" style={{ aspectRatio: '16 / 10' }}>
+        <div className="absolute top-2 left-2 z-10">
+          <StatusBadge status={item.status} />
         </div>
-        <div className="min-w-0 flex-1">
+        {hasThumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={freshUrl}
+            alt={item.original_filename}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-surface-2">
+            <div className={`absolute inset-0 ${MEDIA_TILE_TINT[item.type]}`} />
+            <div className="absolute inset-0 grid place-items-center">
+              <div className="w-14 h-14 rounded-full bg-accent-soft border border-accent/35 grid place-items-center text-accent">
+                <MediaTypeIcon type={item.type} size={24} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="p-3.5 flex flex-col gap-2.5 flex-1 min-h-0">
+        <div className="min-w-0">
           <p className="text-[13px] font-body text-text-primary leading-tight truncate">
             {item.original_filename}
           </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <StatusBadge status={item.status} />
             {item.classification && (
               <span className="font-mono text-[9.5px] text-text-muted capitalize">
                 {item.classification.replace(/_/g, ' ')}
@@ -115,61 +165,61 @@ export function MediaCard({ item, onRetry }: { item: MediaItem; onRetry: (id: st
             </span>
           </div>
         </div>
-      </div>
 
-      {item.derived_content && (
-        <div className="border-t border-border pt-2.5">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[10px] uppercase tracking-wide text-text-muted hover:text-text-primary transition-colors"
-          >
-            {expanded ? 'Hide' : 'Show'} extracted content
-          </button>
-          {expanded && (
-            <p className="mt-2 font-body text-[12.5px] text-text-primary leading-relaxed whitespace-pre-wrap line-clamp-6">
-              {item.derived_content}
-            </p>
+        {item.derived_content && (
+          <div className="border-t border-border pt-2.5">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="font-mono text-[10px] uppercase tracking-wide text-text-muted hover:text-text-primary transition-colors"
+            >
+              {expanded ? 'Hide' : 'Show'} extracted content
+            </button>
+            {expanded && (
+              <p className="mt-2 font-body text-[12.5px] text-text-primary leading-relaxed whitespace-pre-wrap line-clamp-6">
+                {item.derived_content}
+              </p>
+            )}
+          </div>
+        )}
+
+        {item.status === 'failed' && (
+          <p className="text-[11.5px] font-body text-red-400 leading-snug">
+            {item.error_message ?? 'Processing failed. You can try again below.'}
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 pt-0.5 mt-auto">
+          {item.status === 'ready' && (
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-border/80 font-body text-[11.5px] transition-colors disabled:opacity-50"
+            >
+              <Download size={12} />
+              {downloading ? 'Opening…' : 'Download'}
+            </button>
+          )}
+          {(item.status === 'failed' || item.status === 'ready') && (
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={retrying}
+              title={item.status === 'ready' ? 'Re-run analysis on this file' : undefined}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 font-body text-[11.5px] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
+              {item.status === 'ready'
+                ? retrying
+                  ? 'Reprocessing…'
+                  : 'Reprocess'
+                : retrying
+                  ? 'Retrying…'
+                  : 'Try again'}
+            </button>
           )}
         </div>
-      )}
-
-      {item.status === 'failed' && (
-        <p className="text-[11.5px] font-body text-red-400 leading-snug">
-          {item.error_message ?? 'Processing failed. You can try again below.'}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 pt-0.5 mt-auto">
-        {item.status === 'ready' && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-border/80 font-body text-[11.5px] transition-colors disabled:opacity-50"
-          >
-            <Download size={12} />
-            {downloading ? 'Opening…' : 'Download'}
-          </button>
-        )}
-        {(item.status === 'failed' || item.status === 'ready') && (
-          <button
-            type="button"
-            onClick={handleRetry}
-            disabled={retrying}
-            title={item.status === 'ready' ? 'Re-run analysis on this file' : undefined}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 font-body text-[11.5px] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
-            {item.status === 'ready'
-              ? retrying
-                ? 'Reprocessing…'
-                : 'Reprocess'
-              : retrying
-                ? 'Retrying…'
-                : 'Try again'}
-          </button>
-        )}
       </div>
     </div>
   );
