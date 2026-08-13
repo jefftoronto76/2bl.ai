@@ -3,14 +3,12 @@
 // components/shells/membership/v2/SidebarV2.tsx
 //
 // V2 sidebar. Like the v1 Sidebar it reads conversation data + New Chat from
-// useChatStore(); the new V2 concepts (Stories, Writing Prompts, Search,
-// per-row menus) come in via props so the parent stays in control.
+// useChatStore(); the new V2 concepts (Stories, Writing Prompts, threshold
+// Search, per-row menus) come in via props so the parent stays in control.
 //
 // Layout (top → bottom):
-//   • header row   — search (title-only: conversations + stories, live,
-//                    always visible — Aug 2026 Search and Collapse Bar) next
-//                    to a collapse toggle (desktop) or Close-X (mobile, when
-//                    onClose is provided)
+//   • collapse toggle
+//   • Search        — subtle until recentSessions.length >= searchThreshold
 //   • New Chat · Share Heirloom
 //   • Conversations — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
@@ -39,12 +37,10 @@ import {
   Quote,
   Search,
   Share2,
-  Shield,
   SquarePen,
   Star,
   Trash2,
   UserPlus,
-  X,
 } from 'lucide-react';
 import { useChatStore } from '../chatStore';
 import { IconButton } from '../ui/IconButton';
@@ -55,6 +51,9 @@ export interface SidebarV2Props {
   stories: Story[];
   /** Writing prompts shown at the bottom. */
   writingPrompts: WritingPrompt[];
+  /** Conversation count at/above which Search resolves from subtle → visible.
+   *  Default 8. */
+  searchThreshold?: number;
   /** Whether Conversations starts expanded. Default true. */
   conversationsDefaultOpen?: boolean;
   /** IDs of starred conversations (drives the Star/Unstar menu label + rest-state marker). */
@@ -68,10 +67,6 @@ export interface SidebarV2Props {
   // Nav actions (New Chat + the conversation list come from the store)
   onMedia?: () => void;
   onShareHeirloom?: () => void;
-  /** Fires on every keystroke in the search field. SidebarV2 already uses the
-   *  query itself to filter the Memories/Stories lists below (title/name,
-   *  case-insensitive) — this is only for a parent that wants to observe it
-   *  too; no-op if omitted. */
   onSearch?: (query: string) => void;
 
   // Stories
@@ -164,20 +159,12 @@ function SidebarMemoryCount({ count }: { count: number }) {
 
 // ── Per-row kebab menu ──────────────────────────────────────────────────────
 
-// `targets` makes this list target-aware — previously a single flat array
-// rendered identically for both conversation and story rows (moveToChapter/
-// removeFromChapter showed on story rows too, purely by omission: they're
-// chapter-related, not story-related, and were only ever wired as no-ops for
-// stories elsewhere — see ChatHero.tsx's handleRowAction — not by design).
-// 'admin' is the first item that's genuinely target-specific by design (Admin
-// panel, story-only — Updated Story Kebabs handover).
-const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean; targets: RowTarget[] }[] = [
-  { key: 'star', icon: Star, label: 'Star', targets: ['conversation', 'story'] },
-  { key: 'rename', icon: Pencil, label: 'Rename', targets: ['conversation', 'story'] },
-  { key: 'admin', icon: Shield, label: 'Admin', targets: ['story'] },
-  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter', targets: ['conversation'] },
-  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter', targets: ['conversation'] },
-  { key: 'delete', icon: Trash2, label: 'Delete', danger: true, targets: ['conversation', 'story'] },
+const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean }[] = [
+  { key: 'star', icon: Star, label: 'Star' },
+  { key: 'rename', icon: Pencil, label: 'Rename' },
+  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter' },
+  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter' },
+  { key: 'delete', icon: Trash2, label: 'Delete', danger: true },
 ];
 
 const MENU_WIDTH = 208; // w-52
@@ -187,7 +174,6 @@ function RowMenu({
   open,
   anchorRect,
   starred,
-  target,
   onAction,
   onClose,
 }: {
@@ -195,10 +181,6 @@ function RowMenu({
   /** Kebab button rect captured at click time — positions the fixed menu. */
   anchorRect: DOMRect | null;
   starred?: boolean;
-  /** Which row type this menu belongs to — filters MENU_ITEMS down to the
-   *  entries whose `targets` include it (e.g. 'admin' is story-only,
-   *  'moveToChapter'/'removeFromChapter' are conversation-only). */
-  target: RowTarget;
   onAction: (action: RowAction) => void;
   onClose: () => void;
 }) {
@@ -256,7 +238,7 @@ function RowMenu({
       style={{ top, left }}
       className="fixed z-[90] w-52 rounded-xl bg-surface border border-border shadow-lg p-1.5"
     >
-      {MENU_ITEMS.filter((it) => it.targets.includes(target)).map((it) => (
+      {MENU_ITEMS.map((it) => (
         <div key={it.key}>
           {it.danger && <div className="h-px bg-border my-1.5 mx-2" />}
           <button
@@ -285,46 +267,41 @@ function RowMenu({
   );
 }
 
-// ── Search ───────────────────────────────────────────────────────────────
-// Title-only search (Aug 2026 Search and Collapse Bar, Phase 1): filters
-// conversations by title and stories by name, live, off one shared query —
-// no threshold gate anymore (`revealed` is always passed `true` by the
-// caller now that search has real filtering behind it regardless of
-// conversation count). The hover/focus/typing "active" treatment below is
-// unchanged from before the threshold was removed.
+// ── Threshold-gated search ──────────────────────────────────────────────────
 
 function SearchField({
   expanded,
   revealed,
-  value,
   onSearch,
 }: {
   expanded: boolean;
   revealed: boolean;
-  value: string;
-  onSearch: (q: string) => void;
+  onSearch?: (q: string) => void;
 }) {
+  const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const active = revealed || focused || hovered || value.length > 0;
 
   if (!expanded) {
     return (
-      <button
-        type="button"
-        aria-label="Search"
-        className={`w-9 h-8 flex items-center justify-center rounded-lg text-text-muted transition-opacity ${
-          revealed ? 'opacity-80' : 'opacity-40'
-        } hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
-      >
-        <Search size={16} />
-      </button>
+      <div className="flex justify-center px-1.5 py-0.5">
+        <button
+          type="button"
+          aria-label="Search"
+          className={`w-9 h-8 flex items-center justify-center rounded-lg text-text-muted transition-opacity ${
+            revealed ? 'opacity-80' : 'opacity-40'
+          } hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+        >
+          <Search size={16} />
+        </button>
+      </div>
     );
   }
 
   return (
     <div
-      className="flex-1 min-w-0"
+      className="px-3 pt-0.5"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -338,7 +315,10 @@ function SearchField({
         <Search size={15} className="flex-shrink-0 text-text-muted" />
         <input
           value={value}
-          onChange={(e) => onSearch(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            onSearch?.(e.target.value);
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           placeholder="Search your story"
@@ -355,6 +335,7 @@ function SearchField({
 export function SidebarV2({
   stories,
   writingPrompts,
+  searchThreshold = 8,
   conversationsDefaultOpen = true,
   starredConversationIds = [],
   starredStoryIds = [],
@@ -398,23 +379,8 @@ export function SidebarV2({
   // The open menu's kebab-button rect, captured at click time (the menu portals
   // to <body> with fixed positioning — see RowMenu).
   const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const searchRevealed = recentSessions.length >= searchThreshold;
   const totalMemoryCount = recentSessions.reduce((sum, s) => sum + s.memoryCount, 0);
-
-  // Title-only search (Phase 1 — conversations + stories; memory content is
-  // a separate later phase, see the handover). Query lives here, not inside
-  // SearchField, so it can drive both list filters below.
-  const [query, setQuery] = useState('');
-  const handleSearch = useCallback((q: string) => {
-    setQuery(q);
-    onSearch?.(q);
-  }, [onSearch]);
-  const trimmedQuery = query.trim().toLowerCase();
-  const filteredSessions = trimmedQuery
-    ? recentSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
-    : recentSessions;
-  const filteredStories = trimmedQuery
-    ? stories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
-    : stories;
 
   // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
   // its window listener on every SidebarV2 render.
@@ -452,40 +418,22 @@ export function SidebarV2({
         isExpanded ? 'w-64' : 'w-12'
       }`}
     >
-      {/* Header row — search + collapse (desktop) or Close-X (mobile, when
-          onClose is provided), combined (Aug 2026 Search and Collapse Bar).
-          The toggle/close button is hidden while forced, same as the old
-          standalone collapse row — nothing meaningful to toggle to while
-          forceCollapsed overrides the rendered width regardless of the
-          user's own preference. Search itself keeps rendering (degraded to
-          its icon-only form) since forceCollapsed only ever affects width,
-          not whether search should exist. */}
-      <div
-        className={`flex mb-2 pt-2 ${
-          isExpanded ? 'items-center gap-2 px-3' : 'flex-col items-center gap-1.5 px-1.5'
-        }`}
-      >
-        <SearchField expanded={isExpanded} revealed value={query} onSearch={handleSearch} />
-        {!forceCollapsed && (
-          onClose ? (
-            <IconButton
-              label="Close menu"
-              onClick={onClose}
-              className="relative flex-shrink-0 before:absolute before:inset-[-4px] before:content-['']"
-            >
-              <X size={18} />
-            </IconButton>
-          ) : (
-            <IconButton
-              label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              onClick={() => setExpanded((v) => !v)}
-              className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
-            >
-              <ChevronRight size={16} />
-            </IconButton>
-          )
-        )}
-      </div>
+      {/* Collapse toggle — hidden while forced; there's nothing meaningful
+          to toggle to, since forceCollapsed overrides the rendered width
+          regardless of what the user's own preference says. */}
+      {!forceCollapsed && (
+        <div className={`flex items-center px-1.5 mb-2 pt-2 ${expanded ? 'justify-end' : 'justify-center'}`}>
+          <IconButton
+            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setExpanded((v) => !v)}
+            className={`relative transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
+        </div>
+      )}
+
+      <SearchField expanded={isExpanded} revealed={searchRevealed} onSearch={onSearch} />
 
       {/* Primary nav */}
       <nav className="flex flex-col gap-0.5 px-1.5 pt-1.5">
@@ -545,12 +493,12 @@ export function SidebarV2({
 
           {isExpanded && convosOpen && (
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
-              {filteredSessions.length === 0 ? (
+              {recentSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
-                  {trimmedQuery ? 'No matches' : 'No memories yet'}
+                  No memories yet
                 </span>
               ) : (
-                filteredSessions.map((session) => {
+                recentSessions.map((session) => {
                   const id = `conversation:${session.id}`;
                   const isMenuOpen = menuId === id;
                   return (
@@ -611,7 +559,6 @@ export function SidebarV2({
                         open={isMenuOpen}
                         anchorRect={menuRect}
                         starred={starredConversationIds.includes(session.id)}
-                        target="conversation"
                         onAction={(action) =>
                           onRowAction?.('conversation', session.id, action)
                         }
@@ -681,7 +628,7 @@ export function SidebarV2({
             {/* Story list */}
             {storiesOpen && (
               <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-                {filteredStories.map((story) => {
+                {stories.map((story) => {
                   const id = `story:${story.id}`;
                   const isMenuOpen = menuId === id;
                   return (
@@ -755,7 +702,6 @@ export function SidebarV2({
                         open={isMenuOpen}
                         anchorRect={menuRect}
                         starred={starredStoryIds.includes(story.id)}
-                        target="story"
                         onAction={(action) => onRowAction?.('story', story.id, action)}
                         onClose={closeMenu}
                       />

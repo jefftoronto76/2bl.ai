@@ -121,6 +121,10 @@ export const AuditAction = {
   // (success/failure) and the DELETE /api/stories/[id] route.
   STORY_CREATED: 'story.created',
   STORY_DISCARDED: 'story.discarded',
+  // StoryAdminPanel's description field (story-admin-panel, 2026-08-13) —
+  // logged by the PATCH /api/stories/[id] route, same placement convention
+  // as STORY_DISCARDED (route logs, service function itself doesn't).
+  STORY_DESCRIPTION_UPDATED: 'story.description_updated',
   // Story invite links (reusable-story-invite-links, 2026-08-10) — a
   // deliberately separate mechanism from the member.invite_* single-use
   // admin/member invite actions above; see services/crm/story-invites.ts.
@@ -129,6 +133,10 @@ export const AuditAction = {
   STORY_INVITE_LINK_OPENED: 'story.invite_link_opened',
   STORY_INVITE_ACCEPTED_NEW_MEMBER: 'story.invite_accepted_new_member',
   STORY_INVITE_ACCEPTED_EXISTING_MEMBER: 'story.invite_accepted_existing_member',
+  // Collaborator removal (2026-08-13) — the first real delete against
+  // artifact_subscribers; see services/crm/story-invites.ts's
+  // revokeStoryCollaborator.
+  STORY_COLLABORATOR_REMOVED: 'story.collaborator_removed',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const

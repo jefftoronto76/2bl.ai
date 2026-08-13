@@ -184,10 +184,61 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   /api/stories/[id]`, see below) — no revert-on-failure yet, unlike the
   conversation path (a failed delete toasts and leaves the row in place,
   it doesn't retry). Still not built: `moveToChapter` / `removeFromChapter`
-  remain deliberate no-ops for both row types, and `star` / `rename`
-  remain no-ops for story rows specifically (only ever wired for
-  conversations). `invite` is no longer a kebab item at all — see "Invite
-  — real as of 2026-08-10" below for its own dedicated entry point.
+  remain deliberate no-ops (now conversation-only in the menu — see the
+  2026-08-13 entry immediately below), and `star` / `rename` remain no-ops
+  for story rows specifically (only ever wired for conversations). `invite`
+  is no longer a kebab item at all — see "Invite — real as of 2026-08-10"
+  below for its own dedicated entry point.
+
+  **`RowMenu` is now target-aware, and a new story-only `admin` item was
+  added — story-admin-menu-item (2026-08-13).** Before this pass,
+  `MENU_ITEMS` was one flat, unfiltered array rendered identically at both
+  `RowMenu` call sites — `moveToChapter`/`removeFromChapter` showed on
+  story rows too, purely by omission (no evidence of intentional design;
+  they're chapter-related, not story-related, and were already deliberate
+  no-ops for stories per the paragraph above). `RowMenu` now takes a
+  `target: RowTarget` prop (threaded from each call site's own known
+  `'conversation'`/`'story'` value) and each `MENU_ITEMS` entry carries a
+  `targets: RowTarget[]` array it's filtered against — `moveToChapter`/
+  `removeFromChapter` are now `['conversation']`-only, `star`/`rename`/
+  `delete` stay on both. New entry: `{ key: 'admin', icon: Shield, label:
+  'Admin', targets: ['story'] }`, positioned between Rename and the delete
+  divider, matching the `Design Handovers/ Aug 2026 Atomic Updates/Updated
+  Story Kebabs/` handover's spec. `'admin'` was added to `RowAction`
+  (`types.ts`). The click is wired end to end — `ChatHero.tsx`'s
+  `handleRowAction` sets a new `adminStoryId: string | null` state on
+  `action === 'admin'`.
+
+  **`StoryAdminPanel` built and mounted — story-admin-panel (2026-08-13),
+  closing the gap above.** New `components/shells/membership/v2/
+  StoryAdminPanel.tsx`, mounted as a third pane in `ChatHero.tsx` exactly
+  like `MediaGallery`/`MemoryCardView` (same fixed `MEDIA_PANEL_WIDTH`
+  desktop slot, same full-screen mobile overlay treatment, mutually
+  exclusive with `openMemory`/`mediaOpen` via the same wrapping-handler
+  pattern, not a shared enum). Two real pieces:
+  - **Description** — the story's `body` column, editable for the first
+    time since creation. Commits on blur, only when the trimmed value
+    actually changed, via a new `updateStoryDescription`
+    (`services/crm/stories.ts`) and `PATCH /api/stories/[id]` (the `[id]`
+    route previously only had `DELETE`) — owner-scoped identically to
+    `discardStory`. The parent (`ChatHero.tsx`'s `handleUpdateStoryDescription`)
+    owns the mutation and updates its own `stories` state on success, same
+    shape as `MemoryCardView`'s `onRetitle` — not a self-contained write,
+    since the description is also shown elsewhere (`SidebarV2`'s row
+    tooltip).
+  - **Members** — closes the "no UI calls `revokeStoryCollaborator`" gap
+    noted in the collaborator-removal pass below. The panel self-fetches its
+    own roster (`GET /api/heirloom/story-invites?story_id=`, same route
+    the invite modal already uses, self-contained like `MediaGallery`'s own
+    fetch) and Remove opens a real confirm dialog before calling the real
+    `DELETE /api/heirloom/story-invites/collaborators`. Success drops the
+    row from local state directly (no re-fetch); failure keeps the dialog
+    open with an inline error rather than silently dropping the row or
+    closing without explanation. Deliberately **no memory count per row**
+    even though the prototype reference shows one — story ↔ memory linking
+    is still unwired (see "Real story creation and persistence" below),
+    fabricating a number nothing tracks was already rejected in the
+    collaborator-removal pass, and this pass didn't revisit that call.
 
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
@@ -342,6 +393,27 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   blank reset with the real `token`/`primer`/`invite_url`. A story with no
   active link is unaffected — the existing blank-reset behavior stands, so
   "Not created yet" still means what it says.
+
+  **Collaborator removal — real as of story-collaborator-removal
+  (2026-08-13).** Until this pass, every write against `artifact_subscribers`
+  was an insert/upsert (`acceptStoryInvite` above) — there was no way to
+  revoke one already-joined person's access short of an owner deleting the
+  whole story. `revokeStoryCollaborator` (`services/crm/story-invites.ts`)
+  deletes the specific grant (`artifact_id` = storyId, `member_id` =
+  memberId), owner-scoped the same way `listStoryCollaborators` already is —
+  a collaborator cannot remove another collaborator, only the story's own
+  creator can — and idempotent-*safe* rather than idempotent-*silent*: a
+  grant that's already gone can't 500 (the delete's own `.select()` reports
+  zero rows affected, not a DB error), but it's still reported back as a
+  clear 404 (`'Collaborator not found'`) instead of a folded-in success, so
+  the caller can tell "already removed" apart from "removed just now."
+  New `AuditAction.STORY_COLLABORATOR_REMOVED`. Backed by a new sibling
+  route, `DELETE /api/heirloom/story-invites/collaborators` — see
+  `System Docs/API Routes.md`'s "Story Invite Links" section and `System
+  Docs/Database Schema.md`'s `artifact_subscribers` row. **Wired to a real
+  UI as of story-admin-panel (2026-08-13)** — see that entry above;
+  `StoryAdminPanel`'s roster Remove button is the first (and, as of this
+  pass, only) caller.
 
 - **`/join/[token]` missing its middleware host-rewrite exclusion — found
   and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**

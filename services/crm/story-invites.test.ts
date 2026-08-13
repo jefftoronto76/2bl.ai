@@ -24,6 +24,7 @@ import {
   listStoryCollaborators,
   resetStoryInviteLink,
   revokeStoryInviteLink,
+  revokeStoryCollaborator,
   validateStoryInviteToken,
   acceptStoryInvite,
 } from './story-invites'
@@ -85,6 +86,10 @@ function makeClient(queues: Partial<Record<string, Result[]>>) {
         upsert: (payload: unknown, opts: unknown) => {
           calls[table].push({ op: 'upsert', payload, opts })
           return Promise.resolve(next(table))
+        },
+        delete: () => {
+          calls[table].push({ op: 'delete' })
+          return makeChain(next(table))
         },
       }
     },
@@ -243,6 +248,78 @@ describe('revokeStoryInviteLink', () => {
 
     expect(result.ok).toBe(true)
     expect(logEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('revokeStoryCollaborator', () => {
+  const STORY_ROW = { data: { id: 'story-1' }, error: null }
+
+  it('deletes the artifact_subscribers row and logs STORY_COLLABORATOR_REMOVED once ownership is confirmed', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: [{ member_id: 'member-1' }], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await revokeStoryCollaborator('tenant-1', 'story-1', 'member-1', 'user-owner')
+
+    expect(result.ok).toBe(true)
+    const deleteCall = calls.artifact_subscribers.find(c => c.op === 'delete')
+    expect(deleteCall).toBeDefined()
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.STORY_COLLABORATOR_REMOVED,
+        target_id: 'story-1',
+        metadata: { member_id: 'member-1' },
+      }),
+    )
+  })
+
+  it("404s and never touches artifact_subscribers when the story isn't owned by the acting user", async () => {
+    const { client, calls } = makeClient({
+      artifacts: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await revokeStoryCollaborator('tenant-1', 'story-1', 'member-1', 'not-the-owner')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Story not found')
+    }
+    expect(calls.artifact_subscribers).toBeUndefined()
+    expect(logEventMock).not.toHaveBeenCalled()
+  })
+
+  it('removing a grant that no longer exists returns a clean 404, not a 500', async () => {
+    const { client } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: [], error: null }], // delete matched zero rows
+    })
+    adminHolder.client = client
+
+    const result = await revokeStoryCollaborator('tenant-1', 'story-1', 'member-already-gone', 'user-owner')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Collaborator not found')
+    }
+    expect(logEventMock).not.toHaveBeenCalled()
+  })
+
+  it('surfaces a delete error as a real 500 rather than treating it as "not found"', async () => {
+    const { client } = makeClient({
+      artifacts: [STORY_ROW],
+      artifact_subscribers: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await revokeStoryCollaborator('tenant-1', 'story-1', 'member-1', 'user-owner')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
   })
 })
 
