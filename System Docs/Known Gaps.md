@@ -584,6 +584,123 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
   `System Docs/Utilities/Auth.md` for the mechanism.
 
+- **Admin/member invite acceptance had the same reliability gaps already
+  fixed for story invites on 2026-08-10/11 (see the entry above) — found
+  and fixed 2026-08-13.** Unlike the story-invite path, `?invite=TOKEN`
+  acceptance relied entirely on the model organically noticing a pre-auth
+  invite holder and deciding, conversationally, to prompt account creation —
+  no deterministic trigger existed. Three fixes:
+  1. **`autoOpenChat` was opt-in, not guaranteed.** `page.tsx` read
+     `members.auto_open` (admin-set per invite, defaulting `false`) instead
+     of forcing the chat panel open for any valid pre-auth token, so most
+     admin invites never opened the chat automatically at all. Fixed:
+     `autoOpenChat = true` unconditionally when a valid admin/member token
+     authorizes the visitor. The `auto_open` column and its
+     `InviteMemberModal.tsx` toggle are left in place for other consumers;
+     this path just stops reading it.
+  2. **No deterministic account-creation prompt.** Even when the chat did
+     open, nothing told the visitor they needed to sign up — same shape as
+     story-invite gap #344 above. Fixed with a new branch in `chatStore.tsx`'s
+     auto-greet effect: a personalized (`invitedName`, when the admin set
+     one) or generic greeting, immediately followed by an injected
+     `[ACCOUNT_CREATE: admin invite]` message when not signed in. Mutually
+     exclusive with the story-invite branch both structurally and via an
+     explicit `!storyInviteTokenRef.current` guard.
+  3. **Accept-call failures were silent.** The `/api/heirloom/invites/accept`
+     fetch on the sign-in transition was pure fire-and-forget — no
+     `res.ok` check, no fire-once guard, no user-facing message on failure.
+     Same shape as story-invite gap #348 above. Extracted into
+     `acceptMemberInviteToken`, matching `acceptStoryInviteToken`'s pattern
+     exactly.
+
+  **Separately found during the same pass: `AuditAction.MEMBER_INVITE_ACCEPTED`
+  was being logged, but invisibly.** `app/api/heirloom/invites/accept/route.ts`
+  called it with `tenant_id: null` (the route doesn't have the real value in
+  scope) — every acceptance was logged, but any query scoped by `tenant_id`
+  (the standard pattern everywhere else in this codebase) silently missed
+  every row. Confirmed live: a real member's acceptance (active status,
+  `used_at` stamped) produced zero matching rows under a tenant-scoped
+  query. Fixed by moving the `logEvent` call inside `acceptInvite()`
+  (`services/members/members.ts`), which already has `row.tenant_id` in
+  scope for its cross-tenant guard, and removing the now-duplicate call
+  from `route.ts`.
+
+- **`members.name` was not guaranteed to be set on most signup paths —
+  found 2026-08-13, mostly closed same day.** Of the paths that
+  create/activate a `members` row, originally only two (the OTP card
+  itself, and `SaveChatCTA`, both of which require a name field to submit)
+  reliably set `name`. Confirmed via live query: 7 rows with `name IS
+  NULL`, including one real member (not a test account) who activated via
+  `GateView`'s Clerk-prebuilt-modal path — that path calls `/api/heirloom/
+  members/claim`, which only sets `name` conditionally (if Clerk's own
+  signup UI happened to collect first/last name) and is reachable today
+  only when an invite token is invalid/expired, not the main invite flow.
+
+  **A second, worse bug compounded this:** `acceptInvite`'s orphan-cleanup
+  (step 3) actively discarded a captured `name` on every occurrence it
+  triggered. The setup: an invited `members` row starts with `clerk_id =
+  null`. On real signup, two independent effects fire off the same
+  Clerk-session-activation event with no ordering between them —
+  `MagicLinkCard`'s `onSuccess` (calls `/api/members/sync`, which upserts
+  *by `clerk_id`* and, finding no match yet, inserts a fresh row with the
+  real name) and `chatStore.tsx`'s sign-in-transition effect (calls
+  `acceptInvite`, which finds the original invited row *by token* and
+  deletes any other row sharing that `clerk_id` as an "orphan" before
+  stamping the invited row active). Whichever order those two calls
+  resolved in, the orphan-cleanup path deleted the freshly-named row and
+  stamped a nameless one — active data loss, not just a missing field, on
+  every occurrence, independent of which invite mechanism triggered it.
+
+  **Fixed 2026-08-13:** the admin-invite flow now routes every
+  `?invite=TOKEN` acceptance through `MagicLinkCard` (name required)
+  instead of `GateView`'s bypass (see the entry above), and `acceptInvite`
+  now rescues the orphan's `name` before deleting it — selects `name`
+  alongside `id` in the orphan query, and if exactly one orphan is deleted
+  with a non-null `name` and the invited row's own `name` is still null,
+  includes it in the same update that stamps the row active. Verified via
+  4 new unit tests covering the rescue case and its edge cases (existing
+  name not overwritten, null orphan name, multiple orphans), plus a real
+  signup through the live admin-invite flow (`members.name` landed
+  correctly on the first test).
+
+  **Still open:** `acceptStoryInvite` and `linkInvitedMember` (the Clerk
+  webhook path) never set `name` at all, regardless of signup path — not
+  touched by this fix. `GateView`'s Clerk-modal bypass itself is
+  unchanged, just less-traveled now that the main admin-invite path
+  doesn't route through it.
+
+- **No identity dedup across signup methods — found 2026-08-13, not
+  addressed.** `members` rows are matched only by `clerk_id`; nothing
+  cross-checks name/phone/email against existing rows. A person who signs
+  up once via email and again via phone (two separate Clerk identities)
+  gets two fully separate, both-`active` `members` rows with no merge path
+  and no product-level way to detect or reconcile it. Confirmed live: one
+  real member has two active rows six weeks apart, one per contact method.
+  This is a product/design gap (no shared identity key exists to dedupe
+  on), not a code defect — no fix scoped yet.
+
+- **`primer` (free-text field on both `members` and `story_invite_links`)
+  is injected into the chat system prompt with zero delineation from real
+  instructions — found 2026-08-13, not addressed.**
+  `services/chat/server/member-context.ts` concatenates `primer` directly
+  into the `MEMBER CONTEXT` block with no wrapper distinguishing
+  user-supplied text from instructions, immediately adjacent to the
+  marker-emission instruction that tells the model to silently append
+  `[NAME:]`/`[EMAIL:]`/`[PHONE:]` tags. Admin-set `primer` (on `members`)
+  is lower risk — only tenant admins can set it. **Story-invite `primer`
+  is member-wide risk**, not admin-only: any Heirloom member who owns a
+  story can set it via `POST /api/heirloom/story-invites`, up to 500
+  chars, no sanitization beyond trim/length. Compounded by `autoOpenChat`
+  behavior: story invites force the chat open unconditionally, and fall
+  through to an automatic `sendHidden('Hi')` LLM call (not the deterministic
+  greeting) whenever the story-title or inviter-name lookup fails — a path
+  not controlled by the story owner, meaning a hostile primer could reach
+  the model automatically without the visitor typing anything. **Fix not
+  yet scoped:** wrap `primer` with explicit delineation before it reaches
+  the system prompt; separately, decide whether story invites should keep
+  forcing `autoOpenChat=true` with no opt-out (product decision, not just
+  security).
+
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
