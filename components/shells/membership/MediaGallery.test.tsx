@@ -43,6 +43,19 @@ function mockMediaList(items: MediaItem[]) {
   );
 }
 
+// Real fetches resolve too fast to observe the loading state, so this holds
+// the fetch open until the test explicitly resolves it — same technique the
+// skeleton handover's test plan calls for (Design Handovers/
+// Aug 2026 Atomic Updates/10_media_list_skeleton/README.md).
+function deferredMediaList(items: MediaItem[]): () => void {
+  let resolveFetch!: () => void;
+  const promise = new Promise<Response>((resolve) => {
+    resolveFetch = () => resolve(jsonResponse({ items }));
+  });
+  vi.stubGlobal('fetch', vi.fn(() => promise));
+  return resolveFetch;
+}
+
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -81,5 +94,21 @@ describe('MediaGallery — retry/reprocess button', () => {
     await waitFor(() => expect(screen.getAllByText('Processing').length).toBe(2));
     expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Reprocess/ })).toBeNull();
+  });
+});
+
+describe('MediaGallery — loading skeleton', () => {
+  it('shows a 6-card shimmer skeleton while loading, then swaps to real content', async () => {
+    const resolveFetch = deferredMediaList([makeItem({ status: 'ready' })]);
+    render(<MediaGallery onClose={() => {}} sessionId="chat-1" onFlash={() => {}} />);
+
+    const loadingRegion = screen.getByLabelText('Loading media');
+    expect(loadingRegion).toHaveAttribute('aria-busy', 'true');
+    expect(loadingRegion.querySelectorAll('.animate-upload-shimmer')).toHaveLength(6 * 3);
+
+    resolveFetch();
+
+    await waitFor(() => expect(screen.queryByLabelText('Loading media')).toBeNull());
+    expect(screen.getByText('letter.pdf')).toBeInTheDocument();
   });
 });
