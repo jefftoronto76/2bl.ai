@@ -313,6 +313,21 @@ export const MAX_PENDING_AGE_SECONDS = 120
  */
 export const STALE_PENDING_ERROR_MESSAGE = 'Upload was never completed'
 
+/**
+ * Fixed error_message for a row a reprocess attempt (POST /api/media/[id]/retry,
+ * via processor.ts's verifyAndReprocess) found has no file in Storage at
+ * all — distinct from every other error_message here, all of which describe
+ * a pipeline step that ran and failed. This one means no pipeline step could
+ * even start: there is nothing to reprocess, only something to re-upload.
+ * services/media/errorCopy.ts maps it to member-facing copy;
+ * UploadThumbnail.tsx/MediaGallery.tsx both check for it directly (as a
+ * literal string, not an import — see errorCopy.ts's own dependency-free
+ * rationale) to swap their retry action for a "please re-attach" prompt,
+ * since retrying again against a confirmed-missing file is guaranteed to
+ * fail identically every time.
+ */
+export const NEEDS_REUPLOAD_ERROR_MESSAGE = 'This file needs to be uploaded again'
+
 export interface StalePendingSweepResult {
   /**
    * The file IS present in Storage — the client's PUT actually succeeded,

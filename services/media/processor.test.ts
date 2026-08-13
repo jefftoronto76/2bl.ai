@@ -33,6 +33,7 @@ vi.mock('./index', () => ({
   logMediaEvent: (...args: unknown[]) => mockLogMediaEvent(...args),
   logAiMediaEvent: (...args: unknown[]) => mockLogAiMediaEvent(...args),
   logSttMediaEvent: (...args: unknown[]) => mockLogSttMediaEvent(...args),
+  NEEDS_REUPLOAD_ERROR_MESSAGE: 'This file needs to be uploaded again',
 }))
 
 const mockExtractText = vi.fn()
@@ -40,7 +41,15 @@ vi.mock('@/services/content/assets', () => ({
   extractText: (...args: unknown[]) => mockExtractText(...args),
 }))
 
-import { waitForStorageObject, STORAGE_WAIT_DELAYS_MS, processMediaItem } from './processor'
+// after() requires a real Next.js request-scoped context that a direct call
+// in Vitest doesn't have — same shim as every route test file that uses it.
+// verifyAndReprocess's reprocessing branch calls it, so any test importing
+// from this module needs this stub, not just the routes.
+vi.mock('next/server', () => ({
+  after: (fn: () => unknown) => fn(),
+}))
+
+import { waitForStorageObject, STORAGE_WAIT_DELAYS_MS, processMediaItem, verifyAndReprocess } from './processor'
 
 beforeEach(() => {
   mockObjectExists.mockReset()
@@ -189,6 +198,91 @@ function resetSharedMocks() {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
 }
+
+describe('verifyAndReprocess', () => {
+  beforeEach(() => {
+    resetSharedMocks()
+    // Left as a no-op by default (item not found) so the after()-wrapped
+    // processMediaItem it triggers just returns immediately in tests that
+    // don't care about the reprocess actually running — only the tests
+    // exercising that specific path override this.
+    mockGetMediaItem.mockResolvedValue(null)
+  })
+
+  it('resets the row to pending and triggers a reprocess when the file exists in Storage', async () => {
+    mockObjectExists.mockResolvedValue(true)
+    const item = makeItem({ status: 'failed', error_message: 'boom' })
+
+    const outcome = await verifyAndReprocess(item, 'corr-1')
+
+    expect(outcome).toBe('reprocessing')
+    expect(mockObjectExists).toHaveBeenCalledWith(item.storage_path)
+    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
+      status: 'pending',
+      error_message: null,
+      derived_content: null,
+      classification: null,
+      processed_at: null,
+    })
+    // after() (stubbed to run inline) actually invoked processMediaItem,
+    // which re-fetches the item as its own first step.
+    expect(mockGetMediaItem).toHaveBeenCalledWith('item-1', 'tenant-1')
+  })
+
+  it('marks the row failed with NEEDS_REUPLOAD_ERROR_MESSAGE and never triggers a reprocess when the file is missing', async () => {
+    mockObjectExists.mockResolvedValue(false)
+    const item = makeItem({ status: 'failed', error_message: 'boom' })
+
+    const outcome = await verifyAndReprocess(item, 'corr-1')
+
+    expect(outcome).toBe('needs_reupload')
+    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
+      status: 'failed',
+      error_message: 'This file needs to be uploaded again',
+      derived_content: null,
+      classification: null,
+      processed_at: null,
+    })
+    // processMediaItem was never even attempted — no re-fetch.
+    expect(mockGetMediaItem).not.toHaveBeenCalled()
+  })
+
+  it('logs MEDIA_RETRY_FAILED (sharing the caller\'s correlationId) when the triggered reprocess attempt itself throws', async () => {
+    mockObjectExists.mockResolvedValue(true)
+    mockGetMediaItem.mockRejectedValue(new Error('db down'))
+    const item = makeItem({ status: 'failed' })
+
+    const outcome = await verifyAndReprocess(item, 'corr-shared')
+    // The stubbed after() (see the next/server mock above) invokes its
+    // callback but, matching real after() semantics, doesn't await it —
+    // give the processMediaItem(...).catch(...) chain a tick to settle.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(outcome).toBe('reprocessing')
+    expect(mockLogMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-1',
+        member_id: 'member-1',
+        media_item_id: 'item-1',
+        action: AuditAction.MEDIA_RETRY_FAILED,
+        outcome: 'failure',
+        correlation_id: 'corr-shared',
+        metadata: expect.objectContaining({ error_message: 'db down' }),
+      }),
+    )
+  })
+
+  it('does not log MEDIA_RETRY_FAILED when audit logging is disabled', async () => {
+    mockObjectExists.mockResolvedValue(true)
+    mockGetMediaItem.mockRejectedValue(new Error('db down'))
+    mockIsMediaAuditEnabled.mockReturnValue(false)
+    const item = makeItem({ status: 'failed' })
+
+    await verifyAndReprocess(item, 'corr-1')
+
+    expect(mockLogMediaEvent).not.toHaveBeenCalled()
+  })
+})
 
 describe('processMediaItem — orchestration', () => {
   beforeEach(() => {

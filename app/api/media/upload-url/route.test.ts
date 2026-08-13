@@ -1,8 +1,11 @@
 // Covers the upload-url route, including the dedup feature: a client-supplied
 // contentHash (SHA-256, computed client-side since bytes never reach this
 // server) is checked against existing media_items for the same member+chat.
-// A match reuses the existing row instead of creating an independent one; a
-// match against a previously-failed row is reprocessed directly.
+// A match is ALWAYS just reported honestly (real status, never silently
+// reprocessed) — this route never calls processMediaItem for any matched
+// status. The one exception: a `failed` match whose file is confirmed
+// missing from Storage skips the dedup response entirely and falls through
+// to an ordinary fresh-upload response, reusing the same row.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
@@ -15,14 +18,19 @@ const mockFindDuplicateMediaItem = vi.fn()
 const mockUpdateMediaItem = vi.fn()
 const mockIsMediaAuditEnabled = vi.fn()
 const mockLogMediaEvent = vi.fn()
-const mockProcessMediaItem = vi.fn()
+const mockLogEvent = vi.fn()
 const mockBuildMediaStoragePath = vi.fn()
 const mockGenerateSignedUploadUrl = vi.fn()
+const mockObjectExists = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
   getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
+}))
+
+vi.mock('@/services/audit', () => ({
+  logEvent: (...args: unknown[]) => mockLogEvent(...args),
 }))
 
 vi.mock('@/services/auth/supabase-admin', () => ({
@@ -50,17 +58,7 @@ vi.mock('@/services/media', () => ({
 vi.mock('@/services/media/storage', () => ({
   buildMediaStoragePath: (...args: unknown[]) => mockBuildMediaStoragePath(...args),
   generateSignedUploadUrl: (...args: unknown[]) => mockGenerateSignedUploadUrl(...args),
-}))
-
-vi.mock('@/services/media/processor', () => ({
-  processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
-}))
-
-// after() requires a real Next.js request-scoped context that a route
-// handler invoked directly in Vitest doesn't have — same shim as the other
-// processMediaItem trigger routes' own test files.
-vi.mock('next/server', () => ({
-  after: (fn: () => unknown) => fn(),
+  objectExists: (...args: unknown[]) => mockObjectExists(...args),
 }))
 
 import { POST } from './route'
@@ -119,49 +117,121 @@ beforeEach(() => {
   mockUpdateMediaItem.mockReset().mockResolvedValue(undefined)
   mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
   mockLogMediaEvent.mockReset().mockResolvedValue(undefined)
-  mockProcessMediaItem.mockReset().mockResolvedValue(undefined)
+  mockLogEvent.mockReset().mockResolvedValue(undefined)
   mockBuildMediaStoragePath.mockReset().mockReturnValue(`tenant-1/media/member-1/${FIXED_UUID}/letter.pdf`)
   mockGenerateSignedUploadUrl.mockReset().mockResolvedValue({ signedUrl: 'https://signed.example/upload', token: 'tok' })
+  mockObjectExists.mockReset().mockResolvedValue(true)
   vi.spyOn(crypto, 'randomUUID').mockReturnValue(FIXED_UUID)
 })
 
 describe('POST /api/media/upload-url — existing validation, unaffected by dedup', () => {
-  it('returns 401 when there is no authenticated user', async () => {
+  it('returns 401 when there is no authenticated user, and logs nothing (out of scope for MEDIA_UPLOAD_REJECTED)', async () => {
     mockGetCurrentUser.mockResolvedValue(null)
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(401)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 when no tenant resolves', async () => {
+  it('returns 400 when no tenant resolves, and logs nothing (out of scope for MEDIA_UPLOAD_REJECTED)', async () => {
     mockGetTenantFromRequest.mockResolvedValue(null)
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(400)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 on invalid JSON body', async () => {
+  it('returns 400 on invalid JSON body and logs MEDIA_UPLOAD_REJECTED (invalid_json)', async () => {
     const res = await POST(makeInvalidJsonRequest())
     expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_UPLOAD_REJECTED,
+        tenant_id: 'tenant-1',
+        actor_type: 'user',
+        clerk_user_id: 'clerk-1',
+        target_type: 'upload_attempt',
+        target_id: null,
+        outcome: 'failure',
+        metadata: expect.objectContaining({ reason: 'invalid_json' }),
+      }),
+    )
   })
 
-  it('returns 400 when a required field is missing', async () => {
+  it('returns 400 when filename is missing and logs MEDIA_UPLOAD_REJECTED (missing_filename)', async () => {
     const res = await POST(makeRequest({ ...validBody, filename: undefined }))
     expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_filename' }),
+      }),
+    )
   })
 
-  it('rejects HEIC with a friendly message', async () => {
+  it('returns 400 when mimeType is missing and logs MEDIA_UPLOAD_REJECTED (missing_mime_type)', async () => {
+    const res = await POST(makeRequest({ ...validBody, mimeType: undefined }))
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_mime_type' }),
+      }),
+    )
+  })
+
+  it('returns 400 when fileSize is missing and logs MEDIA_UPLOAD_REJECTED (missing_file_size)', async () => {
+    const res = await POST(makeRequest({ ...validBody, fileSize: undefined }))
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'missing_file_size' }),
+      }),
+    )
+  })
+
+  it('rejects HEIC with a friendly message and logs MEDIA_UPLOAD_REJECTED (heic_unsupported)', async () => {
     const res = await POST(makeRequest({ ...validBody, filename: 'photo.heic', mimeType: 'image/heic' }))
     expect(res.status).toBe(415)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'heic_unsupported' }),
+      }),
+    )
   })
 
-  it('rejects an oversized file', async () => {
+  it('rejects an unsupported (non-HEIC) mime type and logs MEDIA_UPLOAD_REJECTED (unsupported_mime_type)', async () => {
+    const res = await POST(makeRequest({ ...validBody, filename: 'clip.mov', mimeType: 'video/quicktime' }))
+    expect(res.status).toBe(415)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'unsupported_mime_type' }),
+      }),
+    )
+  })
+
+  it('rejects an oversized file and logs MEDIA_UPLOAD_REJECTED (file_too_large)', async () => {
     const res = await POST(makeRequest({ ...validBody, fileSize: 51 * 1024 * 1024 }))
     expect(res.status).toBe(413)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'file_too_large' }),
+      }),
+    )
   })
 
-  it('returns 403 when the member record cannot be resolved', async () => {
+  it('returns 403 when the member record cannot be resolved and logs MEDIA_UPLOAD_REJECTED (member_not_found)', async () => {
     mockSingle.mockResolvedValue({ data: null, error: { message: 'not found' } })
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(403)
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reason: 'member_not_found' }),
+      }),
+    )
+  })
+
+  it('skips MEDIA_UPLOAD_REJECTED logging entirely when media audit logging is disabled', async () => {
+    mockIsMediaAuditEnabled.mockReturnValue(false)
+    const res = await POST(makeInvalidJsonRequest())
+    expect(res.status).toBe(400)
+    expect(mockLogEvent).not.toHaveBeenCalled()
   })
 })
 
@@ -191,12 +261,11 @@ describe('POST /api/media/upload-url — dedup, no existing match (near-duplicat
       contentHash: HASH,
     })
     expect(mockCreateMediaItem).toHaveBeenCalledWith(expect.objectContaining({ id: FIXED_UUID, content_hash: HASH }))
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
   })
 })
 
-describe('POST /api/media/upload-url — dedup, genuine match found', () => {
-  it('reuses a ready match: returns duplicate:true, does not create a new row or reprocess', async () => {
+describe('POST /api/media/upload-url — dedup, genuine match found — never auto-reprocesses', () => {
+  it('reuses a ready match: returns duplicate:true, does not create a new row or touch it', async () => {
     const existing = makeExistingItem({ status: 'ready' })
     mockFindDuplicateMediaItem.mockResolvedValue(existing)
 
@@ -207,30 +276,50 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
     expect(mockCreateMediaItem).not.toHaveBeenCalled()
     expect(mockGenerateSignedUploadUrl).not.toHaveBeenCalled()
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    // A ready match never needs a Storage check — only a failed match does.
+    expect(mockObjectExists).not.toHaveBeenCalled()
   })
 
-  it('reuses a pending/processing match without reprocessing (already in flight)', async () => {
+  it('reuses a pending/processing match without touching it (already in flight)', async () => {
     mockFindDuplicateMediaItem.mockResolvedValue(makeExistingItem({ status: 'processing' }))
 
     const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
 
     expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'processing' })
     expect(mockUpdateMediaItem).not.toHaveBeenCalled()
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockObjectExists).not.toHaveBeenCalled()
   })
 
-  it('reuses a failed match by resetting it to pending and reprocessing directly (retry-by-reupload)', async () => {
+  it('reuses a failed match whose file IS present: reports it honestly as failed, does NOT reset or reprocess', async () => {
     const existing = makeExistingItem({ status: 'failed', error_message: 'boom' })
     mockFindDuplicateMediaItem.mockResolvedValue(existing)
+    mockObjectExists.mockResolvedValue(true)
 
     const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
 
     expect(res.status).toBe(200)
-    // The response reports 'pending' (not the pre-reset 'failed') — the item
-    // was just reset to pending and reprocessing kicked off, so that's its
-    // real current status, matching what updateMediaItem just wrote.
-    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'pending' })
+    // Real status reported — never silently reset to 'pending' the way this
+    // route used to. The member decides whether to retry via the real
+    // retry endpoint (which itself re-checks Storage).
+    expect(await res.json()).toEqual({ mediaItemId: 'existing-item-1', duplicate: true, status: 'failed' })
+    expect(mockCreateMediaItem).not.toHaveBeenCalled()
+    expect(mockUpdateMediaItem).not.toHaveBeenCalled()
+    expect(mockGenerateSignedUploadUrl).not.toHaveBeenCalled()
+    expect(mockObjectExists).toHaveBeenCalledWith(existing.storage_path)
+  })
+
+  it('reuses a failed match whose file is MISSING: falls through to an ordinary fresh-upload response against the same row', async () => {
+    const existing = makeExistingItem({ status: 'failed', error_message: 'Storage object not available after 5 attempts' })
+    mockFindDuplicateMediaItem.mockResolvedValue(existing)
+    mockObjectExists.mockResolvedValue(false)
+
+    const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
+
+    expect(res.status).toBe(200)
+    // No `duplicate` field at all — this is now indistinguishable from a
+    // genuinely fresh upload response, which is deliberate: useMediaUpload.ts
+    // needs zero special-case handling to PUT real bytes into it.
+    expect(await res.json()).toEqual({ signedUrl: 'https://signed.example/upload', mediaItemId: 'existing-item-1' })
     expect(mockCreateMediaItem).not.toHaveBeenCalled()
     expect(mockUpdateMediaItem).toHaveBeenCalledWith('existing-item-1', {
       status: 'pending',
@@ -239,20 +328,10 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
       classification: null,
       processed_at: null,
     })
-    expect(mockProcessMediaItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing-item-1' }))
+    expect(mockGenerateSignedUploadUrl).toHaveBeenCalledWith(existing.storage_path)
   })
 
-  it('still returns 200 even if the reprocess call rejects — fire-and-forget must not fail the request', async () => {
-    mockFindDuplicateMediaItem.mockResolvedValue(makeExistingItem({ status: 'failed' }))
-    mockProcessMediaItem.mockRejectedValue(new Error('boom'))
-
-    const res = await POST(makeRequest({ ...validBody, contentHash: HASH }))
-
-    expect(res.status).toBe(200)
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  })
-
-  it('logs a MEDIA_UPLOAD_DEDUPED audit event with the matched previous status', async () => {
+  it('logs a MEDIA_UPLOAD_DEDUPED audit event with the matched previous status, reprocessed always false', async () => {
     mockFindDuplicateMediaItem.mockResolvedValue(makeExistingItem({ status: 'ready' }))
 
     await POST(makeRequest({ ...validBody, contentHash: HASH }))
@@ -262,6 +341,26 @@ describe('POST /api/media/upload-url — dedup, genuine match found', () => {
         action: AuditAction.MEDIA_UPLOAD_DEDUPED,
         media_item_id: 'existing-item-1',
         metadata: expect.objectContaining({ matched_previous_status: 'ready', reprocessed: false }),
+      }),
+    )
+  })
+
+  it('logs the fresh-upload-fallback case distinctly (needs_reupload, fresh_upload_fallback)', async () => {
+    mockFindDuplicateMediaItem.mockResolvedValue(makeExistingItem({ status: 'failed' }))
+    mockObjectExists.mockResolvedValue(false)
+
+    await POST(makeRequest({ ...validBody, contentHash: HASH }))
+
+    expect(mockLogMediaEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEDIA_UPLOAD_DEDUPED,
+        media_item_id: 'existing-item-1',
+        metadata: expect.objectContaining({
+          matched_previous_status: 'failed',
+          reprocessed: false,
+          needs_reupload: true,
+          fresh_upload_fallback: true,
+        }),
       }),
     )
   })

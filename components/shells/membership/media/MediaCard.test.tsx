@@ -245,3 +245,64 @@ describe('MediaCard — lazyload, metadata line, and rename (Aug 2026 Atomic Upd
     expect(onRename).not.toHaveBeenCalled();
   });
 });
+
+describe('MediaCard — needs-reupload (ported from pre-Stage-1 MediaGallery.tsx when merging main\'s heirloom-media-upload-failures work)', () => {
+  it('a retry response confirming the file is gone swaps the retry button for a re-attach message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ ok: true, needsReupload: true })),
+    );
+    const onRetry = vi.fn();
+    render(
+      <MediaCard
+        item={makeItem({ status: 'failed', error_message: 'Storage object not available after 5 attempts' })}
+        onRetry={onRetry}
+        {...noopHandlers}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('This file needs to be uploaded again — remove it and attach it to a new message.'),
+      ).toBeInTheDocument(),
+    );
+    // Not bumped to "pending" via onRetry — that would misleadingly imply
+    // something is running when the file is confirmed gone.
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+  });
+
+  it('a pre-existing needs-reupload error_message hides the retry button without a click', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
+    render(
+      <MediaCard
+        item={makeItem({ status: 'failed', error_message: 'This file needs to be uploaded again' })}
+        onRetry={() => {}}
+        {...noopHandlers}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();
+    expect(
+      screen.getByText('This file needs to be uploaded again — remove it and attach it to a new message.'),
+    ).toBeInTheDocument();
+  });
+
+  it('an ordinary failure still shows the sanitized reason and a working Try again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ ok: true })));
+    const onRetry = vi.fn();
+    render(
+      <MediaCard
+        item={makeItem({ status: 'failed', error_message: 'Anthropic vision error: 500' })}
+        onRetry={onRetry}
+        {...noopHandlers}
+      />,
+    );
+
+    expect(screen.getByText("the image couldn't be analyzed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Try again/ }));
+    await waitFor(() => expect(onRetry).toHaveBeenCalledWith('item-1'));
+  });
+});

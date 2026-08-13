@@ -1,12 +1,11 @@
-// Covers the Finding 1 fix: retry now drives processing directly instead of
-// hoping the Supabase Database Webhook (INSERT-only) picks up its UPDATE —
-// which it never could, regardless of how the webhook trigger is configured.
-//
-// Also covers the audit-logging pass: a successful retry logs
-// MEDIA_RETRY_REQUESTED (actor-attributable — a member triggered this,
-// distinct from the system-level MEDIA_PROCESS_* events processMediaItem
-// logs on its own once reprocessing actually runs); an unexpected throw from
-// processMediaItem logs MEDIA_RETRY_FAILED.
+// Covers this route's own orchestration: auth/ownership guards, the
+// stale-processing age check, and how it reacts to verifyAndReprocess's two
+// possible outcomes ('reprocessing' vs 'needs_reupload'). verifyAndReprocess
+// itself (the objectExists check, the DB writes, the after()-wrapped
+// processMediaItem call, and its own MEDIA_RETRY_FAILED-on-throw logging)
+// is mocked here and covered separately in services/media/processor.test.ts —
+// this file only asserts THIS route calls it correctly and shapes its
+// response/audit trail around whatever it returns.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
@@ -15,10 +14,9 @@ import { AuditAction } from '@/services/audit/types'
 const mockGetCurrentUser = vi.fn()
 const mockGetTenantFromRequest = vi.fn()
 const mockGetMediaItem = vi.fn()
-const mockUpdateMediaItem = vi.fn()
 const mockIsMediaAuditEnabled = vi.fn()
 const mockLogMediaEvent = vi.fn()
-const mockProcessMediaItem = vi.fn()
+const mockVerifyAndReprocess = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
@@ -42,27 +40,17 @@ vi.mock('@/services/auth/supabase-admin', () => ({
 
 vi.mock('@/services/media', () => ({
   getMediaItem: (...args: unknown[]) => mockGetMediaItem(...args),
-  updateMediaItem: (...args: unknown[]) => mockUpdateMediaItem(...args),
   isMediaAuditEnabled: (...args: unknown[]) => mockIsMediaAuditEnabled(...args),
   logMediaEvent: (...args: unknown[]) => mockLogMediaEvent(...args),
   // Real values, not mocks — the route's stale-processing backstop does real
   // arithmetic against these, and the whole point of these tests is
   // exercising that arithmetic.
   MAX_PROCESSING_AGE_SECONDS: { image: 300, document: 600, audio: 5400 },
+  NEEDS_REUPLOAD_ERROR_MESSAGE: 'This file needs to be uploaded again',
 }))
 
 vi.mock('@/services/media/processor', () => ({
-  processMediaItem: (...args: unknown[]) => mockProcessMediaItem(...args),
-}))
-
-// after() requires a real Next.js request-scoped context (AsyncLocalStorage)
-// that isn't present when calling a route handler directly in Vitest — the
-// documented approach for testing code that uses it is to stub it as an
-// immediate invocation, since what these tests actually care about is that
-// the wrapped work still runs, not the request-lifecycle extension itself
-// (that's Next's own guarantee, not this codebase's).
-vi.mock('next/server', () => ({
-  after: (fn: () => unknown) => fn(),
+  verifyAndReprocess: (...args: unknown[]) => mockVerifyAndReprocess(...args),
 }))
 
 import { POST } from './route'
@@ -102,10 +90,9 @@ beforeEach(() => {
   mockGetCurrentUser.mockReset()
   mockGetTenantFromRequest.mockReset()
   mockGetMediaItem.mockReset()
-  mockUpdateMediaItem.mockReset().mockResolvedValue(undefined)
   mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
   mockLogMediaEvent.mockReset().mockResolvedValue(undefined)
-  mockProcessMediaItem.mockReset().mockResolvedValue(undefined)
+  mockVerifyAndReprocess.mockReset().mockResolvedValue('reprocessing')
   mockSingle.mockReset()
 
   mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
@@ -113,12 +100,12 @@ beforeEach(() => {
   mockSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
 })
 
-describe('POST /api/media/[id]/retry', () => {
+describe('POST /api/media/[id]/retry — guards', () => {
   it('returns 401 when there is no authenticated user', async () => {
     mockGetCurrentUser.mockResolvedValue(null)
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(401)
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockVerifyAndReprocess).not.toHaveBeenCalled()
   })
 
   it('returns 400 when no tenant resolves', async () => {
@@ -133,18 +120,17 @@ describe('POST /api/media/[id]/retry', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 400 and does not touch the item when status is pending', async () => {
+  it('returns 400 and never calls verifyAndReprocess when status is pending', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem({ status: 'pending' }))
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('pending')
-    expect(mockUpdateMediaItem).not.toHaveBeenCalled()
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockVerifyAndReprocess).not.toHaveBeenCalled()
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
   })
 
-  it('returns 400 and does not touch the item when status is processing and still within its type\'s max age', async () => {
+  it('returns 400 when status is processing and still within its type\'s max age', async () => {
     // 'document' threshold is 600s — 60s old is well within it, a genuinely
     // in-flight job.
     const recentCreatedAt = new Date(Date.now() - 60_000).toISOString()
@@ -155,8 +141,7 @@ describe('POST /api/media/[id]/retry', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('processing')
-    expect(mockUpdateMediaItem).not.toHaveBeenCalled()
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockVerifyAndReprocess).not.toHaveBeenCalled()
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
   })
 
@@ -169,14 +154,8 @@ describe('POST /api/media/[id]/retry', () => {
     const res = await POST(makeRequest(), makeParams('item-1'))
 
     expect(res.status).toBe(200)
-    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
-      status: 'pending',
-      error_message: null,
-      derived_content: null,
-      classification: null,
-      processed_at: null,
-    })
-    expect(mockProcessMediaItem).toHaveBeenCalledTimes(1)
+    expect(mockVerifyAndReprocess).toHaveBeenCalledTimes(1)
+    expect(mockVerifyAndReprocess).toHaveBeenCalledWith(item, expect.any(String))
     expect(mockLogMediaEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: AuditAction.MEDIA_RETRY_REQUESTED,
@@ -199,10 +178,18 @@ describe('POST /api/media/[id]/retry', () => {
     )
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(400)
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
+    expect(mockVerifyAndReprocess).not.toHaveBeenCalled()
   })
 
-  it('resets a ready item to pending and reprocesses it (not just failed)', async () => {
+  it('returns 403 when the requesting member does not own the item', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem({ member_id: 'someone-else' }))
+    const res = await POST(makeRequest(), makeParams('item-1'))
+    expect(res.status).toBe(403)
+    expect(mockVerifyAndReprocess).not.toHaveBeenCalled()
+    expect(mockLogMediaEvent).not.toHaveBeenCalled()
+  })
+
+  it('accepts a ready item (reprocess-by-choice, not just failure recovery)', async () => {
     const item = makeItem({ status: 'ready', derived_content: 'stale garbage content', error_message: null })
     mockGetMediaItem.mockResolvedValue(item)
 
@@ -210,28 +197,12 @@ describe('POST /api/media/[id]/retry', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
-    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
-      status: 'pending',
-      error_message: null,
-      derived_content: null,
-      classification: null,
-      processed_at: null,
-    })
-    expect(mockProcessMediaItem).toHaveBeenCalledTimes(1)
-    expect(mockProcessMediaItem).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'item-1', tenant_id: 'tenant-1' }),
-    )
+    expect(mockVerifyAndReprocess).toHaveBeenCalledWith(item, expect.any(String))
   })
+})
 
-  it('returns 403 when the requesting member does not own the item', async () => {
-    mockGetMediaItem.mockResolvedValue(makeItem({ member_id: 'someone-else' }))
-    const res = await POST(makeRequest(), makeParams('item-1'))
-    expect(res.status).toBe(403)
-    expect(mockProcessMediaItem).not.toHaveBeenCalled()
-    expect(mockLogMediaEvent).not.toHaveBeenCalled()
-  })
-
-  it('resets the item to pending and drives processing directly, without waiting on the DB webhook', async () => {
+describe('POST /api/media/[id]/retry — reacting to verifyAndReprocess', () => {
+  it('calls verifyAndReprocess with the item and a correlationId, on a plain failed retry', async () => {
     const item = makeItem()
     mockGetMediaItem.mockResolvedValue(item)
 
@@ -239,27 +210,52 @@ describe('POST /api/media/[id]/retry', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true })
-    expect(mockUpdateMediaItem).toHaveBeenCalledWith('item-1', {
-      status: 'pending',
-      error_message: null,
-      derived_content: null,
-      classification: null,
-      processed_at: null,
-    })
-    expect(mockProcessMediaItem).toHaveBeenCalledTimes(1)
-    expect(mockProcessMediaItem).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'item-1', tenant_id: 'tenant-1' }),
-    )
+    expect(mockVerifyAndReprocess).toHaveBeenCalledWith(item, expect.any(String))
   })
 
-  it('still returns 200 even if processMediaItem rejects — fire-and-forget must not fail the request', async () => {
+  it('responds { ok: true, needsReupload: true } and does not fail the request when the outcome is needs_reupload', async () => {
     mockGetMediaItem.mockResolvedValue(makeItem())
-    mockProcessMediaItem.mockRejectedValue(new Error('boom'))
+    mockVerifyAndReprocess.mockResolvedValue('needs_reupload')
 
     const res = await POST(makeRequest(), makeParams('item-1'))
 
     expect(res.status).toBe(200)
-    await new Promise((resolve) => setTimeout(resolve, 0)) // let the rejected promise's .catch() run
+    expect(await res.json()).toEqual({ ok: true, needsReupload: true })
+  })
+
+  it('logs MEDIA_RETRY_FAILED (needs_reupload: true) in addition to MEDIA_RETRY_REQUESTED when the outcome is needs_reupload', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem())
+    mockVerifyAndReprocess.mockResolvedValue('needs_reupload')
+
+    await POST(makeRequest(), makeParams('item-1'))
+
+    const requestedCall = mockLogMediaEvent.mock.calls.find(([arg]) => arg.action === AuditAction.MEDIA_RETRY_REQUESTED)
+    const failedCall = mockLogMediaEvent.mock.calls.find(([arg]) => arg.action === AuditAction.MEDIA_RETRY_FAILED)
+
+    expect(requestedCall).toBeDefined()
+    expect(failedCall).toBeDefined()
+    expect(failedCall![0]).toEqual(
+      expect.objectContaining({
+        media_item_id: 'item-1',
+        outcome: 'failure',
+        correlation_id: requestedCall![0].correlation_id,
+        metadata: expect.objectContaining({
+          error_message: 'This file needs to be uploaded again',
+          needs_reupload: true,
+        }),
+      }),
+    )
+  })
+
+  it('does not log MEDIA_RETRY_FAILED when the outcome is reprocessing', async () => {
+    mockGetMediaItem.mockResolvedValue(makeItem())
+    mockVerifyAndReprocess.mockResolvedValue('reprocessing')
+
+    await POST(makeRequest(), makeParams('item-1'))
+
+    expect(mockLogMediaEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEDIA_RETRY_FAILED }),
+    )
   })
 })
 
@@ -284,46 +280,12 @@ describe('POST /api/media/[id]/retry — audit logging', () => {
     )
   })
 
-  it('logs MEDIA_RETRY_FAILED when processMediaItem rejects unexpectedly, sharing the same correlation_id as the requested event', async () => {
-    mockGetMediaItem.mockResolvedValue(makeItem())
-    mockProcessMediaItem.mockRejectedValue(new Error('boom'))
-
-    await POST(makeRequest(), makeParams('item-1'))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    const requestedCall = mockLogMediaEvent.mock.calls.find(([arg]) => arg.action === AuditAction.MEDIA_RETRY_REQUESTED)
-    const failedCall = mockLogMediaEvent.mock.calls.find(([arg]) => arg.action === AuditAction.MEDIA_RETRY_FAILED)
-
-    expect(requestedCall).toBeDefined()
-    expect(failedCall).toBeDefined()
-    expect(failedCall![0]).toEqual(
-      expect.objectContaining({
-        media_item_id: 'item-1',
-        outcome: 'failure',
-        correlation_id: requestedCall![0].correlation_id,
-        metadata: expect.objectContaining({ error_message: 'boom' }),
-      }),
-    )
-  })
-
-  it('does not log MEDIA_RETRY_FAILED when processMediaItem succeeds', async () => {
-    mockGetMediaItem.mockResolvedValue(makeItem())
-
-    await POST(makeRequest(), makeParams('item-1'))
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(mockLogMediaEvent).not.toHaveBeenCalledWith(
-      expect.objectContaining({ action: AuditAction.MEDIA_RETRY_FAILED }),
-    )
-  })
-
   it('skips all audit logging when isMediaAuditEnabled() returns false', async () => {
     mockIsMediaAuditEnabled.mockReturnValue(false)
     mockGetMediaItem.mockResolvedValue(makeItem())
-    mockProcessMediaItem.mockRejectedValue(new Error('boom'))
+    mockVerifyAndReprocess.mockResolvedValue('needs_reupload')
 
     await POST(makeRequest(), makeParams('item-1'))
-    await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(mockLogMediaEvent).not.toHaveBeenCalled()
   })

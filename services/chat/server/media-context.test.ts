@@ -302,4 +302,63 @@ describe('stripMediaMarkers', () => {
     expect(result).toBe(messages)
     expect(result[0].content).toBe('[MEDIA_UPLOAD: x | y | z]')
   })
+
+  // Covers a real, confirmed gap: this function used to only match
+  // MEDIA_UPLOAD, so a MEDIA_UPLOAD_FAILED marker (also written into real
+  // message content by ChatInput.tsx on a client-side pre-upload failure)
+  // was never stripped and reached the model's own context as raw bracket
+  // text. Explicit regression coverage, not just "assumed fixed by design"
+  // — the same class of leak MEDIA_UPLOAD itself was registered in
+  // registry.ts to prevent for the memory-title path (2026-08-08).
+  it('strips a MEDIA_UPLOAD_FAILED marker — it must never reach the model as raw bracket text', () => {
+    const messages = [{ role: 'user' as const, content: '[MEDIA_UPLOAD_FAILED: broken.jpg]' }]
+    const result = stripMediaMarkers(messages)
+    expect(result[0].content).not.toContain('MEDIA_UPLOAD_FAILED');
+    expect(result[0].content).toBe('(Sent broken.jpg with no message.)')
+  })
+
+  it('strips a MEDIA_UPLOAD_FAILED marker alongside a typed caption', () => {
+    const messages = [
+      { role: 'user' as const, content: '[MEDIA_UPLOAD_FAILED: broken.jpg]\ndid that go through?' },
+    ]
+    const result = stripMediaMarkers(messages)
+    expect(result[0].content).toBe('did that go through?')
+  })
+
+  // MEDIA_UPLOAD_DUPLICATE (the duplicate-upload-surfacing fix) must never
+  // repeat the MEDIA_UPLOAD_FAILED gap above — verified explicitly, per the
+  // same reasoning, rather than assumed safe because it's built the same way.
+  it('never surfaces a MEDIA_UPLOAD_DUPLICATE marker to the AI/guide context', () => {
+    const messages = [
+      { role: 'user' as const, content: '[MEDIA_UPLOAD_DUPLICATE: dog.jpg | id-1 | image | ready]' },
+    ]
+    const result = stripMediaMarkers(messages)
+    expect(result[0].content).not.toContain('MEDIA_UPLOAD_DUPLICATE');
+    expect(result[0].content).not.toContain('[');
+    expect(result[0].content).toBe('(Sent dog.jpg with no message.)')
+  })
+
+  it('strips a MEDIA_UPLOAD_DUPLICATE marker alongside a typed caption', () => {
+    const messages = [
+      {
+        role: 'user' as const,
+        content: '[MEDIA_UPLOAD_DUPLICATE: dog.jpg | id-1 | image | failed]\nis this the same one as before?',
+      },
+    ]
+    const result = stripMediaMarkers(messages)
+    expect(result[0].content).toBe('is this the same one as before?')
+  })
+
+  it('strips all three marker types together in one message, naming every file in the fallback', () => {
+    const messages = [
+      {
+        role: 'user' as const,
+        content:
+          '[MEDIA_UPLOAD: a.jpg | id-1 | image]\n[MEDIA_UPLOAD_FAILED: b.jpg]\n[MEDIA_UPLOAD_DUPLICATE: c.jpg | id-3 | image | ready]',
+      },
+    ]
+    const result = stripMediaMarkers(messages)
+    expect(result[0].content).not.toMatch(/\[MEDIA_UPLOAD/)
+    expect(result[0].content).toBe('(Sent 3 files with no message: a.jpg, b.jpg, c.jpg.)')
+  })
 })

@@ -1,40 +1,40 @@
 // POST /api/media/[id]/retry
 // Resets a settled media item (ready or failed) back to status=pending, then
-// drives processing directly — no re-upload needed, the file is still in
-// storage. This is a general reprocess capability, not just failure
-// recovery: a 'ready' item can have genuinely wrong derived_content (e.g.
-// from a since-fixed pipeline bug) even though it was marked successful at
-// the time, and this lets it be corrected without re-uploading. 'pending'
-// is always rejected — an upload actively in flight. 'processing' is
-// rejected UNLESS the row is past its type's MAX_PROCESSING_AGE_SECONDS
-// (services/media/index.ts) — a manual backstop for a job that stalled
-// permanently (see the stale-processing sweep, app/api/cron/media-sweep),
-// so a member/admin isn't stuck waiting on the next cron tick. A genuinely
-// in-flight 'processing' item (younger than its threshold) still starting a
-// second processMediaItem run would race it (processMediaItem's own
-// idempotency guard is a read-then-write check, not a DB-level lock) — that
-// case stays rejected. Does NOT depend on the Supabase Database Webhook:
-// that webhook only fires (and is only handled) on INSERT, so this route's
-// UPDATE would never be picked up through that path. processMediaItem
-// re-fetches the item itself and re-verifies status === 'pending' before
-// doing anything, so calling it directly here is safe even under concurrent
-// retry clicks.
+// drives processing directly — no re-upload needed, IF the file is
+// confirmed still in Storage (verifyAndReprocess, services/media/processor.ts,
+// checks this rather than assuming it — a reprocess against a file that was
+// never actually written retried forever in production, always failing with
+// the misleading "Storage object not available after N attempts"). This is
+// a general reprocess capability, not just failure recovery: a 'ready' item
+// can have genuinely wrong derived_content (e.g. from a since-fixed
+// pipeline bug) even though it was marked successful at the time, and this
+// lets it be corrected without re-uploading. 'pending' is always rejected —
+// an upload actively in flight. 'processing' is rejected UNLESS the row is
+// past its type's MAX_PROCESSING_AGE_SECONDS (services/media/index.ts) — a
+// manual backstop for a job that stalled permanently (see the
+// stale-processing sweep, app/api/cron/media-sweep), so a member/admin
+// isn't stuck waiting on the next cron tick. A genuinely in-flight
+// 'processing' item (younger than its threshold) still starting a second
+// processMediaItem run would race it (processMediaItem's own idempotency
+// guard is a read-then-write check, not a DB-level lock) — that case stays
+// rejected. Does NOT depend on the Supabase Database Webhook: that webhook
+// only fires (and is only handled) on INSERT, so this route's UPDATE would
+// never be picked up through that path.
 
-import { after } from 'next/server'
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import {
   getMediaItem,
-  updateMediaItem,
   isMediaAuditEnabled,
   logMediaEvent,
   MAX_PROCESSING_AGE_SECONDS,
+  NEEDS_REUPLOAD_ERROR_MESSAGE,
 } from '@/services/media'
-import { processMediaItem } from '@/services/media/processor'
+import { verifyAndReprocess } from '@/services/media/processor'
 import { AuditAction } from '@/services/audit/types'
 
-export const maxDuration = 900 // 15 min — Vercel Pro plan, matches the webhook route's ceiling since this drives the identical processMediaItem pipeline
+export const maxDuration = 900 // 15 min — Vercel Pro plan, matches the webhook route's ceiling since a successful outcome here drives the identical processMediaItem pipeline
 export const runtime = 'nodejs'
 
 export async function POST(
@@ -89,14 +89,6 @@ export async function POST(
     return Response.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await updateMediaItem(id, {
-    status: 'pending',
-    error_message: null,
-    derived_content: null,
-    classification: null,
-    processed_at: null,
-  })
-
   const correlationId = crypto.randomUUID()
 
   if (isMediaAuditEnabled()) {
@@ -123,30 +115,36 @@ export async function POST(
     })
   }
 
-  // Fire-and-forget, matching app/api/webhooks/media-process/route.ts's own
-  // pattern — respond to the client immediately, let processing run in the
-  // background. `item` already carries the id/tenant_id processMediaItem
-  // needs; it re-fetches a fresh copy itself before doing anything.
-  // after() keeps this invocation alive until the promise settles instead of
-  // letting Vercel freeze/reap it the moment the response above is sent —
-  // see the webhook route's identical fix for why a bare `void` here would
-  // otherwise risk the same permanently-stuck-at-'processing' failure mode.
-  after(() =>
-    processMediaItem(item).catch(async (err) => {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      if (isMediaAuditEnabled()) {
-        await logMediaEvent({
-          tenant_id: tenantId,
-          member_id: memberRow.id,
-          media_item_id: id,
-          action: AuditAction.MEDIA_RETRY_FAILED,
-          outcome: 'failure',
-          correlation_id: correlationId,
-          metadata: { error_message: errorMessage, timestamp: new Date().toISOString() },
-        })
-      }
-    }),
-  )
+  // Checks Storage before touching anything — resets to 'pending' and
+  // triggers processMediaItem (after()-wrapped internally) if the file is
+  // actually there, or marks the row 'failed' with NEEDS_REUPLOAD_ERROR_MESSAGE
+  // and does nothing further if it isn't. Never assumes. Shares
+  // correlationId so a later MEDIA_RETRY_FAILED (a genuine pipeline error,
+  // not this needs_reupload case) links back to the MEDIA_RETRY_REQUESTED
+  // logged just above.
+  const outcome = await verifyAndReprocess(item, correlationId)
+
+  if (outcome === 'needs_reupload') {
+    if (isMediaAuditEnabled()) {
+      await logMediaEvent({
+        tenant_id: tenantId,
+        member_id: memberRow.id,
+        media_item_id: id,
+        action: AuditAction.MEDIA_RETRY_FAILED,
+        outcome: 'failure',
+        correlation_id: correlationId,
+        metadata: {
+          error_message: NEEDS_REUPLOAD_ERROR_MESSAGE,
+          needs_reupload: true,
+          timestamp: new Date().toISOString(),
+        },
+      })
+    }
+    // Still 200 — the request itself was handled correctly, this is just
+    // the outcome. The client checks needsReupload to swap its retry
+    // action for a "please re-attach" prompt instead of retrying again.
+    return Response.json({ ok: true, needsReupload: true })
+  }
 
   return Response.json({ ok: true })
 }

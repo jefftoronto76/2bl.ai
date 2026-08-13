@@ -47,7 +47,7 @@ describe('useMediaUpload', () => {
 
     const uploadResult = await act(() => result.current.upload(file))
 
-    expect(uploadResult).toEqual({ mediaItemId: 'item-1', type: 'image', filename: 'dog.jpg', status: 'pending' })
+    expect(uploadResult).toEqual({ mediaItemId: 'item-1', type: 'image', filename: 'dog.jpg', status: 'pending', duplicate: false })
     expect(result.current.isUploading).toBe(false)
     expect(result.current.error).toBeNull()
 
@@ -93,7 +93,7 @@ describe('useMediaUpload', () => {
     // The real status of the reused item is carried through — NOT hardcoded
     // to 'pending' — so a duplicate reusing an already-ready item is
     // reported as ready, not reset.
-    expect(uploadResult).toEqual({ mediaItemId: 'existing-item-1', type: 'image', filename: 'dog.jpg', status: 'ready' })
+    expect(uploadResult).toEqual({ mediaItemId: 'existing-item-1', type: 'image', filename: 'dog.jpg', status: 'ready', duplicate: true })
     // Only the one call — no PUT, no lifecycle events fired for a dedup.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(result.current.error).toBeNull()

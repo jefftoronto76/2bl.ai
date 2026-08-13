@@ -7,6 +7,12 @@
 // conversation rows too. This test covers both directions: the new item's
 // own gating, and regression coverage that the pre-existing chapter items
 // are now correctly conversation-only.
+//
+// Story fixtures that need the kebab visible set isOwner: true — the
+// separate story-kebab-owner-only pass (also 2026-08-13, merged after this
+// file was written) hides the whole kebab trigger for a non-owned story, so
+// without it these tests would never find "Story options" to click at all.
+// Ownership gating itself is covered by SidebarV2.storyKebabOwnership.test.tsx.
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
@@ -30,7 +36,7 @@ describe('SidebarV2 — RowMenu target-aware MENU_ITEMS', () => {
   it('story row kebab shows Admin, not Move to chapter / Remove from chapter', () => {
     render(
       <SidebarV2
-        stories={[{ id: 'story-1', name: 'A Story' }]}
+        stories={[{ id: 'story-1', name: 'A Story', isOwner: true }]}
         writingPrompts={[]}
         onRowAction={vi.fn()}
       />
@@ -63,7 +69,7 @@ describe('SidebarV2 — RowMenu target-aware MENU_ITEMS', () => {
     const onRowAction = vi.fn();
     render(
       <SidebarV2
-        stories={[{ id: 'story-1', name: 'A Story' }]}
+        stories={[{ id: 'story-1', name: 'A Story', isOwner: true }]}
         writingPrompts={[]}
         onRowAction={onRowAction}
       />
