@@ -263,6 +263,39 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   today — hiding it client-side too is a reasonable follow-up, not done
   here.
 
+  **Collapsed-rail search icon does nothing, and a related chevron symptom
+  needs a live look — found in testing (2026-08-13), Search and Collapse
+  Bar combined header row.** When the sidebar is collapsed to its icon
+  rail (`isExpanded=false`, desktop only — the mobile drawer never renders
+  the collapse toggle at all, see the `SidebarV2` row above), `SearchField`'s
+  collapsed branch renders a bare `<button aria-label="Search">` with no
+  `onClick` at all — confirmed by reading the component: the collapsed
+  early-return has no click handler whatsoever, so clicking it is a genuine
+  no-op, not a stub that logs or defers. **Reported, not yet
+  root-caused:** clicking that search icon also makes the collapse-toggle
+  chevron `IconButton` — which sits directly below it in the collapsed
+  vertical stack — visually disappear. Nothing in the file supports a
+  mechanism for this: `expanded` (the only state either button could
+  plausibly touch) has exactly one setter call in the whole component, the
+  chevron's own `onClick={() => setExpanded((v) => !v)}`; the search
+  button has no `onClick` prop at all, so it cannot be the one flipping
+  `expanded`. This needs an actual browser/devtools reproduction, not a
+  guess from a static read — flagged as unconfirmed rather than inventing
+  a cause. **Net effect and recovery-path check:** once collapsed, there
+  is no way back to the expanded rail via either control in the header
+  row — the search icon does nothing, and the chevron (the only other
+  affordance there) becomes invisible per the report above. Checked for
+  any other way to re-expand: `expanded` is local `useState` inside
+  `SidebarV2`, never lifted to a prop, and `setExpanded` is called from
+  exactly one place in the file — no other button, keyboard shortcut, or
+  `ChatHero.tsx`-side control can set it. `forceCollapsed` (`ChatHero.tsx`'s
+  memory-panel/media-pane/admin-panel gate) only ever forces `isExpanded`
+  to `false` on top of whatever `expanded` already is — it never sets
+  `expanded` back to `true`, so toggling it off doesn't recover a
+  stuck-collapsed sidebar either. The only confirmed recovery found is a
+  hard reload/remount, which resets `expanded` back to its
+  `useState(true)` default.
+
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
   `type='memory'` rows on the same table, **not** the dedicated `stories`
