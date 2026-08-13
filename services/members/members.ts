@@ -379,7 +379,7 @@ export async function acceptInvite(
   // is dead everywhere, not just at the /invite/[token] redirect.
   const { data: invitedRow, error: findErr } = await supabase
     .from('members')
-    .select('id, tenant_id')
+    .select('id, tenant_id, name')
     .eq('token', token)
     .is('used_at', null)
     .is('revoked_at', null)
@@ -398,7 +398,7 @@ export async function acceptInvite(
     return { ok: false, status: 404, error: 'Invalid or already used token' }
   }
 
-  const row = invitedRow as { id: string; tenant_id: string }
+  const row = invitedRow as { id: string; tenant_id: string; name: string | null }
   console.log('[acceptInvite] step 1 invited row found', {
     memberId: row.id,
     tenantId: row.tenant_id,
@@ -416,13 +416,23 @@ export async function acceptInvite(
 
   // Step 3: delete any orphan row syncMember inserted for this clerk_id
   // (clerk_id was null on the invited row → no conflict → new active row).
+  // Selecting `name` alongside `id` lets us rescue it below: /api/members/sync
+  // can independently write a real `name` onto that orphan row (it races
+  // acceptInvite off the same Clerk session-activation event, no ordering
+  // guaranteed), and the invited row being stamped in step 4 never has one.
   const { data: orphanRows, error: orphanErr } = await supabase
     .from('members')
     .delete()
     .eq('clerk_id', clerkUserId)
     .eq('tenant_id', row.tenant_id)
     .neq('id', row.id)
-    .select('id')
+    .select('id, name')
+
+  // Rescued from a single deleted orphan's `name` when the invited row
+  // doesn't already have one — see step 3 comment above. Left undefined
+  // (not included in the step 4 update payload) for every other case:
+  // zero orphans, more than one, or the orphan's name is also null.
+  let rescuedName: string | undefined
 
   if (orphanErr) {
     console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
@@ -440,7 +450,8 @@ export async function acceptInvite(
     // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
     // on clerk_id will surface a real error if the orphan remains.
   } else {
-    const deletedCount = orphanRows?.length ?? 0
+    const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
+    const deletedCount = deletedRows.length
     console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
     if (deletedCount > 0) {
       // A syncMember-created orphan actually existed — confirms the
@@ -453,6 +464,10 @@ export async function acceptInvite(
         target_id: row.id,
         metadata: { deleted_count: deletedCount },
       })
+    }
+    if (deletedCount === 1 && deletedRows[0].name && !row.name) {
+      rescuedName = deletedRows[0].name
+      console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
     }
   }
 
@@ -467,6 +482,7 @@ export async function acceptInvite(
       source: 'invite',
       used_at: now,
       updated_at: now,
+      ...(rescuedName ? { name: rescuedName } : {}),
     })
     .eq('id', row.id)
 
