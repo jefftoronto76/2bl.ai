@@ -68,7 +68,12 @@ export default async function HeirloomPage({
     if (row !== null) {
       isAuthorized = true;
       invitedName = row.invited_name ?? null;
-      autoOpenChat = row.auto_open ?? false;
+      // Always auto-open for a valid admin/member invite token — the
+      // deterministic greet + ACCOUNT_CREATE prompt in chatStore.tsx must
+      // fire regardless of the auto_open toggle. The column and the
+      // InviteMemberModal.tsx toggle stay in place for other consumers;
+      // this path just stops reading it.
+      autoOpenChat = true;
       memberId = row.id;
     }
   }
