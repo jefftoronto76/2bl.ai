@@ -24,12 +24,63 @@
 // and a11y tree the same way ChatDrawerV2 does for its own closed state.
 
 import { useEffect, useRef, useState } from 'react';
-import { Feather, Loader2, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { Feather, Image as ImageIcon, Upload, X } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import { AddToMemoryPanel } from './media/AddToMemoryPanel';
+
+// Loading-state placeholder — previews MediaCard's real shape (thumbnail +
+// two text lines) instead of a generic spinner, reusing the shimmer already
+// shipped for in-progress uploads (UploadThumbnail.tsx / MessageList.tsx's
+// `animate-upload-shimmer`, tailwind.config.js) rather than inventing a
+// second shimmer animation. MediaGallery.tsx carries the identical
+// duplicate — no shared component exists for this loading-state region (see
+// Design Handovers/ Aug 2026 Atomic Updates/10_media_list_skeleton/README.md).
+function MediaCardSkeleton() {
+  return (
+    <div style={{ flex: '1 1 220px', minWidth: 180, maxWidth: 320 }}>
+      <div className="border border-border rounded-xl bg-surface overflow-hidden flex flex-col">
+        <div className="relative w-full bg-surface-2 overflow-hidden" style={{ aspectRatio: '16 / 10' }}>
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 animate-upload-shimmer motion-reduce:animate-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(100deg, transparent 30%, rgb(var(--color-accent) / 0.28) 50%, transparent 70%)',
+              backgroundSize: '200% 100%',
+            }}
+          />
+        </div>
+        <div className="p-3.5 flex flex-col gap-2">
+          <div className="relative h-3 rounded-full bg-surface-2 overflow-hidden" style={{ width: '70%' }}>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 animate-upload-shimmer motion-reduce:animate-none"
+              style={{
+                backgroundImage:
+                  'linear-gradient(100deg, transparent 30%, rgb(var(--color-accent) / 0.28) 50%, transparent 70%)',
+                backgroundSize: '200% 100%',
+              }}
+            />
+          </div>
+          <div className="relative h-2.5 rounded-full bg-surface-2 overflow-hidden" style={{ width: '45%' }}>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 animate-upload-shimmer motion-reduce:animate-none"
+              style={{
+                backgroundImage:
+                  'linear-gradient(100deg, transparent 30%, rgb(var(--color-accent) / 0.28) 50%, transparent 70%)',
+                backgroundSize: '200% 100%',
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface MediaPageProps {
   open: boolean;
@@ -129,8 +180,14 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
         <div className="flex-1 overflow-y-auto flex justify-center">
           <div className="w-full max-w-[780px] px-6 py-7">
             {loading ? (
-              <div className="flex items-center justify-center h-32 text-text-muted">
-                <Loader2 size={18} className="animate-spin" />
+              <div
+                aria-busy="true"
+                aria-label="Loading media"
+                style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}
+              >
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <MediaCardSkeleton key={i} />
+                ))}
               </div>
             ) : items.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 gap-2 text-center">
