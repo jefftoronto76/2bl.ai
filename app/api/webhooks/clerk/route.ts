@@ -210,7 +210,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       // already set; upsert would write 'active' again which is fine, but source and
       // used_at would not be set by syncMember). When false, no invited row matched
       // and syncMember creates a fresh active row as normal.
-      const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken)
+      const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken, name)
 
       if (linked) {
         console.log('[webhook/clerk] skipping syncMember — invited row stamped by linkInvitedMember', {

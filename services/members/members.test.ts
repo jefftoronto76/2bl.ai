@@ -417,6 +417,47 @@ describe('linkInvitedMember', () => {
     expect(arg.target_id).toBe('member-uuid-13')
     expect((arg.metadata as Record<string, unknown>).pg_code).toBe('23505')
   })
+
+  // ── name capture (from Clerk firstName/lastName) ───────────────────────────
+
+  it('sets name from Clerk when the invited row has none', async () => {
+    const { client, getUpdateCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-14' },
+      inviteRow: { id: 'member-uuid-14', tenant_id: 'tenant-1', name: null },
+    })
+    adminHolder.client = client
+
+    await linkInvitedMember('clerk-14', 'ada@example.com', null, 'Ada Lovelace')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Ada Lovelace')
+  })
+
+  it('does not set name when Clerk has none on file', async () => {
+    const { client, getUpdateCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-15' },
+      inviteRow: { id: 'member-uuid-15', tenant_id: 'tenant-1', name: null },
+    })
+    adminHolder.client = client
+
+    await linkInvitedMember('clerk-15', 'noname@example.com', null, null)
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
+  })
+
+  it('does not overwrite an existing invited-row name with the Clerk name', async () => {
+    const { client, getUpdateCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-16' },
+      inviteRow: { id: 'member-uuid-16', tenant_id: 'tenant-1', name: 'Already Set' },
+    })
+    adminHolder.client = client
+
+    await linkInvitedMember('clerk-16', 'already@example.com', null, 'New Clerk Name')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
+  })
 })
 
 // ── acceptInvite ─────────────────────────────────────────────────────────────
