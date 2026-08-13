@@ -99,6 +99,22 @@ Backs the `/platform/settings` page. All routes gate on `getCurrentUser().isPlat
 | `/api/platform/prompt-sets/[id]` | DELETE | Cross-tenant delete, no confirmation beyond the client modal — no server-side guard against deleting a live, default, or composer-family set. Writes `PROMPT_SET_DELETE` audit. |
 | `/api/platform/settings/master-prompt` | GET | Returns `{ promptSetId }` — the `prompt_sets` row with `is_composer_prompt = true AND status = 'live'` (or null). Read-only as of July 2026 (composer-family work) — see `System Docs/Known Gaps.md` for the retired `PUT`. |
 
+### Stories
+
+Backed by `services/crm/stories.ts`. A story is an `artifacts` row with
+`type='story'` — see `System Docs/Database Schema.md`'s `artifacts` row and
+the "Real story creation and persistence" entry in `System Docs/Known
+Gaps.md`. Not previously documented in this file — added alongside the new
+`PATCH` route (story-admin-panel, 2026-08-13) since all four verbs on this
+resource naturally sit together.
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/stories` | GET | The signed-in member's stories for this tenant, newest first (`listStories`) — owned stories OR any story the caller has an `artifact_subscribers` grant on. Empty list (`{ stories: [] }`), not an error, for an anonymous/unresolvable-tenant request. Returns `{ stories: [{ id, name, description, hasActiveInviteOrSubscribers }] }` — `title`/`body` relabeled to `name`/`description` for the client's `Story` type. |
+| `/api/stories` | POST | Creates a story (`createStory`). Body: `{ name: string, description?: string }`. Requires a linked account — 401 with a distinct `STORY_ACCOUNT_REQUIRED_ERROR` for an anonymous visitor or a member not yet linked to a `users` row (`artifacts.user_id` is `NOT NULL`). `memberId` is always server-resolved (`resolveMemberId`), never client-supplied. Returns `{ story: { id, name, description, hasActiveInviteOrSubscribers } }`. |
+| `/api/stories/[id]` | PATCH | Added story-admin-panel (2026-08-13) — `StoryAdminPanel`'s one editable field. Body: `{ description: string }`. Requires a signed-in account (401 otherwise). Calls `updateStoryDescription` (`services/crm/stories.ts`), owner-scoped identically to `DELETE` below (`tenant_id` + `user_id` + `type='story'` — 404 whether the id doesn't resolve or belongs to someone else, same non-leaking shape `discardStory` uses). Writes to `artifacts.body` — the exact same column `POST`'s `description` input already writes on creation, not a different column. Logs `AuditAction.STORY_DESCRIPTION_UPDATED`. Returns `{ story: { id, name, description } }`. |
+| `/api/stories/[id]` | DELETE | Soft-deletes a story (`discardStory` — stamps `discarded_at`, same convention `discardMemory` uses on this same `artifacts` table). Requires a signed-in account; scoped to `tenant_id` + `user_id` (a story has no `session_id`). Logs `AuditAction.STORY_DISCARDED`. Returns `{ ok: true }`. |
+
 ### Heirloom Invites
 
 | Route | Method | Purpose |

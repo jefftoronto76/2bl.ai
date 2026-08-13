@@ -121,6 +121,10 @@ export const AuditAction = {
   // (success/failure) and the DELETE /api/stories/[id] route.
   STORY_CREATED: 'story.created',
   STORY_DISCARDED: 'story.discarded',
+  // StoryAdminPanel's description field (story-admin-panel, 2026-08-13) —
+  // logged by the PATCH /api/stories/[id] route, same placement convention
+  // as STORY_DISCARDED (route logs, service function itself doesn't).
+  STORY_DESCRIPTION_UPDATED: 'story.description_updated',
   // Story invite links (reusable-story-invite-links, 2026-08-10) — a
   // deliberately separate mechanism from the member.invite_* single-use
   // admin/member invite actions above; see services/crm/story-invites.ts.
