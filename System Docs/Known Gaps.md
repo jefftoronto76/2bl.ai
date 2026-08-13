@@ -368,6 +368,27 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   active link is unaffected — the existing blank-reset behavior stands, so
   "Not created yet" still means what it says.
 
+  **Collaborator removal — real as of story-collaborator-removal
+  (2026-08-13).** Until this pass, every write against `artifact_subscribers`
+  was an insert/upsert (`acceptStoryInvite` above) — there was no way to
+  revoke one already-joined person's access short of an owner deleting the
+  whole story. `revokeStoryCollaborator` (`services/crm/story-invites.ts`)
+  deletes the specific grant (`artifact_id` = storyId, `member_id` =
+  memberId), owner-scoped the same way `listStoryCollaborators` already is —
+  a collaborator cannot remove another collaborator, only the story's own
+  creator can — and idempotent-*safe* rather than idempotent-*silent*: a
+  grant that's already gone can't 500 (the delete's own `.select()` reports
+  zero rows affected, not a DB error), but it's still reported back as a
+  clear 404 (`'Collaborator not found'`) instead of a folded-in success, so
+  the caller can tell "already removed" apart from "removed just now."
+  New `AuditAction.STORY_COLLABORATOR_REMOVED`. Backed by a new sibling
+  route, `DELETE /api/heirloom/story-invites/collaborators` — see
+  `System Docs/API Routes.md`'s "Story Invite Links" section and `System
+  Docs/Database Schema.md`'s `artifact_subscribers` row. **Not built yet:**
+  no UI calls this — `StoryAdminPanel`'s roster "Remove" action (see the
+  `Design Handovers/ Aug 2026 Atomic Updates/Updated Story Kebabs/` handover)
+  is still design-reference-only; this pass is the backend capability alone.
+
 - **`/join/[token]` missing its middleware host-rewrite exclusion — found
   and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
   `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)

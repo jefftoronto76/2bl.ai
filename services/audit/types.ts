@@ -129,6 +129,10 @@ export const AuditAction = {
   STORY_INVITE_LINK_OPENED: 'story.invite_link_opened',
   STORY_INVITE_ACCEPTED_NEW_MEMBER: 'story.invite_accepted_new_member',
   STORY_INVITE_ACCEPTED_EXISTING_MEMBER: 'story.invite_accepted_existing_member',
+  // Collaborator removal (2026-08-13) — the first real delete against
+  // artifact_subscribers; see services/crm/story-invites.ts's
+  // revokeStoryCollaborator.
+  STORY_COLLABORATOR_REMOVED: 'story.collaborator_removed',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const
