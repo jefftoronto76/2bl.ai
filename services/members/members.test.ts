@@ -423,7 +423,7 @@ describe('linkInvitedMember', () => {
 
 // Three-call mock for acceptInvite:
 //   Call 1: from('members').select().eq('token').is('used_at').is('revoked_at').maybeSingle()
-//   Call 2: from('members').delete().eq('clerk_id').eq('tenant_id').neq('id').select('id')
+//   Call 2: from('members').delete().eq('clerk_id').eq('tenant_id').neq('id').select('id, name')
 //   Call 3: from('members').update().eq('id')
 function makeAcceptInviteClient({
   invitedRow,
@@ -576,6 +576,64 @@ describe('acceptInvite', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.status).toBe(500)
+  })
+
+  // ── orphan name rescue (race with /api/members/sync) ──────────────────────
+
+  it('rescues the deleted orphan\'s name onto the invited row when the invited row has none', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-6', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [{ id: 'orphan-6', name: 'Real Name' }],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-6', 'user-6')
+
+    expect(result.ok).toBe(true)
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Real Name')
+  })
+
+  it('does not overwrite an existing invited-row name with the orphan\'s name', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-7', tenant_id: HEIRLOOM_TENANT_ID, name: 'Already Set' },
+      orphanRows: [{ id: 'orphan-7', name: 'Orphan Name' }],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-7', 'user-7')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
+  })
+
+  it('does not set a name when the orphan row has no name', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-8', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [{ id: 'orphan-8', name: null }],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-8', 'user-8')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
+  })
+
+  it('does not set a name when more than one orphan row is deleted', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-9', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [
+        { id: 'orphan-9a', name: 'Name A' },
+        { id: 'orphan-9b', name: 'Name B' },
+      ],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-9', 'user-9')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
   })
 })
 
