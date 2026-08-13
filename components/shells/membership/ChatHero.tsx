@@ -19,6 +19,7 @@ import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
 import { MediaGallery } from './MediaGallery';
+import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
@@ -167,11 +168,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const handleOpenMedia = useCallback(() => {
     setMediaOpen(true);
     setOpenMemory(null);
+    setAdminStoryId(null);
   }, []);
 
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
     setOpenMemory(row);
-    if (row) setMediaOpen(false);
+    if (row) {
+      setMediaOpen(false);
+      setAdminStoryId(null);
+    }
   }, []);
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
@@ -213,11 +218,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     hasActiveInviteOrSubscribers?: boolean;
   } | null>(null);
   // Story kebab's "Admin" action (Updated Story Kebabs handover, 2026-08-13)
-  // — the story id to show the admin panel for, non-null while it should be
-  // open. TODO: no panel exists yet to read this — a later task renders one
-  // (member roster + description) alongside pendingDelete/openMemory above;
-  // this pass only wires the click through to a real, testable state value.
+  // — the story id StoryAdminPanel (below) renders for, non-null while it
+  // should be open. Mutually exclusive with openMemory/mediaOpen via the
+  // wrapping handlers (handleOpenMedia/handleOpenMemory above, this state's
+  // own setter in handleRowAction below) — same pattern mediaOpen already
+  // uses against openMemory, not a shared enum, so this stays additive.
   const [adminStoryId, setAdminStoryId] = useState<string | null>(null);
+  // Re-derived from `stories` on every render (liveOpenMemory's own pattern
+  // above) so a description edit committed through the open panel itself
+  // shows up immediately once handleUpdateStoryDescription's setStories call
+  // resolves, without a second sync step.
+  const adminStory = adminStoryId ? stories.find(s => s.id === adminStoryId) ?? null : null;
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
@@ -272,12 +283,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
     // Admin is story-only (SidebarV2's MENU_ITEMS already gates it via
     // `targets`, so target should always be 'story' here — the check is
-    // defensive, not load-bearing). Opens the story admin panel once one
-    // exists; for now this just proves the click reaches this handler.
+    // defensive, not load-bearing). Opens StoryAdminPanel as the third pane,
+    // closing the memory/media panes the same way handleOpenMedia/
+    // handleOpenMemory close each other and this one.
     if (action === 'admin') {
       if (target === 'story') {
-        console.log('[ChatHero] admin action fired for story', id);
         setAdminStoryId(id);
+        setOpenMemory(null);
+        setMediaOpen(false);
       }
       return;
     }
@@ -374,6 +387,37 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     } catch (err) {
       console.error('[ChatHero] delete story threw:', err);
       showToast('Could not delete story');
+    }
+  }, [showToast]);
+
+  // StoryAdminPanel's description field (story-admin-panel, 2026-08-13) —
+  // real persistence via PATCH /api/stories/[id] (services/crm/stories.ts's
+  // updateStoryDescription). StoryAdminPanel only calls this when the
+  // trimmed value actually changed, so no extra guard needed here. Updates
+  // the matching row in `stories` in place on success so the fresh
+  // description flows back down to the open panel AND anywhere else a
+  // story's description is shown (SidebarV2's row tooltip). Silent-fail
+  // posture matches handleCreateStory/handleDeleteStory above — toast only,
+  // no revert (the panel's own textarea already holds what the member typed
+  // either way).
+  const handleUpdateStoryDescription = useCallback(async (storyId: string, description: string) => {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.story) {
+        console.error('[ChatHero] update story description failed:', res.status);
+        showToast('Could not save description');
+        return;
+      }
+      const updated = data.story as Story;
+      setStories(prev => prev.map(s => (s.id === storyId ? { ...s, description: updated.description } : s)));
+    } catch (err) {
+      console.error('[ChatHero] update story description threw:', err);
+      showToast('Could not save description');
     }
   }, [showToast]);
 
@@ -611,7 +655,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMedia}
-            forceCollapsed={!!openMemory || mediaOpen}
+            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId}
           />
         )}
 
@@ -682,6 +726,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         )}
 
+        {/* Mobile: admin panel is a full-screen overlay — same treatment as
+            the memory panel above (inset-0/h-[100dvh], no scrim, no
+            rounding), not Media's partial sheet. */}
+        {isMobile && adminStory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story admin">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              <StoryAdminPanel
+                story={adminStory}
+                onClose={() => setAdminStoryId(null)}
+                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
             width of its own (below), so chat just gets whatever's left; it
             no longer needs a matching ratio to divide against. Floored at
@@ -738,31 +797,34 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           />
         )}
 
-        {/* Memory panel / media pane — shared third-pane wrapper since
-            openMemory and mediaOpen are mutually exclusive by construction
-            (handleOpenMedia/handleOpenMemory above). Real drag-resizable
-            pixel width now (Stage C) for memory; media gets a fixed
-            MEDIA_PANEL_WIDTH instead (no resize needed) — flexBasis is
-            inline style either way since Tailwind can't express a
-            runtime-computed value as a static class; min-w-[280px] stays a
-            class-based floor, redundant with the JS clamp on purpose
-            (defense in depth, costs nothing). Transition suppressed while
-            actively dragging so a live resize tracks the cursor instead of
-            animating 300ms behind it. The wrapper stays mounted whenever
-            !isMobile so open/close can still transition; content itself
-            only renders while a memory or media is open. Desktop only —
-            mobile media and mobile memory (Stage F) both use their own
-            full-screen/sheet overlays above instead of this shared
-            resizable wrapper. */}
+        {/* Memory panel / media pane / admin panel — shared third-pane
+            wrapper since openMemory, mediaOpen, and adminStoryId are
+            mutually exclusive by construction (handleOpenMedia/
+            handleOpenMemory above, and adminStoryId's own setter in
+            handleRowAction). Real drag-resizable pixel width now (Stage C)
+            for memory; media and admin both get the same fixed
+            MEDIA_PANEL_WIDTH instead (neither needs resize — the admin
+            panel's own spec calls for a fixed width, same 400px media
+            already uses) — flexBasis is inline style either way since
+            Tailwind can't express a runtime-computed value as a static
+            class; min-w-[280px] stays a class-based floor, redundant with
+            the JS clamp on purpose (defense in depth, costs nothing).
+            Transition suppressed while actively dragging so a live resize
+            tracks the cursor instead of animating 300ms behind it. The
+            wrapper stays mounted whenever !isMobile so open/close can still
+            transition; content itself only renders while a memory, media,
+            or admin pane is open. Desktop only — mobile media/memory/admin
+            (Stage F) all use their own full-screen/sheet overlays above
+            instead of this shared resizable wrapper. */}
         {!isMobile && (
           <div
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
-              openMemory || mediaOpen ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
-            } ${mediaOpen ? 'border-l border-border' : ''}`}
+              openMemory || mediaOpen || adminStory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen || adminStory ? 'border-l border-border' : ''}`}
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen
+                : mediaOpen || adminStory
                 ? { flexBasis: MEDIA_PANEL_WIDTH, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -779,6 +841,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {mediaOpen && <MediaGallery onClose={() => setMediaOpen(false)} />}
+            {adminStory && (
+              <StoryAdminPanel
+                story={adminStory}
+                onClose={() => setAdminStoryId(null)}
+                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
+              />
+            )}
           </div>
         )}
       </div>
