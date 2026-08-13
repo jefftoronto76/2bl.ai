@@ -6,6 +6,7 @@ import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
+import { AddToMemoryPanel } from './media/AddToMemoryPanel';
 
 interface MediaGalleryProps {
   onClose: () => void;
@@ -28,6 +29,7 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
   const [items, setItems] = useState<MediaItemWithUrl[]>([]);
   const [loading, setLoading] = useState(true);
   const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
+  const [addToMemoryItem, setAddToMemoryItem] = useState<MediaItemWithUrl | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -81,7 +83,7 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
           <MediaItemsGrid
             items={items}
             onRetry={handleRetry}
-            onAddToMemory={() => {}}
+            onAddToMemory={setAddToMemoryItem}
             onEditStub={() => onFlash('Editing media is coming soon')}
             onDeleteRequest={requestDelete}
           />
@@ -104,6 +106,8 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
           )
         }
       />
+
+      <AddToMemoryPanel item={addToMemoryItem} onClose={() => setAddToMemoryItem(null)} flash={onFlash} />
     </div>
   );
 }

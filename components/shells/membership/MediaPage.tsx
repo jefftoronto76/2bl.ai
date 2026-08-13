@@ -29,6 +29,7 @@ import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
+import { AddToMemoryPanel } from './media/AddToMemoryPanel';
 
 interface MediaPageProps {
   open: boolean;
@@ -41,6 +42,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
   const [loading, setLoading] = useState(true);
   const hasFetchedRef = useRef(false);
   const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
+  const [addToMemoryItem, setAddToMemoryItem] = useState<MediaItemWithUrl | null>(null);
 
   useEffect(() => {
     if (!open || hasFetchedRef.current) return;
@@ -134,7 +136,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
               <MediaItemsGrid
                 items={items}
                 onRetry={handleRetry}
-                onAddToMemory={() => {}}
+                onAddToMemory={setAddToMemoryItem}
                 onEditStub={() => onFlash('Editing media is coming soon')}
                 onDeleteRequest={requestDelete}
               />
@@ -160,6 +162,8 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
             )
           }
         />
+
+        <AddToMemoryPanel item={addToMemoryItem} onClose={() => setAddToMemoryItem(null)} flash={onFlash} />
       </div>
     </>
   );
