@@ -240,6 +240,29 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     fabricating a number nothing tracks was already rejected in the
     collaborator-removal pass, and this pass didn't revisit that call.
 
+  **Story kebab is now owner-only (2026-08-13).** The OR-subscribed
+  widening in `listStories` (see "Real story creation and persistence"
+  below) means a story-scoped collaborator now sees stories they don't
+  own in their own sidebar. `SidebarV2`'s story rows previously rendered
+  the kebab trigger unconditionally, which — combined with the no-op
+  actions above — meant a collaborator could reach a menu of dead buttons
+  plus a live, owner-scoped `delete` that would 404 silently-ish (toast
+  only) rather than succeed. `listStories`/`createStory` now return
+  `isOwner` per row (`row.user_id === caller`), threaded through `GET`/
+  `POST /api/stories` and `Story.isOwner` (`types.ts`); `SidebarV2` hides
+  the story-row kebab trigger entirely — not a filtered/empty `RowMenu` —
+  when `isOwner` is false. One check (`story.isOwner`), no per-action
+  gating: every current and near-term row action (star/rename/invite/
+  delete/admin) is owner-only by the same reasoning, and there's no
+  inter-member chat for a collaborator to coordinate one of these actions
+  with the owner anyway. Scoped to the kebab only — the separate
+  `onInviteStory` icon (own dedicated entry point, see "Invite — real as
+  of 2026-08-10" below) is untouched by this pass; its own `createInviteLink`
+  is already owner-scoped server-side (`services/crm/story-invites.ts`),
+  same as `discardStory`, so a non-owner's click already fails server-side
+  today — hiding it client-side too is a reasonable follow-up, not done
+  here.
+
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
   `type='memory'` rows on the same table, **not** the dedicated `stories`
