@@ -1,4 +1,5 @@
 import { gps as exifrGps } from 'exifr'
+import { after } from 'next/server'
 import { AuditAction } from '@/services/audit/types'
 import { extractText, type MediaAuditContext } from '@/services/content/assets'
 import {
@@ -8,6 +9,7 @@ import {
   logMediaEvent,
   logSttMediaEvent,
   updateMediaItem,
+  NEEDS_REUPLOAD_ERROR_MESSAGE,
   type MediaItem,
 } from './index'
 import { generateLongLivedSignedUrl, generateSignedDownloadUrl, objectExists } from './storage'
@@ -50,6 +52,89 @@ export async function waitForStorageObject(storagePath: string): Promise<void> {
   throw new Error(
     `Storage object not available after ${STORAGE_WAIT_DELAYS_MS.length} attempts: ${storagePath}`,
   )
+}
+
+export type ReprocessOutcome = 'reprocessing' | 'needs_reupload'
+
+/**
+ * The one place a settled/stalled item is reprocessed against its EXISTING
+ * Storage object — used by POST /api/media/[id]/retry (both a member's
+ * explicit "Try again"/"Reprocess" click and the stale-processing backstop).
+ * Never assumes the file is still there: checks objectExists first, since a
+ * "reprocess" against a file that's actually missing (e.g. an upload that
+ * was interrupted mid-PUT — the row still reached 'processing'/'failed', but
+ * nothing was ever durably written to Storage) was confirmed in production
+ * to retry forever against the same missing object, always failing with the
+ * misleading "Storage object not available after N attempts" — which reads
+ * like a timing race, not what it actually was.
+ *
+ * - File present → resets the row to 'pending' and triggers processMediaItem
+ *   (after()-wrapped, same lifecycle protection every other trigger site
+ *   uses), returns 'reprocessing'. If that reprocess attempt itself throws
+ *   (a genuine pipeline error, not a missing-file case — those are already
+ *   caught above), logs MEDIA_RETRY_FAILED sharing the caller's own
+ *   correlationId (so it links to that request's MEDIA_RETRY_REQUESTED in
+ *   the audit trail) — this mirrors what retry/route.ts logged inline
+ *   before this check moved here; processMediaItem's own outer catch
+ *   already logs MEDIA_PROCESS_FAILED unconditionally regardless, this is
+ *   the additional "a retry specifically caused this" attribution.
+ * - File missing → marks the row 'failed' with NEEDS_REUPLOAD_ERROR_MESSAGE
+ *   and returns 'needs_reupload' WITHOUT calling processMediaItem — retrying
+ *   again would just fail identically forever. The caller (retry/route.ts)
+ *   surfaces this in its response so the member is told to re-attach the
+ *   file rather than offered a doomed retry.
+ *
+ * `correlationId` is the caller's own — only used for the MEDIA_RETRY_FAILED
+ * attribution above, since this function is retry-specific in practice (the
+ * only caller today) even though it's factored out for testability/reuse.
+ */
+export async function verifyAndReprocess(
+  item: MediaItem,
+  correlationId: string,
+): Promise<ReprocessOutcome> {
+  const fileExists = await objectExists(item.storage_path)
+
+  if (!fileExists) {
+    await updateMediaItem(item.id, {
+      status: 'failed',
+      error_message: NEEDS_REUPLOAD_ERROR_MESSAGE,
+      derived_content: null,
+      classification: null,
+      processed_at: null,
+    })
+    return 'needs_reupload'
+  }
+
+  await updateMediaItem(item.id, {
+    status: 'pending',
+    error_message: null,
+    derived_content: null,
+    classification: null,
+    processed_at: null,
+  })
+
+  after(() =>
+    processMediaItem(item).catch(async (err) => {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      console.error('[media/verifyAndReprocess] processMediaItem threw unexpectedly', {
+        media_item_id: item.id,
+        error: errorMessage,
+      })
+      if (isMediaAuditEnabled()) {
+        await logMediaEvent({
+          tenant_id: item.tenant_id,
+          member_id: item.member_id,
+          media_item_id: item.id,
+          action: AuditAction.MEDIA_RETRY_FAILED,
+          outcome: 'failure',
+          correlation_id: correlationId,
+          metadata: { error_message: errorMessage, timestamp: new Date().toISOString() },
+        })
+      }
+    }),
+  )
+
+  return 'reprocessing'
 }
 
 // ---------------------------------------------------------------------------

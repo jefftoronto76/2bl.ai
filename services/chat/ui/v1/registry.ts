@@ -18,7 +18,11 @@ import type {
   MarkerRegistry,
   ParsedMarker,
 } from './types'
-import { MEDIA_UPLOAD_PATTERN_SOURCE, MEDIA_UPLOAD_FAILED_PATTERN_SOURCE } from './mediaMarkerPatterns'
+import {
+  MEDIA_UPLOAD_PATTERN_SOURCE,
+  MEDIA_UPLOAD_FAILED_PATTERN_SOURCE,
+  MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE,
+} from './mediaMarkerPatterns'
 
 /** The BOOKING marker — `[BOOKING: label | description | cta_label | url]`. */
 export const BOOKING_MARKER: MarkerDefinition = {
@@ -155,6 +159,27 @@ export const MEDIA_UPLOAD_FAILED_MARKER: MarkerDefinition = {
   dispatch: 'client',
 }
 
+/**
+ * The MEDIA_UPLOAD_DUPLICATE marker — `[MEDIA_UPLOAD_DUPLICATE: filename |
+ * media_item_id | type | status]`, written by ChatInput.tsx instead of
+ * MEDIA_UPLOAD when a content-hash match reused an existing row (Step:
+ * "duplicate uploads surfaced to the member" fix). Same rationale as the two
+ * markers above: dispatch is 'client' (MessageList.tsx's own
+ * `MEDIA_UPLOAD_DUPLICATE_RE` is the real consumer, rendering the reused
+ * item's thumbnail with a small status-specific label instead of treating
+ * it as a fresh attach) — registered here purely so it strips cleanly from
+ * prose everywhere else (chiefly createMemoryFromAnchor,
+ * services/crm/memories.ts), rather than leaking raw bracket text into a
+ * memory's title/body the same way MEDIA_UPLOAD once did before it was
+ * registered here (see that marker's own doc comment above).
+ */
+export const MEDIA_UPLOAD_DUPLICATE_MARKER: MarkerDefinition = {
+  type: 'MEDIA_UPLOAD_DUPLICATE',
+  pattern: new RegExp(MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE, 'g'),
+  fieldCount: 4,
+  dispatch: 'client',
+}
+
 export function createMarkerRegistry(): MarkerRegistry {
   const definitions: MarkerDefinition[] = []
 
@@ -232,5 +257,6 @@ export function createDefaultRegistry(): MarkerRegistry {
   registry.register(MEMORY_TITLE_MARKER)
   registry.register(MEDIA_UPLOAD_MARKER)
   registry.register(MEDIA_UPLOAD_FAILED_MARKER)
+  registry.register(MEDIA_UPLOAD_DUPLICATE_MARKER)
   return registry
 }

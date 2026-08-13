@@ -18,6 +18,17 @@ export interface UploadResult {
    * new and pending": a duplicate can reuse an already-`ready` item.
    */
   status: MediaItemStatus
+  /**
+   * True when this reused an existing media_items row (a content-hash
+   * match) instead of a new upload actually happening — false for both a
+   * genuinely fresh upload AND the "matched a failed row with no file in
+   * Storage" fallback (upload-url/route.ts), since that case behaves
+   * exactly like a fresh upload from here down (a real PUT happens). Only
+   * an actual reused-row response sets this. ChatInput.tsx uses it to
+   * render duplicate-specific messaging instead of treating this like a
+   * brand new attach.
+   */
+  duplicate: boolean
 }
 
 function classifyFile(file: File): MediaUploadType {
@@ -96,9 +107,9 @@ export function useMediaUpload(
       mediaItemId = result.mediaItemId
 
       // The server found an identical-content item already uploaded by this
-      // member in this chat — it reuses that row (resetting + reprocessing it
-      // directly if the match had previously failed) rather than creating an
-      // independent one. Nothing left to upload; skip the Storage PUT entirely.
+      // member in this chat — reuses that row, reported honestly (real
+      // status, never silently reprocessed — see the route's own header
+      // comment). Nothing left to upload; skip the Storage PUT entirely.
       if (result.duplicate) {
         if (!mediaItemId) throw new Error('mediaItemId unexpectedly null on a duplicate response')
         return {
@@ -106,6 +117,7 @@ export function useMediaUpload(
           type: classifyFile(file),
           filename: file.name,
           status: (result.status as MediaItemStatus | undefined) ?? 'pending',
+          duplicate: true,
         }
       }
 
@@ -146,8 +158,12 @@ export function useMediaUpload(
         type: classifyFile(file),
         filename: file.name,
         // A freshly created row is always 'pending' — createMediaItem
-        // (services/media/index.ts) hardcodes this server-side.
+        // (services/media/index.ts) hardcodes this server-side. Also true
+        // for the "matched a failed row with no file in Storage" fallback,
+        // which resets that row to 'pending' before returning this same
+        // non-duplicate response shape.
         status: 'pending',
+        duplicate: false,
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Upload failed'

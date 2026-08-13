@@ -298,14 +298,22 @@ export function ChatInput() {
       });
 
       // Upload each attachment and build a [MEDIA_UPLOAD: ...] acknowledgement
-      // marker for each successful upload. Failures are logged; the text message
-      // still sends so the turn is never silently dropped.
+      // marker for each successful upload — or [MEDIA_UPLOAD_DUPLICATE: ...]
+      // when the server reused an existing row (a content-hash match)
+      // instead, so MessageList.tsx can render duplicate-specific messaging
+      // rather than treating the reuse as a fresh attach. Failures are
+      // logged; the text message still sends so the turn is never silently
+      // dropped.
       const markers: string[] = [];
       await Promise.all(
         pendingAttachments.map(async (att) => {
           const result = await upload(att.file);
           if (result) {
-            markers.push(`[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`);
+            markers.push(
+              result.duplicate
+                ? `[MEDIA_UPLOAD_DUPLICATE: ${att.file.name} | ${result.mediaItemId} | ${result.type} | ${result.status}]`
+                : `[MEDIA_UPLOAD: ${att.file.name} | ${result.mediaItemId} | ${result.type}]`,
+            );
             // A fresh object URL, independent of att.previewUrl (which the
             // optimistic echo above is still using, and which handleSend
             // revokes once the echo clears, below) — this one is what the
