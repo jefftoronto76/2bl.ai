@@ -59,9 +59,15 @@ export type RowTarget = 'conversation' | 'story' | 'memory';
 // deliberate no-op buried in the kebab for both row types (see Known Gaps.md)
 // and is superseded by SidebarV2's dedicated per-story-row invite icon
 // (onInviteStory), not routed through onRowAction anymore.
+// 'admin' added 2026-08-13 (Updated Story Kebabs handover) — story-only
+// (SidebarV2's MENU_ITEMS gates it via `targets`), opens the story admin
+// panel (member roster + description). The panel itself isn't built yet —
+// this pass only wires the click through to ChatHero.tsx's adminStoryId
+// state; see System Docs/Known Gaps.md.
 export type RowAction =
   | 'star'
   | 'rename'
+  | 'admin'
   | 'moveToChapter'
   | 'removeFromChapter'
   | 'delete';

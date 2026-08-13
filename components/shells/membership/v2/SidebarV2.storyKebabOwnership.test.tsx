@@ -8,7 +8,7 @@
 // must keep showing their kebab regardless.
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
 vi.mock('../chatStore', () => ({
@@ -62,5 +62,44 @@ describe('SidebarV2 — story-row kebab ownership gate', () => {
 
     expect(screen.getByRole('button', { name: 'Conversation options' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Story options' })).not.toBeInTheDocument();
+  });
+
+  // Explicit post-merge check (story-kebab-owner-only merged onto main after
+  // the Updated Story Kebabs handover landed 'admin' as a real MENU_ITEMS
+  // entry, RowMenu.tsx's target-aware filtering, and StoryAdminPanel) — the
+  // ownership gate wraps the WHOLE RowMenu, including the item that didn't
+  // exist when this gate was first written. Not just "the trigger is
+  // absent, so nothing downstream matters" by inference: RowMenu portals to
+  // document.body, so this queries the whole document, not just the story
+  // row's own subtree, to rule out Admin rendering anywhere.
+  it('never renders the Admin menu item anywhere in the document for a non-owned story, even though the kebab trigger is the only thing a user could try to click', () => {
+    render(
+      <SidebarV2
+        stories={[{ id: 'story-subscribed', name: 'Shared Story', isOwner: false }]}
+        writingPrompts={[]}
+        onRowAction={vi.fn()}
+      />
+    );
+
+    // No trigger to click at all — confirms the premise before asserting
+    // the negative (an absent menuitem is meaningless if a trigger existed
+    // and simply wasn't clicked).
+    expect(screen.queryByRole('button', { name: 'Story options' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /admin/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('owned story: the kebab trigger opens a real menu containing Admin', () => {
+    render(
+      <SidebarV2
+        stories={[{ id: 'story-owned', name: 'My Story', isOwner: true }]}
+        writingPrompts={[]}
+        onRowAction={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Story options' }));
+
+    expect(screen.getByRole('menuitem', { name: /admin/i })).toBeInTheDocument();
   });
 });

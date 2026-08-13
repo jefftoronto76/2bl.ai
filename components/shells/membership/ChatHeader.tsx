@@ -19,6 +19,12 @@ import { useChatStore, setOAuthInProgress } from './chatStore';
 import { heirloomClerkAppearance } from './clerkAppearance';
 import { logAuthStep } from '@/services/auth/log-auth-step';
 
+// Conversation switcher toggle — off by default (Design Handovers/ Aug 2026
+// Atomic Updates/Updated Headers): the switcher is replaced by a static
+// logo/wordmark when false. Flip back to true to restore it; the switcher's
+// own code below is untouched, not deleted, so this is reversible.
+const SHOW_STORY_SWITCHER = false;
+
 function getInitials(fullName: string | null | undefined): string {
   if (!fullName) return '';
   const parts = fullName.trim().split(/\s+/);
@@ -121,49 +127,69 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           <Menu size={18} />
         </button>
       )}
-      <div ref={storyDropdownRef} className="relative min-w-0 flex-1" onBlur={handleStoryBlur}>
-        <button
-          type="button"
-          aria-label="Switch conversation"
-          aria-expanded={storyDropdownOpen}
-          onClick={handleStoryClick}
-          className="flex items-center gap-1.5 min-w-0 max-w-full font-body text-text-primary font-semibold text-base hover:bg-text-primary/10 rounded-lg px-2 py-1.5 transition-colors"
-        >
-          <span className="truncate">{storyLabel}</span>
-          <ChevronDown
-            size={14}
-            className={`text-text-muted flex-shrink-0 transition-transform ${storyDropdownOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+      {SHOW_STORY_SWITCHER ? (
+        <div ref={storyDropdownRef} className="relative min-w-0 flex-1" onBlur={handleStoryBlur}>
+          <button
+            type="button"
+            aria-label="Switch conversation"
+            aria-expanded={storyDropdownOpen}
+            onClick={handleStoryClick}
+            className="flex items-center gap-1.5 min-w-0 max-w-full font-body text-text-primary font-semibold text-base hover:bg-text-primary/10 rounded-lg px-2 py-1.5 transition-colors"
+          >
+            <span className="truncate">{storyLabel}</span>
+            <ChevronDown
+              size={14}
+              className={`text-text-muted flex-shrink-0 transition-transform ${storyDropdownOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
 
-        {storyDropdownOpen && (
-          <div className="absolute left-0 top-full mt-1 w-72 max-w-[85vw] rounded-xl bg-surface border border-border shadow-lg z-50 overflow-hidden">
-            <div className="max-h-80 overflow-y-auto py-1.5">
-              {recentSessions.length === 0 ? (
-                <p className="px-4 py-3 font-body text-sm italic text-text-muted">
-                  No conversations yet
-                </p>
-              ) : (
-                recentSessions.map((session) => (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => handleSelectConversation(session.id)}
-                    aria-current={state.sessionId === session.id ? 'true' : undefined}
-                    className={`w-full text-left px-4 py-2.5 font-body text-sm truncate transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-                      state.sessionId === session.id
-                        ? 'bg-text-primary/10 text-text-primary'
-                        : 'text-text-muted hover:bg-text-primary/5 hover:text-text-primary'
-                    }`}
-                  >
-                    {session.title}
-                  </button>
-                ))
-              )}
+          {storyDropdownOpen && (
+            <div className="absolute left-0 top-full mt-1 w-72 max-w-[85vw] rounded-xl bg-surface border border-border shadow-lg z-50 overflow-hidden">
+              <div className="max-h-80 overflow-y-auto py-1.5">
+                {recentSessions.length === 0 ? (
+                  <p className="px-4 py-3 font-body text-sm italic text-text-muted">
+                    No conversations yet
+                  </p>
+                ) : (
+                  recentSessions.map((session) => (
+                    <button
+                      key={session.id}
+                      type="button"
+                      onClick={() => handleSelectConversation(session.id)}
+                      aria-current={state.sessionId === session.id ? 'true' : undefined}
+                      className={`w-full text-left px-4 py-2.5 font-body text-sm truncate transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                        state.sessionId === session.id
+                          ? 'bg-text-primary/10 text-text-primary'
+                          : 'text-text-muted hover:bg-text-primary/5 hover:text-text-primary'
+                      }`}
+                    >
+                      {session.title}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
+          )}
+        </div>
+      ) : (
+        // Static brand mark — same markup as LandingNav.tsx's logo (the
+        // project's one definition of it), scaled down for this 48px
+        // in-app header instead of LandingNav's 64px marketing bar.
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="w-6 h-6 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center flex-shrink-0">
+            <img
+              src="/heirloom/favicons/icons/heirloom-feather-cream.svg"
+              width={12}
+              height={12}
+              alt=""
+              aria-hidden="true"
+            />
           </div>
-        )}
-      </div>
+          <span className="font-display font-semibold text-base text-text-primary tracking-wide truncate">
+            Legacy
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Icon cluster: gap-1 (4px) between all of Share/Fullscreen/Account/

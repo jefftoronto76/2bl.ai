@@ -23,7 +23,7 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 vi.mock('@/services/audit', () => ({ logEvent: vi.fn() }))
 
-import { createStory, listStories, discardStory, STORY_ACCOUNT_REQUIRED_ERROR } from './stories'
+import { createStory, listStories, discardStory, updateStoryDescription, STORY_ACCOUNT_REQUIRED_ERROR } from './stories'
 import { logEvent } from '@/services/audit'
 
 const mockLogEvent = vi.mocked(logEvent)
@@ -336,6 +336,52 @@ describe('discardStory', () => {
     adminHolder.client = client
 
     const result = await discardStory('tenant-1', 'user-1', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+})
+
+describe('updateStoryDescription', () => {
+  it('writes the new description to the body column, scoped by id + tenant + user', async () => {
+    const { client, updateCalls } = makeClient({
+      updateResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: 'A new description.', created_at: 'now', updated_at: 'now' },
+        error: null,
+      },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryDescription('tenant-1', 'user-1', 'story-1', 'A new description.')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data.body).toBe('A new description.')
+      expect(result.data.id).toBe('story-1')
+    }
+    expect(updateCalls[0]).toEqual({ body: 'A new description.' })
+    // Only the description column is touched — title is left alone.
+    expect(updateCalls[0]).not.toHaveProperty('title')
+  })
+
+  it('404s when no row matches id + tenant + user (not found, or not owned by this user)', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: null } })
+    adminHolder.client = client
+
+    const result = await updateStoryDescription('tenant-1', 'user-1', 'nope', 'New text')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Story not found')
+    }
+  })
+
+  it('500s when the update itself errors', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: { message: 'db down' } } })
+    adminHolder.client = client
+
+    const result = await updateStoryDescription('tenant-1', 'user-1', 'story-1', 'New text')
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)

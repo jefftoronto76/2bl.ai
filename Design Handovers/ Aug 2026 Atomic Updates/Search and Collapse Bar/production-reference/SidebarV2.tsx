@@ -37,7 +37,6 @@ import {
   Quote,
   Search,
   Share2,
-  Shield,
   SquarePen,
   Star,
   Trash2,
@@ -160,20 +159,12 @@ function SidebarMemoryCount({ count }: { count: number }) {
 
 // ── Per-row kebab menu ──────────────────────────────────────────────────────
 
-// `targets` makes this list target-aware — previously a single flat array
-// rendered identically for both conversation and story rows (moveToChapter/
-// removeFromChapter showed on story rows too, purely by omission: they're
-// chapter-related, not story-related, and were only ever wired as no-ops for
-// stories elsewhere — see ChatHero.tsx's handleRowAction — not by design).
-// 'admin' is the first item that's genuinely target-specific by design (Admin
-// panel, story-only — Updated Story Kebabs handover).
-const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean; targets: RowTarget[] }[] = [
-  { key: 'star', icon: Star, label: 'Star', targets: ['conversation', 'story'] },
-  { key: 'rename', icon: Pencil, label: 'Rename', targets: ['conversation', 'story'] },
-  { key: 'admin', icon: Shield, label: 'Admin', targets: ['story'] },
-  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter', targets: ['conversation'] },
-  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter', targets: ['conversation'] },
-  { key: 'delete', icon: Trash2, label: 'Delete', danger: true, targets: ['conversation', 'story'] },
+const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean }[] = [
+  { key: 'star', icon: Star, label: 'Star' },
+  { key: 'rename', icon: Pencil, label: 'Rename' },
+  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter' },
+  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter' },
+  { key: 'delete', icon: Trash2, label: 'Delete', danger: true },
 ];
 
 const MENU_WIDTH = 208; // w-52
@@ -183,7 +174,6 @@ function RowMenu({
   open,
   anchorRect,
   starred,
-  target,
   onAction,
   onClose,
 }: {
@@ -191,10 +181,6 @@ function RowMenu({
   /** Kebab button rect captured at click time — positions the fixed menu. */
   anchorRect: DOMRect | null;
   starred?: boolean;
-  /** Which row type this menu belongs to — filters MENU_ITEMS down to the
-   *  entries whose `targets` include it (e.g. 'admin' is story-only,
-   *  'moveToChapter'/'removeFromChapter' are conversation-only). */
-  target: RowTarget;
   onAction: (action: RowAction) => void;
   onClose: () => void;
 }) {
@@ -252,7 +238,7 @@ function RowMenu({
       style={{ top, left }}
       className="fixed z-[90] w-52 rounded-xl bg-surface border border-border shadow-lg p-1.5"
     >
-      {MENU_ITEMS.filter((it) => it.targets.includes(target)).map((it) => (
+      {MENU_ITEMS.map((it) => (
         <div key={it.key}>
           {it.danger && <div className="h-px bg-border my-1.5 mx-2" />}
           <button
@@ -573,7 +559,6 @@ export function SidebarV2({
                         open={isMenuOpen}
                         anchorRect={menuRect}
                         starred={starredConversationIds.includes(session.id)}
-                        target="conversation"
                         onAction={(action) =>
                           onRowAction?.('conversation', session.id, action)
                         }
@@ -688,16 +673,7 @@ export function SidebarV2({
                           <UserPlus size={14} />
                         </button>
                       )}
-                      {/* Kebab is hidden entirely (not rendered with a filtered/
-                          empty item list) for a story this member doesn't own —
-                          every current row action (star/rename/invite/delete/
-                          admin) is owner-only, and a collaborator has no way to
-                          coordinate with the owner to request one (no
-                          inter-member chat exists), so a visible-but-inert kebab
-                          would just be a dead end. This doesn't apply to
-                          conversation rows above — sessions have no ownership
-                          concept. */}
-                      {onRowAction && !storiesDisabled && story.isOwner && (
+                      {onRowAction && !storiesDisabled && (
                         // One 28×28 slot: star marker at rest, kebab on hover.
                         <div className="relative flex-shrink-0 w-7 h-7">
                           {starredStoryIds.includes(story.id) && (
@@ -722,16 +698,13 @@ export function SidebarV2({
                           </button>
                         </div>
                       )}
-                      {story.isOwner && (
-                        <RowMenu
-                          open={isMenuOpen}
-                          anchorRect={menuRect}
-                          starred={starredStoryIds.includes(story.id)}
-                          target="story"
-                          onAction={(action) => onRowAction?.('story', story.id, action)}
-                          onClose={closeMenu}
-                        />
-                      )}
+                      <RowMenu
+                        open={isMenuOpen}
+                        anchorRect={menuRect}
+                        starred={starredStoryIds.includes(story.id)}
+                        onAction={(action) => onRowAction?.('story', story.id, action)}
+                        onClose={closeMenu}
+                      />
                     </div>
                   );
                 })}

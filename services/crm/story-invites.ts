@@ -379,6 +379,85 @@ export async function listStoryCollaborators(
 }
 
 /**
+ * Removes one member's access to a story — deletes their `artifact_subscribers`
+ * row (`artifact_id` = storyId, `member_id` = memberId). Genuinely new: every
+ * write against `artifact_subscribers` before this function is an insert/
+ * upsert (`acceptStoryInvite` below) — there is no removal capability
+ * anywhere in this codebase until now.
+ *
+ * Owner-only, same ownership check `listStoryCollaborators` above and the
+ * POST/DELETE `/api/heirloom/story-invites` routes already use (`artifacts`
+ * row, `user_id` = actingUserId, `type` = 'story', not discarded) — a
+ * collaborator cannot remove another collaborator, only the story's own
+ * creator can. A story that doesn't exist and a story that exists but isn't
+ * the caller's both 404 as "Story not found," the same non-leaking shape
+ * `discardStory` (services/crm/stories.ts) already uses — never distinguishes
+ * "not yours" from "doesn't exist."
+ *
+ * Idempotent-*safe*, not idempotent-*silent*: removing a grant that's
+ * already gone can't 500 (the delete's own `.select()` reports zero rows
+ * affected, not an error), but it's still reported back as a 404 rather than
+ * folded into a false "ok: true" — unlike `revokeStoryInviteLink`'s own
+ * no-active-link-is-fine precedent, the caller named a specific person to
+ * remove, and that person's grant genuinely isn't there, which the roster UI
+ * should surface (e.g. "already removed, refresh"), not swallow silently.
+ */
+export async function revokeStoryCollaborator(
+  tenantId: string,
+  storyId: string,
+  memberId: string,
+  actingUserId: string,
+): Promise<StoryInviteResult<null>> {
+  const supabase = getAdminClient()
+
+  const { data: storyRow, error: storyErr } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', actingUserId)
+    .eq('type', 'story')
+    .is('discarded_at', null)
+    .maybeSingle()
+
+  if (storyErr) {
+    console.error('[story-invites] remove collaborator — story lookup failed:', storyErr.message)
+    return { ok: false, status: 500, error: storyErr.message }
+  }
+  if (!storyRow) {
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const { data, error } = await supabase
+    .from('artifact_subscribers')
+    .delete()
+    .eq('artifact_id', storyId)
+    .eq('member_id', memberId)
+    .select('member_id')
+
+  if (error) {
+    console.error('[story-invites] remove collaborator — delete failed:', error.message)
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data || data.length === 0) {
+    console.warn('[story-invites] remove collaborator — no matching grant', { storyId, memberId })
+    return { ok: false, status: 404, error: 'Collaborator not found' }
+  }
+
+  void logEvent({
+    action: AuditAction.STORY_COLLABORATOR_REMOVED,
+    tenant_id: tenantId,
+    actor_id: actingUserId,
+    actor_type: 'user',
+    target_type: 'story',
+    target_id: storyId,
+    metadata: { member_id: memberId },
+  })
+
+  return { ok: true, data: null }
+}
+
+/**
  * Accepts a story invite token for the currently-signed-in Clerk user.
  * Re-validates the token independently (never trusts an earlier gate
  * check) and branches on whether this clerk_id already has a `members` row

@@ -9,7 +9,7 @@
 // Layout (top → bottom):
 //   • collapse toggle
 //   • Search        — subtle until recentSessions.length >= searchThreshold
-//   • New Chat · Share Heirloom
+//   • New Chat · Uploads · Share Heirloom
 //   • Conversations — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
 //   • Stories       — Create action, then the story list, each row carrying
@@ -37,10 +37,10 @@ import {
   Quote,
   Search,
   Share2,
-  Shield,
   SquarePen,
   Star,
   Trash2,
+  Upload,
   UserPlus,
 } from 'lucide-react';
 import { useChatStore } from '../chatStore';
@@ -67,6 +67,7 @@ export interface SidebarV2Props {
 
   // Nav actions (New Chat + the conversation list come from the store)
   onMedia?: () => void;
+  onUploads?: () => void;
   onShareHeirloom?: () => void;
   onSearch?: (query: string) => void;
 
@@ -160,20 +161,12 @@ function SidebarMemoryCount({ count }: { count: number }) {
 
 // ── Per-row kebab menu ──────────────────────────────────────────────────────
 
-// `targets` makes this list target-aware — previously a single flat array
-// rendered identically for both conversation and story rows (moveToChapter/
-// removeFromChapter showed on story rows too, purely by omission: they're
-// chapter-related, not story-related, and were only ever wired as no-ops for
-// stories elsewhere — see ChatHero.tsx's handleRowAction — not by design).
-// 'admin' is the first item that's genuinely target-specific by design (Admin
-// panel, story-only — Updated Story Kebabs handover).
-const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean; targets: RowTarget[] }[] = [
-  { key: 'star', icon: Star, label: 'Star', targets: ['conversation', 'story'] },
-  { key: 'rename', icon: Pencil, label: 'Rename', targets: ['conversation', 'story'] },
-  { key: 'admin', icon: Shield, label: 'Admin', targets: ['story'] },
-  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter', targets: ['conversation'] },
-  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter', targets: ['conversation'] },
-  { key: 'delete', icon: Trash2, label: 'Delete', danger: true, targets: ['conversation', 'story'] },
+const MENU_ITEMS: { key: RowAction; icon: typeof Star; label: string; danger?: boolean }[] = [
+  { key: 'star', icon: Star, label: 'Star' },
+  { key: 'rename', icon: Pencil, label: 'Rename' },
+  { key: 'moveToChapter', icon: FolderInput, label: 'Move to chapter' },
+  { key: 'removeFromChapter', icon: FolderMinus, label: 'Remove from chapter' },
+  { key: 'delete', icon: Trash2, label: 'Delete', danger: true },
 ];
 
 const MENU_WIDTH = 208; // w-52
@@ -183,7 +176,6 @@ function RowMenu({
   open,
   anchorRect,
   starred,
-  target,
   onAction,
   onClose,
 }: {
@@ -191,10 +183,6 @@ function RowMenu({
   /** Kebab button rect captured at click time — positions the fixed menu. */
   anchorRect: DOMRect | null;
   starred?: boolean;
-  /** Which row type this menu belongs to — filters MENU_ITEMS down to the
-   *  entries whose `targets` include it (e.g. 'admin' is story-only,
-   *  'moveToChapter'/'removeFromChapter' are conversation-only). */
-  target: RowTarget;
   onAction: (action: RowAction) => void;
   onClose: () => void;
 }) {
@@ -252,7 +240,7 @@ function RowMenu({
       style={{ top, left }}
       className="fixed z-[90] w-52 rounded-xl bg-surface border border-border shadow-lg p-1.5"
     >
-      {MENU_ITEMS.filter((it) => it.targets.includes(target)).map((it) => (
+      {MENU_ITEMS.map((it) => (
         <div key={it.key}>
           {it.danger && <div className="h-px bg-border my-1.5 mx-2" />}
           <button
@@ -355,6 +343,7 @@ export function SidebarV2({
   starredStoryIds = [],
   storiesDisabled = false,
   onMedia,
+  onUploads,
   onShareHeirloom,
   onSearch,
   onCreateStory,
@@ -388,7 +377,6 @@ export function SidebarV2({
   const isExpanded = forceCollapsed ? false : expanded;
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
-  const [storiesOpen, setStoriesOpen] = useState(true);
   const [menuId, setMenuId] = useState<string | null>(null); // `${target}:${id}`
   // The open menu's kebab-button rect, captured at click time (the menu portals
   // to <body> with fixed positioning — see RowMenu).
@@ -468,6 +456,15 @@ export function SidebarV2({
         >
           <Images size={16} className="flex-shrink-0" />
           {isExpanded && <span className="font-body text-sm font-normal truncate">Media</span>}
+        </button>
+        <button
+          type="button"
+          aria-label="Uploads"
+          onClick={onUploads}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
+        >
+          <Upload size={16} className="flex-shrink-0" />
+          {isExpanded && <span className="font-body text-sm font-normal truncate">Uploads</span>}
         </button>
         <button
           type="button"
@@ -573,7 +570,6 @@ export function SidebarV2({
                         open={isMenuOpen}
                         anchorRect={menuRect}
                         starred={starredConversationIds.includes(session.id)}
-                        target="conversation"
                         onAction={(action) =>
                           onRowAction?.('conversation', session.id, action)
                         }
@@ -604,139 +600,118 @@ export function SidebarV2({
         <div className="flex flex-col gap-6 mt-5 px-3 pb-3 flex-1 min-h-0 overflow-y-auto">
           {/* Stories */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <BookOpen size={14} className="text-text-muted" />
-              <span className="font-mono text-sm tracking-[0.2em] uppercase text-text-muted">
-                Stories
-              </span>
-              <div className="ml-auto flex items-center gap-1">
-                {storiesDisabled && (
-                  <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-muted/60 mr-1">
+            <SectionLabel
+              icon={BookOpen}
+              large
+              trailing={
+                storiesDisabled ? (
+                  <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-text-muted/60">
                     soon
                   </span>
-                )}
-                <button
-                  type="button"
-                  aria-label="Create a new story"
-                  title="Create a new story"
-                  onClick={() => { onCreateStory?.(); setStoriesOpen(true); }}
-                  disabled={storiesDisabled || !onCreateStory}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                >
-                  <Plus size={14} />
-                </button>
-                <button
-                  type="button"
-                  aria-label={storiesOpen ? 'Collapse stories' : 'Expand stories'}
-                  aria-expanded={storiesOpen}
-                  onClick={() => setStoriesOpen((o) => !o)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <ChevronRight
-                    size={14}
-                    className={`transition-transform ${storiesOpen ? 'rotate-90' : ''}`}
-                  />
-                </button>
-              </div>
+                ) : undefined
+              }
+            >
+              Stories
+            </SectionLabel>
+
+            {/* Create — directly under the header. Invite moved to a
+                per-story-row icon (invites-collaboration-modal, 2026-08-10)
+                — there's no longer a story-agnostic invite entry point. */}
+            <div className="flex flex-col gap-px mb-2 pb-2 border-b border-border">
+              <button
+                type="button"
+                onClick={onCreateStory}
+                disabled={storiesDisabled || !onCreateStory}
+                className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <Plus size={15} className="flex-shrink-0" />
+                <span className="font-body text-sm font-semibold">Create</span>
+              </button>
             </div>
 
             {/* Story list */}
-            {storiesOpen && (
-              <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-                {stories.map((story) => {
-                  const id = `story:${story.id}`;
-                  const isMenuOpen = menuId === id;
-                  return (
-                    <div key={story.id} className="relative group flex items-center gap-0.5">
+            <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+              {stories.map((story) => {
+                const id = `story:${story.id}`;
+                const isMenuOpen = menuId === id;
+                return (
+                  <div key={story.id} className="relative group flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      title={story.description ?? story.name}
+                      onClick={() => onSelectStory?.(story.id)}
+                      disabled={storiesDisabled}
+                      className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
+                    >
+                      <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
+                      <span className="flex-1 min-w-0 font-display text-base truncate">
+                        {story.name}
+                      </span>
+                    </button>
+                    {onStartStoryChat && !storiesDisabled && (
                       <button
                         type="button"
-                        title={story.description ?? story.name}
-                        onClick={() => onSelectStory?.(story.id)}
-                        disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
+                        aria-label={`Start a chat in ${story.name}`}
+                        title="Start a new chat"
+                        onClick={() => onStartStoryChat(story.id)}
+                        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
                       >
-                        <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
-                        <span className="flex-1 min-w-0 font-display text-base truncate">
-                          {story.name}
-                        </span>
+                        <MessageCircle size={14} />
                       </button>
-                      {onStartStoryChat && !storiesDisabled && (
-                        <button
-                          type="button"
-                          aria-label={`Start a chat in ${story.name}`}
-                          title="Start a new chat"
-                          onClick={() => onStartStoryChat(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}
-                        >
-                          <MessageCircle size={14} />
-                        </button>
-                      )}
-                      {onInviteStory && !storiesDisabled && (
-                        // Sibling button, not nested inside the row's own <button>
-                        // (invalid HTML) — same pattern as onStartStoryChat above.
-                        <button
-                          type="button"
-                          aria-label={`Invite collaborators to ${story.name}`}
-                          title="Invite collaborators"
-                          onClick={() => onInviteStory(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                          }`}
-                        >
-                          <UserPlus size={14} />
-                        </button>
-                      )}
-                      {/* Kebab is hidden entirely (not rendered with a filtered/
-                          empty item list) for a story this member doesn't own —
-                          every current row action (star/rename/invite/delete/
-                          admin) is owner-only, and a collaborator has no way to
-                          coordinate with the owner to request one (no
-                          inter-member chat exists), so a visible-but-inert kebab
-                          would just be a dead end. This doesn't apply to
-                          conversation rows above — sessions have no ownership
-                          concept. */}
-                      {onRowAction && !storiesDisabled && story.isOwner && (
-                        // One 28×28 slot: star marker at rest, kebab on hover.
-                        <div className="relative flex-shrink-0 w-7 h-7">
-                          {starredStoryIds.includes(story.id) && (
-                            <span
-                              className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
-                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
-                              }`}
-                            >
-                              <Star size={13} fill="currentColor" />
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            aria-label="Story options"
-                            aria-expanded={isMenuOpen}
-                            onClick={(e) => toggleMenu(id, e)}
-                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    )}
+                    {onInviteStory && !storiesDisabled && (
+                      // Sibling button, not nested inside the row's own <button>
+                      // (invalid HTML) — same pattern as onStartStoryChat above.
+                      <button
+                        type="button"
+                        aria-label={`Invite collaborators to ${story.name}`}
+                        title="Invite collaborators"
+                        onClick={() => onInviteStory(story.id)}
+                        className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        <UserPlus size={14} />
+                      </button>
+                    )}
+                    {onRowAction && !storiesDisabled && (
+                      // One 28×28 slot: star marker at rest, kebab on hover.
+                      <div className="relative flex-shrink-0 w-7 h-7">
+                        {starredStoryIds.includes(story.id) && (
+                          <span
+                            className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
+                              isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
                             }`}
                           >
-                            <MoreVertical size={15} />
-                          </button>
-                        </div>
-                      )}
-                      {story.isOwner && (
-                        <RowMenu
-                          open={isMenuOpen}
-                          anchorRect={menuRect}
-                          starred={starredStoryIds.includes(story.id)}
-                          target="story"
-                          onAction={(action) => onRowAction?.('story', story.id, action)}
-                          onClose={closeMenu}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                            <Star size={13} fill="currentColor" />
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          aria-label="Story options"
+                          aria-expanded={isMenuOpen}
+                          onClick={(e) => toggleMenu(id, e)}
+                          className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                        >
+                          <MoreVertical size={15} />
+                        </button>
+                      </div>
+                    )}
+                    <RowMenu
+                      open={isMenuOpen}
+                      anchorRect={menuRect}
+                      starred={starredStoryIds.includes(story.id)}
+                      onAction={(action) => onRowAction?.('story', story.id, action)}
+                      onClose={closeMenu}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Writing Prompts — bottom */}

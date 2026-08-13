@@ -7,7 +7,7 @@ import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
-import type { Collaborator, RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
+import type { RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { MessageList } from './MessageList';
@@ -19,7 +19,6 @@ import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
 import { MediaGallery } from './MediaGallery';
-import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
@@ -68,7 +67,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, joinedStoryConfirmation } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems } = useChatStore();
 
   // The memory panel's image-block picker (BlockCanvas.tsx, via
   // MemoryCardView) only ever offers photos already uploaded in THIS
@@ -106,18 +105,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const [beginStoryOpen, setBeginStoryOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
 
-  // Fetch/refresh hydration, mirroring chatStore.tsx's own GET /api/sessions
+  // Fetch-on-mount hydration, mirroring chatStore.tsx's own GET /api/sessions
   // recovery effect (recentSessions) in shape: cancelled-flag guard, silent
   // console.error on failure (no error UI — matches this file's existing
   // silent-fail posture for kebab/memory-panel network calls elsewhere).
   // Unconditional (not gated on isSignedIn the way chatStore's session
   // recovery is) — GET /api/stories itself returns an empty list for an
   // anonymous/unresolvable-tenant request rather than erroring, so there's
-  // nothing this component needs to gate on client-side. Extracted to a
-  // stable callback so the joinedStoryConfirmation effect below can reuse it
-  // to pick up a newly-granted story invite without a page reload, not just
-  // the mount effect.
-  const refreshStories = useCallback(() => {
+  // nothing this component needs to gate on client-side.
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -134,8 +130,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => refreshStories(), [refreshStories]);
 
   // One useMemories(sessionId) instance, owned here and passed down to
   // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
@@ -168,15 +162,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const handleOpenMedia = useCallback(() => {
     setMediaOpen(true);
     setOpenMemory(null);
-    setAdminStoryId(null);
   }, []);
 
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
     setOpenMemory(row);
-    if (row) {
-      setMediaOpen(false);
-      setAdminStoryId(null);
-    }
+    if (row) setMediaOpen(false);
   }, []);
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
@@ -215,20 +205,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     target: RowTarget;
     id: string;
     title?: string;
-    hasActiveInviteOrSubscribers?: boolean;
   } | null>(null);
-  // Story kebab's "Admin" action (Updated Story Kebabs handover, 2026-08-13)
-  // — the story id StoryAdminPanel (below) renders for, non-null while it
-  // should be open. Mutually exclusive with openMemory/mediaOpen via the
-  // wrapping handlers (handleOpenMedia/handleOpenMemory above, this state's
-  // own setter in handleRowAction below) — same pattern mediaOpen already
-  // uses against openMemory, not a shared enum, so this stays additive.
-  const [adminStoryId, setAdminStoryId] = useState<string | null>(null);
-  // Re-derived from `stories` on every render (liveOpenMemory's own pattern
-  // above) so a description edit committed through the open panel itself
-  // shows up immediately once handleUpdateStoryDescription's setStories call
-  // resolves, without a second sync step.
-  const adminStory = adminStoryId ? stories.find(s => s.id === adminStoryId) ?? null : null;
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
@@ -242,22 +219,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const showToast = useCallback((message: string) => {
     setToast({ message, key: ++toastKeyRef.current });
   }, []);
-
-  // Story-invite acceptance confirmation (reusable-story-invite-links,
-  // 2026-08-10) — same toast weight as "Deleted"/"Starred", fired once per
-  // distinct joinedStoryConfirmation object (chatStore.tsx only ever sets
-  // it once, guarded by storyInviteAcceptFiredRef). Serves both the
-  // brand-new-signup moment and the already-a-member moment identically —
-  // see chatStore.tsx's own doc comment for why one field covers both.
-  // Also re-fetches stories — the newly-granted story otherwise doesn't
-  // appear in the sidebar until a manual page reload, since stories was
-  // previously only ever fetched once on mount.
-  useEffect(() => {
-    if (joinedStoryConfirmation) {
-      showToast(`You've joined "${joinedStoryConfirmation.title}"`);
-      refreshStories();
-    }
-  }, [joinedStoryConfirmation, showToast, refreshStories]);
 
   const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
 
@@ -276,22 +237,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         target === 'conversation'
           ? recentSessions.find(s => s.id === id)?.title
           : stories.find(s => s.id === id)?.name;
-      const hasActiveInviteOrSubscribers =
-        target === 'story' ? stories.find(s => s.id === id)?.hasActiveInviteOrSubscribers ?? false : false;
-      setPendingDelete({ target, id, title, hasActiveInviteOrSubscribers });
-      return;
-    }
-    // Admin is story-only (SidebarV2's MENU_ITEMS already gates it via
-    // `targets`, so target should always be 'story' here — the check is
-    // defensive, not load-bearing). Opens StoryAdminPanel as the third pane,
-    // closing the memory/media panes the same way handleOpenMedia/
-    // handleOpenMemory close each other and this one.
-    if (action === 'admin') {
-      if (target === 'story') {
-        setAdminStoryId(id);
-        setOpenMemory(null);
-        setMediaOpen(false);
-      }
+      setPendingDelete({ target, id, title });
       return;
     }
     // Story actions and chapter/invite actions are deferred — no-op
@@ -390,181 +336,48 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [showToast]);
 
-  // StoryAdminPanel's description field (story-admin-panel, 2026-08-13) —
-  // real persistence via PATCH /api/stories/[id] (services/crm/stories.ts's
-  // updateStoryDescription). StoryAdminPanel only calls this when the
-  // trimmed value actually changed, so no extra guard needed here. Updates
-  // the matching row in `stories` in place on success so the fresh
-  // description flows back down to the open panel AND anywhere else a
-  // story's description is shown (SidebarV2's row tooltip). Silent-fail
-  // posture matches handleCreateStory/handleDeleteStory above — toast only,
-  // no revert (the panel's own textarea already holds what the member typed
-  // either way).
-  const handleUpdateStoryDescription = useCallback(async (storyId: string, description: string) => {
-    try {
-      const res = await fetch(`/api/stories/${storyId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.story) {
-        console.error('[ChatHero] update story description failed:', res.status);
-        showToast('Could not save description');
-        return;
-      }
-      const updated = data.story as Story;
-      setStories(prev => prev.map(s => (s.id === storyId ? { ...s, description: updated.description } : s)));
-    } catch (err) {
-      console.error('[ChatHero] update story description threw:', err);
-      showToast('Could not save description');
-    }
-  }, [showToast]);
-
-  // Invite collaborators (Phase 5 create/copy-flow + invalidation warning,
-  // 2026-08-10, on top of reusable-story-invite-links the same day).
-  // `invite` tracks which story row triggered the modal; `inviteLink` holds
-  // the durable, reusable link once one has actually been created.
-  // Opening the modal (handleInviteStory below) no longer creates or
-  // fetches anything — InviteCollaboratorsModal's magicLink prop is
-  // optional now, and renders its own "Not created yet" / Create state
-  // until the member deliberately clicks Create (handleCreateInviteLink).
-  // "Reset link" rotates an existing link (reset:true — revokes the old
-  // row, inserts a fresh one) via the same createInviteLink call. Changing
-  // the story picker or the primer while a link exists goes through
-  // InviteCollaboratorsModal's own pendingEdit warning first; only once
-  // Continue is clicked does the change reach handleInviteStoryChange /
-  // handleInvitePrimerChange below, which apply it AND invalidate the old
-  // link (DELETE /api/heirloom/story-invites) without minting a
-  // replacement — the next Create/Reset click does that.
+  // Invite collaborators (invites-collaboration-modal, 2026-08-10). `invite`
+  // tracks which story row triggered the modal; `inviteLink` holds the
+  // created magic link. InviteCollaboratorsModal has no separate "generate"
+  // step in its UI (magicLink is a required prop, assumed to already exist),
+  // so opening the modal and creating the invite happen together — the modal
+  // only actually opens once the link comes back. Changing the story picker
+  // re-labels the copy only (per the handover); it does NOT recreate the
+  // link — "Reset link" is the explicit action for that, reused here to mean
+  // "(re)create with the current story + primer" since there's no separate
+  // create action in the built component.
   const [invite, setInvite] = useState<{ storyId: string } | null>(null);
   const [invitePrimer, setInvitePrimer] = useState('');
   const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
-  const [inviteCollaborators, setInviteCollaborators] = useState<Collaborator[]>([]);
 
-  const createInviteLink = useCallback(async (primer: string, storyId: string, reset: boolean) => {
+  const createInviteLink = useCallback(async (primer: string, storyId: string) => {
     try {
-      const res = await fetch('/api/heirloom/story-invites', {
+      const res = await fetch('/api/heirloom/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story_id: storyId, primer, reset }),
+        body: JSON.stringify({ primer, story_id: storyId }),
       });
-      if (!res.ok) throw new Error('Could not create invite link');
-      const data = (await res.json()) as { token: string; primer?: string; invite_url: string | null };
-      const url = data.invite_url ?? `${window.location.origin}/join/${data.token}`;
+      if (!res.ok) throw new Error('Could not create invite');
+      const data = (await res.json()) as { token: string; invite_url: string | null };
+      const url = data.invite_url ?? `${window.location.origin}/invite/${data.token}`;
       setInviteLink({ token: data.token, url });
-      // Fetch-or-create returns the EXISTING link's stored primer on a
-      // non-reset create — reflect it so a story that already had an active
-      // link (created in another session) doesn't show a blank field once
-      // its real link surfaces. Reset intentionally skips this: invitePrimer
-      // already holds whatever the member just typed, which is what the new
-      // link is being created with.
-      if (!reset) setInvitePrimer(data.primer ?? '');
     } catch {
       showToast('Could not create invite link');
+      setInvite(null);
     }
   }, [showToast]);
-
-  // Fire-and-forget — revokes the story's active link server-side without
-  // creating a replacement. Failure is non-fatal to the edit the member just
-  // made (the field still updates); it only means a since-invalidated link
-  // could theoretically still be redeemed server-side, so it's logged, not
-  // swallowed silently.
-  const invalidateInviteLink = useCallback(async (storyId: string) => {
-    try {
-      const res = await fetch('/api/heirloom/story-invites', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story_id: storyId }),
-      });
-      if (!res.ok) console.error('[ChatHero] invalidate invite link failed:', res.status);
-    } catch (err) {
-      console.error('[ChatHero] invalidate invite link threw:', err);
-    }
-  }, []);
 
   const handleInviteStory = useCallback((storyId: string) => {
     setInvite({ storyId });
     setInvitePrimer('');
     setInviteLink(null);
-  }, []);
-
-  const handleCreateInviteLink = useCallback(() => {
-    if (!invite) return;
-    void createInviteLink(invitePrimer, invite.storyId, false);
-  }, [invite, invitePrimer, createInviteLink]);
+    void createInviteLink('', storyId);
+  }, [createInviteLink]);
 
   const handleResetInviteLink = useCallback(() => {
     if (!invite) return;
-    void createInviteLink(invitePrimer, invite.storyId, true);
+    void createInviteLink(invitePrimer, invite.storyId);
   }, [invite, invitePrimer, createInviteLink]);
-
-  // Reached only once InviteCollaboratorsModal decides an edit should
-  // actually apply — instantly (no link yet) or via its own pendingEdit
-  // warning's Continue (a link exists). A live link means the edit
-  // invalidates it: drop back to "Not created yet" locally and revoke it
-  // server-side, matching the warning's own promise to the member.
-  const handleInviteStoryChange = useCallback((storyId: string) => {
-    const priorStoryId = invite?.storyId;
-    setInvite({ storyId });
-    if (inviteLink && priorStoryId) {
-      setInviteLink(null);
-      void invalidateInviteLink(priorStoryId);
-    }
-  }, [invite, inviteLink, invalidateInviteLink]);
-
-  const handleInvitePrimerChange = useCallback((value: string) => {
-    setInvitePrimer(value);
-    if (inviteLink && invite) {
-      setInviteLink(null);
-      void invalidateInviteLink(invite.storyId);
-    }
-  }, [invite, inviteLink, invalidateInviteLink]);
-
-  // "Existing members" roster — refetched whenever the modal's story
-  // changes (including via the invalidation warning), not on every primer
-  // keystroke. Silent-fail on error, matching this file's existing posture
-  // for the stories/mediaItems fetch-on-mount effects above. The same
-  // response also carries the story's active invite link (if any) — used
-  // to restore invitePrimer/inviteLink to their real values on open rather
-  // than leaving handleInviteStory's blank/null reset in place when a link
-  // already exists (invite-modal-restore-on-open, 2026-08-11).
-  useEffect(() => {
-    const storyId = invite?.storyId;
-    if (!storyId) {
-      setInviteCollaborators([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/heirloom/story-invites?story_id=${encodeURIComponent(storyId)}`);
-        if (!res.ok || cancelled) return;
-        const data: {
-          collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }>;
-          active_link?: { token: string; primer: string; invite_url: string | null } | null;
-        } = await res.json();
-        if (cancelled) return;
-        setInviteCollaborators(
-          (data.collaborators ?? []).map((c) => ({
-            name: c.name ?? c.email ?? 'Member',
-            status: 'joined' as const,
-            joinedDate: new Date(c.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          })),
-        );
-        if (data.active_link) {
-          setInvitePrimer(data.active_link.primer);
-          const url = data.active_link.invite_url ?? `${window.location.origin}/join/${data.active_link.token}`;
-          setInviteLink({ token: data.active_link.token, url });
-        }
-      } catch (err) {
-        console.error('[ChatHero] story collaborators fetch failed:', err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [invite?.storyId]);
 
   const closeInvite = useCallback(() => {
     setInvite(null);
@@ -655,13 +468,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMedia}
-            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId}
+            forceCollapsed={!!openMemory || mediaOpen}
           />
         )}
 
         {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
         {isMobile && state.isSidebarExpanded && (
           <>
+            <div
+              className="hl-animate-fade absolute inset-0 z-20 bg-black/40"
+              aria-hidden="true"
+              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+            />
             <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
               <SidebarV2
                 stories={stories}
@@ -726,21 +544,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         )}
 
-        {/* Mobile: admin panel is a full-screen overlay — same treatment as
-            the memory panel above (inset-0/h-[100dvh], no scrim, no
-            rounding), not Media's partial sheet. */}
-        {isMobile && adminStory && (
-          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story admin">
-            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
-              <StoryAdminPanel
-                story={adminStory}
-                onClose={() => setAdminStoryId(null)}
-                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
             width of its own (below), so chat just gets whatever's left; it
             no longer needs a matching ratio to divide against. Floored at
@@ -797,34 +600,31 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           />
         )}
 
-        {/* Memory panel / media pane / admin panel — shared third-pane
-            wrapper since openMemory, mediaOpen, and adminStoryId are
-            mutually exclusive by construction (handleOpenMedia/
-            handleOpenMemory above, and adminStoryId's own setter in
-            handleRowAction). Real drag-resizable pixel width now (Stage C)
-            for memory; media and admin both get the same fixed
-            MEDIA_PANEL_WIDTH instead (neither needs resize — the admin
-            panel's own spec calls for a fixed width, same 400px media
-            already uses) — flexBasis is inline style either way since
-            Tailwind can't express a runtime-computed value as a static
-            class; min-w-[280px] stays a class-based floor, redundant with
-            the JS clamp on purpose (defense in depth, costs nothing).
-            Transition suppressed while actively dragging so a live resize
-            tracks the cursor instead of animating 300ms behind it. The
-            wrapper stays mounted whenever !isMobile so open/close can still
-            transition; content itself only renders while a memory, media,
-            or admin pane is open. Desktop only — mobile media/memory/admin
-            (Stage F) all use their own full-screen/sheet overlays above
-            instead of this shared resizable wrapper. */}
+        {/* Memory panel / media pane — shared third-pane wrapper since
+            openMemory and mediaOpen are mutually exclusive by construction
+            (handleOpenMedia/handleOpenMemory above). Real drag-resizable
+            pixel width now (Stage C) for memory; media gets a fixed
+            MEDIA_PANEL_WIDTH instead (no resize needed) — flexBasis is
+            inline style either way since Tailwind can't express a
+            runtime-computed value as a static class; min-w-[280px] stays a
+            class-based floor, redundant with the JS clamp on purpose
+            (defense in depth, costs nothing). Transition suppressed while
+            actively dragging so a live resize tracks the cursor instead of
+            animating 300ms behind it. The wrapper stays mounted whenever
+            !isMobile so open/close can still transition; content itself
+            only renders while a memory or media is open. Desktop only —
+            mobile media and mobile memory (Stage F) both use their own
+            full-screen/sheet overlays above instead of this shared
+            resizable wrapper. */}
         {!isMobile && (
           <div
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
-              openMemory || mediaOpen || adminStory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
-            } ${mediaOpen || adminStory ? 'border-l border-border' : ''}`}
+              openMemory || mediaOpen ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen ? 'border-l border-border' : ''}`}
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen || adminStory
+                : mediaOpen
                 ? { flexBasis: MEDIA_PANEL_WIDTH, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -841,13 +641,6 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {mediaOpen && <MediaGallery onClose={() => setMediaOpen(false)} />}
-            {adminStory && (
-              <StoryAdminPanel
-                story={adminStory}
-                onClose={() => setAdminStoryId(null)}
-                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
-              />
-            )}
           </div>
         )}
       </div>
@@ -860,17 +653,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onCreate={handleCreateStory}
       />
       <InviteCollaboratorsModal
-        open={!!invite}
+        open={!!invite && !!inviteLink}
         onClose={closeInvite}
-        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : undefined}
-        expiresLabel="Expires in 7 days"
-        collaborators={inviteCollaborators}
+        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : ''}
+        expiresLabel="Expires in 14 days"
+        // No story-collaborator schema yet (see createMemberInvite's doc
+        // comment) — there's nothing real to populate this roster with.
+        collaborators={[]}
         stories={stories}
         storyId={invite?.storyId}
-        onStoryChange={handleInviteStoryChange}
+        onStoryChange={(id) => setInvite({ storyId: id })}
         primer={invitePrimer}
-        onPrimerChange={handleInvitePrimerChange}
-        onCreateLink={handleCreateInviteLink}
+        onPrimerChange={setInvitePrimer}
         onResetLink={handleResetInviteLink}
       />
       <ConfirmDeleteModal

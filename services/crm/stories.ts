@@ -277,6 +277,46 @@ export async function createStory(
 }
 
 /**
+ * Updates a story's description after creation — the Admin panel's
+ * (StoryAdminPanel) description field. `description` -> `body`, the exact
+ * same column createStory's own `description` input already writes to (see
+ * that function's doc comment) — not a different column, no metadata
+ * detour. Owner-scoped identically to discardStory below (tenant_id +
+ * user_id + type='story'), and 404s the same non-leaking way for both "no
+ * such story" and "not yours."
+ */
+export async function updateStoryDescription(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+  description: string,
+): Promise<StoryResult<StoryRow>> {
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('artifacts')
+    .update({ body: description })
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .select(STORY_ROW_COLUMNS)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[stories] update description error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[stories] no story matched id + tenant + user for description update:', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  console.log('[stories] description updated:', storyId)
+  return { ok: true, data: toStoryRow(data) }
+}
+
+/**
  * "Delete" — soft, stamps discarded_at rather than deleting. Same
  * soft-marker convention discardMemory already uses on this same artifacts
  * table (services/crm/memories.ts). Tenant + user scoped (not session-scoped
