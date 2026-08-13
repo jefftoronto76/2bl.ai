@@ -470,6 +470,24 @@ export function ChatProvider({
             "It doesn't look like you're signed in, or have an account yet — just use the form below to sort that out. [ACCOUNT_CREATE: story invite]",
           );
         }
+      } else if (!storyInviteTokenRef.current && inviteTokenRef.current && !isSignedInRef.current) {
+        // Admin/member invite (?invite=TOKEN) — a wholly separate mechanism
+        // from the story invite above (services/members, not
+        // story_invite_links); the `!storyInviteTokenRef.current` check is
+        // belt-and-suspenders since a visitor can only ever arrive with one
+        // of the two tokens. Same deterministic, no-LLM pattern: a greeting
+        // (name-personalized when the admin set one at invite creation) then
+        // the ACCOUNT_CREATE marker, since a pre-auth invite holder always
+        // needs to create an account or sign in before anything else here
+        // can happen.
+        if (invitedName) {
+          injectAssistantMessage(`Hi ${invitedName}, welcome! I'm going to help you get set up.`);
+        } else {
+          injectAssistantMessage("Hi! I'm going to help you get set up.");
+        }
+        injectAssistantMessage(
+          "It doesn't look like you're signed in, or have an account yet — just use the form below to sort that out. [ACCOUNT_CREATE: admin invite]",
+        );
       } else {
         void sendHidden('Hi');
       }
