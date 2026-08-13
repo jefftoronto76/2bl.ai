@@ -19,7 +19,7 @@
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
@@ -376,6 +376,25 @@ export function SidebarV2({
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
 
+  // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
+  // by updated_at DESC (services/crm/sessions.ts) and just switching to an
+  // older session (no new message sent) never touches updated_at, so without
+  // this the active row stays wherever it naturally falls instead of
+  // surfacing at the top. Derived, not mutated in place — recentSessions
+  // itself stays server-order; only totalMemoryCount below reads it directly,
+  // and a sum doesn't care about order. filteredSessions (search+collapse
+  // redesign, merged same day) is derived from orderedSessions, not
+  // recentSessions, specifically so the active row stays first under a live
+  // search too — see that definition below. No match (or already first)
+  // returns the original array as-is, so nothing downstream that relies on
+  // referential stability sees a needless new array.
+  const orderedSessions = useMemo(() => {
+    const activeIndex = recentSessions.findIndex((s) => s.id === state.sessionId);
+    if (activeIndex <= 0) return recentSessions;
+    const active = recentSessions[activeIndex];
+    return [active, ...recentSessions.slice(0, activeIndex), ...recentSessions.slice(activeIndex + 1)];
+  }, [recentSessions, state.sessionId]);
+
   // Whether this docked/overlay instance shows full labels + lists (w-64) or
   // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
   // that flag means "is the mobile overlay open at all" (owned by ChatHero /
@@ -409,9 +428,14 @@ export function SidebarV2({
     onSearch?.(q);
   }, [onSearch]);
   const trimmedQuery = query.trim().toLowerCase();
+  // Filters orderedSessions (active-first), not recentSessions directly —
+  // Array.filter preserves relative order, so the active session (already
+  // moved to front by orderedSessions above) stays at the front of the
+  // filtered results too when it matches the query, instead of the
+  // pre-reorder server order resurfacing under search.
   const filteredSessions = trimmedQuery
-    ? recentSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
-    : recentSessions;
+    ? orderedSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
+    : orderedSessions;
   const filteredStories = trimmedQuery
     ? stories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
     : stories;
