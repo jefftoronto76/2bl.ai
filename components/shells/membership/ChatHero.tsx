@@ -212,6 +212,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     title?: string;
     hasActiveInviteOrSubscribers?: boolean;
   } | null>(null);
+  // Story kebab's "Admin" action (Updated Story Kebabs handover, 2026-08-13)
+  // — the story id to show the admin panel for, non-null while it should be
+  // open. TODO: no panel exists yet to read this — a later task renders one
+  // (member roster + description) alongside pendingDelete/openMemory above;
+  // this pass only wires the click through to a real, testable state value.
+  const [adminStoryId, setAdminStoryId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
@@ -262,6 +268,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       const hasActiveInviteOrSubscribers =
         target === 'story' ? stories.find(s => s.id === id)?.hasActiveInviteOrSubscribers ?? false : false;
       setPendingDelete({ target, id, title, hasActiveInviteOrSubscribers });
+      return;
+    }
+    // Admin is story-only (SidebarV2's MENU_ITEMS already gates it via
+    // `targets`, so target should always be 'story' here — the check is
+    // defensive, not load-bearing). Opens the story admin panel once one
+    // exists; for now this just proves the click reaches this handler.
+    if (action === 'admin') {
+      if (target === 'story') {
+        console.log('[ChatHero] admin action fired for story', id);
+        setAdminStoryId(id);
+      }
       return;
     }
     // Story actions and chapter/invite actions are deferred — no-op
