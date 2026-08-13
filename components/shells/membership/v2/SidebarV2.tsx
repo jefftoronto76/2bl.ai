@@ -673,7 +673,16 @@ export function SidebarV2({
                           <UserPlus size={14} />
                         </button>
                       )}
-                      {onRowAction && !storiesDisabled && (
+                      {/* Kebab is hidden entirely (not rendered with a filtered/
+                          empty item list) for a story this member doesn't own —
+                          every current row action (star/rename/invite/delete/
+                          admin) is owner-only, and a collaborator has no way to
+                          coordinate with the owner to request one (no
+                          inter-member chat exists), so a visible-but-inert kebab
+                          would just be a dead end. This doesn't apply to
+                          conversation rows above — sessions have no ownership
+                          concept. */}
+                      {onRowAction && !storiesDisabled && story.isOwner && (
                         // One 28×28 slot: star marker at rest, kebab on hover.
                         <div className="relative flex-shrink-0 w-7 h-7">
                           {starredStoryIds.includes(story.id) && (
@@ -698,13 +707,15 @@ export function SidebarV2({
                           </button>
                         </div>
                       )}
-                      <RowMenu
-                        open={isMenuOpen}
-                        anchorRect={menuRect}
-                        starred={starredStoryIds.includes(story.id)}
-                        onAction={(action) => onRowAction?.('story', story.id, action)}
-                        onClose={closeMenu}
-                      />
+                      {story.isOwner && (
+                        <RowMenu
+                          open={isMenuOpen}
+                          anchorRect={menuRect}
+                          starred={starredStoryIds.includes(story.id)}
+                          onAction={(action) => onRowAction?.('story', story.id, action)}
+                          onClose={closeMenu}
+                        />
+                      )}
                     </div>
                   );
                 })}
