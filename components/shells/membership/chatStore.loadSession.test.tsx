@@ -147,7 +147,8 @@ describe('Heirloom Recent sidebar — clicking a conversation', () => {
   });
 });
 
-describe('ChatHeader "Your Story" — conversation switcher', () => {
+// Covers the switcher behavior gated behind SHOW_STORY_SWITCHER in ChatHeader.tsx — re-enable this block if that flag ever flips back to true.
+describe.skip('ChatHeader "Your Story" — conversation switcher', () => {
   it('shows the active conversation title and lets a visitor switch via the dropdown', async () => {
     render(
       <ChatProvider>
