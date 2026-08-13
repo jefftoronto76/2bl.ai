@@ -109,7 +109,11 @@ describe('AddToMemoryPanel', () => {
 
     // No write beyond the GET that populated the list — this is UI-only.
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls.every(([, init]: [unknown, RequestInit?]) => !init?.method || init.method === 'GET')).toBe(true);
+    const wroteAnything = fetchMock.mock.calls.some((call) => {
+      const init = call[1] as RequestInit | undefined;
+      return !!init?.method && init.method !== 'GET';
+    });
+    expect(wroteAnything).toBe(false);
   });
 
   it('shows an empty state when the chat has no saved memories yet', async () => {

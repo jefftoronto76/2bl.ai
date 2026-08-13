@@ -21,6 +21,7 @@ const noopHandlers = {
   onAddToMemory: () => {},
   onEditStub: () => {},
   onDeleteRequest: () => {},
+  onRename: () => {},
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -172,5 +173,75 @@ describe('MediaCard — footer actions (Stage 3)', () => {
     expect(screen.getByRole('button', { name: 'Add to memory' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+});
+
+describe('MediaCard — lazyload, metadata line, and rename (Aug 2026 Atomic Updates/09_media_metadata_lazyload)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ url: 'https://signed.example/fresh.jpg' })));
+  });
+
+  it('marks the real thumbnail img loading="lazy"', async () => {
+    render(
+      <MediaCard
+        item={makeItem({ type: 'image', url: 'https://signed.example/seed.jpg' })}
+        onRetry={() => {}}
+        {...noopHandlers}
+      />,
+    );
+    expect(screen.getByRole('img', { name: 'letter.pdf' })).toHaveAttribute('loading', 'lazy');
+  });
+
+  it('metadata line states upload date always, "Processing" appended instead of size while processing', () => {
+    const { rerender } = render(
+      <MediaCard item={makeItem({ status: 'ready', file_size_bytes: 2048 })} onRetry={() => {}} {...noopHandlers} />,
+    );
+    expect(screen.getByText(/2 KB · Uploaded/)).toBeInTheDocument();
+    // Status badge (separate, in the thumbnail) is untouched by this line.
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+
+    rerender(
+      <MediaCard item={makeItem({ status: 'processing', file_size_bytes: 2048 })} onRetry={() => {}} {...noopHandlers} />,
+    );
+    expect(screen.getByText(/Uploaded .* · Processing/)).toBeInTheDocument();
+    expect(screen.queryByText(/2 KB/)).toBeNull();
+  });
+
+  it('renames the file locally on Enter, without any network call', async () => {
+    const onRename = vi.fn();
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    render(<MediaCard item={makeItem()} onRetry={() => {}} {...noopHandlers} onRename={onRename} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename file' }));
+    const input = screen.getByDisplayValue('letter.pdf');
+    fireEvent.change(input, { target: { value: 'vacation.pdf' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRename).toHaveBeenCalledWith('item-1', 'vacation.pdf'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels the rename without committing, reverting to the original name', () => {
+    const onRename = vi.fn();
+    render(<MediaCard item={makeItem()} onRetry={() => {}} {...noopHandlers} onRename={onRename} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename file' }));
+    const input = screen.getByDisplayValue('letter.pdf');
+    fireEvent.change(input, { target: { value: 'oops.pdf' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Rename file' })).toHaveTextContent('letter.pdf');
+  });
+
+  it('does not commit an empty or unchanged name', () => {
+    const onRename = vi.fn();
+    render(<MediaCard item={makeItem()} onRetry={() => {}} {...noopHandlers} onRename={onRename} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename file' }));
+    const input = screen.getByDisplayValue('letter.pdf');
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.blur(input);
+    expect(onRename).not.toHaveBeenCalled();
   });
 });

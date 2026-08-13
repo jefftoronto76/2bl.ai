@@ -104,6 +104,7 @@ export function MediaCard({
   onAddToMemory,
   onEditStub,
   onDeleteRequest,
+  onRename,
 }: {
   item: MediaItemWithUrl;
   onRetry: (id: string) => void;
@@ -113,10 +114,22 @@ export function MediaCard({
   onEditStub: () => void;
   /** Opens the (generalized) ConfirmDeleteModal for this item — the caller owns the dialog and the actual removal. */
   onDeleteRequest: (item: MediaItemWithUrl) => void;
+  /**
+   * Filename rename commit — Aug 2026 Atomic Updates/
+   * 09_media_metadata_lazyload. Local-state only: no PATCH endpoint exists
+   * for media items today (confirmed absent, same investigation as the
+   * delete flow above), so the caller just patches original_filename in its
+   * own items array. A page refresh reverts to the stored filename until a
+   * real rename endpoint exists — do not add persistence-implying copy
+   * here without one.
+   */
+  onRename: (id: string, name: string) => void;
 }) {
   const [downloading, setDownloading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(item.original_filename);
 
   // Real thumbnail: image items only — 'video' isn't a MediaItemType member
   // today (Stage 2 investigation notes), so there's no reachable code path
@@ -162,6 +175,26 @@ export function MediaCard({
     year: 'numeric',
   });
 
+  const startRename = () => {
+    setDraftName(item.original_filename);
+    setRenaming(true);
+  };
+
+  // Escape reverts WITHOUT forcing a blur — mirrors MemoryCardView.tsx's
+  // own title-edit fix (same file's history): blurring synchronously right
+  // after a state revert can read the STALE pre-revert value, since the
+  // state update is async. Enter, by contrast, blurs deliberately — that's
+  // what actually triggers the commit below via onBlur.
+  const commitRename = () => {
+    setRenaming(false);
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== item.original_filename) onRename(item.id, trimmed);
+  };
+  const cancelRename = () => {
+    setDraftName(item.original_filename);
+    setRenaming(false);
+  };
+
   return (
     <div className="border border-border rounded-xl bg-surface overflow-hidden flex flex-col h-full">
       {/* Thumbnail area — 16/10, image-forward. Real photo when available;
@@ -176,6 +209,7 @@ export function MediaCard({
           <img
             src={freshUrl}
             alt={item.original_filename}
+            loading="lazy"
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : (
@@ -193,9 +227,32 @@ export function MediaCard({
       {/* Body */}
       <div className="p-3.5 flex flex-col gap-2.5 flex-1 min-h-0">
         <div className="min-w-0">
-          <p className="text-[13px] font-body text-text-primary leading-tight truncate">
-            {item.original_filename}
-          </p>
+          {renaming ? (
+            <input
+              autoFocus
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') cancelRename();
+              }}
+              className="w-full bg-transparent border border-accent/30 rounded-md px-1.5 -mx-1.5 py-0 text-[13px] font-body text-text-primary outline-none focus:ring-2 focus:ring-accent"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={startRename}
+              title="Rename file"
+              aria-label="Rename file"
+              className="flex items-center gap-1.5 w-full min-w-0 text-left"
+            >
+              <span className="text-[13px] font-body text-text-primary leading-tight truncate">
+                {item.original_filename}
+              </span>
+              <Pencil size={11} className="flex-shrink-0 text-text-muted" />
+            </button>
+          )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {item.classification && (
               <span className="font-mono text-[9.5px] text-text-muted capitalize">
@@ -203,7 +260,9 @@ export function MediaCard({
               </span>
             )}
             <span className="font-mono text-[9.5px] text-text-muted">
-              {prettySize(item.file_size_bytes)} · {date}
+              {item.status === 'processing'
+                ? `Uploaded ${date} · Processing`
+                : `${prettySize(item.file_size_bytes)} · Uploaded ${date}`}
             </span>
           </div>
         </div>

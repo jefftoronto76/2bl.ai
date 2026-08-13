@@ -71,6 +71,13 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
     );
   };
 
+  // Local-state only — see MediaCard.tsx's onRename doc comment for why.
+  const handleRename = (id: string, name: string) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, original_filename: name } : item)),
+    );
+  };
+
   return (
     <>
       <div
@@ -139,6 +146,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
                 onAddToMemory={setAddToMemoryItem}
                 onEditStub={() => onFlash('Editing media is coming soon')}
                 onDeleteRequest={requestDelete}
+                onRename={handleRename}
               />
             )}
           </div>

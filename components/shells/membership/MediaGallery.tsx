@@ -53,6 +53,13 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
     );
   };
 
+  // Local-state only — see MediaCard.tsx's onRename doc comment for why.
+  const handleRename = (id: string, name: string) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, original_filename: name } : item)),
+    );
+  };
+
   return (
     <div className="flex flex-col h-full bg-background">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
@@ -86,6 +93,7 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
             onAddToMemory={setAddToMemoryItem}
             onEditStub={() => onFlash('Editing media is coming soon')}
             onDeleteRequest={requestDelete}
+            onRename={handleRename}
           />
         )}
       </div>

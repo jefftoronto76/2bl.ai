@@ -16,12 +16,14 @@ export function MediaItemsGrid({
   onAddToMemory,
   onEditStub,
   onDeleteRequest,
+  onRename,
 }: {
   items: MediaItemWithUrl[];
   onRetry: (id: string) => void;
   onAddToMemory: (item: MediaItemWithUrl) => void;
   onEditStub: () => void;
   onDeleteRequest: (item: MediaItemWithUrl) => void;
+  onRename: (id: string, name: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -33,6 +35,7 @@ export function MediaItemsGrid({
             onAddToMemory={onAddToMemory}
             onEditStub={onEditStub}
             onDeleteRequest={onDeleteRequest}
+            onRename={onRename}
           />
         </div>
       ))}
