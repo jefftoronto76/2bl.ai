@@ -512,6 +512,10 @@ export function ChatProvider({
   // Stable ref for the invite token — must not change across renders so the
   // wasSignedIn effect closure always reads the original value from page load.
   const inviteTokenRef = useRef<string | null>(inviteToken ?? null);
+  // Guards acceptMemberInviteToken (below) so a Fast Refresh / re-run of the
+  // sign-in transition effect can't fire the accept request twice for the
+  // same visitor — same reasoning as storyInviteAcceptFiredRef.
+  const memberInviteAcceptFiredRef = useRef(false);
 
   // Stable ref for the story invite token — same "must not change across
   // renders" reasoning as inviteTokenRef above, consumed by two independent
@@ -590,6 +594,50 @@ export function ChatProvider({
     // oversight — it's a stable identity for the life of this component
     // (its own dep chain, hydrateConversation -> hydrate -> the store ref,
     // never changes across renders), so this can't produce a stale closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Shown to the visitor on either acceptMemberInviteToken failure path.
+  // Distinct from STORY_INVITE_ACCEPT_FALLBACK_MESSAGE above since this is
+  // account setup, not joining a story.
+  const MEMBER_INVITE_ACCEPT_FALLBACK_MESSAGE =
+    "Something went wrong setting up your account. Try refreshing the page — if it still doesn't work, ask whoever invited you for a fresh link.";
+
+  // Fires POST /api/heirloom/invites/accept exactly once, on the false→true
+  // isSignedIn transition (brand-new signup via an admin/member invite
+  // token). Same standard as acceptStoryInviteToken above: fire-once guard,
+  // res.ok check, and a user-facing failure message via
+  // injectAssistantMessage instead of pure fire-and-forget.
+  const acceptMemberInviteToken = useCallback((token: string) => {
+    if (memberInviteAcceptFiredRef.current) {
+      console.log(
+        '[heirloom/chat] acceptMemberInviteToken: guard already fired, skipping second attempt for token:',
+        token.slice(0, 8) + '…',
+      );
+      return;
+    }
+    memberInviteAcceptFiredRef.current = true;
+    console.log('[heirloom/chat] firing member invite accept for token:', token.slice(0, 8) + '…');
+    fetch('/api/heirloom/invites/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error('[heirloom/chat] member invite accept failed:', res.status, data?.error);
+          injectAssistantMessage(MEMBER_INVITE_ACCEPT_FALLBACK_MESSAGE);
+          return;
+        }
+        console.log('[heirloom/chat] member invite accept succeeded');
+      })
+      .catch((err) => {
+        console.error('[heirloom/chat] member invite accept error:', err);
+        injectAssistantMessage(MEMBER_INVITE_ACCEPT_FALLBACK_MESSAGE);
+      });
+    // Same injectAssistantMessage-omitted-from-deps reasoning as
+    // acceptStoryInviteToken above — stable identity, no stale closure risk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -907,11 +955,7 @@ export function ChatProvider({
       wasSignedInRef.current = true;
       void claimSessionsOnly();
       if (inviteTokenRef.current) {
-        void fetch('/api/heirloom/invites/accept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: inviteTokenRef.current }),
-        }).catch(err => console.error('[heirloom/chat] invite accept failed:', err));
+        acceptMemberInviteToken(inviteTokenRef.current);
       }
       // Wholly separate call, separate endpoint, separate token — the
       // brand-new-signup half of the story-invite mechanism (see
@@ -928,7 +972,7 @@ export function ChatProvider({
       // Reset on sign-out so the next sign-in fires again.
       wasSignedInRef.current = false;
     }
-  }, [isLoaded, isSignedIn, claimSessionsOnly, acceptStoryInviteToken]);
+  }, [isLoaded, isSignedIn, claimSessionsOnly, acceptStoryInviteToken, acceptMemberInviteToken]);
 
   // Start a fresh conversation (Sidebar "New Chat"). Drops the active thread's
   // localStorage entries — both the pre-session draft slot AND the current
