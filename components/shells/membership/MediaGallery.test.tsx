@@ -56,7 +56,7 @@ afterEach(() => {
 describe('MediaGallery — retry/reprocess button', () => {
   it('renders "Try again" for a failed item', async () => {
     mockMediaList([makeItem({ status: 'failed', derived_content: null, error_message: 'boom' })]);
-    render(<MediaGallery onClose={() => {}} sessionId="chat-1" />);
+    render(<MediaGallery onClose={() => {}} sessionId="chat-1" onFlash={() => {}} />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Try again/ })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /Reprocess/ })).toBeNull();
@@ -64,7 +64,7 @@ describe('MediaGallery — retry/reprocess button', () => {
 
   it('renders "Reprocess" for a ready item, alongside Download', async () => {
     mockMediaList([makeItem({ status: 'ready' })]);
-    render(<MediaGallery onClose={() => {}} sessionId="chat-1" />);
+    render(<MediaGallery onClose={() => {}} sessionId="chat-1" onFlash={() => {}} />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: /Reprocess/ })).toBeInTheDocument());
     expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe('MediaGallery — retry/reprocess button', () => {
       makeItem({ id: 'item-1', status: 'pending', derived_content: null }),
       makeItem({ id: 'item-2', status: 'processing', derived_content: null }),
     ]);
-    render(<MediaGallery onClose={() => {}} sessionId="chat-1" />);
+    render(<MediaGallery onClose={() => {}} sessionId="chat-1" onFlash={() => {}} />);
 
     await waitFor(() => expect(screen.getAllByText('Processing').length).toBe(2));
     expect(screen.queryByRole('button', { name: /Try again/ })).toBeNull();

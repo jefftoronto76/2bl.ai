@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Image as ImageIcon, Loader2, X } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
+import { useMediaDelete } from './media/useMediaItemActions';
+import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 
 interface MediaGalleryProps {
   onClose: () => void;
@@ -18,11 +20,14 @@ interface MediaGalleryProps {
    * scoped to the active session; the standalone page is not.
    */
   sessionId: string | null;
+  /** Shared toast — Stage 3's edit stub and (once wired) add-to-memory confirm both use it. */
+  onFlash: (message: string) => void;
 }
 
-export function MediaGallery({ onClose, sessionId }: MediaGalleryProps) {
+export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps) {
   const [items, setItems] = useState<MediaItemWithUrl[]>([]);
   const [loading, setLoading] = useState(true);
+  const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
 
   useEffect(() => {
     if (!sessionId) {
@@ -73,9 +78,32 @@ export function MediaGallery({ onClose, sessionId }: MediaGalleryProps) {
             </p>
           </div>
         ) : (
-          <MediaItemsGrid items={items} onRetry={handleRetry} />
+          <MediaItemsGrid
+            items={items}
+            onRetry={handleRetry}
+            onAddToMemory={() => {}}
+            onEditStub={() => onFlash('Editing media is coming soon')}
+            onDeleteRequest={requestDelete}
+          />
         )}
       </div>
+
+      <ConfirmDeleteModal
+        item={pendingDelete ? { target: 'media', id: pendingDelete.id, title: pendingDelete.original_filename } : null}
+        onClose={cancelDelete}
+        onConfirm={confirmDelete}
+        heading="Delete this file?"
+        body={
+          pendingDelete && (
+            <>
+              <span className="font-display italic text-base text-text-primary">
+                &ldquo;{pendingDelete.original_filename}&rdquo;
+              </span>{' '}
+              will be removed from this list.
+            </>
+          )
+        }
+      />
     </div>
   );
 }

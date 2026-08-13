@@ -657,7 +657,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               onClick={() => setMediaOpen(false)}
             />
             <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
-              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} />
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
             </div>
           </div>
         )}
@@ -786,7 +786,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 sessionImages={sessionImages}
               />
             )}
-            {mediaOpen && <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} />}
+            {mediaOpen && (
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
+            )}
           </div>
         )}
       </div>

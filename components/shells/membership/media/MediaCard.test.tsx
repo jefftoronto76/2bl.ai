@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MediaCard } from './MediaCard';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 
@@ -9,6 +9,19 @@ import type { MediaItemWithUrl } from '@/services/media/display-url';
 // thumbnail regardless of which. Card body/footer (filename, classification,
 // extracted content, retry/download) are pre-existing and covered by
 // MediaGallery.test.tsx — not re-tested here.
+//
+// Stage 3 (media_stages_08_2026/stage-3-icon-actions-workflows): the three
+// new footer actions (add to memory / edit stub / delete) and the
+// lazy-load/metadata/rename patch (Aug 2026 Atomic Updates/
+// 09_media_metadata_lazyload) — covered below.
+
+// Required on every MediaCard render since Stage 3 added these three footer
+// actions; individual tests override whichever handler they're asserting on.
+const noopHandlers = {
+  onAddToMemory: () => {},
+  onEditStub: () => {},
+  onDeleteRequest: () => {},
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -57,6 +70,7 @@ describe('MediaCard — thumbnail area', () => {
       <MediaCard
         item={makeItem({ type: 'image', url: 'https://signed.example/seed.jpg' })}
         onRetry={() => {}}
+        {...noopHandlers}
       />,
     );
 
@@ -79,7 +93,7 @@ describe('MediaCard — thumbnail area', () => {
 
   it('falls back to a tinted tile with a centered icon badge for an image item with no url yet', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
-    render(<MediaCard item={makeItem({ type: 'image', url: null, status: 'processing' })} onRetry={() => {}} />);
+    render(<MediaCard item={makeItem({ type: 'image', url: null, status: 'processing' })} onRetry={() => {}} {...noopHandlers} />);
 
     expect(screen.queryByRole('img')).toBeNull();
   });
@@ -88,14 +102,14 @@ describe('MediaCard — thumbnail area', () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<MediaCard item={makeItem({ type: 'document' })} onRetry={() => {}} />);
+    render(<MediaCard item={makeItem({ type: 'document' })} onRetry={() => {}} {...noopHandlers} />);
     expect(screen.queryByRole('img')).toBeNull();
     // No mediaItemId passed to useFreshImageUrl for a non-image type, so no
     // /url fetch fires at all.
     expect(fetchMock).not.toHaveBeenCalled();
 
     cleanup();
-    render(<MediaCard item={makeItem({ type: 'audio', id: 'item-2' })} onRetry={() => {}} />);
+    render(<MediaCard item={makeItem({ type: 'audio', id: 'item-2' })} onRetry={() => {}} {...noopHandlers} />);
     expect(screen.queryByRole('img')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -104,7 +118,7 @@ describe('MediaCard — thumbnail area', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ url: 'https://signed.example/fresh.jpg' })));
 
     const { rerender } = render(
-      <MediaCard item={makeItem({ type: 'document', status: 'failed' })} onRetry={() => {}} />,
+      <MediaCard item={makeItem({ type: 'document', status: 'failed' })} onRetry={() => {}} {...noopHandlers} />,
     );
     expect(screen.getByText('Failed')).toBeInTheDocument();
 
@@ -112,8 +126,51 @@ describe('MediaCard — thumbnail area', () => {
       <MediaCard
         item={makeItem({ type: 'image', status: 'ready', url: 'https://signed.example/seed.jpg' })}
         onRetry={() => {}}
+        {...noopHandlers}
       />,
     );
     expect(screen.getByText('Ready')).toBeInTheDocument();
+  });
+});
+
+describe('MediaCard — footer actions (Stage 3)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
+  });
+
+  it('calls onAddToMemory with the item when the + button is clicked', () => {
+    const onAddToMemory = vi.fn();
+    const item = makeItem();
+    render(<MediaCard item={item} onRetry={() => {}} {...noopHandlers} onAddToMemory={onAddToMemory} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to memory' }));
+    expect(onAddToMemory).toHaveBeenCalledWith(item);
+  });
+
+  it('calls onEditStub (not a real edit surface) when the pen button is clicked', () => {
+    const onEditStub = vi.fn();
+    render(<MediaCard item={makeItem()} onRetry={() => {}} {...noopHandlers} onEditStub={onEditStub} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(onEditStub).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onDeleteRequest with the item when the trash button is clicked — no direct removal', () => {
+    const onDeleteRequest = vi.fn();
+    const item = makeItem();
+    render(<MediaCard item={item} onRetry={() => {}} {...noopHandlers} onDeleteRequest={onDeleteRequest} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onDeleteRequest).toHaveBeenCalledWith(item);
+  });
+
+  it('keeps the existing Download/Reprocess actions alongside the new ones', () => {
+    render(<MediaCard item={makeItem({ status: 'ready' })} onRetry={() => {}} {...noopHandlers} />);
+
+    expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Reprocess/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to memory' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 });

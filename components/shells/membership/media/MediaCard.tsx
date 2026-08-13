@@ -16,9 +16,36 @@ import {
   XCircle,
   Download,
   RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { useFreshImageUrl } from '@/services/media/useFreshImageUrl';
+
+// Small icon-only footer button — same shape/border/hover language as
+// MemoryCardView.tsx's own icon-only footer actions (Talk about this / Use
+// as a base / Remove), just sized down (h-8 w-8 vs. that panel's h-9 w-9)
+// for this card's much narrower footer row. `danger` matches Remove's
+// hover-to-red treatment there.
+function CardIconButton({
+  label,
+  danger,
+  className = '',
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className={`grid h-8 w-8 flex-shrink-0 place-items-center rounded-[9px] border border-border bg-transparent text-text-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        danger ? 'hover:border-border hover:text-red-400' : 'hover:border-accent hover:text-text-primary'
+      } ${className}`}
+      {...props}
+    />
+  );
+}
 
 function prettySize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -71,7 +98,22 @@ export function StatusBadge({ status }: { status: MediaItemWithUrl['status'] }) 
   );
 }
 
-export function MediaCard({ item, onRetry }: { item: MediaItemWithUrl; onRetry: (id: string) => void }) {
+export function MediaCard({
+  item,
+  onRetry,
+  onAddToMemory,
+  onEditStub,
+  onDeleteRequest,
+}: {
+  item: MediaItemWithUrl;
+  onRetry: (id: string) => void;
+  /** Opens the add-to-memory slide-in panel for this item (media/AddToMemoryPanel.tsx). */
+  onAddToMemory: (item: MediaItemWithUrl) => void;
+  /** Explicit stub — no edit surface exists yet, same "Editing media is coming soon" pattern memory editing uses elsewhere. */
+  onEditStub: () => void;
+  /** Opens the (generalized) ConfirmDeleteModal for this item — the caller owns the dialog and the actual removal. */
+  onDeleteRequest: (item: MediaItemWithUrl) => void;
+}) {
   const [downloading, setDownloading] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -189,7 +231,13 @@ export function MediaCard({ item, onRetry }: { item: MediaItemWithUrl; onRetry: 
           </p>
         )}
 
-        <div className="flex items-center gap-2 pt-0.5 mt-auto">
+        <div className="flex items-center gap-1.5 pt-0.5 mt-auto flex-wrap">
+          <CardIconButton label="Add to memory" onClick={() => onAddToMemory(item)}>
+            <Plus size={14} />
+          </CardIconButton>
+          <CardIconButton label="Edit" onClick={onEditStub}>
+            <Pencil size={14} />
+          </CardIconButton>
           {item.status === 'ready' && (
             <button
               type="button"
@@ -219,6 +267,14 @@ export function MediaCard({ item, onRetry }: { item: MediaItemWithUrl; onRetry: 
                   : 'Try again'}
             </button>
           )}
+          <CardIconButton
+            label="Delete"
+            danger
+            className="ml-auto"
+            onClick={() => onDeleteRequest(item)}
+          >
+            <Trash2 size={14} />
+          </CardIconButton>
         </div>
       </div>
     </div>

@@ -27,6 +27,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Feather, Loader2, Image as ImageIcon, Upload, X } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
+import { useMediaDelete } from './media/useMediaItemActions';
+import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 
 interface MediaPageProps {
   open: boolean;
@@ -38,6 +40,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
   const [items, setItems] = useState<MediaItemWithUrl[]>([]);
   const [loading, setLoading] = useState(true);
   const hasFetchedRef = useRef(false);
+  const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
 
   useEffect(() => {
     if (!open || hasFetchedRef.current) return;
@@ -128,10 +131,35 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
                 </p>
               </div>
             ) : (
-              <MediaItemsGrid items={items} onRetry={handleRetry} />
+              <MediaItemsGrid
+                items={items}
+                onRetry={handleRetry}
+                onAddToMemory={() => {}}
+                onEditStub={() => onFlash('Editing media is coming soon')}
+                onDeleteRequest={requestDelete}
+              />
             )}
           </div>
         </div>
+
+        <ConfirmDeleteModal
+          item={
+            pendingDelete ? { target: 'media', id: pendingDelete.id, title: pendingDelete.original_filename } : null
+          }
+          onClose={cancelDelete}
+          onConfirm={confirmDelete}
+          heading="Delete this file?"
+          body={
+            pendingDelete && (
+              <>
+                <span className="font-display italic text-base text-text-primary">
+                  &ldquo;{pendingDelete.original_filename}&rdquo;
+                </span>{' '}
+                will be removed from this list.
+              </>
+            )
+          }
+        />
       </div>
     </>
   );

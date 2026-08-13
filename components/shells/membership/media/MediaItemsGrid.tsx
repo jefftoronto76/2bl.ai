@@ -13,15 +13,27 @@ import { MediaCard } from './MediaCard';
 export function MediaItemsGrid({
   items,
   onRetry,
+  onAddToMemory,
+  onEditStub,
+  onDeleteRequest,
 }: {
   items: MediaItemWithUrl[];
   onRetry: (id: string) => void;
+  onAddToMemory: (item: MediaItemWithUrl) => void;
+  onEditStub: () => void;
+  onDeleteRequest: (item: MediaItemWithUrl) => void;
 }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       {items.map((item) => (
         <div key={item.id} style={{ flex: '1 1 220px', minWidth: 180, maxWidth: 320 }}>
-          <MediaCard item={item} onRetry={onRetry} />
+          <MediaCard
+            item={item}
+            onRetry={onRetry}
+            onAddToMemory={onAddToMemory}
+            onEditStub={onEditStub}
+            onDeleteRequest={onDeleteRequest}
+          />
         </div>
       ))}
     </div>
