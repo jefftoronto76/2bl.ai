@@ -485,6 +485,15 @@ export async function acceptInvite(
     supabaseUserId,
     usedAt: now,
   })
+  void logEvent({
+    action: AuditAction.MEMBER_INVITE_ACCEPTED,
+    tenant_id: row.tenant_id,
+    actor_id: supabaseUserId,
+    actor_type: 'user',
+    clerk_user_id: clerkUserId,
+    target_type: 'member',
+    target_id: row.id,
+  })
   return { ok: true, data: { memberId: row.id } }
 }
 
