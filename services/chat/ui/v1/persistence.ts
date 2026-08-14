@@ -21,6 +21,7 @@
 
 import { openDB, type IDBPDatabase } from 'idb';
 import type { UIMessage } from './types';
+import { titleSourceFromContent } from './mediaMarkerPatterns';
 
 export type PersistenceNamespace = 'heirloom' | 'sage';
 
@@ -136,7 +137,13 @@ export function toPersistedMessages(messages: UIMessage[]): PersistedMessage[] {
 function deriveTitle(messages: PersistedMessage[]): string | undefined {
   const firstUser = messages.find(m => m.role === 'user');
   if (!firstUser) return undefined;
-  const normalized = firstUser.content.trim().replace(/\s+/g, ' ');
+  // titleSourceFromContent strips [MEDIA_UPLOAD: ...] and friends first — a
+  // media-only first message (no typed caption) used to index this thread
+  // under its raw bracket marker text verbatim. Same underlying issue as
+  // chatStore.tsx's deriveSessionTitle (DB-backed sessions); this is the
+  // shared local-thread-index path both chat surfaces read the Recent list
+  // labels from.
+  const normalized = titleSourceFromContent(firstUser.content).replace(/\s+/g, ' ');
   if (normalized.length === 0) return undefined;
   return normalized.length > TITLE_MAX ? `${normalized.slice(0, TITLE_MAX - 1)}…` : normalized;
 }

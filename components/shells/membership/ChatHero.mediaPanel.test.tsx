@@ -198,6 +198,92 @@ describe('In-chat Media panel — desktop', () => {
   });
 });
 
+// Regression coverage for the close-button-clipped-offscreen bug: at desktop
+// widths where sidebar(48) + chat floor(260) + a rigid 400px media panel
+// would exceed the row's available width, the panel must shrink to fit
+// instead of forcing an overflow that gets clipped by the row's
+// overflow-hidden (taking the close button with it). Mirrors the same
+// clientWidth-stubbing technique ChatHero.memoryPanel.test.tsx uses for the
+// memory panel's own clamp coverage, for the same reason: happy-dom has no
+// real CSS layout engine, so panelRowRef.current.clientWidth is always 0
+// unless stubbed.
+function stubRowWidth(px: number) {
+  const row = screen.getByTestId('memory-panel-row');
+  Object.defineProperty(row, 'clientWidth', { configurable: true, value: px });
+}
+
+describe('In-chat Media panel — width clamp (close-button clipping fix)', () => {
+  it('keeps the preferred 400px width when the row has plenty of room', async () => {
+    await renderReady();
+    stubRowWidth(1200);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+
+    const panel = screen.getByTestId('third-pane-panel');
+    expect(parseFloat(panel.style.flexBasis)).toBe(400); // MEDIA_PANEL_WIDTH, unclamped
+
+    // And the close button — the thing actually reported broken — is present
+    // and clickable, not just rendered somewhere off-screen.
+    fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull());
+  });
+
+  it('shrinks below 400px when the row is only as wide as the drawer floor, keeping the close button reachable', async () => {
+    await renderReady();
+    // 680 is ChatDrawerV2's own clamp(680px, 50vw, 1120px) floor — the
+    // narrowest the row is ever asked to render at on desktop. Unclamped,
+    // 48 (rail) + 260 (chat floor) + 400 (media) = 708, 28px past this.
+    stubRowWidth(680);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+
+    const panel = screen.getByTestId('third-pane-panel');
+    const width = parseFloat(panel.style.flexBasis);
+    expect(width).toBe(363); // maxPanelWidth(680) = 680 - 48 - 9 - 260
+    expect(width).toBeLessThan(400);
+    expect(48 + width + 260).toBeLessThanOrEqual(680); // fits the row with room to spare
+
+    // The close button must still be reachable — this is the actual bug.
+    const closeButton = screen.getByRole('button', { name: 'Close media gallery' });
+    expect(closeButton).toBeInTheDocument();
+    fireEvent.click(closeButton);
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull());
+  });
+
+  it('never shrinks the media panel below MIN_PANEL_WIDTH even at an extremely narrow row', async () => {
+    await renderReady();
+    stubRowWidth(400); // narrower than any real desktop drawer floor, worst case
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+
+    const panel = screen.getByTestId('third-pane-panel');
+    expect(parseFloat(panel.style.flexBasis)).toBe(280); // MIN_PANEL_WIDTH
+  });
+
+  it('reclamps on reopen rather than reusing a width computed at a different row size', async () => {
+    await renderReady();
+    stubRowWidth(680);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+    let panel = screen.getByTestId('third-pane-panel');
+    expect(parseFloat(panel.style.flexBasis)).toBe(363);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close media gallery' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Media' })).toBeNull());
+
+    // Simulate the browser having been widened while the panel was closed.
+    stubRowWidth(1200);
+    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument());
+    panel = screen.getByTestId('third-pane-panel');
+    expect(parseFloat(panel.style.flexBasis)).toBe(400);
+  });
+});
+
 // happy-dom's real matchMedia evaluates `(max-width: 768px)` against
 // window.innerWidth — same technique ChatHero.kebabDelete.test.tsx and
 // ChatHero.memoryPanel.test.tsx already use to reach the mobile branch.

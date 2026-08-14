@@ -363,20 +363,15 @@ async function extractGpsCoordinates(signedUrl: string, item: MediaItem): Promis
   }
 }
 
-// ---------------------------------------------------------------------------
-// Image analysis via Claude Haiku vision, using forced tool-use
-// (callVisionTool, services/media/vision-tool.ts) for structured output —
-// see that file's doc comment for why. Anthropic's structured-output tool
-// contract guarantees the input already matches VISION_ANALYSIS_TOOL's
-// schema, so no parsing happens here on the happy path.
-// ---------------------------------------------------------------------------
-async function processImage(
+// Shared by processImage's two independent fetch steps (GPS extraction,
+// vision call) — each calls this separately, immediately before it needs
+// the URL, rather than one call generating a URL both steps then share.
+async function getSignedUrlOrThrow(
   item: MediaItem,
   correlationId: string,
-): Promise<void> {
-  let signedUrl: string
+): Promise<string> {
   try {
-    signedUrl = await generateSignedDownloadUrl(item.storage_path)
+    return await generateSignedDownloadUrl(item.storage_path)
   } catch (err) {
     if (isMediaAuditEnabled()) {
       await logMediaEvent({
@@ -397,15 +392,44 @@ async function processImage(
     }
     throw err
   }
+}
 
-  // GPS extraction runs first, off the same signed URL, while it's freshest
-  // (60s expiry, generateSignedDownloadUrl) — independent of and never
-  // blocking the vision call below; see extractGpsCoordinates's own doc
-  // comment for why a miss or a parse failure both just resolve to null.
-  const { latitude, longitude } = await extractGpsCoordinates(signedUrl, item)
+// ---------------------------------------------------------------------------
+// Image analysis via Claude Haiku vision, using forced tool-use
+// (callVisionTool, services/media/vision-tool.ts) for structured output —
+// see that file's doc comment for why. Anthropic's structured-output tool
+// contract guarantees the input already matches VISION_ANALYSIS_TOOL's
+// schema, so no parsing happens here on the happy path.
+// ---------------------------------------------------------------------------
+async function processImage(
+  item: MediaItem,
+  correlationId: string,
+): Promise<void> {
+  // Each fetch step below gets its own signed URL, generated immediately
+  // before it's used — NOT one URL generated up front and reused across
+  // both. The 60s expiry (generateSignedDownloadUrl) is easily consumed by
+  // GPS extraction's own download plus whatever queueing delay precedes
+  // Anthropic actually fetching the vision call's URL; a shared URL let
+  // that gap produce a confirmed production failure ("Anthropic vision
+  // error: 400 ... Unable to download the file") once GPS extraction ate
+  // enough of the window. Two independent signings closes this — neither
+  // step's timing can starve the other's.
+  const gpsUrl = await getSignedUrlOrThrow(item, correlationId)
+
+  // GPS extraction runs first, off its own freshly-signed URL — independent
+  // of and never blocking the vision call below; see extractGpsCoordinates's
+  // own doc comment for why a miss or a parse failure both just resolve to
+  // null.
+  const { latitude, longitude } = await extractGpsCoordinates(gpsUrl, item)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not configured')
+
+  // Signed fresh here, immediately before the vision call — not reused from
+  // gpsUrl above, since GPS extraction's own download time (plus any queueing
+  // delay before Anthropic fetches this URL on its own schedule) can eat past
+  // gpsUrl's 60s expiry.
+  const signedUrl = await getSignedUrlOrThrow(item, correlationId)
 
   const aiStart = Date.now()
 

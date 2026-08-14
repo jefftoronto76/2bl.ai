@@ -2,8 +2,8 @@
 //
 // Canonical regex SOURCE (no flags) for the MEDIA_UPLOAD / MEDIA_UPLOAD_FAILED /
 // MEDIA_UPLOAD_DUPLICATE marker syntax — the single place this syntax is
-// defined. Three independent consumers each construct their own RegExp
-// instance from these sources:
+// defined. Independent consumers each construct their own RegExp instance
+// from these sources:
 //   - components/shells/membership/MessageList.tsx's parseUserMessage (drives
 //     upload-thumbnail/failure-chip/duplicate-label rendering — the real
 //     consumer of this syntax on the visitor message side)
@@ -16,6 +16,13 @@
 //     missing from this specific consumer until 2026-08-12, meaning it leaked
 //     into AI/guide context raw; verified via test that MEDIA_UPLOAD_DUPLICATE
 //     never repeats that gap — see media-context.test.ts)
+//   - titleSourceFromContent (below), used by both title-deriving call sites
+//     that read a session's first user message directly — chatStore.tsx's
+//     deriveSessionTitle (DB-backed sessions) and persistence.ts's
+//     deriveTitle (the shared local IndexedDB thread index, both chat
+//     surfaces) — neither stripped this syntax before 2026-08-14, so a
+//     media-only first turn (no typed caption) rendered its title as the
+//     raw `[MEDIA_UPLOAD: filename | id | type]` bracket text verbatim.
 //
 // Exporting source strings rather than a shared RegExp keeps each consumer's
 // own stateful `g`-flag/.lastIndex usage fully independent — no shared
@@ -42,3 +49,47 @@ export const MEDIA_UPLOAD_FAILED_PATTERN_SOURCE =
  */
 export const MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE =
   String.raw`\[MEDIA_UPLOAD_DUPLICATE:\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^\]]+?)\s*\]`
+
+const ALL_MARKER_PATTERN_SOURCES = [
+  MEDIA_UPLOAD_PATTERN_SOURCE,
+  MEDIA_UPLOAD_FAILED_PATTERN_SOURCE,
+  MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE,
+]
+
+const TYPE_FALLBACK_LABEL: Record<string, string> = {
+  image: 'Photo shared',
+  audio: 'Audio shared',
+  document: 'Document shared',
+}
+
+/** First captured `type` field off a MEDIA_UPLOAD/MEDIA_UPLOAD_DUPLICATE marker in `content`, if any — MEDIA_UPLOAD_FAILED carries no type. */
+function firstMarkerType(content: string): string | null {
+  const upload = new RegExp(MEDIA_UPLOAD_PATTERN_SOURCE).exec(content)
+  if (upload) return upload[3].trim()
+  const duplicate = new RegExp(MEDIA_UPLOAD_DUPLICATE_PATTERN_SOURCE).exec(content)
+  if (duplicate) return duplicate[3].trim()
+  return null
+}
+
+/**
+ * Strips all known media marker syntax out of a raw first-message string and
+ * returns text safe to derive a title from — the member's own typed caption
+ * when one is present, or a short type-aware fallback (`'Photo shared'`,
+ * etc.) when the message was attachment-only. Genuinely marker-free content
+ * (plain text, or empty) passes through unchanged — the fallback only kicks
+ * in when a marker was actually found and stripped to nothing. Callers still
+ * own their own length truncation (limits differ slightly by call site) —
+ * this only guarantees the input to that truncation never contains raw
+ * bracket syntax.
+ */
+export function titleSourceFromContent(content: string): string {
+  const hadMarker = ALL_MARKER_PATTERN_SOURCES.some(source => new RegExp(source).test(content))
+  let stripped = content
+  for (const source of ALL_MARKER_PATTERN_SOURCES) {
+    stripped = stripped.replace(new RegExp(source, 'g'), '')
+  }
+  stripped = stripped.replace(/\s+/g, ' ').trim()
+  if (stripped.length > 0 || !hadMarker) return stripped
+  const type = firstMarkerType(content)
+  return (type && TYPE_FALLBACK_LABEL[type]) || 'Attachment shared'
+}

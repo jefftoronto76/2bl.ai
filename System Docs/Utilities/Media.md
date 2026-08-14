@@ -112,6 +112,59 @@ apart:
   logged the same way the stale-processing sweep logs its own flips
   (`MEDIA_PROCESS_FAILED`, `pipeline_step: 'stale_pending_sweep'`).
 
+**Client/server message mismatch — verified closed by this trigger-ordering
+fix, no further code change (2026-08-14).** Original observation: a
+member's client showed a local "upload failed" message (fired when the
+client's own `PUT` to Storage threw/rejected) while the `media_items` row
+was simultaneously sitting at `status: 'processing'` — client and server
+told the member two contradictory things at the same moment. This was
+deferred pending the trigger-ordering fix above, on the theory that it
+might resolve it as a side effect. Traced against current code rather than
+assumed: `useMediaUpload.ts`'s `upload()` only calls
+`POST /api/media/[id]/start-processing` — the sole trigger for
+`processMediaItem` on a fresh upload — **after** `uploadRes.ok` is
+confirmed true. If the `PUT` itself throws (network drop) or resolves
+non-ok, execution jumps straight to the `catch` block; `start-processing`
+is never called, and no other code path can move that row past
+`status='pending'` on a failed PUT. Checked every case a `PUT` failure can
+occur under, not just the plain fresh-upload path:
+- **Ordinary fresh upload** (no dedup match) — row created `'pending'`,
+  stays `'pending'` on a `PUT` failure. Not `'processing'`.
+- **Dedup "failed match with no file in Storage" fallback**
+  (`upload-url/route.ts`) — resets the existing row to `'pending'` and
+  issues a fresh signed URL for a real `PUT`, identical reasoning to the
+  ordinary case above if that `PUT` also fails.
+- **A genuine duplicate match** (`result.duplicate === true`) — no `PUT`
+  ever happens for this attachment; `upload()` returns successfully with
+  the matched row's real status, so this path can never produce the
+  client's local "upload failed" message in the first place.
+- **`upload-url` itself rejects or errors** — no `mediaItemId` is even
+  captured client-side in that case (rejections happen before or during
+  that response), and if a row was already created server-side before an
+  error (e.g. `generateSignedUploadUrl` throwing after `createMediaItem`
+  succeeded), no signed URL ever reaches the client, so no `PUT` is
+  attempted and the row is later swept to `'failed'` by
+  `sweepStalePendingItems`, above — never `'processing'`.
+In every case, the structural fact holds: `processing` is unreachable
+without a client-confirmed-successful `PUT`, and a client-side "failed"
+message only ever fires when that `PUT` didn't succeed. The instantaneous
+contradiction from the original report is provably impossible under the
+current trigger flow — closed as a side effect of the trigger-ordering fix
+above, no code change needed. (A softer, non-contradictory residual gap
+still exists and is out of scope here: a `PUT` that fails client-side after
+the bytes fully landed in Storage — e.g. the response was lost, not the
+request — leaves a `'pending'` row that `sweepStalePendingItems` recovers
+and silently processes up to `MAX_PENDING_AGE_SECONDS` [120s] later, with
+no update to the chat transcript's already-shown "failed" acknowledgment.
+That's a staleness gap measured in up to two minutes, not an instant
+contradiction, and it's a display lag, not a false statement — the AI's
+chat-transcript reply reacting to the `[MEDIA_UPLOAD_FAILED: ...]` marker
+stays as written (chat history doesn't retroactively edit itself), but the
+attachment's own real status is a separate UI surface (`UploadThumbnail.tsx`,
+the gallery), driven by `chatStore.tsx`'s Realtime subscription/poll on
+`media_items` — that surface does catch up once the sweep processes it.
+Not the bug this section was tracking.)
+
 **Execution lifecycle — why every trigger site wraps the call in `after()`.**
 All four call sites above invoke `processMediaItem` fire-and-forget (they
 respond before the job finishes, since a webhook delivery, a retry click, an
@@ -406,16 +459,28 @@ unchanged for now — it was sized against a multi-second-to-tens-of-seconds
 gap that no longer exists by design, so it's worth revisiting once there's
 real post-fix data, not bundled into this same change.
 
-**`processImage`** (image type): generates a 60s signed download URL, then:
+**`processImage`** (image type): each step that fetches the file gets its
+own freshly-generated 60s signed download URL, generated immediately before
+that step runs — never one URL generated up front and reused across both.
+An earlier version of this pipeline generated a single signed URL and passed
+it to both steps below; this produced a real, confirmed production failure
+(`"Anthropic vision error: 400 ... Unable to download the file. Please
+verify the URL and try again."`) when GPS extraction's own download —
+followed by whatever queueing delay preceded Anthropic actually fetching the
+vision call's URL on its own schedule — ate past the 60s expiry before
+Anthropic's fetch happened. `getSignedUrlOrThrow` (a small shared helper
+that also owns the `MEDIA_URL_FAILED` audit log on signing failure) is
+called twice, independently, once per step:
 1. **GPS extraction** (`extractGpsCoordinates`) — downloads the photo's own
-   bytes off that same signed URL and reads EXIF GPS tags via `exifr.gps()`.
-   Runs first, independent of and never blocking the vision call. No GPS
-   data (the common case — screenshots, downloads, location services off)
-   silently resolves to `{ latitude: null, longitude: null }`, no log; an
-   actual failure (download failure, corrupt EXIF) also degrades to
-   null/null, logged via `console.error` (length/type only, never raw EXIF
-   bytes) — this step can never fail the item.
-2. **Vision analysis** — `callVisionTool<VisionAnalysis>` (see below) asks
+   bytes off its own freshly-signed URL and reads EXIF GPS tags via
+   `exifr.gps()`. Runs first, independent of and never blocking the vision
+   call. No GPS data (the common case — screenshots, downloads, location
+   services off) silently resolves to `{ latitude: null, longitude: null }`,
+   no log; an actual failure (download failure, corrupt EXIF) also degrades
+   to null/null, logged via `console.error` (length/type only, never raw
+   EXIF bytes) — this step can never fail the item.
+2. **Vision analysis** — a second, independently-signed URL, generated
+   immediately before this step — `callVisionTool<VisionAnalysis>` (see below) asks
    Claude Haiku for `caption`/`classification`/`extracted_text`. A
    non-`null` result is used directly; a `null` result (the tool-use call's
    own graceful-degradation edge case) throws
@@ -450,18 +515,24 @@ item); `MEDIA_PROCESS_COMPLETED` logs `gps_found` (presence only, never
 raw coordinates) alongside the usual fields. See `Utilities/Audit.md` for
 the full action list.
 
-**`processAudio`** (audio type): a 1-hour signed URL (Deepgram batch queues
-can be slow), then a Deepgram nova-3 batch transcription call. Separate
-from the live in-chat voice recording at `/api/transcribe` (nova-2,
-browser `MediaRecorder`) — do not conflate the two. Classification is a
-filename heuristic (`interview_recording` vs `voice_memo`), not a model
-call.
+**`processAudio`** (audio type): a single 1-hour signed URL (Deepgram batch
+queues can be slow), passed once to a single Deepgram nova-3 batch
+transcription call — not the reused-URL-across-sequential-fetches pattern
+`processImage` had, since there's only one fetch here at all, and its 3600s
+expiry was already sized specifically for this step's own queue-delay risk.
+Separate from the live in-chat voice recording at `/api/transcribe`
+(nova-2, browser `MediaRecorder`) — do not conflate the two. Classification
+is a filename heuristic (`interview_recording` vs `voice_memo`), not a
+model call.
 
-**`processDocument`** (document type): downloads the file, calls
-`extractText` (`services/content/assets.ts` — Anthropic document API for
-PDF, mammoth for DOCX, plain Buffer read for TXT; only the PDF path emits
-AI audit events), then a second, separate Haiku call classifies the
-extracted text in one word via `callTextTool` (see below) — a best-effort
+**`processDocument`** (document type): a single 60s signed URL, downloaded
+once and passed to `extractText` (`services/content/assets.ts` — Anthropic
+document API for PDF, mammoth for DOCX, plain Buffer read for TXT; only the
+PDF path emits AI audit events) — also not the reused-URL pattern, since
+the signed URL itself is only ever fetched this one time; the classification
+pass below operates on the already-extracted text, not the URL. Then a
+second, separate Haiku call classifies the extracted text in one word via
+`callTextTool` (see below) — a best-effort
 pass: a missing `tool_use` block or a thrown error both fall back to the
 `'document'` default rather than failing the item, same as before this
 call was migrated to tool-use.

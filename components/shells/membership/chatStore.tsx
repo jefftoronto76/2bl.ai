@@ -15,6 +15,7 @@ import { createClient } from '@/services/auth/supabase';
 import type { MediaItem, MediaItemStatus } from '@/services/media/types';
 import type { MediaAttachmentInput } from '@/services/chat/server/types';
 import type { ChatErrorType } from '@/services/chat/ui/v1/types';
+import { titleSourceFromContent } from '@/services/chat/ui/v1/mediaMarkerPatterns';
 import { mergeMediaItem } from './mediaItemMerge';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
@@ -245,7 +246,13 @@ function deriveSessionTitle(visitorName: string | null, messages: Message[]): st
   const name = visitorName?.trim();
   if (name) return name;
   const firstUser = messages.find(m => m.role === 'user');
-  const text = firstUser?.content.trim().replace(/\s+/g, ' ') ?? '';
+  // titleSourceFromContent strips [MEDIA_UPLOAD: ...] and friends before this
+  // ever truncates — a media-only first message (no typed caption) used to
+  // render its title as the raw bracket marker text verbatim, since this is
+  // the perpetual fallback toRecentSession falls back to whenever the DB's
+  // AI-generated title hasn't landed (or never does — see the AI title
+  // fetch below, fire-and-forget with no retry).
+  const text = firstUser ? titleSourceFromContent(firstUser.content).replace(/\s+/g, ' ') : '';
   if (text.length === 0) return 'New conversation';
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 }
@@ -916,7 +923,11 @@ export function ChatProvider({
       aiTitledIdsRef.current.add(id);
       const firstUserMsg = msgs.find(m => m.role === 'user');
       const firstAssistantMsg = msgs.find(m => m.role === 'assistant');
-      const firstUserMessage = firstUserMsg?.content.trim() ?? '';
+      // Stripped of [MEDIA_UPLOAD: ...] and friends before it's sent as the
+      // literal quoted "user message" in the AI title-generation prompt —
+      // raw bracket syntax there is exactly what produced the observed
+      // verbatim-marker title (see deriveSessionTitle's own doc comment).
+      const firstUserMessage = firstUserMsg ? titleSourceFromContent(firstUserMsg.content).trim() : '';
       const firstAssistantText = (firstAssistantMsg?.content ?? '').slice(0, 200).trim();
       if (firstUserMessage) {
         console.log('[heirloom/title] triggered:', id);

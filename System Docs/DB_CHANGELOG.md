@@ -1,5 +1,55 @@
 # DB Changelog
 
+## 2026-08-14 — chat_session_context (generic session-scoped prompt context)
+
+**Status: NOT YET RUN.** Reported by CC alongside `session-context-service`
+(`services/chat/server/session-context.ts`) — logged here so the table
+exists in this doc before it exists in Studio, per standing convention.
+Remove this status line once Jeff runs it.
+
+### Create `chat_session_context` table
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio — pending
+
+**SQL to run:**
+
+```sql
+CREATE TABLE chat_session_context (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id),
+  session_id uuid NOT NULL UNIQUE REFERENCES chat_sessions(id),
+  context_type text NOT NULL,
+  context_ref_id uuid NOT NULL,
+  context_frequency text NOT NULL DEFAULT 'once' CHECK (context_frequency IN ('once', 'every_turn')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_chat_session_context_tenant_id ON chat_session_context(tenant_id);
+```
+
+**Purpose:** Generic "this session has attached context" mechanism — first
+use case is a session started from an empty story getting the story's
+name/description/owner folded into the system prompt on every turn. A
+dedicated table rather than columns on `chat_sessions`, keeping that table
+lean; the `session_id UNIQUE` constraint is the only thing enforcing
+today's 1:1 assumption, so this extends to multiple contexts per session
+later without a redesign. No `CHECK` on `context_type` — matches
+`artifacts.type`'s own precedent, so a new context type ships with zero
+migration.
+
+**Notes:**
+- Unique on `session_id` — one context row per session under today's
+  design.
+- Service code already deploys and runs safely with this table absent —
+  every query against it fails, and both the read side (fail-open) and
+  the write side (fail-closed but non-fatal to session creation) already
+  treat that as "no context." Safe to run before or after the code
+  merges, no coordination required.
+- First (and currently only) `context_type`: `'story'`, resolved via
+  `getStoryById` (`services/crm/stories.ts`).
+
+---
+
 ## 2026-08-10 — artifact_subscribers (artifact-level access grants)
 
 **Documented same-day**, unlike the 2026-08-08 entries below — full DDL
