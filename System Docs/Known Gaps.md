@@ -212,8 +212,9 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   **`StoryAdminPanel` built and mounted — story-admin-panel (2026-08-13),
   closing the gap above.** New `components/shells/membership/v2/
   StoryAdminPanel.tsx`, mounted as a third pane in `ChatHero.tsx` exactly
-  like `MediaGallery`/`MemoryCardView` (same fixed `MEDIA_PANEL_WIDTH`
-  desktop slot, same full-screen mobile overlay treatment, mutually
+  like `MediaGallery`/`MemoryCardView` (same clamped `MEDIA_PANEL_WIDTH`
+  desktop slot — a *preferred* 400px width, not fixed as of PR #379, see
+  `Public Site.md`'s `ChatHero` row — same full-screen mobile overlay treatment, mutually
   exclusive with `openMemory`/`mediaOpen` via the same wrapping-handler
   pattern, not a shared enum). Two real pieces:
   - **Description** — the story's `body` column, editable for the first
