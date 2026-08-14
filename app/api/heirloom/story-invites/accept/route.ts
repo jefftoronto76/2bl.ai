@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Could not resolve user record' }, { status: 500 })
   }
 
-  const result = await acceptStoryInvite(token, user.providerUserId, supabaseUserId, HEIRLOOM_TENANT_ID)
+  const result = await acceptStoryInvite(token, user.providerUserId, supabaseUserId, HEIRLOOM_TENANT_ID, user.name ?? null)
 
   if (!result.ok) {
     console.error('[heirloom/story-invites/accept] acceptStoryInvite failed', {

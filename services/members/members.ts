@@ -184,6 +184,12 @@ export async function linkInvitedMember(
   clerkId: string,
   email: string,
   token?: string | null,
+  /** From Clerk's firstName + lastName (same derivation as syncMember's
+   *  webhook-fallback caller, app/api/webhooks/clerk/route.ts) —
+   *  null/undefined when Clerk has no name on file. Only written onto the
+   *  invited row below when that row's own `name` is currently null —
+   *  never overwrites an existing one. */
+  name?: string | null,
 ): Promise<boolean> {
   console.log('[members] linkInvitedMember — called', {
     clerkId,
@@ -225,7 +231,7 @@ export async function linkInvitedMember(
   console.log('[members] linkInvitedMember — resolved users.id', { clerkId, userId })
 
   // Step 1: token-based lookup (primary). Token is unique — no .ilike needed.
-  let invitedRow: { id: string; tenant_id: string } | null = null
+  let invitedRow: { id: string; tenant_id: string; name: string | null } | null = null
 
   if (!token) {
     console.log('[members] linkInvitedMember — token lookup skipped (no token provided, will try email)', { clerkId, email })
@@ -234,7 +240,7 @@ export async function linkInvitedMember(
   if (token) {
     const { data: tokenRow, error: tokenErr } = await supabase
       .from('members')
-      .select('id, tenant_id')
+      .select('id, tenant_id, name')
       .eq('token', token)
       .eq('status', 'invited')
       .is('used_at', null)
@@ -251,7 +257,7 @@ export async function linkInvitedMember(
         memberId: tokenRow.id,
         tenantId: tokenRow.tenant_id,
       })
-      invitedRow = tokenRow as { id: string; tenant_id: string }
+      invitedRow = tokenRow as { id: string; tenant_id: string; name: string | null }
     } else {
       console.log('[members] linkInvitedMember — token not found or already used, trying email fallback', {
         clerkId,
@@ -264,7 +270,7 @@ export async function linkInvitedMember(
   if (!invitedRow && email) {
     const { data: emailRow, error: findErr } = await supabase
       .from('members')
-      .select('id, tenant_id')
+      .select('id, tenant_id, name')
       .ilike('email', email)
       .eq('status', 'invited')
       .is('used_at', null)
@@ -285,7 +291,7 @@ export async function linkInvitedMember(
         memberId: emailRow.id,
         tenantId: emailRow.tenant_id,
       })
-      invitedRow = emailRow as { id: string; tenant_id: string }
+      invitedRow = emailRow as { id: string; tenant_id: string; name: string | null }
     }
   }
 
@@ -312,6 +318,7 @@ export async function linkInvitedMember(
       source: 'invite',
       used_at: now,
       updated_at: now,
+      ...(name && !invitedRow.name ? { name } : {}),
     })
     .eq('id', memberId)
 

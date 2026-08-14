@@ -103,9 +103,25 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
 
     expect(res.status).toBe(200)
     expect(mockFindUserByClerkId).toHaveBeenCalledWith('clerk-1')
-    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('story-tok', 'clerk-1', 'user-1', 'heirloom-tenant')
+    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('story-tok', 'clerk-1', 'user-1', 'heirloom-tenant', null)
     expect(mockLinkInvitedMember).not.toHaveBeenCalled()
     expect(mockSyncMember).not.toHaveBeenCalled()
+  })
+
+  it('passes the joined first_name/last_name through to acceptStoryInvite as name', async () => {
+    const res = await POST(makeRequest({
+      type: 'user.created',
+      data: {
+        id: 'clerk-1',
+        email_addresses: [{ email_address: 'a@example.com' }],
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        unsafe_metadata: { heirloom_story_invite_token: 'story-tok' },
+      },
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('story-tok', 'clerk-1', 'user-1', 'heirloom-tenant', 'Ada Lovelace')
   })
 
   it('an invalid/expired story-invite token falls through to the existing linkInvitedMember/syncMember cascade', async () => {
@@ -114,8 +130,8 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
     const res = await POST(makeRequest(userCreatedPayload({ heirloom_story_invite_token: 'stale-tok' })))
 
     expect(res.status).toBe(200)
-    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('stale-tok', 'clerk-1', 'user-1', 'heirloom-tenant')
-    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockAcceptStoryInvite).toHaveBeenCalledWith('stale-tok', 'clerk-1', 'user-1', 'heirloom-tenant', null)
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, null)
     expect(mockSyncMember).toHaveBeenCalledTimes(1)
   })
 
@@ -124,8 +140,24 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
 
     expect(res.status).toBe(200)
     expect(mockAcceptStoryInvite).not.toHaveBeenCalled()
-    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, null)
     expect(mockSyncMember).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes the joined first_name/last_name through to linkInvitedMember as name', async () => {
+    const res = await POST(makeRequest({
+      type: 'user.created',
+      data: {
+        id: 'clerk-1',
+        email_addresses: [{ email_address: 'a@example.com' }],
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        unsafe_metadata: {},
+      },
+    }))
+
+    expect(res.status).toBe(200)
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, 'Ada Lovelace')
   })
 
   it('linkInvitedMember stamping an invited row still skips syncMember, unaffected by the new story-invite branch', async () => {
@@ -135,7 +167,7 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
 
     expect(res.status).toBe(200)
     expect(mockAcceptStoryInvite).not.toHaveBeenCalled()
-    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null)
+    expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, null)
     expect(mockSyncMember).not.toHaveBeenCalled()
   })
 })

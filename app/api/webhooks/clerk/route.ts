@@ -179,7 +179,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (storyInviteToken) {
       const user = await findUserByClerkId(clerkUserId)
       const result = user
-        ? await acceptStoryInvite(storyInviteToken, clerkUserId, user.id, HEIRLOOM_TENANT_ID)
+        ? await acceptStoryInvite(storyInviteToken, clerkUserId, user.id, HEIRLOOM_TENANT_ID, name)
         : { ok: false as const, status: 500, error: 'could not resolve users.id after users upsert' }
 
       if (result.ok) {
@@ -210,7 +210,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       // already set; upsert would write 'active' again which is fine, but source and
       // used_at would not be set by syncMember). When false, no invited row matched
       // and syncMember creates a fresh active row as normal.
-      const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken)
+      const linked = await linkInvitedMember(clerkUserId, email ?? '', inviteToken, name)
 
       if (linked) {
         console.log('[webhook/clerk] skipping syncMember — invited row stamped by linkInvitedMember', {
