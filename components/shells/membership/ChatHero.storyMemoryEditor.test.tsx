@@ -99,25 +99,33 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  window.history.pushState({}, '', '/?storyView=story-1');
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  window.history.pushState({}, '', '/');
 });
+
+/** Opens the story pane via the real entry point (Phase 1d,
+ *  real-story-view-1d-entry-point) — a sidebar row click, replacing the
+ *  temporary ?storyView=<id> query param this file used before that
+ *  landed. story-1 has one memory (CROSS_SESSION_MEMORY), so this always
+ *  takes the "open StoryView" branch, never the empty-story new-chat one. */
+async function openStoryPane() {
+  render(
+    <ChatProvider>
+      <ChatHero />
+    </ChatProvider>,
+  );
+  await waitFor(() => expect(screen.getByRole('button', { name: 'A Life in Full' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'A Life in Full' }));
+  await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+}
 
 describe('Story view row-tap-to-editor — through the real ChatHero stack', () => {
   it('tapping a row swaps the story pane to the editor, scoped to the memory\'s OWN session, not the currently open chat', async () => {
-    render(
-      <ChatProvider>
-        <ChatHero />
-      </ChatProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+    await openStoryPane();
 
     fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
 
@@ -128,13 +136,7 @@ describe('Story view row-tap-to-editor — through the real ChatHero stack', () 
   });
 
   it('closing the editor returns to the story list, not closing the whole pane', async () => {
-    render(
-      <ChatProvider>
-        <ChatHero />
-      </ChatProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+    await openStoryPane();
     fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument());
 
@@ -145,16 +147,12 @@ describe('Story view row-tap-to-editor — through the real ChatHero stack', () 
   });
 
   it('closing the story pane itself (not the editor) closes everything', async () => {
-    render(
-      <ChatProvider>
-        <ChatHero />
-      </ChatProvider>,
-    );
+    await openStoryPane();
 
     // "A Life in Full" also appears in the sidebar's own Stories list
     // regardless of whether the pane is open — assert on the pane's own
     // close button instead, which only exists while StoryView is mounted.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close story' }));
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument());

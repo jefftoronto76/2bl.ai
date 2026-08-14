@@ -341,16 +341,30 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   moves (zero or many) already happened. Requires a signed-in account (the
   four anonymous-safe session-scoped memory actions on `PATCH
   /api/sessions/[id]/memories/[memoryId]` are NOT the model here — this
-  writes against a story the caller owns/is subscribed to). **What's still
-  genuinely missing:** `SidebarV2`'s story rows still have an `onClick`
-  affordance already built, but `ChatHero.tsx` still never passes
-  `onSelectStory` — the story view above is reachable today only via a
-  temporary, clearly-commented `?storyView=<id>` query param on
-  `ChatHero.tsx`, not any real click path (deferred to a later phase, real-
-  story-view-1d). No Share/"+"-add-existing-memories/Publish buttons exist
-  in this view either — none of those three has a real production
-  counterpart anywhere yet (only a design-handover mockup has them); each
-  is its own separate, later scoping pass.
+  writes against a story the caller owns/is subscribed to). **Real entry
+  point wired as of the same day (real-story-view-1d-entry-point) —
+  `ChatHero.tsx` now passes `onSelectStory={handleSelectStory}` to both
+  `SidebarV2` instances** (desktop and mobile — the mobile one also
+  dispatches `TOGGLE_SIDEBAR` first to close the overlay, matching the
+  `onMedia` wrapper's existing pattern, since `SidebarV2`'s story row
+  doesn't call `onClose` internally the way its New Chat/session rows do).
+  The temporary `?storyView=<id>` query param (and its mount effect) is
+  gone — replaced outright, not left alongside. `handleSelectStory` checks
+  `GET /api/stories/[id]/memories` on click (there is still no
+  `contentCount`/`memoryCount` field on `Story` anywhere in this codebase —
+  that field only ever existed on the discarded `2026-08-13-story-click-
+  routing` WIP, see the session-context-service entry elsewhere in this
+  file for why that branch was never resumed) and branches: non-empty opens
+  `StoryView`; empty calls the real `newChat()` +
+  `setSessionContextToAttach({ contextType: 'story', contextRefId,
+  contextFrequency: 'every_turn' })` — closing the session-context-service
+  gap documented below. Any check failure (network, non-2xx) defaults to
+  opening `StoryView` rather than silently starting an unrelated chat —
+  `StoryView`'s own already-built error state is the fallback, not a new
+  one. No Share/"+"-add-existing-memories/Publish buttons exist in this
+  view either — none of those three has a real production counterpart
+  anywhere yet (only a design-handover mockup has them); each is its own
+  separate, later scoping pass.
 
   **Story ↔ memory linking, real as of 2026-08-13 (assign-memory-to-story).**
   `artifact_containments` (schema-only since 2026-08-08 — see above) is now
@@ -1884,38 +1898,42 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   no-owner-control auto-greet path decision flagged in the original entry.
   Not scheduled — still a separate, later task.
 
-- **Session-context-service built (2026-08-13) — the generic mechanism
-  landed, but the "click an empty story to start a chat in it" UI flow that
-  would actually exercise it is NOT wired up.** `services/chat/server/
-  session-context.ts` (`getSessionContext`/`attachSessionContext`,
-  `chat_session_context` table — schema DDL reported to Jeff, now live in
-  Studio, see `System Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time
-  wiring (`app/api/sessions/route.ts`), and the client accessor plumbing
-  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) are all
-  built and tested. What's still missing: the actual `SidebarV2` story-row
-  click handler that calls `newChat()` + `setSessionContextToAttach(...)`
-  with `contextFrequency: 'every_turn'` — `onSelectStory`/`onStartStoryChat`
-  remain unwired from `ChatHero.tsx` exactly as documented elsewhere in this
-  file (search "onSelectStory" above).
-  **A related-looking WIP exists on origin (`2026-08-13-story-click-routing`,
-  commit `4b3aa9f9`, checkpointed mid-task, never merged) but does NOT
-  implement this mechanism and should not be resumed as-is:** it wires
-  `onSelectStory` via a completely different approach — a client-only
+- **RESOLVED 2026-08-14 (real-story-view-1d-entry-point) — Session-
+  context-service built (2026-08-13); the "click an empty story to start a
+  chat in it" UI flow that exercises it is now wired too.**
+  `services/chat/server/session-context.ts`
+  (`getSessionContext`/`attachSessionContext`, `chat_session_context`
+  table — schema DDL reported to Jeff, now live in Studio, see `System
+  Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time wiring
+  (`app/api/sessions/route.ts`), and the client accessor plumbing
+  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) landed
+  2026-08-13, already built and tested. The missing piece — the actual
+  `SidebarV2` story-row click handler — is now real: `ChatHero.tsx`'s
+  `handleSelectStory` calls `newChat()` then `setSessionContextToAttach({
+  contextType: 'story', contextRefId: storyId, contextFrequency:
+  'every_turn' })` on the empty-story branch (see the real-story-view entry
+  above for the full branching logic). `onStartStoryChat` (a separate,
+  always-visible per-row icon distinct from the row's own click) remains
+  unwired — out of scope for this pass, which only wired `onSelectStory`.
+  **A related-looking WIP existed on origin (`2026-08-13-story-click-
+  routing`, commit `4b3aa9f9`, checkpointed mid-task, never merged) — it
+  was NOT resumed, deliberately:** it wired `onSelectStory` via a
+  completely different, discarded approach — a client-only
   `storyContextIdRef` used solely to auto-assign a Kept memory back to the
   story, plus a one-time deterministic *chat message* (rendered directly in
   the transcript via plain ReactMarkdown, explicitly NOT XML-delineated by
   that WIP's own doc comment, since raw tags would render as literal broken
-  text there) naming the story/owner. It has no `chat_session_context` row,
+  text there) naming the story/owner. It had no `chat_session_context` row,
   no `attachSessionContext` call, and nothing re-injected on later turns —
-  a one-shot greeting, not persistent every-turn system-prompt context.
-  It also predates and partially overlaps with the real, later, merged
+  a one-shot greeting, not persistent every-turn system-prompt context. It
+  also predated and partially overlapped with the real, later, merged
   memory↔story linking (`assign-memory-to-story`, PR #377, the actual
-  `StoryPicker` UI) — its own auto-assign-on-Keep half is superseded by
-  that. Building the real click-handler wiring is a separate follow-up:
-  reuse the WIP's `ChatHero.tsx` click-routing *entry point* (branching on
-  a story's `contentCount`) if useful, but implement the empty-story branch
-  against the mechanism actually built here, not the WIP's message-
-  injection approach.
+  `StoryPicker` UI) — its own auto-assign-on-Keep half was already
+  superseded by that. Its `contentCount`-branching idea for the click
+  handler was NOT reused either — that field was never rebuilt anywhere
+  (confirmed absent from `services/crm/stories.ts`'s `listStories`); the
+  real click handler checks emptiness for real via `GET /api/stories/[id]/
+  memories` instead (see the real-story-view entry above).
 
 - **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
   the last two open items (PR #380).**
