@@ -26,10 +26,20 @@
  *
  * Re-picking the story the memory is already in is a deliberate no-op:
  * onPick is never called, so the caller never issues a redundant PATCH.
+ *
+ * Trigger button reflects assignment state (remove-memory-from-story,
+ * 2026-08-14): a green filled Check circle when `currentStoryId` resolves
+ * against `stories`, the ordinary accent Plus circle otherwise — same 30px
+ * circle, visual-state only, not a second control (it still opens the same
+ * popover). No Heirloom-scoped "positive"/"success" design token exists
+ * (checked `System Docs/Design System.md` — SBL's `--color-pos` is
+ * SBL-route-scoped only, inert here), so this uses the literal reference
+ * color from the handover directly, matching the arbitrary-hex precedent
+ * already in this codebase (e.g. `BookingCard.tsx`'s `bg-[#2d6a4f]`).
  */
 
 import { useEffect, useState } from 'react'
-import { Check, Plus } from 'lucide-react'
+import { Check, Plus, X } from 'lucide-react'
 import type { Story } from '../v2/types'
 
 export interface StoryPickerProps {
@@ -38,11 +48,21 @@ export interface StoryPickerProps {
   currentStoryId?: string | null
   /** Fired only when the picked story differs from currentStoryId. */
   onPick: (storyId: string) => void
+  /**
+   * Detaches the memory from its current story (remove-memory-from-story,
+   * 2026-08-14). Backs the "Remove from '[Story]'" item that renders at the
+   * top of the popover only while `currentStoryId` is set — the item itself
+   * never renders when there's nothing to remove, so this is safe to pass
+   * unconditionally, same as onPick.
+   */
+  onRemove: () => void
 }
 
-export function StoryPicker({ stories, currentStoryId, onPick }: StoryPickerProps) {
+export function StoryPicker({ stories, currentStoryId, onPick, onRemove }: StoryPickerProps) {
   const [open, setOpen] = useState(false)
   const close = () => setOpen(false)
+
+  const currentStory = currentStoryId ? stories.find((s) => s.id === currentStoryId) : undefined
 
   useEffect(() => {
     if (!open) return
@@ -60,17 +80,27 @@ export function StoryPicker({ stories, currentStoryId, onPick }: StoryPickerProp
     onPick(storyId)
   }
 
+  const handleRemove = () => {
+    close()
+    onRemove()
+  }
+
+  const triggerLabel = currentStoryId ? `In "${currentStory?.name ?? 'a story'}" — click to change or remove` : 'Add to a story'
+
   return (
     <div className="relative shrink-0">
       <button
         type="button"
-        aria-label="Add to a story"
-        title="Add to a story"
+        aria-label={triggerLabel}
+        title={triggerLabel}
         aria-expanded={open}
+        data-testid="story-picker-trigger"
         onClick={() => (open ? close() : setOpen(true))}
-        className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border-none bg-accent text-background transition-opacity hover:opacity-90"
+        className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border-none text-background transition-opacity hover:opacity-90 ${
+          currentStoryId ? 'bg-[#2E7D4F]' : 'bg-accent'
+        }`}
       >
-        <Plus size={16} aria-hidden />
+        {currentStoryId ? <Check size={17} strokeWidth={2.4} aria-hidden /> : <Plus size={16} aria-hidden />}
       </button>
 
       {open && (
@@ -79,6 +109,16 @@ export function StoryPicker({ stories, currentStoryId, onPick }: StoryPickerProp
               popover below, matching BlockInserter's own backdrop exactly. */}
           <div onClick={close} aria-hidden="true" data-testid="story-picker-backdrop" className="fixed inset-0 z-10" />
           <div className="absolute right-0 top-full z-20 mt-1.5 max-w-[220px] rounded-[11px] border border-border bg-surface-2 p-1.5 shadow-[0_10px_28px_rgba(0,0,0,0.18)]">
+            {currentStoryId && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                className="mb-0.5 flex w-full min-w-[140px] items-center gap-1.5 rounded-lg px-2 py-1.5 text-left font-body text-xs text-text-primary transition-colors hover:bg-surface hover:text-red-400"
+              >
+                <X size={13} className="shrink-0" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{`Remove from "${currentStory?.name ?? 'this story'}"`}</span>
+              </button>
+            )}
             {stories.length === 0 ? (
               <span className="block max-w-[160px] px-1 py-1 font-body text-xs text-text-muted">No stories yet.</span>
             ) : (

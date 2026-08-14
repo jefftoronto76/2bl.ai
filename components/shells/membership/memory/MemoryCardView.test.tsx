@@ -41,6 +41,7 @@ function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionIm
   const onStub = vi.fn();
   const onReviseBlocks = vi.fn();
   const onAssignStory = vi.fn();
+  const onRemoveFromStory = vi.fn();
   const utils = render(
     <MemoryCardView
       memory={memory}
@@ -52,9 +53,10 @@ function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionIm
       sessionImages={sessionImages}
       stories={stories}
       onAssignStory={onAssignStory}
+      onRemoveFromStory={onRemoveFromStory}
     />,
   );
-  return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, onAssignStory, ...utils };
+  return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, onAssignStory, onRemoveFromStory, ...utils };
 }
 
 /** Clicks the inserter at `slotIndex` among all "Add a block" slots, then "Add text"/"Add image" within its popover. */
@@ -128,6 +130,7 @@ describe('MemoryCardView — header', () => {
         sessionImages={[]}
         stories={[]}
         onAssignStory={vi.fn()}
+        onRemoveFromStory={vi.fn()}
       />,
     );
     const input = screen.getByRole('textbox', { name: 'Memory title' });
@@ -145,6 +148,7 @@ describe('MemoryCardView — header', () => {
         sessionImages={[]}
         stories={[]}
         onAssignStory={vi.fn()}
+        onRemoveFromStory={vi.fn()}
       />,
     );
     expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('A Different Memory');
@@ -164,6 +168,14 @@ describe('MemoryCardView — header', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to Summer at the Lake' }));
     expect(onAssignStory).toHaveBeenCalledWith('story-1');
+  });
+
+  it('when the memory already belongs to a story, the trigger shows the checkmark state and a "Remove from" item is available (remove-memory-from-story, 2026-08-14)', () => {
+    const { onRemoveFromStory } = renderCard({ storyId: 'story-1' }, [], [{ id: 'story-1', name: 'Summer at the Lake' }]);
+    const trigger = screen.getByRole('button', { name: 'In "Summer at the Lake" — click to change or remove' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
+    expect(onRemoveFromStory).toHaveBeenCalledTimes(1);
   });
 
   it('Close fires onClose', () => {

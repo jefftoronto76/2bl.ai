@@ -388,6 +388,53 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `listStoryCollaborators` doesn't do yet, a distinct piece of work from
   the linkage existing at all.
 
+  **Remove-from-story + trigger assignment state, real as of
+  remove-memory-from-story (2026-08-14).** Closes the gap `Design
+  Handovers/ Aug 2026 Atomic Updates/New Story Label on Memories/README.md`
+  flagged (its own "Known unknowns" section was stale — written before
+  `storyId`/`StoryPicker` existed — corrected in place rather than trusted
+  as-is; that file's own investigation before this pass also confirmed its
+  "Featured in [Story]" label ask was already shipped, as part of
+  session-memories-panel, 2026-08-14, PR #385 — a coincidence of timing, not
+  something this pass built). Three pieces: (1) `StoryPicker.tsx`'s trigger
+  button now reflects assignment state — a green filled Check circle
+  (`bg-[#2E7D4F]`, the handover's own reference color; no Heirloom-scoped
+  "positive"/"success" design token exists to prefer instead — checked
+  `System Docs/Design System.md`, SBL's `--color-pos` is SBL-route-scoped
+  only) when `currentStoryId` resolves against `stories`, the ordinary
+  accent Plus circle otherwise — visual-state only, still opens the same
+  popover, not a second control. (2) `removeMemoryFromStory`
+  (`services/crm/story-containments.ts`) + a new `remove_story` action on
+  `PATCH /api/sessions/[id]/memories/[memoryId]` (same signed-in gate
+  `assign_story` already has) delete the memory's current containment row —
+  owner-scoped on the memory only, **unlike** `assignMemoryToStory`, this
+  does **not** check `hasStoryAccess`: detaching a memory from a story
+  doesn't depend on whether the caller can still reach that story. Not
+  finding a containment row is a no-op success, not a 404 — removing an
+  already-unassigned memory is the caller's intended end state either way.
+  New `AuditAction.MEMORY_REMOVED_FROM_STORY`. (3) `StoryPicker.tsx` gained a
+  "Remove from '[Story]'" item at the top of its popover, rendered only
+  while `currentStoryId` is set — same single-click-no-confirm posture the
+  existing story-assign items already have. `MemoryCardView.tsx` gained a
+  new required `onRemoveFromStory: () => void` prop, threaded from **all
+  three** real production callers — not the two the task briefing for this
+  pass assumed (`MemoryCardView.tsx` + `MemoryCard.tsx`'s
+  `MemorySavedReceipt`): `MemorySavedReceipt` has never had a real
+  `onAssignStory` wiring to mirror (its own "+" is a separate,
+  still-intentionally-stubbed control — see the Photo Bookmark entry below
+  for where that stub was added). The three real callers are `ChatHero.tsx`
+  (both the mobile full-screen and desktop resizable-pane `MemoryCardView`
+  instances — one component, two render sites) and `StoryMemoryEditor.tsx`
+  (Real Story View's own cross-session-safe editor, a third caller this
+  pass found while wiring the new required prop that isn't mentioned
+  anywhere in this handover's own text). All three now call
+  `memories.removeFromStory(memoryId)` (new method on
+  `services/chat/ui/v1/useMemories.ts`'s returned hook, PATCH + optimistic
+  local `storyId: null`), each with its own "Removed from X" toast/flash
+  copy sourced from the memory's PRIOR `storyId` captured before the await,
+  mirroring `handleAssignMemoryToStory`'s existing "Added"/"Moved" pattern
+  exactly.
+
   **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
   `invite` is no longer a kebab item at all (it was buried and dead) —
   `SidebarV2` now renders a dedicated per-story-row invite icon

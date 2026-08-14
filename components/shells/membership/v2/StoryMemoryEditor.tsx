@@ -102,6 +102,13 @@ export function StoryMemoryEditor({ memoryId, sessionId, stories, onClose, onFla
     onFlash(wasAlreadyInAStory ? `Moved to ${story?.name ?? 'story'}` : `Added to ${story?.name ?? 'story'}`);
   };
 
+  const handleRemoveFromStory = async () => {
+    if (!memory) return;
+    const story = stories.find((s) => s.id === memory.storyId);
+    await memories.removeFromStory(memory.id);
+    onFlash(`Removed from ${story?.name ?? 'story'}`);
+  };
+
   if (!memories.isLoaded) {
     return (
       <div className="flex items-center justify-center h-full bg-background text-text-muted">
@@ -142,6 +149,7 @@ export function StoryMemoryEditor({ memoryId, sessionId, stories, onClose, onFla
         sessionImages={sessionImages}
         stories={stories}
         onAssignStory={handleAssignStory}
+        onRemoveFromStory={handleRemoveFromStory}
       />
       <ConfirmDeleteModal
         item={pendingRemove ? { target: 'memory', id: memory.id, title: memory.title } : null}

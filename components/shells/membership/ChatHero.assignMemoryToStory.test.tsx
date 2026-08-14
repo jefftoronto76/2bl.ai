@@ -97,19 +97,30 @@ function makeFetchMock(memory: ReturnType<typeof memoryFixture>) {
 
 // MessageList's own in-transcript MemorySavedReceipt (MemoryCard.tsx) now
 // has its OWN real StoryPicker too (2026-08-14) — the exact same component,
-// same "Add to a story" title/aria-label, as MemoryCardView.tsx's panel
-// header "+". With both mounted side by side (the third pane never unmounts
-// the transcript behind it), a bare getByRole/getByTitle would find two
+// same stable testid, as MemoryCardView.tsx's panel header trigger. With
+// both mounted side by side (the third pane never unmounts the transcript
+// behind it), a bare getByRole/getByTitle/getByTestId would find two
 // matches. Scoped to the third pane's own data-testid to disambiguate —
-// MemorySavedReceipt's identical-looking "+" is covered separately by
-// ChatHero.receiptAssignStory.test.tsx.
+// MemorySavedReceipt's identical-looking trigger is covered separately by
+// ChatHero.receiptAssignStory.test.tsx (and ChatHero.receiptRemoveFromStory.test.tsx).
+// Targeted by StoryPicker's own stable testid, not title/label text, even
+// within that scope — the trigger's accessible name changes with assignment
+// state (Plus "Add to a story" vs. checkmark 'In "X" — click to change or
+// remove', remove-memory-from-story, 2026-08-14), which a title/label query
+// would break on for one state or the other.
 async function openPanelAndPicker() {
   await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
   fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
   const panel = within(screen.getByTestId('third-pane-panel'));
-  fireEvent.click(panel.getByTitle('Add to a story'));
-  await waitFor(() => expect(panel.getByRole('button', { name: /Summer at the Lake/ })).toBeInTheDocument());
+  fireEvent.click(panel.getByTestId('story-picker-trigger'));
+  // "The Family Farm" never appears in the trigger's own label or the new
+  // "Remove from '[Story]'" item (only the CURRENT story's name would), so
+  // this stays unambiguous whether the memory starts unassigned or already
+  // in "Summer at the Lake" — unlike matching on "Summer at the Lake"
+  // itself, which both the checkmark trigger's label and the remove item's
+  // text now also contain once a memory is already in that story.
+  await waitFor(() => expect(panel.getByRole('button', { name: /The Family Farm/ })).toBeInTheDocument());
 }
 
 let fetchMock: ReturnType<typeof makeFetchMock>;

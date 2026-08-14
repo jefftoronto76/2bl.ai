@@ -209,6 +209,77 @@ export async function assignMemoryToStory(
 }
 
 /**
+ * Removes a memory from its current story, if any — remove-memory-from-
+ * story, 2026-08-14 (StoryPicker's new "Remove from '[Story]'" item). Owner-
+ * scoped on the memory only, the exact same access check assignMemoryToStory
+ * runs before its own write — no hasStoryAccess check here, unlike assign:
+ * detaching a memory from a story doesn't depend on whether the caller can
+ * still reach that story (a subscriber revoked from a story after adding
+ * memories to it should still be able to pull their own memory back out).
+ * Not finding a containment row is a no-op success, not a 404 — removing an
+ * already-unassigned memory is exactly the caller's intended end state,
+ * whether or not there was a row to delete.
+ */
+export async function removeMemoryFromStory(
+  tenantId: string,
+  userId: string,
+  memoryId: string,
+): Promise<StoryContainmentResult<null>> {
+  const supabase = getAdminClient()
+
+  const { data: memoryRow, error: memoryErr } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('id', memoryId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', 'memory')
+    .is('discarded_at', null)
+    .maybeSingle()
+
+  if (memoryErr) {
+    console.error('[story-containments] remove — memory lookup failed:', memoryErr.message)
+    return { ok: false, status: 500, error: memoryErr.message }
+  }
+  if (!memoryRow) {
+    return { ok: false, status: 404, error: 'Memory not found' }
+  }
+
+  const { error: deleteErr } = await supabase
+    .from('artifact_containments')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('child_artifact_id', memoryId)
+
+  if (deleteErr) {
+    console.error('[story-containments] remove — delete containment failed:', deleteErr.message)
+    void logEvent({
+      action: AuditAction.MEMORY_REMOVED_FROM_STORY,
+      tenant_id: tenantId,
+      actor_id: userId,
+      actor_type: 'user',
+      target_type: 'memory',
+      target_id: memoryId,
+      outcome: 'failure',
+      metadata: { error_detail: deleteErr.message },
+    })
+    return { ok: false, status: 500, error: deleteErr.message }
+  }
+
+  console.log('[story-containments] removed memory from story:', { memoryId })
+  void logEvent({
+    action: AuditAction.MEMORY_REMOVED_FROM_STORY,
+    tenant_id: tenantId,
+    actor_id: userId,
+    actor_type: 'user',
+    target_type: 'memory',
+    target_id: memoryId,
+    outcome: 'success',
+  })
+  return { ok: true, data: null }
+}
+
+/**
  * Resolves the storyId (parent_artifact_id) each of the given memory ids is
  * currently contained in, if any — one query, keyed by child_artifact_id.
  * Backs listMemories' per-row storyId field (services/crm/memories.ts). A

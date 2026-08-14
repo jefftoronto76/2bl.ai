@@ -150,6 +150,9 @@ export const AuditAction = {
   // first real write against artifact_containments; see
   // services/crm/story-containments.ts's assignMemoryToStory.
   MEMORY_ASSIGNED_TO_STORY: 'memory.assigned_to_story',
+  // Removing a memory from its story (remove-memory-from-story, 2026-08-14)
+  // — see services/crm/story-containments.ts's removeMemoryFromStory.
+  MEMORY_REMOVED_FROM_STORY: 'memory.removed_from_story',
   // Reordering a story's memories (real-story-view-1c-reorder, 2026-08-14)
   // — logged once per move, metadata carries the full renumbered position
   // list; see services/crm/story-containments.ts's moveMemoryInStory.

@@ -18,7 +18,7 @@ vi.mock('@/services/audit', () => ({
   logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 
-import { assignMemoryToStory, getStoryIdsForMemories, getMemoriesForStory, moveMemoryInStory } from './story-containments'
+import { assignMemoryToStory, removeMemoryFromStory, getStoryIdsForMemories, getMemoriesForStory, moveMemoryInStory } from './story-containments'
 
 type Result = { data: unknown; error: unknown }
 
@@ -229,6 +229,87 @@ describe('assignMemoryToStory', () => {
     if (!result.ok) expect(result.status).toBe(500)
     expect(logEventMock).toHaveBeenCalledWith(
       expect.objectContaining({ action: AuditAction.MEMORY_ASSIGNED_TO_STORY, outcome: 'failure' }),
+    )
+  })
+})
+
+describe('removeMemoryFromStory', () => {
+  it('memory owned by the caller, has a containment row — deletes it and logs success', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [MEMORY_ROW],
+      artifact_containments: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await removeMemoryFromStory('tenant-1', 'user-owner', 'mem-1')
+
+    expect(result.ok).toBe(true)
+    const deleteCall = calls.artifact_containments.find(c => c.op === 'delete')
+    expect(deleteCall).toBeDefined()
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.MEMORY_REMOVED_FROM_STORY,
+        target_id: 'mem-1',
+        outcome: 'success',
+      }),
+    )
+  })
+
+  it('memory owned by the caller, no existing containment row — still a success, not a 404 (removing an already-unassigned memory is a no-op)', async () => {
+    const { client } = makeClient({
+      artifacts: [MEMORY_ROW],
+      artifact_containments: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await removeMemoryFromStory('tenant-1', 'user-owner', 'mem-1')
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('never checks story access — removal is owner-scoped on the memory only, unlike assign', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [MEMORY_ROW],
+      artifact_containments: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    await removeMemoryFromStory('tenant-1', 'user-owner', 'mem-1')
+
+    // Only one artifacts lookup happened (the memory itself) — no second
+    // call for a story row, unlike assignMemoryToStory's hasStoryAccess.
+    expect(calls.artifacts).toHaveLength(1)
+  })
+
+  it('404s and never touches artifact_containments when the memory does not belong to this tenant/user', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await removeMemoryFromStory('tenant-1', 'user-1', 'mem-missing')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Memory not found')
+    }
+    expect(calls.artifact_containments).toBeUndefined()
+  })
+
+  it('500s and logs a failure when the delete itself errors', async () => {
+    const { client } = makeClient({
+      artifacts: [MEMORY_ROW],
+      artifact_containments: [{ data: null, error: { message: 'delete failed' } }],
+    })
+    adminHolder.client = client
+
+    const result = await removeMemoryFromStory('tenant-1', 'user-owner', 'mem-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.MEMORY_REMOVED_FROM_STORY, outcome: 'failure' }),
     )
   })
 })

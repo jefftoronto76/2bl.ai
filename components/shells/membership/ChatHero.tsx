@@ -515,6 +515,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     showToast(wasAlreadyInAStory ? `Moved to ${story?.name ?? 'story'}` : `Added to ${story?.name ?? 'story'}`);
   }, [stories, memories, showToast]);
 
+  // "Remove from '[Story]'" on StoryPicker — remove-memory-to-story,
+  // 2026-08-14: PATCH .../memories/[memoryId] action: 'remove_story'
+  // (removeMemoryFromStory, services/crm/story-containments.ts) via
+  // memories.removeFromStory. Toast names the story being left, captured
+  // before the await (memories.removeFromStory's own optimistic update
+  // clears memory.storyId locally as soon as it resolves).
+  const handleRemoveMemoryFromStory = useCallback(async (memory: MemoryRow) => {
+    const story = stories.find((s) => s.id === memory.storyId);
+    await memories.removeFromStory(memory.id);
+    showToast(`Removed from ${story?.name ?? 'story'}`);
+  }, [stories, memories, showToast]);
+
   // Real persistence (2026-08-09) — POST /api/stories (services/crm/
   // stories.ts's createStory, an artifacts insert type='story'), replacing
   // the local-only crypto.randomUUID() row this used to build. On success,
@@ -926,6 +938,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                   sessionImages={sessionImages}
                   stories={stories}
                   onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
+                  onRemoveFromStory={() => handleRemoveMemoryFromStory(liveOpenMemory)}
                 />
               )}
             </div>
@@ -1083,6 +1096,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 sessionImages={sessionImages}
                 stories={stories}
                 onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
+                onRemoveFromStory={() => handleRemoveMemoryFromStory(liveOpenMemory)}
               />
             )}
             {mediaOpen && (

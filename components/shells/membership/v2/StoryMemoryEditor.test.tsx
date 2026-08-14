@@ -146,4 +146,28 @@ describe('StoryMemoryEditor', () => {
 
     await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Added to A Life in Full'));
   });
+
+  it('removing from a story sends the remove_story PATCH and flashes "Removed from X" (remove-memory-from-story, 2026-08-14)', async () => {
+    const fetchMock = makeFetchMock({
+      'GET /api/sessions/sess-a/memories': () => jsonResponse({ memories: [{ ...MEMORY, storyId: 'story-1' }] }),
+      'PATCH /api/sessions/sess-a/memories/mem-1': () => jsonResponse({ ok: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onFlash = vi.fn();
+
+    render(<StoryMemoryEditor memoryId="mem-1" sessionId="sess-a" stories={STORIES} onClose={vi.fn()} onFlash={onFlash} />);
+    await waitFor(() => expect(screen.getByLabelText('Memory title')).toHaveValue('The Lake House'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'In "A Life in Full" — click to change or remove' }));
+    const removeItem = await screen.findByRole('button', { name: 'Remove from "A Life in Full"' });
+    fireEvent.click(removeItem);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/sessions/sess-a/memories/mem-1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ action: 'remove_story' }) }),
+      ),
+    );
+    await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Removed from A Life in Full'));
+  });
 });
