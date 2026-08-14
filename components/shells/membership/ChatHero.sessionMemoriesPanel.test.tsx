@@ -178,6 +178,33 @@ describe('Session memories panel — desktop', () => {
     expect(screen.queryByRole('heading', { name: 'Memories from this chat' })).toBeNull();
   });
 
+  it('does not leak the previous session\'s rows across a New Chat while the panel stays open', async () => {
+    // Regression coverage: useMemories doesn't clear its `memories` array
+    // when sessionId changes (it only resets loadedForSessionId — see that
+    // hook's own doc comment) — and New Chat doesn't close this panel
+    // (nothing in ChatHero resets sessionMemoriesOpen on a session change,
+    // by design — sessionMemoriesOpen isn't part of the reciprocal-close
+    // wiring that runs on session switches). Without ChatHero.tsx's own
+    // currentSessionMemories filter (session_id === state.sessionId), the
+    // panel would keep showing "The Lake House" under a brand-new,
+    // memory-less chat.
+    await renderReady();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Memories from this chat' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Memories from this chat' })).toBeInTheDocument());
+
+    const panelBefore = within(screen.getByTestId('third-pane-panel'));
+    expect(panelBefore.getByText('The Lake House')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+
+    await waitFor(() => {
+      const panel = within(screen.getByTestId('third-pane-panel'));
+      expect(panel.queryByText('The Lake House')).toBeNull();
+      expect(panel.getByText('No memories yet')).toBeInTheDocument();
+    });
+  });
+
   it('force-collapses the sidebar rail while open, and restores it on close', async () => {
     await renderReady();
     const aside = document.querySelector('aside');

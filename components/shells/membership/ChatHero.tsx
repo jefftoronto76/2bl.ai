@@ -150,6 +150,20 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // copy of the same server state.
   const memories = useMemories(state.sessionId);
 
+  // SessionMemoriesPanel's own list — filtered to the ACTIVE session, not
+  // memories.memories verbatim. useMemories doesn't clear its array when
+  // sessionId changes (it only resets loadedForSessionId, see that hook's
+  // own doc comment on isLoaded) — so switching sessions, or hitting New
+  // Chat (sessionId -> null), would otherwise leave the previous session's
+  // rows on screen under "this session" until the new fetch resolves, or
+  // indefinitely for a brand-new chat with no sessionId to ever fetch for.
+  // Every MemoryRow carries its own session_id, so filtering here is a pure
+  // client-side guard against that race — no extra fetch, no extra state.
+  const currentSessionMemories = useMemo(
+    () => memories.memories.filter((m) => m.session_id === state.sessionId),
+    [memories.memories, state.sessionId],
+  );
+
   // Memory panel (memory-panel-layout plan, Stages A-E desktop; Stage F
   // 2026-08-09 adds mobile as a full-screen overlay — see the render guards
   // below). `openMemory` is which anchor is open (kept even if the
@@ -838,7 +852,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             />
             <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
               <SessionMemoriesPanel
-                memories={memories.memories}
+                memories={currentSessionMemories}
                 stories={stories}
                 onClose={() => setSessionMemoriesOpen(false)}
                 onOpen={handleOpenMemory}
@@ -1028,7 +1042,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             )}
             {sessionMemoriesOpen && (
               <SessionMemoriesPanel
-                memories={memories.memories}
+                memories={currentSessionMemories}
                 stories={stories}
                 onClose={() => setSessionMemoriesOpen(false)}
                 onOpen={handleOpenMemory}
