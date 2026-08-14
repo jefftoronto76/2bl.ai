@@ -258,9 +258,13 @@ export function InviteCollaboratorsModal({
                 </span>
                 <span className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[10.5px] tracking-[0.02em] bg-accent/15 text-accent border border-accent/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                  {/* memoryCount is undefined (not 0) until story <-> memory
-                      linking (artifact_containments) is wired — see
-                      System Docs/Known Gaps.md. Never fabricate a count. */}
+                  {/* memoryCount is undefined (not 0) — story <-> memory
+                      linking is real now (artifact_containments, see
+                      services/crm/story-containments.ts), but
+                      listStoryCollaborators doesn't compute a per-
+                      collaborator count from it yet. See v2/types.ts's own
+                      doc comment and System Docs/Known Gaps.md. Never
+                      fabricate a count. */}
                   {`Joined ${c.joinedDate}`}
                   {c.memoryCount != null && ` · ${c.memoryCount} ${c.memoryCount === 1 ? 'memory' : 'memories'}`}
                 </span>

@@ -358,15 +358,31 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setOpenMemory(null);
   }, [memories, bumpMemoryCount]);
 
-  // "+" / "Talk about this" / "Use as a base" — none have any backend
+  // "Talk about this" / "Use as a base" — neither has any backend
   // implementation in this codebase yet (see MemoryCardView.tsx's own doc
   // comment). Same shared toast every other not-yet-built type-specific
   // memory action already uses (MemoryCard.tsx's kind.extra buttons) —
   // visible, non-silent feedback rather than a button that looks live but
-  // does nothing.
+  // does nothing. ("+" used to share this stub too — now real, see
+  // handleAssignMemoryToStory below.)
   const handleMemoryStub = useCallback((message: string) => {
     showToast(message);
   }, [showToast]);
+
+  // "+" on MemoryCardView — real now (assign-memory-to-story, 2026-08-13):
+  // PATCH .../memories/[memoryId] action: 'assign_story'
+  // (assignMemoryToStory, services/crm/story-containments.ts) via
+  // memories.assignToStory. Toast copy distinguishes first assignment
+  // ("Added to X") from reassignment ("Moved to X") using the memory's own
+  // PRIOR storyId, captured before the await — re-picking the story a
+  // memory is already in never reaches this handler at all (StoryPicker's
+  // own no-op guard skips calling onAssignStory in that case).
+  const handleAssignMemoryToStory = useCallback(async (memory: MemoryRow, storyId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const wasAlreadyInAStory = !!memory.storyId;
+    await memories.assignToStory(memory.id, storyId);
+    showToast(wasAlreadyInAStory ? `Moved to ${story?.name ?? 'story'}` : `Added to ${story?.name ?? 'story'}`);
+  }, [stories, memories, showToast]);
 
   // Real persistence (2026-08-09) — POST /api/stories (services/crm/
   // stories.ts's createStory, an artifacts insert type='story'), replacing
@@ -750,6 +766,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                   onStub={handleMemoryStub}
                   onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
                   sessionImages={sessionImages}
+                  stories={stories}
+                  onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
                 />
               )}
             </div>
@@ -868,6 +886,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onStub={handleMemoryStub}
                 onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
                 sessionImages={sessionImages}
+                stories={stories}
+                onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
               />
             )}
             {mediaOpen && (

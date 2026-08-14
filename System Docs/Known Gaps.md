@@ -317,15 +317,41 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   with real creates/deletes, replacing the old ephemeral
   `crypto.randomUUID()` local-only rows.
 
-  **Two further relationships were explicitly deferred, not built:**
-  story ↔ memory (via `artifact_containments`, a self-referencing
-  `artifacts` join table that's been schema-only and unreferenced by any
-  code since 2026-08-08 — still true after this pass) and story ↔ media
-  (via `media_items.story_id`, a column that already exists and is still
-  always null). Selecting into a story's own view is also still a no-op —
-  `SidebarV2`'s story rows have an `onClick` affordance already built, but
-  `ChatHero.tsx` never passes `onSelectStory`, and there is no story view
-  to select into yet.
+  **One relationship remains explicitly deferred, not built:** story ↔
+  media (via `media_items.story_id`, a column that already exists and is
+  still always null). Story ↔ memory is real now — see "Story ↔ memory
+  linking, real as of 2026-08-13" below. Selecting into a story's own view
+  is also still a no-op — `SidebarV2`'s story rows have an `onClick`
+  affordance already built, but `ChatHero.tsx` never passes
+  `onSelectStory`, and there is no story view to select into yet.
+
+  **Story ↔ memory linking, real as of 2026-08-13 (assign-memory-to-story).**
+  `artifact_containments` (schema-only since 2026-08-08 — see above) is now
+  wired: `services/crm/story-containments.ts`'s `assignMemoryToStory`
+  writes it, via a new `assign_story` action on `PATCH
+  /api/sessions/[id]/memories/[memoryId]`. Sequential delete-then-insert,
+  not an RPC — the existing `publish_compiled_prompt` RPC
+  (`services/prompt/compile.ts`) solves a genuinely harder cross-request
+  exclusivity problem this doesn't have; this instead follows
+  `revokeStoryCollaborator`/`acceptStoryInvite`'s (`services/crm/
+  story-invites.ts`) own plain-sequential-write precedent. Single-story-
+  per-memory is an application-layer rule only — `artifact_containments`'s
+  unique constraint is on the pair `(parent_artifact_id,
+  child_artifact_id)`, not `child_artifact_id` alone, so the schema stays
+  genuinely many-to-many; a future multi-story-per-memory UI would need no
+  schema change, only a different application rule. The target story must
+  be accessible to the caller — owned OR subscribed, reusing `listStories`'
+  own access shape — not owner-only, so a collaborator can add their own
+  memories to a story they were invited into. UI: `MemoryCardView.tsx`'s
+  "+" (previously a "coming soon" stub) now opens `StoryPicker.tsx`, a
+  popover matching `BlockCanvas.tsx`'s `BlockInserter` dismissal mechanics
+  exactly (backdrop + Escape). **Still not built:** a per-collaborator
+  memory count in `InviteCollaboratorsModal.tsx`'s roster — the design
+  mockup's "Joined `[date]` · `N` memories" still shows no `N` (see the
+  "roster gap" paragraph below); computing it needs a `member_id` ->
+  `user_id` -> `memories.user_id` -> `artifact_containments` join
+  `listStoryCollaborators` doesn't do yet, a distinct piece of work from
+  the linkage existing at all.
 
   **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
   `invite` is no longer a kebab item at all (it was buried and dead) —
@@ -416,12 +442,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   scoped the same way create/reset already are. **Still not real: a memory
   count per collaborator.** The design reference's mockup shows "Joined
   `[date]` · `N` memories" — this codebase has no way to compute the `N`
-  yet, since it depends on the still-unbuilt story ↔ memory relationship
-  (`artifact_containments`, called out as unwired in "Real story creation
-  and persistence" above and unchanged by this pass). Shipped as "Joined
+  yet. Story ↔ memory linking itself is real now (`artifact_containments`,
+  wired 2026-08-13 — see "Story ↔ memory linking, real as of 2026-08-13"
+  above), but `listStoryCollaborators` doesn't join it per-collaborator
+  yet, so the gap here is narrower than it was: the relationship exists,
+  the aggregation over it doesn't. Shipped as "Joined
   `[date]`" alone rather than fabricating a count; `Collaborator.memoryCount`
-  is `number | undefined` (undefined ≠ 0) so a future wiring of
-  `artifact_containments` has a field ready without another prop-shape
+  is `number | undefined` (undefined ≠ 0) so a future per-collaborator
+  join has a field ready without another prop-shape
   change. `Collaborator.relationship` is also now optional and only
   rendered when present — the real `members` table has no relationship
   column, and the design mockup's "Daughter"/"Brother" values are sample
@@ -1102,14 +1130,15 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     Offered is now a prompt-instructions + chip-UI task on Heirloom's own
     compiled prompt, not a blocked one.
   Also not in this pass: the story-linking concept entirely — a memory does
-  not require a story to be saved, and when story-linking is eventually
-  built it should be many-to-many (a memory connecting to more than one
-  thing), not a single column on `artifacts`. (Stories themselves are real
+  not require a story to be saved. (Stories themselves are real
   now, as of 2026-08-09 — see "Real story creation and persistence" above
   — but still via `artifacts.type='story'`, not a dedicated `stories`
-  table; this paragraph's "many-to-many, not a single column" guidance is
-  about the still-unbuilt memory↔story link, `artifact_containments`, and
-  is unaffected by that.)
+  table. Story-linking itself is real now too, as of 2026-08-13 — see
+  "Story ↔ memory linking, real as of 2026-08-13" above — genuinely
+  many-to-many at the schema level via `artifact_containments`'s
+  `(parent_artifact_id, child_artifact_id)` pair constraint, with
+  single-story-per-memory enforced only at the application layer, exactly
+  as this paragraph anticipated.)
   - **Anonymous visitors get a dead-end "account required" failure on
     bookmark — no path forward to actually create one.** Fixed in PR #288
     (2026-08-06): `createDraftMemory` now cleanly rejects an anonymous or

@@ -17,8 +17,13 @@ export interface Collaborator {
   /** e.g. "Aug 3" — pre-formatted by the caller from artifact_subscribers.created_at. */
   joinedDate: string;
   /** Memories this collaborator has added to the story. Undefined (not 0)
-   *  until story <-> memory linking (artifact_containments) is wired — see
-   *  System Docs/Known Gaps.md. Never fabricate a number here. */
+   *  — story <-> memory linking is real now (artifact_containments, wired
+   *  by services/crm/story-containments.ts, assign-memory-to-story
+   *  2026-08-13), but listStoryCollaborators (services/crm/story-invites.ts)
+   *  doesn't compute a PER-COLLABORATOR count from it yet — that's a
+   *  member_id -> user_id -> memories.user_id -> containments join this
+   *  pass didn't build. See System Docs/Known Gaps.md. Never fabricate a
+   *  number here. */
   memoryCount?: number;
 }
 
