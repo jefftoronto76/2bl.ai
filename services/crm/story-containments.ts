@@ -5,13 +5,25 @@
 // (2026-08-13, assign-memory-to-story): id (uuid, PK), tenant_id (uuid, NOT
 // NULL), parent_artifact_id (uuid, NOT NULL, FK -> artifacts.id — the
 // story), child_artifact_id (uuid, NOT NULL, FK -> artifacts.id — the
-// memory), created_at (timestamptz, default now()). UNIQUE constraint is on
-// the PAIR (parent_artifact_id, child_artifact_id) together, not on
-// child_artifact_id alone — the schema is genuinely many-to-many.
-// Single-story-per-memory is an APPLICATION-layer rule enforced by
-// assignMemoryToStory below (delete any existing row for the memory before
-// inserting the new one), not something the database enforces or should be
-// asked to.
+// memory), created_at (timestamptz, default now()), position (integer,
+// nullable — added by Jeff in Studio 2026-08-14, real-story-view-1a-static-
+// list: `ALTER TABLE artifact_containments ADD COLUMN position integer`,
+// ahead of a future drag-reorder phase; every existing row is currently
+// NULL. Reported by Jeff, not independently reverified against Studio from
+// this pass — this environment has no direct DB credentials to re-query it
+// live; re-confirm directly before relying on exact shape again). UNIQUE
+// constraint is on the PAIR (parent_artifact_id, child_artifact_id)
+// together, not on child_artifact_id alone — the schema is genuinely
+// many-to-many. Single-story-per-memory is an APPLICATION-layer rule
+// enforced by assignMemoryToStory below (delete any existing row for the
+// memory before inserting the new one), not something the database
+// enforces or should be asked to.
+//
+// getMemoriesForStory (below) is the first real "list this story's
+// memories" read — orders by position ASC NULLS LAST, then this table's
+// own created_at ASC as the fallback/tiebreaker. See that function's own
+// doc comment for why created_at can't be trusted as a stable "originally
+// added" signal on its own.
 //
 // Own file, sibling to stories.ts — mirrors why story-invites.ts is its own
 // file rather than folded into stories.ts: a distinct enough concern
@@ -226,4 +238,113 @@ export async function getStoryIdsForMemories(
     map[row.child_artifact_id as string] = row.parent_artifact_id as string
   }
   return { ok: true, data: map }
+}
+
+/** A memory as it appears inside a story's own ordered list — Phase 1a
+ *  (real-story-view-1a-static-list) is a read-only first cut, so this is
+ *  deliberately narrower than MemoryRow (services/crm/memories.ts): just
+ *  enough for a title/kind/snippet/date row, nothing block-canvas or
+ *  photo-linkage related. `source_kind` is redeclared as a literal union
+ *  here rather than imported from memories.ts — that file already imports
+ *  FROM this one (getStoryIdsForMemories), so importing its types back
+ *  would set up a needless two-way file dependency for one string union;
+ *  memories.ts's client-side sibling (useMemories.ts) makes the same
+ *  redeclare-rather-than-import call already. */
+export interface StoryMemoryRow {
+  id: string
+  title: string
+  body: string
+  source_kind: 'conversation' | 'photo' | 'video' | 'audio' | 'document'
+  created_at: string
+}
+
+/**
+ * Lists a story's memories in display order — the first "memories in story
+ * X" read anywhere in this codebase (getStoryIdsForMemories above is the
+ * reverse lookup, memory -> story). Access-gated the same owned-OR-
+ * subscribed way assignMemoryToStory already checks before writing
+ * (hasStoryAccess above) — a collaborator granted access via
+ * artifact_subscribers can view the story's memories, not just its owner.
+ *
+ * Order: position ASC NULLS LAST, then this table's own created_at ASC as
+ * the tiebreaker/fallback — matches prompt_types.sort_order's nulls-last
+ * convention (System Docs/Database Schema.md). Every containment row is
+ * currently position: NULL (the column was just added; no drag-reorder UI
+ * exists yet to write a real value — see Design Handovers/.../
+ * 01_real_story_view), so today this reads in full as "the order each
+ * memory was last (re)assigned to this story." That fallback is honest, not
+ * a hidden bug: assignMemoryToStory does a delete-then-insert on every
+ * reassignment (never an UPDATE), so a memory's containment created_at
+ * reflects its most recent pick, not necessarily when it was first added —
+ * acceptable for a first read-only view, but not something a future
+ * drag-reorder phase should build further behavior on top of; that phase
+ * should write real position values instead of leaning on this fallback.
+ *
+ * Two-step read, not a Supabase embedded-join select — mirrors this file's
+ * own getStoryIdsForMemories and stories.ts's listStories (owner+subscriber
+ * lookups): fetch the ordered containment rows first, then the matching
+ * artifacts, mapped back into that order. A containment row whose memory
+ * was since discarded (or, in principle, belongs to a different tenant)
+ * simply drops out of the result — filtered by the second query's own
+ * `type='memory'`/`discarded_at is null`/tenant scoping, not surfaced as a
+ * partial-result error.
+ */
+export async function getMemoriesForStory(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+): Promise<StoryContainmentResult<StoryMemoryRow[]>> {
+  const supabase = getAdminClient()
+
+  const storyAccess = await hasStoryAccess(supabase, tenantId, userId, storyId)
+  if (!storyAccess.ok) return storyAccess
+  if (!storyAccess.data) {
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const { data: containments, error: containmentErr } = await supabase
+    .from('artifact_containments')
+    .select('child_artifact_id, position, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('parent_artifact_id', storyId)
+    .order('position', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+
+  if (containmentErr) {
+    console.error('[story-containments] getMemoriesForStory — containment lookup failed:', containmentErr.message)
+    return { ok: false, status: 500, error: containmentErr.message }
+  }
+  if (!containments || containments.length === 0) {
+    return { ok: true, data: [] }
+  }
+
+  const orderedIds = containments.map(row => row.child_artifact_id as string)
+
+  const { data: memoryRows, error: memoryErr } = await supabase
+    .from('artifacts')
+    .select('id, title, body, source_kind, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('type', 'memory')
+    .is('discarded_at', null)
+    .in('id', orderedIds)
+
+  if (memoryErr) {
+    console.error('[story-containments] getMemoriesForStory — memory lookup failed:', memoryErr.message)
+    return { ok: false, status: 500, error: memoryErr.message }
+  }
+
+  const rowsById = new Map((memoryRows ?? []).map(row => [row.id as string, row]))
+
+  const ordered: StoryMemoryRow[] = orderedIds
+    .map(id => rowsById.get(id))
+    .filter((row): row is NonNullable<typeof row> => !!row)
+    .map(row => ({
+      id: row.id as string,
+      title: row.title as string,
+      body: row.body as string,
+      source_kind: row.source_kind as StoryMemoryRow['source_kind'],
+      created_at: row.created_at as string,
+    }))
+
+  return { ok: true, data: ordered }
 }
