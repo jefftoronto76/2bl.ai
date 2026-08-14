@@ -166,6 +166,31 @@ export async function validateMemberToken(
 }
 
 /**
+ * Checks whether an invite token was ever issued for this tenant, with no
+ * regard to status/used_at/revoked_at — used only to distinguish "a real
+ * token that's since expired/been used/been revoked" from "a garbage
+ * string in the URL" for the chat-first expired-invite bypass. Does not
+ * indicate the token is currently valid — use validateMemberToken for that.
+ */
+export async function memberTokenExists(
+  token: string,
+  tenantId: string,
+): Promise<boolean> {
+  if (!token || token.trim().length === 0) return false
+
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('members')
+    .select('id')
+    .eq('token', token)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  return !error && data !== null
+}
+
+/**
  * Called by the Clerk user.created webhook to link a newly-signed-up user to
  * their pending invited members row.
  *
