@@ -22,6 +22,7 @@ import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
 import { MediaGallery } from './MediaGallery';
 import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
+import { StoryView } from './v2/StoryView';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
@@ -175,6 +176,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setOpenMemory(null);
     setAdminStoryId(null);
     setSessionMemoriesOpen(false);
+    setStoryViewId(null);
   }, []);
 
   // Standalone top-level Media page (MediaPage.tsx) — independent of any
@@ -195,6 +197,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setMediaOpen(false);
     setAdminStoryId(null);
     setSessionMemoriesOpen(false);
+    setStoryViewId(null);
   }, []);
 
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
@@ -204,6 +207,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       setMediaPageOpen(false);
       setAdminStoryId(null);
       setSessionMemoriesOpen(false);
+      setStoryViewId(null);
     }
   }, []);
 
@@ -222,6 +226,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setMediaOpen(false);
     setMediaPageOpen(false);
     setAdminStoryId(null);
+    setStoryViewId(null);
   }, []);
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
@@ -275,6 +280,35 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // resolves, without a second sync step.
   const adminStory = adminStoryId ? stories.find(s => s.id === adminStoryId) ?? null : null;
 
+  // Real Story View — Phase 1a (real-story-view-1a-static-list). Same
+  // mutually-exclusive third-pane pattern as adminStoryId above; re-derived
+  // from `stories` on every render for the same reason (isOwner/name stay
+  // live if `stories` refreshes while the pane is open).
+  const [storyViewId, setStoryViewId] = useState<string | null>(null);
+  const storyViewStory = storyViewId ? stories.find(s => s.id === storyViewId) ?? null : null;
+
+  const handleOpenStoryView = useCallback((storyId: string) => {
+    setStoryViewId(storyId);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+  }, []);
+
+  // Temporary, removable dev entry point (Phase 1d wires a real one — the
+  // sidebar Stories-list row's already-built onClick, currently a no-op
+  // because ChatHero never supplies SidebarV2's onSelectStory prop; see
+  // System Docs/Known Gaps.md). Reads ?storyView=<id> once on mount so this
+  // pane can be verified on a preview deploy without that wiring landing
+  // first. Delete this effect (and the query-param check) once Phase 1d
+  // ships a real click path.
+  useEffect(() => {
+    const storyId = new URLSearchParams(window.location.search).get('storyView');
+    if (storyId) handleOpenStoryView(storyId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Media/admin pane width (fix for close-button-clipped-offscreen bug):
   // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
   // desktop widths, 48px rail + 260px chat floor + a rigid 400px pane can
@@ -286,13 +320,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const wasMediaOpenRef = useRef(false);
 
   useEffect(() => {
-    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen;
+    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen || !!storyViewStory;
     if (isOpen && !wasMediaOpenRef.current) {
       const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
       setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
     }
     wasMediaOpenRef.current = isOpen;
-  }, [mediaOpen, adminStory, sessionMemoriesOpen]);
+  }, [mediaOpen, adminStory, sessionMemoriesOpen, storyViewStory]);
 
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -363,6 +397,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         setMediaOpen(false);
         setMediaPageOpen(false);
         setSessionMemoriesOpen(false);
+        setStoryViewId(null);
       }
       return;
     }
@@ -745,7 +780,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMediaPage}
-            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen}
+            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId}
           />
         )}
 
@@ -857,6 +892,20 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           </div>
         )}
 
+        {/* Mobile: story view is a full-screen overlay — same treatment as
+            the admin panel above (inset-0/h-[100dvh], no scrim, no
+            rounding). Phase 1a (real-story-view-1a-static-list) — read-only,
+            reached today only via the temporary ?storyView=<id> query param
+            (see handleOpenStoryView's effect above), not a real nav entry
+            point yet (that's Phase 1d). */}
+        {isMobile && storyViewStory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              <StoryView story={storyViewStory} onClose={() => setStoryViewId(null)} />
+            </div>
+          </div>
+        )}
+
         {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
             width of its own (below), so chat just gets whatever's left; it
             no longer needs a matching ratio to divide against. Floored at
@@ -913,40 +962,43 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           />
         )}
 
-        {/* Memory panel / media pane / admin panel / session memories panel
-            — shared third-pane wrapper since openMemory, mediaOpen,
-            adminStoryId, and sessionMemoriesOpen are mutually exclusive by
-            construction (handleOpenMedia/handleOpenMemory/
-            handleOpenSessionMemories above, and adminStoryId's own setter in
-            handleRowAction). Real drag-resizable pixel width now (Stage C)
-            for memory; media, admin, and session memories all get the same
-            clamped mediaPanelWidth instead (none of the three need resize —
-            the admin panel's own spec calls for a fixed width, same 400px
-            media prefers, and session memories reuses the same width for
-            the same reason — but all three are clamped down via
-            mediaPanelWidth, above, when the row doesn't have 400px to
-            spare) — flexBasis is inline style either way since Tailwind
-            can't express a runtime-computed value as a static class;
-            min-w-[280px] stays a class-based floor, redundant with the JS
-            clamp on purpose (defense in depth, costs nothing). Transition
-            suppressed while actively dragging so a live resize tracks the
-            cursor instead of animating 300ms behind it. The wrapper stays
-            mounted whenever !isMobile so open/close can still transition;
-            content itself only renders while a memory, media, admin, or
-            session-memories pane is open. Desktop only — mobile media/
-            memory/admin/session-memories (Stage F) all use their own
-            full-screen/sheet overlays above instead of this shared
-            resizable wrapper. */}
+        {/* Memory panel / media pane / admin panel / session memories panel /
+            story view — shared third-pane wrapper since openMemory,
+            mediaOpen, adminStoryId, sessionMemoriesOpen, and storyViewId are
+            mutually exclusive by construction (handleOpenMedia/
+            handleOpenMemory/handleOpenSessionMemories above, adminStoryId's
+            own setter in handleRowAction, and handleOpenStoryView). Real
+            drag-resizable pixel width now (Stage C) for memory; media,
+            admin, session memories, and story view all get the same clamped
+            mediaPanelWidth instead (none of them need resize — the admin
+            panel's own spec calls for a fixed width, same 400px media
+            prefers, and session memories/story view (Phase 1a) both follow
+            the same precedent rather than inventing their own — but all
+            four are clamped down via mediaPanelWidth, above, when the row
+            doesn't have 400px to spare) — flexBasis is inline style either
+            way since Tailwind can't express a runtime-computed value as a
+            static class; min-w-[280px] stays a class-based floor, redundant
+            with the JS clamp on purpose (defense in depth, costs nothing).
+            Transition suppressed while actively dragging so a live resize
+            tracks the cursor instead of animating 300ms behind it. The
+            wrapper stays mounted whenever !isMobile so open/close can still
+            transition; content itself only renders while a memory, media,
+            admin, session-memories, or story pane is open. Desktop only —
+            mobile media/memory/admin/session-memories/story (Stage F) all
+            use their own full-screen/sheet overlays above instead of this
+            shared resizable wrapper. */}
         {!isMobile && (
           <div
             data-testid="third-pane-panel"
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
-              openMemory || mediaOpen || adminStory || sessionMemoriesOpen ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
-            } ${mediaOpen || adminStory || sessionMemoriesOpen ? 'border-l border-border' : ''}`}
+              openMemory || mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
+                ? 'min-w-[280px] opacity-100'
+                : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory ? 'border-l border-border' : ''}`}
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen || adminStory || sessionMemoriesOpen
+                : mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
                 ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -981,6 +1033,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onClose={() => setSessionMemoriesOpen(false)}
                 onOpen={handleOpenMemory}
               />
+            )}
+            {storyViewStory && (
+              <StoryView story={storyViewStory} onClose={() => setStoryViewId(null)} />
             )}
           </div>
         )}
