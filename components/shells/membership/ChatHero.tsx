@@ -829,6 +829,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMediaPage}
             forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId}
+            activeStoryId={storyViewId ?? undefined}
           />
         )}
 
@@ -848,6 +849,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onRenameCommit={handleRenameCommit}
                 onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
                 onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMediaPage(); }}
+                activeStoryId={storyViewId ?? undefined}
               />
             </div>
           </>
