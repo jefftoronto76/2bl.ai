@@ -187,6 +187,29 @@ session's genuine first assistant turn, not repeatedly.
   — both `MessageList.tsx`'s parser and `registry.ts`'s two `MarkerDefinition`s
   construct their own `RegExp` from that one shared source string, so the
   syntax can only be changed in one place.
+- **Chat title generation is a third real consumer, fixed 2026-08-14.**
+  A session's title (both the client-derived fallback and the payload sent
+  to the AI title-generation call) is built directly from the session's
+  first user message's raw stored content — the same content this marker
+  gets written into. Neither `components/shells/membership/chatStore.tsx`'s
+  `deriveSessionTitle` nor `services/chat/ui/v1/persistence.ts`'s
+  `deriveTitle` (the shared local IndexedDB thread-index title, used by
+  both chat surfaces) stripped this syntax before that date — a media-only
+  first turn (an attachment with no typed caption) rendered its title as
+  the raw `[MEDIA_UPLOAD: filename | media_item_id | type]` bracket text
+  verbatim, a real, confirmed production case. Fixed by adding
+  `titleSourceFromContent` to `mediaMarkerPatterns.ts` — strips all three
+  marker types (also covering `MEDIA_UPLOAD_DUPLICATE`) and, when that
+  leaves nothing (the attachment-only case), returns a short type-aware
+  fallback (`'Photo shared'` / `'Audio shared'` / `'Document shared'`, or
+  `'Attachment shared'` for a bare `MEDIA_UPLOAD_FAILED` marker, which
+  carries no type field) instead of empty string. Both call sites above now
+  route through it — `chatStore.tsx` also uses the same stripped text for
+  the `firstUserMessage` field it sends to `POST /api/sessions/[id]/title`,
+  so the AI title-generation prompt itself never sees raw bracket syntax
+  either, not just the client-rendered fallback title. See
+  `services/chat/ui/v1/mediaMarkerPatterns.test.ts` for coverage of all
+  three marker types plus the plain-caption and no-marker passthrough cases.
 
 ### `[CONTACT: phone]` — **retired**
 
