@@ -161,11 +161,82 @@ export async function getMediaItem(id: string, tenantId: string): Promise<MediaI
   return data as MediaItem
 }
 
+/**
+ * Cursor-based pagination params for listByChat/listByMember's paginated
+ * overload. `cursor` is the previous page's last item's own `created_at` —
+ * chosen over offset/limit because both lists are live: new rows can insert
+ * mid-scroll (an upload completing while a member is browsing account-wide
+ * Media, or mid-conversation). Offset pagination shifts under concurrent
+ * inserts (a row inserted before the current offset pushes everything down
+ * one, reproducing either a skipped or duplicated item on the next page);
+ * a cursor anchored to an already-returned row's timestamp does not — a new
+ * row can only land on the far side of the cursor (the side not yet
+ * fetched), never between the cursor and pages already returned, so it
+ * can't retroactively duplicate or skip anything already seen. Not
+ * compound (created_at + id): two rows sharing the exact same `created_at`
+ * at a page boundary could in principle split across pages, but rows are
+ * inserted via independent, non-batched requests, so a same-millisecond
+ * collision at exactly a boundary is negligible against the concurrent-
+ * insert case this is actually guarding — not worth the query complexity
+ * of a compound cursor for that edge.
+ */
+export interface MediaPaginationParams {
+  limit: number
+  /** Previous page's last item's created_at, or null/omitted for page one. */
+  cursor?: string | null
+}
+
+export interface MediaPage {
+  items: MediaItem[]
+  hasMore: boolean
+  /** Pass back as the next call's cursor. Null once hasMore is false. */
+  nextCursor: string | null
+}
+
+/**
+ * Reduces a `limit + 1`-row fetch (already in the list's own order) down to
+ * a page: `hasMore` iff the extra row came back, `nextCursor` the last kept
+ * row's `created_at` (null once nothing more exists) — shared by
+ * listByChat/listByMember so the "fetch one extra to detect hasMore"
+ * arithmetic exists in exactly one place.
+ */
+function toPage(rows: MediaItem[], limit: number): MediaPage {
+  const hasMore = rows.length > limit
+  const items = hasMore ? rows.slice(0, limit) : rows
+  return {
+    items,
+    hasMore,
+    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].created_at : null,
+  }
+}
+
+/**
+ * Existing (unpaginated) callers — services/crm/memories.ts's session-
+ * membership checks and chatStore.tsx's catch-up/poll fetches — all need
+ * the complete list, not one page: a photo outside a fetched page would
+ * incorrectly fail a "does this belong to the session" check, and catch-up
+ * would silently stop recovering missed items past the first page. The
+ * pagination param is therefore opt-in via an overload, not a new default —
+ * omitting it keeps every existing call site's behavior byte-for-byte
+ * identical to before this change.
+ */
 export async function listByChat(
   chatId: string,
   tenantId: string,
   statuses?: MediaItemStatus[],
-): Promise<MediaItem[]> {
+): Promise<MediaItem[]>
+export async function listByChat(
+  chatId: string,
+  tenantId: string,
+  statuses: MediaItemStatus[] | undefined,
+  pagination: MediaPaginationParams,
+): Promise<MediaPage>
+export async function listByChat(
+  chatId: string,
+  tenantId: string,
+  statuses?: MediaItemStatus[],
+  pagination?: MediaPaginationParams,
+): Promise<MediaItem[] | MediaPage> {
   const supabase = getAdminClient()
   let query = supabase
     .from('media_items')
@@ -178,25 +249,55 @@ export async function listByChat(
     query = query.in('status', statuses)
   }
 
-  const { data, error } = await query
-  if (error) return []
-  return (data ?? []) as MediaItem[]
+  if (!pagination) {
+    const { data, error } = await query
+    if (error) return []
+    return (data ?? []) as MediaItem[]
+  }
+
+  // Ascending order (oldest first) — the next page moves forward in time,
+  // so the cursor excludes everything at or before the last row already seen.
+  if (pagination.cursor) {
+    query = query.gt('created_at', pagination.cursor)
+  }
+  const { data, error } = await query.limit(pagination.limit + 1)
+  if (error) return { items: [], hasMore: false, nextCursor: null }
+  return toPage((data ?? []) as MediaItem[], pagination.limit)
 }
 
+export async function listByMember(memberId: string, tenantId: string): Promise<MediaItem[]>
 export async function listByMember(
   memberId: string,
   tenantId: string,
-): Promise<MediaItem[]> {
+  pagination: MediaPaginationParams,
+): Promise<MediaPage>
+export async function listByMember(
+  memberId: string,
+  tenantId: string,
+  pagination?: MediaPaginationParams,
+): Promise<MediaItem[] | MediaPage> {
   const supabase = getAdminClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('media_items')
     .select()
     .eq('member_id', memberId)
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
 
-  if (error) return []
-  return (data ?? []) as MediaItem[]
+  if (!pagination) {
+    const { data, error } = await query
+    if (error) return []
+    return (data ?? []) as MediaItem[]
+  }
+
+  // Descending order (newest first) — the next page moves backward in
+  // time, so the cursor excludes everything at or after the last row seen.
+  if (pagination.cursor) {
+    query = query.lt('created_at', pagination.cursor)
+  }
+  const { data, error } = await query.limit(pagination.limit + 1)
+  if (error) return { items: [], hasMore: false, nextCursor: null }
+  return toPage((data ?? []) as MediaItem[], pagination.limit)
 }
 
 /**
