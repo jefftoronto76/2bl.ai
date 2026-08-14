@@ -202,6 +202,21 @@ interface ChatContextType {
    * doesn't wait for the next full /api/sessions refetch to reflect it.
    */
   bumpMemoryCount: (id: string, delta: number) => void;
+  /**
+   * Tags the session about to be created as needing context attached at
+   * creation time (session-context-service, 2026-08-13) — call right after
+   * newChat(), before the member's first send(). Read once by useChatTurn.ts
+   * at the exact moment it lazily creates the session (POST /api/sessions),
+   * via the getSessionContextToAttach accessor below, so the attachment
+   * lands in the same request as session creation rather than racing a
+   * separate call. newChat() itself clears this, so an ordinary "New Chat"
+   * never carries a stale pending context into an unrelated session.
+   */
+  setSessionContextToAttach: (context: {
+    contextType: string;
+    contextRefId: string;
+    contextFrequency: 'once' | 'every_turn';
+  }) => void;
   /** Media items associated with the current chat session. Populated by Realtime
    *  subscription + catch-up query on session load. */
   mediaItems: ClientMediaItem[];
@@ -366,6 +381,7 @@ export function ChatProvider({
   const session = useChatSession({
     getMemberId: () => memberIdRef.current,
     getInviteToken: () => inviteTokenRef.current,
+    getSessionContextToAttach: () => pendingSessionContextRef.current,
     // Scoped to items still worth telling the guide about: anything not yet
     // ready/failed (so a still-processing upload keeps surfacing "in
     // progress" until it resolves, however many turns that takes), plus any
@@ -718,6 +734,18 @@ export function ChatProvider({
   // request so getMemberContext can look up the primer without user_id.
   const memberIdRef = useRef<string | null>(memberId ?? null);
 
+  // Pending session-context to attach at creation time (session-context-
+  // service, 2026-08-13) — see setSessionContextToAttach's own doc comment
+  // above (ChatContextType). A ref, not state: read imperatively by
+  // useChatSession's getSessionContextToAttach accessor at the moment a new
+  // session is lazily created, never a re-render trigger, same as
+  // memberIdRef/inviteTokenRef above.
+  const pendingSessionContextRef = useRef<{
+    contextType: string;
+    contextRefId: string;
+    contextFrequency: 'once' | 'every_turn';
+  } | null>(null);
+
   // Source of truth for getMediaItems (passed to useChatSession), written
   // synchronously by addMediaItem — not just mirrored from mediaItems state on
   // render. A just-uploaded attachment is immediately followed by send() in
@@ -774,6 +802,7 @@ export function ChatProvider({
         deliveredTerminalIdsRef.current = new Map();
         dueStatusSnapshotRef.current = new Map();
         setMediaItems([]);
+        pendingSessionContextRef.current = null;
       }
       prevSessionIdRef.current = input.sessionId;
       hydrate(input);
@@ -1039,8 +1068,23 @@ export function ChatProvider({
     deliveredTerminalIdsRef.current = new Map();
     dueStatusSnapshotRef.current = new Map();
     setMediaItems([]);
+    // Same "never leak forward" reasoning as mediaItemsRef above — an
+    // ordinary New Chat must never carry a story (or other) context meant
+    // for a previous flow into this new, unrelated session. A caller that
+    // wants context on THIS new session calls setSessionContextToAttach
+    // right after this.
+    pendingSessionContextRef.current = null;
     reset();
   }, [reset]);
+
+  // Tags the session about to be created as needing context attached at
+  // creation time — see ChatContextType's own doc comment above.
+  const setSessionContextToAttach = useCallback(
+    (context: { contextType: string; contextRefId: string; contextFrequency: 'once' | 'every_turn' }) => {
+      pendingSessionContextRef.current = context;
+    },
+    [],
+  );
 
   // Load a previously-fetched session into the conversation (Recent sidebar).
   const loadSession = useCallback(
@@ -1405,7 +1449,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized && !bypassGateForExpiredInvite, invitedName, invitedEmail, invitedPhone, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized && !bypassGateForExpiredInvite, invitedName, invitedEmail, invitedPhone, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, setSessionContextToAttach, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>

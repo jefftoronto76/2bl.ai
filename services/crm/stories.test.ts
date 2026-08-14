@@ -23,7 +23,14 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 vi.mock('@/services/audit', () => ({ logEvent: vi.fn() }))
 
-import { createStory, listStories, discardStory, updateStoryDescription, STORY_ACCOUNT_REQUIRED_ERROR } from './stories'
+import {
+  createStory,
+  listStories,
+  discardStory,
+  updateStoryDescription,
+  getStoryById,
+  STORY_ACCOUNT_REQUIRED_ERROR,
+} from './stories'
 import { logEvent } from '@/services/audit'
 
 const mockLogEvent = vi.mocked(logEvent)
@@ -67,6 +74,8 @@ function makeClient(opts: {
   activeLinkStoryIdsResult?: ListResult
   /** artifact_subscribers .in('artifact_id', ...) — subscriber ids among the returned stories. */
   subscriberStoryIdsResult?: ListResult
+  /** getStoryById's own single-row artifacts lookup (id/title/body/user_id). */
+  storyByIdResult?: SelectResult
 }) {
   const insertCalls: Row[] = []
   const updateCalls: Row[] = []
@@ -99,6 +108,9 @@ function makeClient(opts: {
                 return chain
               },
               order: () => opts.listResult ?? { data: [], error: null },
+              // getStoryById's single-row lookup — a distinct terminal from
+              // listStories' order()/then(), sharing the same eq/is chain.
+              maybeSingle: async () => opts.storyByIdResult ?? { data: null, error: null },
               then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
                 Promise.resolve(opts.listResult ?? { data: [], error: null }).then(resolve, reject),
             }
@@ -212,6 +224,80 @@ describe('listStories', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)
+  })
+})
+
+describe('getStoryById', () => {
+  it('returns the story with the owner display name resolved via user_id', async () => {
+    const { client } = makeClient({
+      storyByIdResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: 'The long arc.', user_id: 'user-1' },
+        error: null,
+      },
+      memberResult: { data: { name: 'Sarah' }, error: null },
+    })
+    adminHolder.client = client
+
+    const result = await getStoryById('tenant-1', 'story-1')
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: 'story-1', title: 'A Life in Full', body: 'The long arc.', ownerName: 'Sarah' },
+    })
+  })
+
+  it('404s when no story row matches (bad id, wrong tenant, or discarded)', async () => {
+    const { client } = makeClient({ storyByIdResult: { data: null, error: null } })
+    adminHolder.client = client
+
+    const result = await getStoryById('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(404)
+  })
+
+  it('500s on a genuine DB error looking up the story itself', async () => {
+    const { client } = makeClient({ storyByIdResult: { data: null, error: { message: 'db down' } } })
+    adminHolder.client = client
+
+    const result = await getStoryById('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('degrades to ownerName: null (not fatal) when no member row exists for the owner', async () => {
+    const { client } = makeClient({
+      storyByIdResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, user_id: 'user-1' },
+        error: null,
+      },
+      memberResult: { data: null, error: null },
+    })
+    adminHolder.client = client
+
+    const result = await getStoryById('tenant-1', 'story-1')
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: 'story-1', title: 'A Life in Full', body: null, ownerName: null },
+    })
+  })
+
+  it('degrades to ownerName: null (not fatal) when the owner lookup itself errors — the story is still valid', async () => {
+    const { client } = makeClient({
+      storyByIdResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, user_id: 'user-1' },
+        error: null,
+      },
+      memberResult: { data: null, error: { message: 'db exploded' } },
+    })
+    adminHolder.client = client
+
+    const result = await getStoryById('tenant-1', 'story-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.ownerName).toBeNull()
   })
 })
 

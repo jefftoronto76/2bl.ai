@@ -48,6 +48,29 @@ function markDelivered(
   if (mediaItems?.length) accessors.markMediaItemsDelivered?.(mediaItems.map(m => m.mediaItemId))
 }
 
+// Builds the optional JSON body for a lazy POST /api/sessions creation call
+// — mediaItemIds (backfill for attachments uploaded before the session
+// existed) and/or contextType/contextRefId/contextFrequency (session-
+// context-service's attach-at-creation mechanism), both read at the same
+// moment session creation is about to happen so either lands atomically
+// with it rather than racing a later request. Returns undefined fetch init
+// fields when there's nothing to send — the route already treats a bodyless
+// POST as the normal case for every caller that has neither.
+function buildSessionCreateInit(
+  pendingMediaItemIds: string[],
+  pendingContext: { contextType: string; contextRefId: string; contextFrequency: 'once' | 'every_turn' } | null,
+): { headers: Record<string, string>; body: string } | Record<string, never> {
+  const payload: Record<string, unknown> = {}
+  if (pendingMediaItemIds.length > 0) payload.mediaItemIds = pendingMediaItemIds
+  if (pendingContext) {
+    payload.contextType = pendingContext.contextType
+    payload.contextRefId = pendingContext.contextRefId
+    payload.contextFrequency = pendingContext.contextFrequency
+  }
+  if (Object.keys(payload).length === 0) return {}
+  return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+}
+
 async function streamTurn(
   messages: ChatMessage[],
   mode: ChatMode,
@@ -231,14 +254,10 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       if (!activeSessionId) {
         try {
           const pendingMediaItemIds = currentMediaItems?.map(m => m.mediaItemId) ?? []
+          const pendingContext = accessors.getSessionContextToAttach?.() ?? null
           const res = await fetch('/api/sessions', {
             method: 'POST',
-            ...(pendingMediaItemIds.length > 0
-              ? {
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ mediaItemIds: pendingMediaItemIds }),
-                }
-              : {}),
+            ...buildSessionCreateInit(pendingMediaItemIds, pendingContext),
           })
           const data = await res.json()
           console.log('[chat/turn] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
@@ -323,7 +342,11 @@ export function useChatTurn({ accessors }: UseChatTurnOptions): UseChatTurnRetur
       let activeSessionId = accessors.getSessionId()
       if (!activeSessionId) {
         try {
-          const res = await fetch('/api/sessions', { method: 'POST' })
+          const pendingContext = accessors.getSessionContextToAttach?.() ?? null
+          const res = await fetch('/api/sessions', {
+            method: 'POST',
+            ...buildSessionCreateInit([], pendingContext),
+          })
           const data = await res.json()
           console.log('[chat/turn] POST /api/sessions status:', res.status, '| response:', JSON.stringify(data))
           if (data.id) {

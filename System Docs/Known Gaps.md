@@ -1777,6 +1777,58 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `tsc`/`next build` are clean but that doesn't substitute for the actual
   behavior check. Do this before trusting the fix in production.
 
+- **`primer` (`members`/`story_invite_links`) still has zero delineation in
+  the system prompt — flagged 2026-08-13, still not fixed as of
+  session-context-service (2026-08-13).** See the entry above this one
+  (same date) for the full gap. Explicitly NOT touched by
+  session-context-service — that change built the reusable delineation
+  mechanism (XML tags + `escapeForTag`, `services/chat/server/session-
+  context.ts`, see `System Docs/Utilities/Chat Server.md`) for a *new*
+  block (`<session_context>`), scoped deliberately to leave `member-
+  context.ts`'s existing `primer` concatenation untouched rather than
+  bundle an unrelated retrofit into that change ("One Change at a Time,"
+  `CLAUDE.md`). **The fix is now more clearly scoped than it was on
+  2026-08-13:** wrap `primer` the same way — `<member_context>` (or a
+  `<primer>` sub-tag) plus `escapeForTag()` on the interpolated value —
+  reusing the exact pattern that now has a second, real precedent in this
+  codebase (`services/prompt/composer.ts`'s `<document_context>` was the
+  only one before this). Still needs: the `autoOpenChat`-forced,
+  no-owner-control auto-greet path decision flagged in the original entry.
+  Not scheduled — still a separate, later task.
+
+- **Session-context-service built (2026-08-13) — the generic mechanism
+  landed, but the "click an empty story to start a chat in it" UI flow that
+  would actually exercise it is NOT wired up.** `services/chat/server/
+  session-context.ts` (`getSessionContext`/`attachSessionContext`,
+  `chat_session_context` table — schema DDL reported to Jeff, now live in
+  Studio, see `System Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time
+  wiring (`app/api/sessions/route.ts`), and the client accessor plumbing
+  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) are all
+  built and tested. What's still missing: the actual `SidebarV2` story-row
+  click handler that calls `newChat()` + `setSessionContextToAttach(...)`
+  with `contextFrequency: 'every_turn'` — `onSelectStory`/`onStartStoryChat`
+  remain unwired from `ChatHero.tsx` exactly as documented elsewhere in this
+  file (search "onSelectStory" above).
+  **A related-looking WIP exists on origin (`2026-08-13-story-click-routing`,
+  commit `4b3aa9f9`, checkpointed mid-task, never merged) but does NOT
+  implement this mechanism and should not be resumed as-is:** it wires
+  `onSelectStory` via a completely different approach — a client-only
+  `storyContextIdRef` used solely to auto-assign a Kept memory back to the
+  story, plus a one-time deterministic *chat message* (rendered directly in
+  the transcript via plain ReactMarkdown, explicitly NOT XML-delineated by
+  that WIP's own doc comment, since raw tags would render as literal broken
+  text there) naming the story/owner. It has no `chat_session_context` row,
+  no `attachSessionContext` call, and nothing re-injected on later turns —
+  a one-shot greeting, not persistent every-turn system-prompt context.
+  It also predates and partially overlaps with the real, later, merged
+  memory↔story linking (`assign-memory-to-story`, PR #377, the actual
+  `StoryPicker` UI) — its own auto-assign-on-Keep half is superseded by
+  that. Building the real click-handler wiring is a separate follow-up:
+  reuse the WIP's `ChatHero.tsx` click-routing *entry point* (branching on
+  a story's `contentCount`) if useful, but implement the empty-story branch
+  against the mechanism actually built here, not the WIP's message-
+  injection approach.
+
 - **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
   the last two open items (PR #380).**
   - **Step 5, client/server message mismatch — verified already closed,

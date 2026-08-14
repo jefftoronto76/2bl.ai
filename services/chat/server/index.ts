@@ -12,6 +12,7 @@ import { runChatStream, resolveModelConfig } from './stream'
 import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
 import { getBookingCardSection } from './booking'
 import { getMemberContext } from './member-context'
+import { getSessionContext } from './session-context'
 import { resolveMediaContext, stripMediaMarkers } from './media-context'
 import { handleSessionFinish } from '@/services/crm/session'
 import { getAdminClient } from '@/services/auth/supabase-admin'
@@ -177,7 +178,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     m => m.role === 'assistant' && m.content.trim().length > 0,
   )
 
-  const [basePrompt, bookingSection, config, memberContext, mediaContext] = await Promise.all([
+  const [basePrompt, bookingSection, config, memberContext, mediaContext, sessionContext] = await Promise.all([
     getSystemPrompt(tenantId),
     tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
     resolveModelConfig(tenantId),
@@ -185,6 +186,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       ? getMemberContext(sessionId, tenantId, memberId, isFirstTurn)
       : Promise.resolve(null),
     resolveMediaContext(req.mediaItems, tenantId, memberId),
+    getSessionContext(sessionId, tenantId, isFirstTurn),
   ])
 
   void logEvent({
@@ -212,6 +214,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     basePrompt,
     bookingSection,
     memberContext ? `MEMBER CONTEXT:\n${memberContext}` : '',
+    sessionContext ?? '',
     mediaContext,
     questionMode ? QUESTION_MODE_CONTEXT : '',
   ]

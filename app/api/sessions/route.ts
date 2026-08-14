@@ -3,7 +3,10 @@ import { getTenantFromRequest, getCurrentUserId, syncUser } from '@/services/aut
 import { createSession, listSessions } from '@/services/crm/sessions'
 import { resolveMemberId } from '@/services/crm'
 import { backfillMediaChatId, logMediaEvent, isMediaAuditEnabled } from '@/services/media'
+import { attachSessionContext, type ContextFrequency } from '@/services/chat/server/session-context'
 import { logEvent, AuditAction } from '@/services/audit'
+
+const VALID_CONTEXT_FREQUENCIES: ContextFrequency[] = ['once', 'every_turn']
 
 /**
  * GET /api/sessions — the signed-in user's sessions for this tenant, newest
@@ -69,14 +72,61 @@ export async function POST(req: Request) {
   // comment for the full mechanics). Absent for every other caller
   // (jefflougheed never sends a body at all), so req.json() throwing on an
   // empty body is the normal case, not an error.
+  //
+  // Same body also optionally carries contextType/contextRefId/
+  // contextFrequency — the generic session-context attach mechanism
+  // (session-context-service). Threaded through THIS same request rather
+  // than a separate post-creation call: a distinct attach call would race
+  // the first /api/sage turn (two independent, unordered requests), so the
+  // caller (chatStore.tsx's getSessionContextToAttach accessor, read by
+  // useChatTurn.ts at the exact moment it lazily creates the session) sends
+  // both in one request, guaranteeing the attachment exists before any turn
+  // that needs to see it.
   let mediaItemIds: string[] = []
+  let contextType: string | null = null
+  let contextRefId: string | null = null
+  let contextFrequency: ContextFrequency | null = null
   try {
     const body = await req.json()
     if (Array.isArray(body?.mediaItemIds)) {
       mediaItemIds = body.mediaItemIds.filter((id: unknown): id is string => typeof id === 'string')
     }
+    if (typeof body?.contextType === 'string' && typeof body?.contextRefId === 'string') {
+      contextType = body.contextType
+      contextRefId = body.contextRefId
+      contextFrequency = VALID_CONTEXT_FREQUENCIES.includes(body?.contextFrequency)
+        ? body.contextFrequency
+        : 'once'
+    }
   } catch {
-    // No body / not JSON — expected for every caller not passing media ids.
+    // No body / not JSON — expected for every caller not passing media ids
+    // or session context.
+  }
+
+  if (contextType && contextRefId && contextFrequency) {
+    // Best-effort relative to the response, same posture as the media
+    // backfill block below: the session already exists above, so a failed
+    // (or invalid) attach must never turn a successful session creation
+    // into a 500 — it just means this session ends up with no attached
+    // context, which is the normal, common state for most sessions (see
+    // getSessionContext's own doc comment).
+    try {
+      const attachResult = await attachSessionContext(
+        tenantId,
+        result.data.id,
+        contextType,
+        contextRefId,
+        contextFrequency,
+      )
+      if (!attachResult.ok) {
+        console.error('[sessions/route] session context attach failed:', attachResult.error)
+      }
+    } catch (err) {
+      console.error(
+        '[sessions/route] session context attach threw unexpectedly:',
+        err instanceof Error ? err.message : err,
+      )
+    }
   }
 
   if (mediaItemIds.length > 0) {

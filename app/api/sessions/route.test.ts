@@ -21,6 +21,12 @@ const mockBackfillMediaChatId = vi.fn()
 const mockLogMediaEvent = vi.fn()
 const mockIsMediaAuditEnabled = vi.fn()
 const mockLogEvent = vi.fn()
+const mockAttachSessionContext = vi.fn()
+// Records the order createSession/attachSessionContext actually resolve in,
+// per request — the atomicity requirement is that attach happens WITHIN this
+// same POST handler call, after the session it's attaching to already
+// exists, not via some separate, independently-triggered call.
+const callOrder: string[] = []
 
 vi.mock('@/services/auth', () => ({
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
@@ -29,8 +35,18 @@ vi.mock('@/services/auth', () => ({
 }))
 
 vi.mock('@/services/crm/sessions', () => ({
-  createSession: (...args: unknown[]) => mockCreateSession(...args),
+  createSession: (...args: unknown[]) => {
+    callOrder.push('createSession')
+    return mockCreateSession(...args)
+  },
   listSessions: vi.fn(),
+}))
+
+vi.mock('@/services/chat/server/session-context', () => ({
+  attachSessionContext: (...args: unknown[]) => {
+    callOrder.push('attachSessionContext')
+    return mockAttachSessionContext(...args)
+  },
 }))
 
 vi.mock('@/services/crm', () => ({
@@ -74,6 +90,8 @@ beforeEach(() => {
   mockLogMediaEvent.mockReset().mockResolvedValue(undefined)
   mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
   mockLogEvent.mockReset().mockResolvedValue(undefined)
+  mockAttachSessionContext.mockReset().mockResolvedValue({ ok: true })
+  callOrder.length = 0
   vi.spyOn(crypto, 'randomUUID').mockReturnValue(
     '11111111-1111-4111-8111-111111111111' as `${string}-${string}-${string}-${string}-${string}`,
   )
@@ -86,6 +104,7 @@ describe('POST /api/sessions — existing behavior, unaffected by the backfill a
     await expect(res.json()).resolves.toEqual({ id: 'sess-new' })
     expect(mockBackfillMediaChatId).not.toHaveBeenCalled()
     expect(mockResolveMemberId).not.toHaveBeenCalled()
+    expect(mockAttachSessionContext).not.toHaveBeenCalled()
   })
 
   it('creates a session and skips the backfill when the body has no mediaItemIds', async () => {
@@ -195,5 +214,96 @@ describe('POST /api/sessions — media chat_id backfill', () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ id: 'sess-new' })
     expect(mockBackfillMediaChatId).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/sessions — session-context attach (session-context-service)', () => {
+  it('attaches context in the SAME request that creates the session — not two separate calls', async () => {
+    const res = await POST(
+      makeRequest({ contextType: 'story', contextRefId: 'story-1', contextFrequency: 'every_turn' }),
+    )
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ id: 'sess-new' })
+
+    // Exactly one call each, within this one POST() invocation — proving
+    // this is a single request doing both, not a separate follow-up attach
+    // call racing a later request.
+    expect(mockCreateSession).toHaveBeenCalledTimes(1)
+    expect(mockAttachSessionContext).toHaveBeenCalledTimes(1)
+    // Ordered: the session must exist before the attach targeting its id.
+    expect(callOrder).toEqual(['createSession', 'attachSessionContext'])
+    // The exact session id createSession returned — proving it's threaded
+    // through, not independently looked up.
+    expect(mockAttachSessionContext).toHaveBeenCalledWith(
+      'tenant-1',
+      'sess-new',
+      'story',
+      'story-1',
+      'every_turn',
+    )
+  })
+
+  it('defaults contextFrequency to "once" when omitted', async () => {
+    await POST(makeRequest({ contextType: 'story', contextRefId: 'story-1' }))
+
+    expect(mockAttachSessionContext).toHaveBeenCalledWith('tenant-1', 'sess-new', 'story', 'story-1', 'once')
+  })
+
+  it('defaults to "once" rather than trusting an invalid contextFrequency value', async () => {
+    await POST(
+      makeRequest({ contextType: 'story', contextRefId: 'story-1', contextFrequency: 'whenever-i-feel-like-it' }),
+    )
+
+    expect(mockAttachSessionContext).toHaveBeenCalledWith('tenant-1', 'sess-new', 'story', 'story-1', 'once')
+  })
+
+  it('never attaches when only one of contextType/contextRefId is present', async () => {
+    await POST(makeRequest({ contextType: 'story' }))
+    expect(mockAttachSessionContext).not.toHaveBeenCalled()
+
+    await POST(makeRequest({ contextRefId: 'story-1' }))
+    expect(mockAttachSessionContext).not.toHaveBeenCalled()
+  })
+
+  it('still returns the created session id when the attach fails (invalid ref) — best-effort, non-fatal', async () => {
+    mockAttachSessionContext.mockResolvedValue({ ok: false, error: 'context_ref_id does not resolve' })
+
+    const res = await POST(makeRequest({ contextType: 'story', contextRefId: 'bogus', contextFrequency: 'once' }))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ id: 'sess-new' })
+  })
+
+  it('still returns the created session id when attachSessionContext throws unexpectedly', async () => {
+    mockAttachSessionContext.mockRejectedValue(new Error('db unavailable'))
+
+    const res = await POST(makeRequest({ contextType: 'story', contextRefId: 'story-1', contextFrequency: 'once' }))
+
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ id: 'sess-new' })
+  })
+
+  it('composes cleanly with mediaItemIds in the same body — both are read from one req.json() call', async () => {
+    mockBackfillMediaChatId.mockResolvedValue({ updatedIds: ['media-a'] })
+
+    const res = await POST(
+      makeRequest({
+        mediaItemIds: ['media-a'],
+        contextType: 'story',
+        contextRefId: 'story-1',
+        contextFrequency: 'every_turn',
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(mockBackfillMediaChatId).toHaveBeenCalledTimes(1)
+    expect(mockAttachSessionContext).toHaveBeenCalledWith(
+      'tenant-1',
+      'sess-new',
+      'story',
+      'story-1',
+      'every_turn',
+    )
   })
 })

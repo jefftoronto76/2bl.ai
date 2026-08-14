@@ -152,6 +152,9 @@ export const AuditAction = {
   MEMORY_ASSIGNED_TO_STORY: 'memory.assigned_to_story',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
+  // Chat — generic session context attachment (session-context-service,
+  // 2026-08-13). services/chat/server/session-context.ts's attachSessionContext.
+  CHAT_SESSION_CONTEXT_ATTACHED: 'chat.session_context_attached',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
