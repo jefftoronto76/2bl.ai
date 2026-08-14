@@ -108,14 +108,19 @@ session's genuine first assistant turn, not repeatedly.
   (a synthetic message, no LLM round-trip) — `MagicLinkCard` renders
   identically either way, whether the marker came from the model or from
   this effect. Three deterministic reasons, one per invite-adjacent signup
-  path, checked in order:
+  path, checked in order — the `reason` field itself is display-only in all
+  three cases; `MagicLinkCard` renders identically regardless of its value,
+  used only for the muted subheading shown under the card, and doesn't
+  affect routing:
   1. `[ACCOUNT_CREATE: story invite]` (added 2026-08-11,
      story-invite-first-run) — a not-signed-in visitor who arrived via a
      valid `?join=` story-invite link.
-  2. `[ACCOUNT_CREATE: admin invite]` (added 2026-08-13,
-     deterministic-account-create) — a not-signed-in visitor who arrived
-     via a valid `?invite=` admin/member invite token, personalized with
-     `invitedName` in the preceding greeting when the admin set one.
+  2. `[ACCOUNT_CREATE: admin invite]` (added 2026-08-13, PR #367) — a
+     not-signed-in visitor who arrived via a valid `?invite=` admin/member
+     invite token, personalized with `invitedName` in the preceding
+     greeting when the admin set one — mutually exclusive with the
+     story-invite branch above, both structurally (this branch is an
+     `else if`) and via an explicit `!storyInviteTokenRef.current` guard.
   3. `[ACCOUNT_CREATE: expired invite]` (added 2026-08-14,
      expired-invite-chat-first) — a not-signed-in visitor whose `?invite=`
      token exists in the tenant's `members` table (`memberTokenExists`,
