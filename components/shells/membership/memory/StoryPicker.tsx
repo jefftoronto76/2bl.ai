@@ -1,12 +1,14 @@
 'use client'
 
 /**
- * StoryPicker — the "+" popover on MemoryCardView's header that assigns the
- * open memory to a story (assign-memory-to-story, 2026-08-13, replacing the
- * old "Adding to a story is coming soon" stub). Colocated next to
- * MemoryCardView/BlockCanvas — a memory-context component that imports
- * `Story` from `v2/types.ts` the same cross-folder way MemoryCardView
- * already imports `SessionImage` from BlockCanvas.tsx.
+ * StoryPicker — the "+" popover on MemoryCardView's header, and (as of
+ * 2026-08-14) on MemorySavedReceipt's in-transcript row, that assigns a
+ * memory to a story (assign-memory-to-story, 2026-08-13, replacing the old
+ * "Adding to a story is coming soon" stub — MemorySavedReceipt's own "+" was
+ * still stubbed until the 2026-08-14 pass wired it to this same component).
+ * Colocated next to MemoryCardView/BlockCanvas — a memory-context component
+ * that imports `Story` from `v2/types.ts` the same cross-folder way
+ * MemoryCardView already imports `SessionImage` from BlockCanvas.tsx.
  *
  * Mechanics copied from BlockCanvas.tsx's own BlockInserter exactly: a
  * fixed, invisible, full-viewport backdrop (lower z-index than the popover)

@@ -495,14 +495,19 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     showToast(message);
   }, [showToast]);
 
-  // "+" on MemoryCardView — real now (assign-memory-to-story, 2026-08-13):
+  // "+" on MemoryCardView AND MemorySavedReceipt (the in-transcript receipt,
+  // wired 2026-08-14) — real now (assign-memory-to-story, 2026-08-13):
   // PATCH .../memories/[memoryId] action: 'assign_story'
   // (assignMemoryToStory, services/crm/story-containments.ts) via
-  // memories.assignToStory. Toast copy distinguishes first assignment
-  // ("Added to X") from reassignment ("Moved to X") using the memory's own
-  // PRIOR storyId, captured before the await — re-picking the story a
-  // memory is already in never reaches this handler at all (StoryPicker's
-  // own no-op guard skips calling onAssignStory in that case).
+  // memories.assignToStory. Shared as-is between both call sites — the
+  // receipt renders inside THIS session's own transcript (MessageList.tsx),
+  // same `memories` instance (useMemories(state.sessionId)) the panel
+  // already uses, so no second scoped handler is needed the way
+  // StoryMemoryEditor.tsx needed its own. Toast copy distinguishes first
+  // assignment ("Added to X") from reassignment ("Moved to X") using the
+  // memory's own PRIOR storyId, captured before the await — re-picking the
+  // story a memory is already in never reaches this handler at all
+  // (StoryPicker's own no-op guard skips calling onAssignStory in that case).
   const handleAssignMemoryToStory = useCallback(async (memory: MemoryRow, storyId: string) => {
     const story = stories.find((s) => s.id === storyId);
     const wasAlreadyInAStory = !!memory.storyId;
@@ -992,6 +997,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                     memories={memories}
                     onStub={handleMemoryStub}
                     sessionImages={sessionImages}
+                    stories={stories}
+                    onAssignStory={handleAssignMemoryToStory}
                   />
                 ) : (
                   <EmptyState />

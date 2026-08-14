@@ -205,8 +205,12 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     // remain in this group: the upload thumbnail, and the receipt's own.
     expect(within(groupA).getAllByAltText('a.jpg').length).toBe(2);
 
+    // "+" is real now (assign-memory-to-story) — opens the StoryPicker
+    // popover, not a stub toast. This harness's fetch mock has no
+    // /api/stories handler, so ChatHero's `stories` falls back to [] and
+    // the popover renders its own empty state.
     fireEvent.click(within(groupA).getByRole('button', { name: 'Add to a story' }));
-    await waitFor(() => expect(screen.getByText('Coming soon')).toBeInTheDocument());
+    await waitFor(() => expect(within(groupA).getByText('No stories yet.')).toBeInTheDocument());
   });
 
   it('"+" (add to a memory) on the photo action row is a stub — fires the toast and does not call create()', async () => {

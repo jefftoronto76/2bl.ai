@@ -33,13 +33,15 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, Feather, ImagePlus, Pencil, Plus } from 'lucide-react'
+import { Bookmark, Check, Feather, ImagePlus, Pencil } from 'lucide-react'
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import type { ChatErrorType } from '@/services/chat/ui/v1/types'
 import { ERROR_COPY } from '@/components/chat/errorCopy'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
 import type { SessionImage } from './BlockCanvas'
 import { useFreshImageUrl } from '@/services/media/useFreshImageUrl'
+import { StoryPicker } from './StoryPicker'
+import type { Story } from '../v2/types'
 
 /** Aligns every card/pill/receipt with the assistant avatar rail (w-8) they sit below. */
 const RAIL = 'w-8 shrink-0'
@@ -97,13 +99,21 @@ export interface MemorySavedReceiptProps {
    */
   onOpen?: (memory: MemoryRow) => void
   /**
-   * Fires the shared "coming soon" toast for the "+" below — same stub
-   * pattern as MemoryCardView's own header "+" (add to a story; stories
-   * aren't a buildable concept yet). Optional so a caller that hasn't wired
-   * a toast (none currently outside ChatHero.tsx) renders the receipt with
+   * The "+" below (add to a story) — real now (assign-memory-to-story,
+   * 2026-08-14), same StoryPicker popover MemoryCardView's own header "+"
+   * already uses (backdrop + Escape dismissal, current story highlighted
+   * with a checkmark, re-picking a no-op handled inside StoryPicker
+   * itself). `stories` is the same list ChatHero.tsx already sources for
+   * MemoryCardView (GET /api/stories) — this receipt renders inside the
+   * currently-open chat's own transcript (MessageList.tsx), so the memory
+   * here always belongs to that same session; no separate scoped fetch is
+   * needed the way StoryView's row-tap editor needs its own
+   * (StoryMemoryEditor.tsx). Both optional so a caller that hasn't wired a
+   * picker (none currently outside ChatHero.tsx) renders the receipt with
    * no "+" at all rather than a silently-broken one.
    */
-  onStub?: (message: string) => void
+  stories?: Story[]
+  onAssignStory?: (storyId: string) => void
   /**
    * The session's own ready image media items — same lookup pattern as
    * BlockCanvas.tsx's ImageBlockRow, already applied to MemoryCard's own
@@ -124,7 +134,7 @@ export interface MemorySavedReceiptProps {
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen, stories = [], onAssignStory, sessionImages = [] }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
@@ -167,23 +177,15 @@ export function MemorySavedReceipt({ memory, onOpen, onStub, sessionImages = [] 
             Kept
           </span>
         </span>
-        {onStub && (
-          <button
-            type="button"
-            onClick={e => {
-              // Stop this from also bubbling into the row's own onClick
-              // (which opens the memory panel) — a "+" click means "add to
-              // a story", not "open this memory".
-              e.stopPropagation()
-              onStub('Coming soon')
-            }}
-            onKeyDown={e => e.stopPropagation()}
-            aria-label="Add to a story"
-            title="Adding to a story is coming soon"
-            className="grid size-6 shrink-0 place-items-center rounded-md border-none bg-transparent text-text-muted transition-colors hover:text-text-primary"
-          >
-            <Plus size={13} aria-hidden />
-          </button>
+        {onAssignStory && (
+          // Stop this from also bubbling into the row's own onClick/onKeyDown
+          // (which opens the memory panel) — a "+" click means "add to a
+          // story", not "open this memory". Same wrapper role StoryPicker's
+          // own caller (MemoryCardView) doesn't need, since its header row
+          // has no separate open-on-click behavior of its own to guard against.
+          <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+            <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} />
+          </span>
         )}
       </div>
     </div>

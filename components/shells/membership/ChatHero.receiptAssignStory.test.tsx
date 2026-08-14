@@ -4,14 +4,18 @@ import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 
-// Integration coverage for MemoryCardView's "+" -> StoryPicker -> assign
-// flow through the real ChatHero + useMemories stack (assign-memory-to-
-// story, 2026-08-13). Mirrors ChatHero.memoryPanel.test.tsx's setup.
-// Focused on what's specific to ChatHero's own orchestration —
-// handleAssignMemoryToStory's toast copy (Added vs Moved) and the real
-// PATCH body sent — not StoryPicker's own mechanics (covered in
-// StoryPicker.test.tsx) or assignMemoryToStory's own DB logic (covered in
-// services/crm/story-containments.test.ts).
+// Integration coverage for MemorySavedReceipt's own "+" -> StoryPicker ->
+// assign flow (memory-receipt-story-picker, 2026-08-14) — the in-transcript
+// receipt (MessageList.tsx -> MemoryCard.tsx), wired to the exact same
+// StoryPicker + handleAssignMemoryToStory ChatHero.assignMemoryToStory.test.tsx
+// already covers for MemoryCardView's panel header "+". This file is scoped
+// to what's specific to the receipt as a SEPARATE surface: its "+" reuses
+// ChatHero's own `memories`/`stories` (no scoped instance needed, since the
+// receipt only ever renders memories belonging to THIS open session's own
+// transcript), and it must never open the memory panel as a side effect of
+// picking a story. The assign write itself, the Added/Moved toast copy, and
+// the no-op re-pick guard are shared logic already exercised there — not
+// re-verified end to end here.
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -95,21 +99,28 @@ function makeFetchMock(memory: ReturnType<typeof memoryFixture>) {
   });
 }
 
-// MessageList's own in-transcript MemorySavedReceipt (MemoryCard.tsx) now
-// has its OWN real StoryPicker too (2026-08-14) — the exact same component,
-// same "Add to a story" title/aria-label, as MemoryCardView.tsx's panel
-// header "+". With both mounted side by side (the third pane never unmounts
-// the transcript behind it), a bare getByRole/getByTitle would find two
-// matches. Scoped to the third pane's own data-testid to disambiguate —
-// MemorySavedReceipt's identical-looking "+" is covered separately by
-// ChatHero.receiptAssignStory.test.tsx.
-async function openPanelAndPicker() {
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
-  fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
-  const panel = within(screen.getByTestId('third-pane-panel'));
-  fireEvent.click(panel.getByTitle('Add to a story'));
-  await waitFor(() => expect(panel.getByRole('button', { name: /Summer at the Lake/ })).toBeInTheDocument());
+// The transcript's own scroll region (MessageList.tsx's role="log" —
+// "Conversation") scopes every query below to the receipt's "+", never the
+// (mutually exclusive, closed-by-default) panel's own copy of the same
+// StoryPicker component.
+// Exact-string name matches only below, never a `/regex/` — the receipt's
+// own row is itself role="button" with no aria-label, so its OWN computed
+// accessible name flattens in every descendant's text once the popover is
+// open (including the popover's own list items). A `/Summer at the Lake/`
+// substring match would then match BOTH the row and the real per-story
+// button; an exact string only ever matches the real button's own
+// (shorter, exact) accessible name.
+async function openReceiptPicker() {
+  await waitFor(() => expect(screen.getByRole('log', { name: 'Conversation' })).toBeInTheDocument());
+  const transcript = within(screen.getByRole('log', { name: 'Conversation' }));
+  await waitFor(() => expect(transcript.getByTitle('Add to a story')).toBeInTheDocument());
+  fireEvent.click(transcript.getByTitle('Add to a story'));
+  // "The Family Farm" is never the memory's current story in either
+  // fixture below (only story-1/"Summer at the Lake" or none ever is), so
+  // its "Add to ..." label is a safe open-signal regardless of which test
+  // called this helper.
+  await waitFor(() => expect(transcript.getByRole('button', { name: 'Add to The Family Farm' })).toBeInTheDocument());
+  return transcript;
 }
 
 let fetchMock: ReturnType<typeof makeFetchMock>;
@@ -126,8 +137,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('ChatHero — assign memory to story', () => {
-  it('first assignment (no prior story): picking a story sends the PATCH and toasts "Added to X"', async () => {
+describe('ChatHero — assign memory to story from the in-transcript receipt', () => {
+  it('picking a story sends the real PATCH and never opens the memory panel', async () => {
     fetchMock = makeFetchMock(memoryFixture(null));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -136,9 +147,9 @@ describe('ChatHero — assign memory to story', () => {
         <ChatHero />
       </ChatProvider>,
     );
-    await openPanelAndPicker();
+    const transcript = await openReceiptPicker();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add to Summer at the Lake' }));
+    fireEvent.click(transcript.getByRole('button', { name: 'Add to Summer at the Lake' }));
 
     await waitFor(() => expect(screen.getByText('Added to Summer at the Lake')).toBeInTheDocument());
 
@@ -147,9 +158,12 @@ describe('ChatHero — assign memory to story', () => {
     );
     expect(assignCall).toBeTruthy();
     expect(JSON.parse(String(assignCall?.[1]?.body))).toEqual({ action: 'assign_story', story_id: 'story-1' });
+
+    // Picking a story is not "open this memory" — the panel never mounts.
+    expect(screen.queryByRole('textbox', { name: 'Memory title' })).toBeNull();
   });
 
-  it('reassignment (memory already in a different story): picking a new story toasts "Moved to X", not "Added"', async () => {
+  it('the current story is highlighted, and re-picking it never sends a PATCH', async () => {
     fetchMock = makeFetchMock(memoryFixture('story-1'));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -158,48 +172,21 @@ describe('ChatHero — assign memory to story', () => {
         <ChatHero />
       </ChatProvider>,
     );
-    await openPanelAndPicker();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add to The Family Farm' }));
-
-    await waitFor(() => expect(screen.getByText('Moved to The Family Farm')).toBeInTheDocument());
-    expect(screen.queryByText('Added to The Family Farm')).toBeNull();
-  });
-
-  it('re-picking the story the memory is already in never sends a PATCH and never toasts', async () => {
-    fetchMock = makeFetchMock(memoryFixture('story-1'));
-    vi.stubGlobal('fetch', fetchMock);
-
-    render(
-      <ChatProvider>
-        <ChatHero />
-      </ChatProvider>,
-    );
-    await openPanelAndPicker();
+    const transcript = await openReceiptPicker();
 
     const patchCallsBefore = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH').length;
-    fireEvent.click(screen.getByRole('button', { name: 'Summer at the Lake (current story)' }));
+    const currentStoryBtn = transcript.getByRole('button', { name: 'Summer at the Lake (current story)' });
+    expect(currentStoryBtn.querySelector('svg')).not.toBeNull();
+    fireEvent.click(currentStoryBtn);
 
-    // No new PATCH, no toast — give any accidental async work a tick to land, then assert nothing happened.
     await new Promise((r) => setTimeout(r, 0));
     const patchCallsAfter = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH').length;
     expect(patchCallsAfter).toBe(patchCallsBefore);
-    expect(screen.queryByText('Added to Summer at the Lake')).toBeNull();
     expect(screen.queryByText('Moved to Summer at the Lake')).toBeNull();
   });
 
-  it('the picker lists stories the member is subscribed to but does not own, alongside owned ones', async () => {
-    const subscribedStory = { id: 'story-3', name: "Grandma's Kitchen", isOwner: false };
-    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = typeof input === 'string' ? input : input.toString();
-      const method = init?.method ?? 'GET';
-      if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: [SESSION] });
-      if (url === '/api/stories' && method === 'GET') return jsonResponse({ stories: [...STORIES, subscribedStory] });
-      if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
-      if (url.includes('/memories') && method === 'GET') return jsonResponse({ memories: [memoryFixture(null)] });
-      if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
-      return jsonResponse({ ok: true });
-    });
+  it('a click elsewhere on the receipt row still opens the memory panel — the "+" is additive, not a replacement for it', async () => {
+    fetchMock = makeFetchMock(memoryFixture(null));
     vi.stubGlobal('fetch', fetchMock);
 
     render(
@@ -207,8 +194,9 @@ describe('ChatHero — assign memory to story', () => {
         <ChatHero />
       </ChatProvider>,
     );
-    await openPanelAndPicker();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
 
-    expect(screen.getByRole('button', { name: "Add to Grandma's Kitchen" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
   });
 });
