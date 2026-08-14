@@ -34,9 +34,10 @@ const WRITING_PROMPTS: WritingPrompt[] = [
   { id: 'wp-4', text: 'Who taught you something you still carry?' },
 ];
 
-// Media pane has no drag-resize (unlike the memory panel) — a fixed width is
-// enough; MIN_PANEL_WIDTH (memoryPanelWidth.ts) is scoped to the resizable
-// panel's clamp math and isn't reused here.
+// Media pane has no drag-resize (unlike the memory panel), but it does reuse
+// the memory panel's clamp math (memoryPanelWidth.ts) so its preferred width
+// below never exceeds what the row actually has room for — see the
+// mediaPanelWidth state near panelWidth.
 const MEDIA_PANEL_WIDTH = 400;
 
 function EmptyState() {
@@ -252,6 +253,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // shows up immediately once handleUpdateStoryDescription's setStories call
   // resolves, without a second sync step.
   const adminStory = adminStoryId ? stories.find(s => s.id === adminStoryId) ?? null : null;
+
+  // Media/admin pane width (fix for close-button-clipped-offscreen bug):
+  // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
+  // desktop widths, 48px rail + 260px chat floor + a rigid 400px pane can
+  // exceed the drawer's own 680px floor, and the row's overflow-hidden then
+  // clips the pane's right edge (and with it MediaGallery's close button).
+  // Reuses the memory panel's clamp math, recomputed on the same
+  // open-transition-only cadence panelWidth already uses above.
+  const [mediaPanelWidth, setMediaPanelWidth] = useState(MEDIA_PANEL_WIDTH);
+  const wasMediaOpenRef = useRef(false);
+
+  useEffect(() => {
+    const isOpen = mediaOpen || !!adminStory;
+    if (isOpen && !wasMediaOpenRef.current) {
+      const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+      setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+    }
+    wasMediaOpenRef.current = isOpen;
+  }, [mediaOpen, adminStory]);
+
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
 
@@ -850,22 +871,25 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             mutually exclusive by construction (handleOpenMedia/
             handleOpenMemory above, and adminStoryId's own setter in
             handleRowAction). Real drag-resizable pixel width now (Stage C)
-            for memory; media and admin both get the same fixed
-            MEDIA_PANEL_WIDTH instead (neither needs resize — the admin
+            for memory; media and admin both get the same clamped
+            mediaPanelWidth instead (neither needs resize — the admin
             panel's own spec calls for a fixed width, same 400px media
-            already uses) — flexBasis is inline style either way since
-            Tailwind can't express a runtime-computed value as a static
-            class; min-w-[280px] stays a class-based floor, redundant with
-            the JS clamp on purpose (defense in depth, costs nothing).
-            Transition suppressed while actively dragging so a live resize
-            tracks the cursor instead of animating 300ms behind it. The
-            wrapper stays mounted whenever !isMobile so open/close can still
-            transition; content itself only renders while a memory, media,
-            or admin pane is open. Desktop only — mobile media/memory/admin
-            (Stage F) all use their own full-screen/sheet overlays above
-            instead of this shared resizable wrapper. */}
+            prefers — but both are clamped down via mediaPanelWidth, above,
+            when the row doesn't have 400px to spare) — flexBasis is inline
+            style either way since Tailwind can't express a runtime-computed
+            value as a static class; min-w-[280px] stays a class-based
+            floor, redundant with the JS clamp on purpose (defense in depth,
+            costs nothing). Transition suppressed while actively dragging so
+            a live resize tracks the cursor instead of animating 300ms
+            behind it. The wrapper stays mounted whenever !isMobile so
+            open/close can still transition; content itself only renders
+            while a memory, media, or admin pane is open. Desktop only —
+            mobile media/memory/admin (Stage F) all use their own
+            full-screen/sheet overlays above instead of this shared
+            resizable wrapper. */}
         {!isMobile && (
           <div
+            data-testid="third-pane-panel"
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
               openMemory || mediaOpen || adminStory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
             } ${mediaOpen || adminStory ? 'border-l border-border' : ''}`}
@@ -873,7 +897,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
                 : mediaOpen || adminStory
-                ? { flexBasis: MEDIA_PANEL_WIDTH, flexGrow: 0, flexShrink: 0 }
+                ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
           >
