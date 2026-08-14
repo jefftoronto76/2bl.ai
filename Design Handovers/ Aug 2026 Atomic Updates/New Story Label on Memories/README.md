@@ -69,13 +69,23 @@ so this file still explains what shipped and in which order.
   **resolved.** `MemoryRow.storyId` (`services/chat/ui/v1/useMemories.ts`)
   and real many-to-many linking via `artifact_containments`
   (`services/crm/story-containments.ts`) shipped 2026-08-13
-  (assign-memory-to-story). Note this landed on `MemoryCardView.tsx`
-  (the panel/editor chrome), not `MemoryCard.tsx`/`MemorySavedReceipt` (the
-  in-transcript draft card and saved receipt) — those two retain their own
-  separate, still-stubbed "+" buttons (fire a toast, no real assignment).
-  That split is deliberate, not a partial port: this handover's own scope
-  note (top of this file) only ever targeted the memory detail page and the
-  session-memories list, not the transcript card.
+  (assign-memory-to-story), landing first on `MemoryCardView.tsx` (the
+  panel/editor chrome) only — at that point `MemoryCard.tsx`/
+  `MemorySavedReceipt` (the in-transcript draft card and saved receipt)
+  still had their own separate, stubbed "+" (fires a toast, no real
+  assignment), since this handover's own scope note (top of this file) only
+  ever targeted the memory detail page and the session-memories list, not
+  the transcript card. **That gap closed independently the same day**
+  (PR #391, memory-receipt-story-picker, 2026-08-14, a separate pass not
+  scoped from this handover at all) — `MemorySavedReceipt`'s "+" now renders
+  the exact same `StoryPicker` component/popover `MemoryCardView`'s header
+  does. Because that PR merged to `main` while the remove-from-story pass
+  below was in flight on its own branch, rebasing surfaced a real
+  consequence, not just a merge conflict: `MemorySavedReceipt` became a
+  fourth real `StoryPicker` caller needing `onRemoveFromStory` threaded to
+  it too, alongside the three this repo's own `Known Gaps.md` entry
+  originally described — see that entry's own correction paragraph for the
+  full wiring.
 - ~~Whether a memory can belong to more than one story changes the
   design~~ — moot for what's built: single-story-per-memory is enforced at
   the **application** layer only (`assignMemoryToStory` deletes any existing

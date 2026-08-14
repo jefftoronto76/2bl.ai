@@ -4,13 +4,16 @@ import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-registry';
 
-// Integration coverage for MemoryCardView's checkmark trigger -> StoryPicker
-// -> "Remove from '[Story]'" flow through the real ChatHero + useMemories
-// stack (remove-memory-from-story, 2026-08-14). Mirrors
-// ChatHero.assignMemoryToStory.test.tsx's setup — focused on ChatHero's own
-// orchestration (handleRemoveMemoryFromStory's toast copy and the real PATCH
-// body sent), not StoryPicker's own mechanics (StoryPicker.test.tsx) or
-// removeMemoryFromStory's own DB logic (services/crm/story-containments.test.ts).
+// Integration coverage for MemorySavedReceipt's own StoryPicker -> "Remove
+// from '[Story]'" flow (remove-memory-from-story, threaded to the receipt as
+// a fourth real caller found while rebasing this pass onto
+// memory-receipt-story-picker/PR #391). Mirrors
+// ChatHero.receiptAssignStory.test.tsx's setup exactly — scoped to what's
+// specific to the receipt as a separate surface from MemoryCardView's own
+// panel header (covered in ChatHero.removeMemoryFromStory.test.tsx): the
+// receipt reuses ChatHero's own shared handleRemoveMemoryFromStory (no
+// second scoped handler), and removing must never open the memory panel as
+// a side effect.
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -91,21 +94,17 @@ function makeFetchMock(memory: ReturnType<typeof memoryFixture>) {
   });
 }
 
-async function openPanelAndPicker() {
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
-  fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
-  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('The Lake House'));
-  // Scoped to the third pane, and targeted by StoryPicker's own stable
-  // testid rather than title/label text — MemorySavedReceipt's own
-  // in-transcript StoryPicker (memory-receipt-story-picker, PR #391) is the
-  // SAME shared `memories` state, so it renders side by side with the exact
-  // same testid/label once a story is assigned; both must resolve to a
-  // single match. See ChatHero.assignMemoryToStory.test.tsx's own
-  // openPanelAndPicker for the identical reasoning.
-  const panel = within(screen.getByTestId('third-pane-panel'));
-  fireEvent.click(panel.getByTestId('story-picker-trigger'));
-  await waitFor(() => expect(panel.getByRole('button', { name: 'Remove from "Summer at the Lake"' })).toBeInTheDocument());
-  return panel;
+// Scoped to the transcript's own scroll region, same as
+// ChatHero.receiptAssignStory.test.tsx's openReceiptPicker — the panel's own
+// (closed-by-default) copy of StoryPicker never mounts here since this
+// suite never clicks a receipt row to open it.
+async function openReceiptPicker() {
+  await waitFor(() => expect(screen.getByRole('log', { name: 'Conversation' })).toBeInTheDocument());
+  const transcript = within(screen.getByRole('log', { name: 'Conversation' }));
+  await waitFor(() => expect(transcript.getByTestId('story-picker-trigger')).toBeInTheDocument());
+  fireEvent.click(transcript.getByTestId('story-picker-trigger'));
+  await waitFor(() => expect(transcript.getByRole('button', { name: 'Remove from "Summer at the Lake"' })).toBeInTheDocument());
+  return transcript;
 }
 
 let fetchMock: ReturnType<typeof makeFetchMock>;
@@ -122,8 +121,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('ChatHero — remove memory from story', () => {
-  it('clicking "Remove from" sends the remove_story PATCH and toasts "Removed from X"', async () => {
+describe('ChatHero — remove memory from story from the in-transcript receipt', () => {
+  it('clicking "Remove from" sends the real remove_story PATCH, toasts, and never opens the memory panel', async () => {
     fetchMock = makeFetchMock(memoryFixture('story-1'));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -132,11 +131,10 @@ describe('ChatHero — remove memory from story', () => {
         <ChatHero />
       </ChatProvider>,
     );
-    const panel = await openPanelAndPicker();
+    const transcript = await openReceiptPicker();
 
-    fireEvent.click(panel.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
+    fireEvent.click(transcript.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
 
-    // The toast lives outside the third pane — a single global instance.
     await waitFor(() => expect(screen.getByText('Removed from Summer at the Lake')).toBeInTheDocument());
 
     const removeCall = fetchMock.mock.calls.find(
@@ -144,9 +142,12 @@ describe('ChatHero — remove memory from story', () => {
     );
     expect(removeCall).toBeTruthy();
     expect(JSON.parse(String(removeCall?.[1]?.body))).toEqual({ action: 'remove_story' });
+
+    // Removing is not "open this memory" — the panel never mounts.
+    expect(screen.queryByRole('textbox', { name: 'Memory title' })).toBeNull();
   });
 
-  it('after removal, the trigger reverts to the accent Plus circle', async () => {
+  it('after removal, the receipt\'s trigger reverts to the accent Plus circle', async () => {
     fetchMock = makeFetchMock(memoryFixture('story-1'));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -155,14 +156,10 @@ describe('ChatHero — remove memory from story', () => {
         <ChatHero />
       </ChatProvider>,
     );
-    const panel = await openPanelAndPicker();
+    const transcript = await openReceiptPicker();
 
-    fireEvent.click(panel.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
+    fireEvent.click(transcript.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
 
-    // Scoped to the panel — MemorySavedReceipt's own trigger in the
-    // transcript reverts to the identical "Add to a story" label at the
-    // same time (same shared `memories` state), so an unscoped query here
-    // would find two matches.
-    await waitFor(() => expect(panel.getByRole('button', { name: 'Add to a story' })).toBeInTheDocument());
+    await waitFor(() => expect(transcript.getByRole('button', { name: 'Add to a story' })).toBeInTheDocument());
   });
 });

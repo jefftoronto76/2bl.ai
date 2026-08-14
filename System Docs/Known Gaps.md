@@ -415,25 +415,50 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   New `AuditAction.MEMORY_REMOVED_FROM_STORY`. (3) `StoryPicker.tsx` gained a
   "Remove from '[Story]'" item at the top of its popover, rendered only
   while `currentStoryId` is set — same single-click-no-confirm posture the
-  existing story-assign items already have. `MemoryCardView.tsx` gained a
-  new required `onRemoveFromStory: () => void` prop, threaded from **all
-  three** real production callers — not the two the task briefing for this
-  pass assumed (`MemoryCardView.tsx` + `MemoryCard.tsx`'s
-  `MemorySavedReceipt`): `MemorySavedReceipt` has never had a real
-  `onAssignStory` wiring to mirror (its own "+" is a separate,
-  still-intentionally-stubbed control — see the Photo Bookmark entry below
-  for where that stub was added). The three real callers are `ChatHero.tsx`
-  (both the mobile full-screen and desktop resizable-pane `MemoryCardView`
-  instances — one component, two render sites) and `StoryMemoryEditor.tsx`
-  (Real Story View's own cross-session-safe editor, a third caller this
-  pass found while wiring the new required prop that isn't mentioned
-  anywhere in this handover's own text). All three now call
+  existing story-assign items already have.
+
+  **Correction, same pass, found on rebase.** This branch was built before
+  `MemorySavedReceipt.tsx` was wired to a real `StoryPicker` (PR #391,
+  memory-receipt-story-picker, 2026-08-14, merged to `main` while this
+  branch was in flight) — at the time, `MemoryCardView.tsx` had exactly two
+  real callers (both `ChatHero.tsx` render sites), and the initial pass here
+  added a required `onRemoveFromStory: () => void` prop threaded to those
+  two plus `StoryMemoryEditor.tsx` (a third caller found while wiring it,
+  not mentioned in this pass's own task briefing). Rebasing onto `main`
+  after PR #391 landed surfaced a real, not just mechanical, consequence:
+  `MemorySavedReceipt` is now a **fourth** real caller — its own "+"
+  (assign) was already real via PR #391, so requiring `onRemove` on
+  `StoryPicker` broke its build until this pass threaded `onRemoveFromStory`
+  the rest of the way, mirroring exactly how PR #391 already threaded
+  `onAssignStory`: `MessageListProps`/`MemorySlotHandlers` gained the same
+  optional `onRemoveFromStory?: (memory: MemoryRow) => void`, and
+  `MemorySavedReceiptProps` gained `onRemoveFromStory?: () => void` —
+  defaulted to a no-op (`() => {}`) rather than left `undefined`, since
+  `StoryPicker.tsx`'s own `onRemove` is required (unlike `onAssignStory`/
+  `onPick`, which the caller can omit to suppress the trigger entirely).
+  `ChatHero.tsx` passes its existing `handleRemoveMemoryFromStory` straight
+  through to `<MessageList>`, shared as-is with both `MemoryCardView` render
+  sites and `StoryMemoryEditor.tsx` — same posture
+  `handleAssignMemoryToStory` already has. All four callers now call
   `memories.removeFromStory(memoryId)` (new method on
   `services/chat/ui/v1/useMemories.ts`'s returned hook, PATCH + optimistic
   local `storyId: null`), each with its own "Removed from X" toast/flash
   copy sourced from the memory's PRIOR `storyId` captured before the await,
   mirroring `handleAssignMemoryToStory`'s existing "Added"/"Moved" pattern
-  exactly.
+  exactly. The trigger-checkmark-state change (green `Check` vs. accent
+  `Plus`) needed no equivalent fix — it lives entirely inside
+  `StoryPicker.tsx` itself, so it applies automatically everywhere that
+  component renders, `MemorySavedReceipt` included, with no separate
+  wiring. Covered by `ChatHero.receiptRemoveFromStory.test.tsx` (mirroring
+  PR #391's own `ChatHero.receiptAssignStory.test.tsx`) and new cases in
+  `memory-saved-receipt.test.tsx`. Two existing PR #391 test files also
+  needed a fix here, not a feature change: `ChatHero.assignMemoryToStory.test.tsx`
+  and `ChatHero.receiptAssignStory.test.tsx` both located `StoryPicker`'s
+  trigger by its `title`/label text ("Add to a story"), which now varies
+  with assignment state — both switched to `StoryPicker`'s own stable
+  `data-testid="story-picker-trigger"` instead, scoped to the relevant
+  pane/transcript region so the panel's and the receipt's now-identical
+  triggers never collide in a single query.
 
   **Invite — real as of 2026-08-10 (invites-collaboration-modal), but partial.**
   `invite` is no longer a kebab item at all (it was buried and dead) —

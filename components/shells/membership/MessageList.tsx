@@ -89,6 +89,17 @@ interface MessageListProps {
    * no "+" at all (see its own optional-onAssignStory posture).
    */
   onAssignStory?: (memory: MemoryRow, storyId: string) => void;
+  /**
+   * Detaches a saved memory from its current story — PATCH
+   * .../memories/[memoryId], action: 'remove_story' (removeMemoryFromStory,
+   * services/crm/story-containments.ts), same real write ChatHero.tsx's
+   * handleRemoveMemoryFromStory already backs MemoryCardView's own
+   * "Remove from '[Story]'" item with. Threaded through to
+   * MemorySavedReceipt's own StoryPicker exactly like onAssignStory above —
+   * takes the memory itself so the caller can read its PRIOR storyId for the
+   * "Removed from X" flash copy. Optional, same non-breaking posture.
+   */
+  onRemoveFromStory?: (memory: MemoryRow) => void;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -188,6 +199,8 @@ interface MemorySlotHandlers {
   onOpen?: (memory: MemoryRow) => void;
   /** Threaded through to MemorySavedReceipt's own "+" (add to a story) — see MessageListProps.onAssignStory. */
   onAssignStory?: (memory: MemoryRow, storyId: string) => void;
+  /** Threaded through to MemorySavedReceipt's own "Remove from '[Story]'" item — see MessageListProps.onRemoveFromStory. */
+  onRemoveFromStory?: (memory: MemoryRow) => void;
 }
 
 /**
@@ -238,6 +251,7 @@ function renderMemorySlot(
         onOpen={handlers.onOpen}
         stories={stories}
         onAssignStory={handlers.onAssignStory ? (storyId) => handlers.onAssignStory!(memory, storyId) : undefined}
+        onRemoveFromStory={handlers.onRemoveFromStory ? () => handlers.onRemoveFromStory!(memory) : undefined}
         sessionImages={sessionImages}
       />
     );
@@ -807,7 +821,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [], stories = [], onAssignStory }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [], stories = [], onAssignStory, onRemoveFromStory }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -895,6 +909,7 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
     onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
     onOpen: onOpenMemory,
     onAssignStory,
+    onRemoveFromStory,
   };
 
   const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind, mediaItemId?: string) =>

@@ -131,7 +131,11 @@ describe('MemorySavedReceipt — "+" (add to a story)', () => {
     const m = memory({ storyId: 'story-1' });
     render(<MemorySavedReceipt memory={m} onRetitle={() => {}} stories={stories} onAssignStory={onAssignStory} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
+    // Targeted by StoryPicker's own stable testid, not the "Add to a story"
+    // label — the trigger's own accessible name has since changed to the
+    // checkmark state's 'In "X" — click to change or remove' now that this
+    // memory already has a storyId (trigger-checkmark-state, 2026-08-14).
+    fireEvent.click(screen.getByTestId('story-picker-trigger'));
     const currentStoryBtn = screen.getByRole('button', { name: 'Summer at the Lake (current story)' });
     expect(currentStoryBtn.querySelector('svg')).not.toBeNull();
     fireEvent.click(currentStoryBtn);
@@ -156,6 +160,64 @@ describe('MemorySavedReceipt — "+" (add to a story)', () => {
   it('does not render "+" when onAssignStory is omitted', () => {
     render(<MemorySavedReceipt memory={memory()} onRetitle={() => {}} onOpen={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Add to a story' })).toBeNull();
+  });
+});
+
+// Trigger checkmark state + remove-from-story (remove-memory-from-story,
+// 2026-08-14) — MemorySavedReceipt's own coverage of the same StoryPicker
+// behavior MemoryCardView.test.tsx already covers in isolation; this file
+// only asserts MemorySavedReceipt's OWN wiring (onRemoveFromStory threaded
+// to StoryPicker's onRemove), not StoryPicker's internal mechanics.
+describe('MemorySavedReceipt — trigger state + "Remove from \'[Story]\'"', () => {
+  it('shows the checkmark trigger, not "+", once the memory already belongs to a story', () => {
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    const m = memory({ storyId: 'story-1' });
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} stories={stories} onAssignStory={vi.fn()} onRemoveFromStory={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'In "Summer at the Lake" — click to change or remove' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add to a story' })).toBeNull();
+  });
+
+  it('picking "Remove from" calls onRemoveFromStory', () => {
+    const onRemoveFromStory = vi.fn();
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    const m = memory({ storyId: 'story-1' });
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} stories={stories} onAssignStory={vi.fn()} onRemoveFromStory={onRemoveFromStory} />);
+
+    fireEvent.click(screen.getByTestId('story-picker-trigger'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
+
+    expect(onRemoveFromStory).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not open the memory panel when removing', () => {
+    const onOpen = vi.fn();
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    const m = memory({ storyId: 'story-1' });
+    render(
+      <MemorySavedReceipt
+        memory={m}
+        onRetitle={() => {}}
+        onOpen={onOpen}
+        stories={stories}
+        onAssignStory={vi.fn()}
+        onRemoveFromStory={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('story-picker-trigger'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from "Summer at the Lake"' }));
+
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('defaults onRemoveFromStory to a safe no-op when omitted — omitting it does not break the "+"/checkmark trigger', () => {
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    const m = memory({ storyId: 'story-1' });
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} stories={stories} onAssignStory={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('story-picker-trigger'));
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Remove from "Summer at the Lake"' }))).not.toThrow();
   });
 });
 
