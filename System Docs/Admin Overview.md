@@ -25,8 +25,13 @@ Maps `System Docs/Design System.md` design tokens to Mantine's `createTheme()`:
 
 ### MantineProvider
 
-Wrapped at `app/admin/layout.tsx` → renders `AdminShell` (`'use client'`
-component) which uses `AppShell` for the sidebar + main layout.
+Wrapped at `app/admin/layout.tsx` → renders `UnifiedAdminShell`
+(`components/admin/shell/UnifiedAdminShell.tsx`, `'use client'`) which uses
+`AppShell` for the sidebar + main layout. **Renamed from `AdminShell`** (PR
+#145, "Unified admin shell — merge platform and tenant chrome into one") —
+`app/(platform)/layout.tsx` renders the same component, one shell shared by
+both the tenant-admin and platform-admin surfaces rather than two separate
+ones.
 
 ### Component layers
 
@@ -61,19 +66,22 @@ so composites don't need changes.
 | `PromptCard` | `Paper` + `Stack` + `Group` | Card with title, status, tags, actions |
 | `Accordion` | `Accordion` | Single collapsible section |
 
-### Navigation — `/components/admin/navigation/`
+### Navigation + Layout — `/components/admin/shell/`
+
+**Renamed and consolidated (PR #145).** `AdminSidebarNav`/`AdminShell`
+(previously under now-deleted `/components/admin/navigation/` and
+`/components/admin/layout/` directories) no longer exist — replaced by:
 
 | Component | Mantine Base | Purpose |
 |---|---|---|
-| `AdminSidebarNav` | `NavLink` + `Stack` | Router-aware sidebar nav with sub-items |
-| `SidebarItem` | `NavLink` | Dark-themed nav item with active state |
-| `SidebarSection` | `Stack` + `Text` | Grouped nav items with optional label |
+| `UnifiedAdminShell` | `AppShell` | Full admin layout — dark navbar, light main area, Clerk UserButton. Shared by both `app/admin/layout.tsx` (tenant admin) and `app/(platform)/layout.tsx` (platform admin). |
+| `UnifiedSidebarNav` | `NavLink` + `Stack` | Router-aware sidebar nav with sub-items, driven by `nav-config.ts`'s `NAV_SECTIONS`/`isActive` rather than the old per-item component composition below. |
 
-### Layout — `/components/admin/layout/`
-
-| Component | Mantine Base | Purpose |
-|---|---|---|
-| `AdminShell` | `AppShell` | Full admin layout — dark navbar, light main area, Clerk UserButton |
+The old `/components/admin/navigation/` directory's `SidebarItem.tsx` and
+`SidebarSection.tsx` files still exist on disk but are **orphaned** — no
+remaining import anywhere in the codebase (`UnifiedSidebarNav.tsx` renders
+its nav items inline via Mantine's `NavLink`/`Stack`/`Text` directly, not by
+composing these).
 
 ### Chat — `/components/admin/`
 
@@ -95,3 +103,9 @@ so composites don't need changes.
 
 **Mantine migration complete.** Legacy `tokens.ts` and old layout shells
 have been removed. All admin components use Mantine theme vars exclusively.
+**Since then, theme values are no longer purely static:** `AdminThemeProvider`
+(`components/admin/theme/AdminThemeProvider.tsx`) calls `buildAdminTheme(branding, tenantId)`
+(`components/admin/theme/mantine-theme.ts`) to build the Mantine theme at
+runtime from a tenant's actual branding row, not from hardcoded values alone
+— the "no hardcoded hex values" property above still holds, it's just
+resolved dynamically per tenant now rather than compiled once.
