@@ -22,6 +22,7 @@ import { MediaGallery } from './MediaGallery';
 import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import { StoryView } from './v2/StoryView';
+import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
 
@@ -175,6 +176,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setOpenMemory(null);
     setAdminStoryId(null);
     setStoryViewId(null);
+    setStoryMemory(null);
   }, []);
 
   // Standalone top-level Media page (MediaPage.tsx) — independent of any
@@ -195,6 +197,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setMediaOpen(false);
     setAdminStoryId(null);
     setStoryViewId(null);
+    setStoryMemory(null);
   }, []);
 
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
@@ -204,6 +207,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       setMediaPageOpen(false);
       setAdminStoryId(null);
       setStoryViewId(null);
+      setStoryMemory(null);
     }
   }, []);
 
@@ -267,10 +271,38 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   const handleOpenStoryView = useCallback((storyId: string) => {
     setStoryViewId(storyId);
+    setStoryMemory(null);
     setOpenMemory(null);
     setMediaOpen(false);
     setMediaPageOpen(false);
     setAdminStoryId(null);
+  }, []);
+
+  // Closes the WHOLE story pane (both the list and, if open, a memory
+  // swapped in from it) — used by every real "leave the story" affordance
+  // (its own close button, another panel opening over it). Distinct from
+  // handleCloseStoryMemory below, which only backs out of the memory editor
+  // to the list, keeping the story pane itself open.
+  const closeStoryPane = useCallback(() => {
+    setStoryViewId(null);
+    setStoryMemory(null);
+  }, []);
+
+  // Row-tap-to-editor (Phase 1b, real-story-view-1b-row-tap-editor).
+  // `storyMemory` tracks which memory (if any) is swapped in for the list
+  // within the SAME third-pane slot — storyViewId itself stays set the
+  // whole time, so closing the editor returns to the list rather than
+  // closing the pane entirely. Both id AND sessionId are needed: see
+  // StoryMemoryEditor.tsx's own doc comment for why a story's memory can't
+  // be opened through this component's own session-scoped `memories` hook.
+  const [storyMemory, setStoryMemory] = useState<{ id: string; sessionId: string } | null>(null);
+
+  const handleOpenStoryMemory = useCallback((memoryId: string, sessionId: string) => {
+    setStoryMemory({ id: memoryId, sessionId });
+  }, []);
+
+  const handleCloseStoryMemory = useCallback(() => {
+    setStoryMemory(null);
   }, []);
 
   // Temporary, removable dev entry point (Phase 1d wires a real one — the
@@ -374,6 +406,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         setMediaOpen(false);
         setMediaPageOpen(false);
         setStoryViewId(null);
+        setStoryMemory(null);
       }
       return;
     }
@@ -845,14 +878,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
         {/* Mobile: story view is a full-screen overlay — same treatment as
             the admin panel above (inset-0/h-[100dvh], no scrim, no
-            rounding). Phase 1a (real-story-view-1a-static-list) — read-only,
-            reached today only via the temporary ?storyView=<id> query param
-            (see handleOpenStoryView's effect above), not a real nav entry
-            point yet (that's Phase 1d). */}
+            rounding). Reached today only via the temporary ?storyView=<id>
+            query param (see handleOpenStoryView's effect above), not a real
+            nav entry point yet (that's Phase 1d). Swaps to
+            StoryMemoryEditor in the same slot once a row's been tapped
+            (Phase 1b) — storyViewId itself stays set, so the editor's own
+            close returns to the list rather than closing this overlay. */}
         {isMobile && storyViewStory && (
           <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
             <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
-              <StoryView story={storyViewStory} onClose={() => setStoryViewId(null)} />
+              {storyMemory ? (
+                <StoryMemoryEditor
+                  memoryId={storyMemory.id}
+                  sessionId={storyMemory.sessionId}
+                  stories={stories}
+                  onClose={handleCloseStoryMemory}
+                  onFlash={showToast}
+                />
+              ) : (
+                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} />
+              )}
             </div>
           </div>
         )}
@@ -973,8 +1018,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
               />
             )}
-            {storyViewStory && (
-              <StoryView story={storyViewStory} onClose={() => setStoryViewId(null)} />
+            {storyViewStory && storyMemory && (
+              <StoryMemoryEditor
+                memoryId={storyMemory.id}
+                sessionId={storyMemory.sessionId}
+                stories={stories}
+                onClose={handleCloseStoryMemory}
+                onFlash={showToast}
+              />
+            )}
+            {storyViewStory && !storyMemory && (
+              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} />
             )}
           </div>
         )}

@@ -349,8 +349,8 @@ describe('getMemoriesForStory', () => {
         OWNED_STORY_ROW,
         {
           data: [
-            { id: 'mem-2', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
-            { id: 'mem-1', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', session_id: 'sess-a', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+            { id: 'mem-1', session_id: 'sess-b', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
             // mem-3 is deliberately absent from this result — simulates a
             // discarded/missing memory the second query's own filters
             // already excluded.
@@ -376,8 +376,8 @@ describe('getMemoriesForStory', () => {
     expect(result).toEqual({
       ok: true,
       data: [
-        { id: 'mem-2', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
-        { id: 'mem-1', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
+        { id: 'mem-2', session_id: 'sess-a', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+        { id: 'mem-1', session_id: 'sess-b', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
       ],
     })
   })

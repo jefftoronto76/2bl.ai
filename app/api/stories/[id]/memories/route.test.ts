@@ -56,7 +56,7 @@ describe('GET /api/stories/[id]/memories', () => {
 
   it('calls the service layer scoped by tenant/user/id and returns its ordered list', async () => {
     const memories = [
-      { id: 'mem-1', title: 'First', body: 'A', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+      { id: 'mem-1', session_id: 'sess-a', title: 'First', body: 'A', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
     ]
     mockGetMemoriesForStory.mockResolvedValue({ ok: true, data: memories })
 
