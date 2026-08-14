@@ -18,7 +18,7 @@ vi.mock('@/services/audit', () => ({
   logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 
-import { assignMemoryToStory, getStoryIdsForMemories } from './story-containments'
+import { assignMemoryToStory, getStoryIdsForMemories, getMemoriesForStory } from './story-containments'
 
 type Result = { data: unknown; error: unknown }
 
@@ -31,6 +31,7 @@ function makeChain(result: Result) {
     eq: () => chain,
     is: () => chain,
     in: () => chain,
+    order: () => chain,
     maybeSingle: async () => result,
     then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
       Promise.resolve(result).then(resolve, reject),
@@ -268,5 +269,133 @@ describe('getStoryIdsForMemories', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)
+  })
+})
+
+describe('getMemoriesForStory', () => {
+  it('404s and never queries containments when the caller has no access to the story', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [{ data: { id: 'story-1', user_id: 'the-owner' }, error: null }],
+      members: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'stranger-user', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Story not found')
+    }
+    expect(calls.artifact_containments).toBeUndefined()
+  })
+
+  it('500s when the access check itself errors', async () => {
+    const { client } = makeClient({
+      artifacts: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('returns an empty list when the story has no containment rows', async () => {
+    const { client } = makeClient({
+      artifacts: [OWNED_STORY_ROW],
+      artifact_containments: [{ data: [], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    expect(result).toEqual({ ok: true, data: [] })
+  })
+
+  it('500s when the containment query errors', async () => {
+    const { client } = makeClient({
+      artifacts: [OWNED_STORY_ROW],
+      artifact_containments: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('500s when the memory lookup errors', async () => {
+    // artifacts' cursor is shared across BOTH the story-access lookup
+    // (hasStoryAccess) and this function's own memory lookup — first entry
+    // serves the former, second serves the latter.
+    const { client } = makeClient({
+      artifacts: [OWNED_STORY_ROW, { data: null, error: { message: 'db down' } }],
+      artifact_containments: [{ data: [{ child_artifact_id: 'mem-1', position: null, created_at: '2026-08-01T00:00:00Z' }], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('returns memories ordered exactly as the containment rows were ordered by the query, dropping any missing/discarded ones', async () => {
+    const { client } = makeClient({
+      artifacts: [
+        OWNED_STORY_ROW,
+        {
+          data: [
+            { id: 'mem-2', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+            { id: 'mem-1', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
+            // mem-3 is deliberately absent from this result — simulates a
+            // discarded/missing memory the second query's own filters
+            // already excluded.
+          ],
+          error: null,
+        },
+      ],
+      artifact_containments: [
+        {
+          data: [
+            { child_artifact_id: 'mem-2', position: null, created_at: '2026-08-02T00:00:00Z' },
+            { child_artifact_id: 'mem-1', position: null, created_at: '2026-08-01T00:00:00Z' },
+            { child_artifact_id: 'mem-3', position: null, created_at: '2026-08-03T00:00:00Z' },
+          ],
+          error: null,
+        },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { id: 'mem-2', title: 'Second', body: 'B', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+        { id: 'mem-1', title: 'First', body: 'A', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
+      ],
+    })
+  })
+
+  it('a story the caller is subscribed to (not owned) is a valid read too — owned-OR-subscribed, not owner-only', async () => {
+    const { client } = makeClient({
+      artifacts: [
+        { data: { id: 'story-1', user_id: 'the-owner' }, error: null },
+        { data: [], error: null },
+      ],
+      members: [{ data: { id: 'member-1' }, error: null }],
+      artifact_subscribers: [{ data: { id: 'sub-1' }, error: null }],
+      artifact_containments: [{ data: [], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoriesForStory('tenant-1', 'collaborator-user', 'story-1')
+
+    expect(result).toEqual({ ok: true, data: [] })
   })
 })
