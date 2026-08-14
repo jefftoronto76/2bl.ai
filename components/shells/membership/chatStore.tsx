@@ -157,6 +157,13 @@ interface ChatContextType {
   isGated: boolean;
   /** Name set by the admin at invite creation time. Null when not set. */
   invitedName: string | null;
+  /** Email set by the admin at invite creation time. Null when not set —
+   *  pre-fills MagicLinkCard's sign-up form when no [EMAIL:] marker has
+   *  fired yet. */
+  invitedEmail: string | null;
+  /** Phone set by the admin at invite creation time. Null when not set —
+   *  same pre-fill use as invitedEmail above. */
+  invitedPhone: string | null;
   /** True when the visitor arrived with an invite token in the URL. */
   hasInviteToken: boolean;
   /** True when the signed-in member has role 'admin' or 'owner' on this tenant. */
@@ -261,6 +268,8 @@ export function ChatProvider({
   isAdmin = false,
   enableExitWarning = false,
   invitedName = null,
+  invitedEmail = null,
+  invitedPhone = null,
   hasInviteToken = false,
   inviteToken,
   autoOpenChat = false,
@@ -281,6 +290,12 @@ export function ChatProvider({
   enableExitWarning?: boolean;
   /** Name set by the admin at invite creation. Null when not set. */
   invitedName?: string | null;
+  /** Email set by the admin at invite creation. Null when not set — pre-fills
+   *  MagicLinkCard's sign-up form when no [EMAIL:] marker has fired yet. */
+  invitedEmail?: string | null;
+  /** Phone set by the admin at invite creation. Null when not set — same
+   *  pre-fill use as invitedEmail above. */
+  invitedPhone?: string | null;
   /** True when the visitor arrived with an invite token in the URL. */
   hasInviteToken?: boolean;
   /** Raw invite token — present only when the visitor arrived via an unused
@@ -1349,7 +1364,7 @@ export function ChatProvider({
 
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, invitedEmail, invitedPhone, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>
