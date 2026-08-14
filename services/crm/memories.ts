@@ -52,6 +52,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getSessionMessages } from '@/services/crm/sessions'
 import { createDefaultRegistry } from '@/services/chat/ui/v1/registry'
 import { getMediaItem, listByChat } from '@/services/media'
+import { getStoryIdsForMemories } from '@/services/crm/story-containments'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
@@ -99,6 +100,17 @@ export interface MemoryRow {
   status: MemoryStatus
   created_at: string
   updated_at: string
+  /**
+   * The story (artifacts.id, type='story') this memory currently belongs
+   * to, if any — resolved from artifact_containments (assign-memory-to-
+   * story, 2026-08-13; see services/crm/story-containments.ts), not a
+   * column on this row itself. null = never assigned. Only listMemories
+   * below populates a real value; every other function in this file
+   * that returns a MemoryRow (create/rename/reviseBlocks) leaves this
+   * undefined — none of those change a memory's story, so there is
+   * nothing to look up on their own read-back.
+   */
+  storyId?: string | null
 }
 
 const ARTIFACT_TYPE = 'memory' as const
@@ -142,6 +154,14 @@ function toMemoryRow(row: Record<string, unknown>): MemoryRow {
  * order). Tenant + session scoped. Discarded rows are excluded at the query
  * level — the client never sees them, so there is nothing to filter out
  * client-side.
+ *
+ * Also resolves each row's storyId via getStoryIdsForMemories
+ * (services/crm/story-containments.ts) — one extra query, keyed by this
+ * session's own memory ids. Non-fatal on failure (mirrors listStories' own
+ * active-link/subscriber lookups, services/crm/stories.ts): a containment
+ * lookup error logs and falls back to every row's storyId reading null,
+ * rather than failing the whole memory list over a linkage that's
+ * secondary to the memory data itself.
  */
 export async function listMemories(
   tenantId: string,
@@ -163,7 +183,14 @@ export async function listMemories(
     return { ok: false, status: 500, error: error.message }
   }
 
-  return { ok: true, data: (data ?? []).map(toMemoryRow) }
+  const rows = (data ?? []).map(toMemoryRow)
+  const storyIdsResult = await getStoryIdsForMemories(tenantId, rows.map(r => r.id))
+  if (!storyIdsResult.ok) {
+    console.error('[memories] list — story id lookup failed (non-fatal):', storyIdsResult.error)
+  }
+  const storyIdMap = storyIdsResult.ok ? storyIdsResult.data : {}
+
+  return { ok: true, data: rows.map(r => ({ ...r, storyId: storyIdMap[r.id] ?? null })) }
 }
 
 export interface CreateDraftMemoryInput {

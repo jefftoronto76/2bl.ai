@@ -14,12 +14,16 @@
 // their whole account, the same way their conversation list does, not to
 // one chat.
 //
-// Two future relationships are explicitly NOT built here (see the Heirloom
+// One future relationship is explicitly NOT built here (see the Heirloom
 // chat-widget V2 entry in System Docs/Known Gaps.md):
-//   - Story <-> memory, via artifact_containments (a self-referencing
-//     artifacts join table, already live in Studio, unused by any code yet).
 //   - Story <-> media, via media_items.story_id (a column that already
 //     exists, currently always null).
+//
+// Story <-> memory IS built now (assign-memory-to-story, 2026-08-13) — via
+// artifact_containments, a self-referencing artifacts join table. That
+// relationship lives in its own file, services/crm/story-containments.ts,
+// not here — a distinct enough concern from story CRUD (mirrors why
+// story-invites.ts is its own file too).
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { resolveUserIdForMember } from '@/services/crm/memories'

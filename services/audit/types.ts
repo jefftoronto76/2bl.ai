@@ -146,6 +146,10 @@ export const AuditAction = {
   // artifact_subscribers; see services/crm/story-invites.ts's
   // revokeStoryCollaborator.
   STORY_COLLABORATOR_REMOVED: 'story.collaborator_removed',
+  // Story <-> memory linking (assign-memory-to-story, 2026-08-13) — the
+  // first real write against artifact_containments; see
+  // services/crm/story-containments.ts's assignMemoryToStory.
+  MEMORY_ASSIGNED_TO_STORY: 'memory.assigned_to_story',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
 } as const

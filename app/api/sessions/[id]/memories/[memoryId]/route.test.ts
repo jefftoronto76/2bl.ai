@@ -11,17 +11,24 @@ const mockDiscardMemory = vi.fn()
 const mockRenameMemory = vi.fn()
 const mockReviseMemoryBlocks = vi.fn()
 const mockLogEvent = vi.fn()
+const mockAssignMemoryToStory = vi.fn()
 
 vi.mock('@/services/auth', () => ({
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
+  getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 const mockGetTenantFromRequest = vi.fn()
+const mockGetCurrentUserId = vi.fn()
 
 vi.mock('@/services/crm/memories', () => ({
   publishMemory: (...args: unknown[]) => mockPublishMemory(...args),
   discardMemory: (...args: unknown[]) => mockDiscardMemory(...args),
   renameMemory: (...args: unknown[]) => mockRenameMemory(...args),
   reviseMemoryBlocks: (...args: unknown[]) => mockReviseMemoryBlocks(...args),
+}))
+
+vi.mock('@/services/crm/story-containments', () => ({
+  assignMemoryToStory: (...args: unknown[]) => mockAssignMemoryToStory(...args),
 }))
 
 vi.mock('@/services/audit', () => ({
@@ -59,21 +66,24 @@ const A_MEMORY = {
 
 beforeEach(() => {
   mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
+  mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockPublishMemory.mockReset()
   mockDiscardMemory.mockReset()
   mockRenameMemory.mockReset()
   mockReviseMemoryBlocks.mockReset().mockResolvedValue({ ok: true, data: A_MEMORY })
+  mockAssignMemoryToStory.mockReset()
   mockLogEvent.mockReset()
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 describe('PATCH /api/sessions/[id]/memories/[memoryId] — action validation', () => {
-  it('400s on an unrecognized action, mentioning all four valid actions', async () => {
+  it('400s on an unrecognized action, mentioning all five valid actions', async () => {
     const res = await PATCH(makeRequest({ action: 'bogus' }), makeParams('s1', 'mem-1'))
 
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('revise_blocks')
+    expect(body.error).toContain('assign_story')
     expect(mockReviseMemoryBlocks).not.toHaveBeenCalled()
   })
 
@@ -145,5 +155,44 @@ describe('PATCH — existing actions are unaffected', () => {
 
     expect(mockRenameMemory).toHaveBeenCalledWith('tenant-1', 's1', 'mem-1', 'New Title')
     expect(res.status).toBe(200)
+  })
+})
+
+describe("PATCH — action: 'assign_story'", () => {
+  it('calls assignMemoryToStory with the resolved user id and relays a success response', async () => {
+    mockAssignMemoryToStory.mockResolvedValue({ ok: true, data: null })
+
+    const res = await PATCH(makeRequest({ action: 'assign_story', story_id: 'story-1' }), makeParams('s1', 'mem-1'))
+
+    expect(mockAssignMemoryToStory).toHaveBeenCalledWith('tenant-1', 'user-1', 'mem-1', 'story-1')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ ok: true })
+  })
+
+  it('401s and never calls assignMemoryToStory when no user is signed in', async () => {
+    mockGetCurrentUserId.mockResolvedValue(null)
+
+    const res = await PATCH(makeRequest({ action: 'assign_story', story_id: 'story-1' }), makeParams('s1', 'mem-1'))
+
+    expect(res.status).toBe(401)
+    expect(mockAssignMemoryToStory).not.toHaveBeenCalled()
+  })
+
+  it('400s when story_id is missing, and never calls assignMemoryToStory', async () => {
+    const res = await PATCH(makeRequest({ action: 'assign_story' }), makeParams('s1', 'mem-1'))
+
+    expect(res.status).toBe(400)
+    expect(mockAssignMemoryToStory).not.toHaveBeenCalled()
+  })
+
+  it('relays assignMemoryToStory\'s error status and message unchanged (e.g. a 404 for an inaccessible story)', async () => {
+    mockAssignMemoryToStory.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
+
+    const res = await PATCH(makeRequest({ action: 'assign_story', story_id: 'story-1' }), makeParams('s1', 'mem-1'))
+
+    expect(res.status).toBe(404)
+    const body = await res.json()
+    expect(body.error).toBe('Story not found')
   })
 })

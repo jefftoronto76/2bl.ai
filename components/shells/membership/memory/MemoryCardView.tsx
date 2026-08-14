@@ -8,14 +8,19 @@
  * several of the reference's actions have no backend support in this
  * codebase yet and are deliberately stubbed rather than faked:
  *
- *   - "+" (add to a story): stories aren't a buildable concept yet (no UI
- *     anywhere creates or lists one) — renders in the reference's chrome
- *     position, fires the shared "coming soon" toast instead of opening a
- *     story-move popover.
+ *   - "+" (add to a story): real now (assign-memory-to-story, 2026-08-13).
+ *     Renders StoryPicker.tsx — a popover matching BlockInserter's own
+ *     dismissal mechanics (backdrop + Escape) — listing every story the
+ *     member owns or is subscribed to (`stories`, sourced the same way
+ *     ChatHero.tsx already sources it for InviteCollaboratorsModal's own
+ *     story picker). A single click assigns immediately via onAssignStory
+ *     (assignMemoryToStory, services/crm/story-containments.ts), no
+ *     separate confirm step. The current story, if any, is highlighted;
+ *     re-picking it is a no-op handled inside StoryPicker itself.
  *   - Date editing: no route action updates created_at at all. Read-only
  *     text, not the reference's editable date input.
  *   - "Talk about this" / "Use as a base": no backend implementation
- *     anywhere in this codebase. Same "coming soon" toast as "+".
+ *     anywhere in this codebase. Same "coming soon" toast as before.
  *   - "Remove": the one footer action that DOES have real backend support
  *     (discardMemory via PATCH .../memories/[memoryId], action: 'discard')
  *     — wired for real.
@@ -53,22 +58,28 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { X, Plus, MessageCircle, GitFork, Trash2, Feather } from 'lucide-react'
+import { X, MessageCircle, GitFork, Trash2, Feather } from 'lucide-react'
 import type { MemoryBlock, MemoryRow } from '@/services/chat/ui/v1/useMemories'
 import { memoryKindOf, KIND_ICONS } from './memoryKinds'
 import { BlockCanvas, type SessionImage } from './BlockCanvas'
+import { StoryPicker } from './StoryPicker'
+import type { Story } from '../v2/types'
 
 export interface MemoryCardViewProps {
   memory: MemoryRow
   onClose: () => void
   onRetitle: (title: string) => void
   onRemove: () => void
-  /** Fires the shared toast for every stubbed action ("+", Talk about this, Use as a base) — one message, no separate behavior per button. */
+  /** Fires the shared toast for every still-stubbed action (Talk about this, Use as a base) — one message, no separate behavior per button. */
   onStub: (message: string) => void
   /** Persists the block canvas (Memory Canvas V1) — PATCH .../memories/[memoryId], action: 'revise_blocks'. */
   onReviseBlocks: (blocks: MemoryBlock[]) => void
   /** The session's own ready image media items, for the image-block attach picker (BlockCanvas.tsx). Sourced from useChatStore().mediaItems by ChatHero.tsx — this component never fetches anything itself. */
   sessionImages: SessionImage[]
+  /** Every story the signed-in member owns or is subscribed to — StoryPicker's list. Sourced from ChatHero.tsx's own `stories` state (GET /api/stories), the same list InviteCollaboratorsModal's story picker already uses. */
+  stories: Story[]
+  /** Assigns this memory to a story — PATCH .../memories/[memoryId], action: 'assign_story' (assignMemoryToStory, services/crm/story-containments.ts). Only called for a story that differs from memory.storyId — StoryPicker itself no-ops a re-pick. */
+  onAssignStory: (storyId: string) => void
 }
 
 /** Not crypto.randomUUID() directly — Node/jsdom test environments don't always polyfill it, and this only needs to be locally unique within one open panel's session, never persisted as a lookup key beyond that. */
@@ -113,7 +124,7 @@ function buildDefaultBlocks(memory: MemoryRow): MemoryBlock[] {
 const footerBtn =
   'grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-border bg-transparent text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:h-11 [@media(hover:none)]:w-11'
 
-export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, sessionImages }: MemoryCardViewProps) {
+export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, sessionImages, stories, onAssignStory }: MemoryCardViewProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
 
@@ -224,15 +235,7 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
             aria-label="Memory title"
             className="min-w-0 flex-1 border-none bg-transparent px-0.5 py-1 font-display text-xl font-medium tracking-tight text-text-primary outline-none"
           />
-          <button
-            type="button"
-            aria-label="Add to a story"
-            title="Adding to a story is coming soon"
-            onClick={() => onStub('Coming soon')}
-            className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full border-none bg-accent text-background transition-opacity hover:opacity-90"
-          >
-            <Plus size={16} aria-hidden />
-          </button>
+          <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} />
           <button
             type="button"
             aria-label="Close memory panel"

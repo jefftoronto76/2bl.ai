@@ -13,6 +13,7 @@ import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { MemoryCardView } from './MemoryCardView';
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
 import type { SessionImage } from './BlockCanvas';
+import type { Story } from '../v2/types';
 
 afterEach(cleanup);
 
@@ -32,13 +33,14 @@ function mkMemory(overrides: Partial<MemoryRow> = {}): MemoryRow {
   };
 }
 
-function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionImage[] = []) {
+function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionImage[] = [], stories: Story[] = []) {
   const memory = mkMemory(overrides);
   const onClose = vi.fn();
   const onRetitle = vi.fn();
   const onRemove = vi.fn();
   const onStub = vi.fn();
   const onReviseBlocks = vi.fn();
+  const onAssignStory = vi.fn();
   const utils = render(
     <MemoryCardView
       memory={memory}
@@ -48,9 +50,11 @@ function renderCard(overrides: Partial<MemoryRow> = {}, sessionImages: SessionIm
       onStub={onStub}
       onReviseBlocks={onReviseBlocks}
       sessionImages={sessionImages}
+      stories={stories}
+      onAssignStory={onAssignStory}
     />,
   );
-  return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, ...utils };
+  return { memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, onAssignStory, ...utils };
 }
 
 /** Clicks the inserter at `slotIndex` among all "Add a block" slots, then "Add text"/"Add image" within its popover. */
@@ -122,6 +126,8 @@ describe('MemoryCardView — header', () => {
         onStub={vi.fn()}
         onReviseBlocks={vi.fn()}
         sessionImages={[]}
+        stories={[]}
+        onAssignStory={vi.fn()}
       />,
     );
     const input = screen.getByRole('textbox', { name: 'Memory title' });
@@ -137,6 +143,8 @@ describe('MemoryCardView — header', () => {
         onStub={vi.fn()}
         onReviseBlocks={vi.fn()}
         sessionImages={[]}
+        stories={[]}
+        onAssignStory={vi.fn()}
       />,
     );
     expect(screen.getByRole('textbox', { name: 'Memory title' })).toHaveValue('A Different Memory');
@@ -144,11 +152,18 @@ describe('MemoryCardView — header', () => {
     expect(screen.getByRole('textbox', { name: 'Text block 1' })).toHaveValue('Something else entirely.');
   });
 
-  it('"+" fires the stub callback, not a story-move popover', () => {
-    const { onStub } = renderCard();
+  it('"+" opens a real story popover, not the stub callback (real as of assign-memory-to-story)', () => {
+    const { onStub } = renderCard({}, [], [{ id: 'story-1', name: 'Summer at the Lake' }]);
     fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
-    expect(onStub).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /the lake house/i })).toBeNull(); // no popover list rendered
+    expect(onStub).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Add to Summer at the Lake' })).toBeInTheDocument();
+  });
+
+  it('picking a story from "+" calls onAssignStory with that story\'s id', () => {
+    const { onAssignStory } = renderCard({}, [], [{ id: 'story-1', name: 'Summer at the Lake' }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Summer at the Lake' }));
+    expect(onAssignStory).toHaveBeenCalledWith('story-1');
   });
 
   it('Close fires onClose', () => {

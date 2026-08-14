@@ -58,6 +58,8 @@ export interface MemoryRow {
   status: MemoryStatus
   created_at: string
   updated_at: string
+  /** The story this memory currently belongs to, if any — see services/crm/memories.ts's own copy for the full doc. null = never assigned; undefined on a freshly-created/renamed/revised row (those writes don't touch this). */
+  storyId?: string | null
 }
 
 export interface UseMemoriesReturn {
@@ -119,6 +121,16 @@ export interface UseMemoriesReturn {
    * argument back into local state.
    */
   reviseBlocks(memoryId: string, blocks: MemoryBlock[]): Promise<void>
+  /**
+   * Assigns a memory to a story (MemoryCardView's "+" via StoryPicker) —
+   * PATCH .../memories/[memoryId], action: 'assign_story'
+   * (assignMemoryToStory, services/crm/story-containments.ts). Like
+   * rename(), the client fully controls this field (it's the storyId the
+   * member just clicked in the picker) — on success this echoes that value
+   * into local state directly rather than reading anything back from the
+   * response.
+   */
+  assignToStory(memoryId: string, storyId: string): Promise<void>
 }
 
 /**
@@ -381,6 +393,25 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
+  const assignToStory = useCallback(async (memoryId: string, storyId: string) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch(`/api/sessions/${sid}/memories/${memoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assign_story', story_id: storyId }),
+      })
+      if (!res.ok) {
+        console.error('[useMemories] assignToStory failed:', res.status)
+        return
+      }
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, storyId } : m)))
+    } catch (err) {
+      console.error('[useMemories] assignToStory threw:', err)
+    }
+  }, [])
+
   return {
     memories,
     getByAnchor,
@@ -395,5 +426,6 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     discard,
     rename,
     reviseBlocks,
+    assignToStory,
   }
 }
