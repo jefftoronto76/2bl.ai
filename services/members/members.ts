@@ -23,6 +23,7 @@ export interface MemberInviteRow {
   clerk_id: string | null
   user_id: string | null
   email: string | null
+  phone: string | null
   name: string | null
   invited_name: string | null
   invited_by: string | null
@@ -154,7 +155,7 @@ export async function validateMemberToken(
 
   const { data, error } = await supabase
     .from('members')
-    .select('id, tenant_id, clerk_id, user_id, email, name, invited_name, invited_by, role, status, token, used_at, auto_open, primer, created_at, updated_at')
+    .select('id, tenant_id, clerk_id, user_id, email, phone, name, invited_name, invited_by, role, status, token, used_at, auto_open, primer, created_at, updated_at')
     .eq('token', token)
     .is('used_at', null)
     .is('revoked_at', null)

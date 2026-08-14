@@ -60,6 +60,12 @@ interface HeirloomAppProps {
   isAuthorized: boolean;
   isAdmin?: boolean;
   invitedName?: string | null;
+  /** Email the admin set on the invite (members.email) — pre-fills
+   *  MagicLinkCard's sign-up form when no [EMAIL:] marker has fired yet. */
+  invitedEmail?: string | null;
+  /** Phone the admin set on the invite (members.phone) — same pre-fill use
+   *  as invitedEmail above. */
+  invitedPhone?: string | null;
   hasInviteToken?: boolean;
   /** Raw invite token string — present only when the visitor was authorized via
    *  an unused token (not when already an active signed-in member). The
@@ -91,6 +97,8 @@ export default function HeirloomApp({
   isAuthorized,
   isAdmin,
   invitedName,
+  invitedEmail,
+  invitedPhone,
   hasInviteToken,
   inviteToken,
   memberId,
@@ -105,6 +113,8 @@ export default function HeirloomApp({
       isAuthorized={isAuthorized}
       isAdmin={isAdmin}
       invitedName={invitedName}
+      invitedEmail={invitedEmail}
+      invitedPhone={invitedPhone}
       hasInviteToken={hasInviteToken}
       inviteToken={inviteToken}
       memberId={memberId}
