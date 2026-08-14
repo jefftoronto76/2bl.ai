@@ -354,3 +354,106 @@ export async function getMemoriesForStory(
 
   return { ok: true, data: ordered }
 }
+
+export type MoveDirection = 'up' | 'down'
+
+/**
+ * Moves one memory up or down within its story's ordered list — Phase 1c
+ * (real-story-view-1c-reorder). Deliberately reuses getMemoriesForStory
+ * itself for both the access check AND the current ordered list, rather
+ * than re-deriving either: that function already does the exact two-step
+ * (ordered containment rows, then filtered to non-discarded memories in
+ * this tenant) this needs, and a containment row can outlive its memory —
+ * discardMemory (services/crm/memories.ts) only stamps artifacts.discarded_at,
+ * it never cleans up artifact_containments — so reordering against raw
+ * containment rows instead of this already-filtered list could silently
+ * compute a swap against an index the client never actually sees.
+ *
+ * Renumber-then-swap-then-write, always — never a two-NULL swap and never
+ * a special "first move ever" branch. Every containment row's position is
+ * NULL today (no UI has ever written one), so any move has to first make
+ * the CURRENT effective order (position ASC NULLS LAST, created_at ASC —
+ * see getMemoriesForStory's own doc comment) permanent by assigning it
+ * sequential positions 0..n-1, THEN swap the moved item with its neighbor
+ * in that freshly-assigned numbering, THEN write every row in one batch.
+ * This is correct whether the story has never been touched or has been
+ * reordered many times before — there is no separate "first move" case.
+ *
+ * Single batch upsert, not N sequential updates — one round trip for the
+ * whole story's positions, keyed on the real
+ * (parent_artifact_id, child_artifact_id) unique constraint (this file's
+ * own header comment) rather than each row's own id, matching the
+ * composite-key upsert convention services/crm/feedback.ts's upsertFeedback
+ * already uses (`onConflict: 'session_id,message_index'`) — same shape,
+ * different pair of columns.
+ */
+export async function moveMemoryInStory(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+  memoryId: string,
+  direction: MoveDirection,
+): Promise<StoryContainmentResult<null>> {
+  const listResult = await getMemoriesForStory(tenantId, userId, storyId)
+  if (!listResult.ok) return listResult
+
+  const memories = listResult.data
+  const index = memories.findIndex(m => m.id === memoryId)
+  if (index === -1) {
+    return { ok: false, status: 404, error: 'Memory not found in this story' }
+  }
+
+  const targetIndex = direction === 'up' ? index - 1 : index + 1
+  if (targetIndex < 0 || targetIndex >= memories.length) {
+    return {
+      ok: false,
+      status: 400,
+      error: direction === 'up' ? 'Already at the top of the list' : 'Already at the bottom of the list',
+    }
+  }
+
+  // Renumber every row 0..n-1 in the current effective order, then swap the
+  // two positions being moved — not the array elements themselves, just
+  // which position number each of the two ends up with.
+  const positions = memories.map((_, i) => i)
+  ;[positions[index], positions[targetIndex]] = [positions[targetIndex], positions[index]]
+
+  const supabase = getAdminClient()
+  const { error } = await supabase.from('artifact_containments').upsert(
+    memories.map((m, i) => ({
+      tenant_id: tenantId,
+      parent_artifact_id: storyId,
+      child_artifact_id: m.id,
+      position: positions[i],
+    })),
+    { onConflict: 'parent_artifact_id,child_artifact_id' },
+  )
+
+  if (error) {
+    console.error('[story-containments] moveMemoryInStory — upsert failed:', error.message)
+    void logEvent({
+      action: AuditAction.STORY_MEMORY_REORDERED,
+      tenant_id: tenantId,
+      actor_id: userId,
+      actor_type: 'user',
+      target_type: 'memory',
+      target_id: memoryId,
+      outcome: 'failure',
+      metadata: { error_detail: error.message, story_id: storyId, direction },
+    })
+    return { ok: false, status: 500, error: error.message }
+  }
+
+  console.log('[story-containments] moved memory in story:', { memoryId, storyId, direction })
+  void logEvent({
+    action: AuditAction.STORY_MEMORY_REORDERED,
+    tenant_id: tenantId,
+    actor_id: userId,
+    actor_type: 'user',
+    target_type: 'memory',
+    target_id: memoryId,
+    outcome: 'success',
+    metadata: { story_id: storyId, direction, positions: memories.map((m, i) => ({ memory_id: m.id, position: positions[i] })) },
+  })
+  return { ok: true, data: null }
+}

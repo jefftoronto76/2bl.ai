@@ -960,7 +960,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                   onFlash={showToast}
                 />
               ) : (
-                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} />
+                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
               )}
             </div>
           </div>
@@ -1104,7 +1104,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {storyViewStory && !storyMemory && (
-              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} />
+              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
             )}
           </div>
         )}

@@ -150,6 +150,10 @@ export const AuditAction = {
   // first real write against artifact_containments; see
   // services/crm/story-containments.ts's assignMemoryToStory.
   MEMORY_ASSIGNED_TO_STORY: 'memory.assigned_to_story',
+  // Reordering a story's memories (real-story-view-1c-reorder, 2026-08-14)
+  // — logged once per move, metadata carries the full renumbered position
+  // list; see services/crm/story-containments.ts's moveMemoryInStory.
+  STORY_MEMORY_REORDERED: 'story.memory_reordered',
   // Chat — media context resolution (services/chat/server)
   CHAT_MEDIA_CONTEXT_RESOLVED: 'chat.media_context_resolved',
   // Chat — generic session context attachment (session-context-service,

@@ -324,14 +324,24 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   linking, real as of 2026-08-13" below. **A real story view now exists**
   (`components/shells/membership/v2/StoryView.tsx`, real-story-view-1a-
   static-list 2026-08-14; row-tap-to-editor added the same day, real-
-  story-view-1b-row-tap-editor) — a story's memories in real, ordered-by-
-  the-new-`artifact_containments.position`-column order (every row still
-  `NULL`, so today this reads as "last assigned," not curated; drag-reorder
-  itself remains deferred, blocked on a real position-writing UI), and
-  tapping a row opens a correctly session-scoped editor via
-  `StoryMemoryEditor.tsx` (its own `useMemories(memory's own session_id)`
-  instance, NOT `ChatHero`'s chat-scoped one — a story's memories routinely
-  come from other sessions than whichever chat is open). **What's still
+  story-view-1b-row-tap-editor) — a story's memories in real,
+  `artifact_containments.position`-column order, and tapping a row opens a
+  correctly session-scoped editor via `StoryMemoryEditor.tsx` (its own
+  `useMemories(memory's own session_id)` instance, NOT `ChatHero`'s
+  chat-scoped one — a story's memories routinely come from other sessions
+  than whichever chat is open). **Reordering is real too, as of the same
+  day (real-story-view-1c-reorder)** — per-row up/down move buttons (not
+  drag-and-drop, a deliberate simplification for this pass), PATCHing
+  `/api/stories/[id]/memories` (`moveMemoryInStory`, `services/crm/
+  story-containments.ts`). Every move renumbers the WHOLE story's positions
+  to match its current effective order, then swaps the two being moved,
+  then writes all of them in one batch upsert — never a two-`NULL` swap and
+  never a "first move ever" special case, since every row started at
+  `position: NULL` and this makes it correct regardless of how many prior
+  moves (zero or many) already happened. Requires a signed-in account (the
+  four anonymous-safe session-scoped memory actions on `PATCH
+  /api/sessions/[id]/memories/[memoryId]` are NOT the model here — this
+  writes against a story the caller owns/is subscribed to). **What's still
   genuinely missing:** `SidebarV2`'s story rows still have an `onClick`
   affordance already built, but `ChatHero.tsx` still never passes
   `onSelectStory` — the story view above is reachable today only via a
