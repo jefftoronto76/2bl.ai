@@ -2,15 +2,15 @@
 
 ## 2026-08-14 — chat_session_context (generic session-scoped prompt context)
 
-**Status: NOT YET RUN.** Reported by CC alongside `session-context-service`
-(`services/chat/server/session-context.ts`) — logged here so the table
-exists in this doc before it exists in Studio, per standing convention.
-Remove this status line once Jeff runs it.
+**Status: LIVE.** Run by Jeff in Supabase Studio. Originally reported by CC
+alongside `session-context-service` (`services/chat/server/session-context.ts`)
+before the table existed, per standing convention — confirmed live as of the
+`session-context-build` branch's merge to `main`.
 
 ### Create `chat_session_context` table
 
 **Type:** Schema change
-**Executed by:** Jeff in Supabase Studio — pending
+**Executed by:** Jeff in Supabase Studio — done
 
 **SQL to run:**
 

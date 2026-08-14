@@ -105,8 +105,8 @@ registry entry rather than a redesign. First real use case: a session started
 from an empty story gets the story's name/description/owner folded into the
 prompt.
 
-**Schema — `chat_session_context` table (Jeff's Studio work, not yet run as
-of this doc):**
+**Schema — `chat_session_context` table (Jeff's Studio work — live as of
+2026-08-14, see `System Docs/DB_CHANGELOG.md`):**
 ```sql
 CREATE TABLE chat_session_context (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
