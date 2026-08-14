@@ -73,7 +73,7 @@ export interface ChatHeroProps {
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
-  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, joinedStoryConfirmation } = useChatStore();
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, joinedStoryConfirmation, newChat, setSessionContextToAttach } = useChatStore();
 
   // The memory panel's image-block picker (BlockCanvas.tsx, via
   // MemoryCardView) only ever offers photos already uploaded in THIS
@@ -97,11 +97,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // (below) rather than living only in this local state, though this state
   // remains the source of truth SidebarV2 (and InviteCollaboratorsModal's
   // story picker) render from — the create/fetch/delete paths just keep it
-  // in sync with the DB. Rows are still inert for select/chat — moveToChapter/
-  // removeFromChapter and selecting into a story's own view remain
-  // deliberate no-ops (there's no story view to select into yet; see System
-  // Docs/Known Gaps.md). Uploads / Share / Search are stubbed per the
-  // integration decisions. Invite is real (invites-collaboration-modal,
+  // in sync with the DB. Row select is real now too (Phase 1d,
+  // real-story-view-1d-entry-point — see handleSelectStory below);
+  // moveToChapter/removeFromChapter remain deliberate no-ops. Uploads /
+  // Share / Search are stubbed per the integration decisions. Invite is
+  // real (invites-collaboration-modal,
   // 2026-08-10) — see handleInviteStory below — and now picks from this
   // same real `stories` list, though createMemberInvite itself still only
   // bridges the chosen story_id through audit-event metadata, not a real
@@ -343,18 +343,63 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setStoryMemory(null);
   }, []);
 
-  // Temporary, removable dev entry point (Phase 1d wires a real one — the
-  // sidebar Stories-list row's already-built onClick, currently a no-op
-  // because ChatHero never supplies SidebarV2's onSelectStory prop; see
-  // System Docs/Known Gaps.md). Reads ?storyView=<id> once on mount so this
-  // pane can be verified on a preview deploy without that wiring landing
-  // first. Delete this effect (and the query-param check) once Phase 1d
-  // ships a real click path.
-  useEffect(() => {
-    const storyId = new URLSearchParams(window.location.search).get('storyView');
-    if (storyId) handleOpenStoryView(storyId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Real entry point (Phase 1d, real-story-view-1d-entry-point) — the
+  // sidebar Stories-list row's own click, replacing the temporary
+  // ?storyView=<id> query param Phases 1a-1c used to verify the pane
+  // before this landed. Branches on whether the story has any memories
+  // yet: there is no memoryCount/contentCount field on Story anywhere in
+  // this codebase (confirmed absent from services/crm/stories.ts's
+  // listStories — that field only ever existed on the discarded story-
+  // click-routing branch), so this checks for real via the same
+  // GET /api/stories/[id]/memories StoryView itself already fetches —
+  // simplest option that needs no new field/schema and adds no coupling;
+  // StoryView refetches independently once opened, the extra request on
+  // the non-empty path is a single small GET, not a hot path.
+  //
+  //   - Non-empty: open the real StoryView (handleOpenStoryView).
+  //   - Empty: start a fresh chat scoped to this story — newChat(), then
+  //     setSessionContextToAttach (the real session-context service,
+  //     merged 2026-08-13/14) so the story's name/description/owner gets
+  //     folded into the system prompt on every turn once the session is
+  //     actually created (services/chat/server/session-context.ts). NOT
+  //     the discarded story-click-routing branch's one-time
+  //     injectAssistantMessage approach — that mechanism was deliberately
+  //     replaced by the session-context service.
+  //
+  // `hasMemories` defaults true (routes to the safe StoryView-open branch)
+  // on any fetch failure or non-OK response — a real error (network,
+  // 401, 404) should surface via StoryView's own already-built error
+  // state, not silently start an unrelated new chat the member never
+  // asked for. Also closes every other pane on the empty branch, matching
+  // every other handleOpenX function in this file — a fresh chat becomes
+  // the primary view, not something layered under a stale pane.
+  const handleSelectStory = useCallback(async (storyId: string) => {
+    let hasMemories = true;
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/memories`);
+      if (res.ok) {
+        const data: { memories?: unknown[] } = await res.json();
+        hasMemories = Array.isArray(data.memories) && data.memories.length > 0;
+      }
+    } catch (err) {
+      console.error('[ChatHero] select story — memory check failed, opening story view as a fallback:', err);
+    }
+
+    if (hasMemories) {
+      handleOpenStoryView(storyId);
+      return;
+    }
+
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+    setStoryViewId(null);
+    setStoryMemory(null);
+    newChat();
+    setSessionContextToAttach({ contextType: 'story', contextRefId: storyId, contextFrequency: 'every_turn' });
+  }, [handleOpenStoryView, newChat, setSessionContextToAttach]);
 
   // Media/admin pane width (fix for close-button-clipped-offscreen bug):
   // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
@@ -827,6 +872,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             writingPrompts={WRITING_PROMPTS}
             onCreateStory={() => setBeginStoryOpen(true)}
             onInviteStory={handleInviteStory}
+            onSelectStory={handleSelectStory}
             onSelectPrompt={handleSelectPrompt}
             onRowAction={handleRowAction}
             starredConversationIds={starredIds}
@@ -847,6 +893,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}
                 onInviteStory={handleInviteStory}
+                onSelectStory={(storyId) => { dispatch({ type: 'TOGGLE_SIDEBAR' }); void handleSelectStory(storyId); }}
                 onSelectPrompt={handleSelectPrompt}
                 onRowAction={handleRowAction}
                 starredConversationIds={starredIds}
@@ -949,12 +996,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
         {/* Mobile: story view is a full-screen overlay — same treatment as
             the admin panel above (inset-0/h-[100dvh], no scrim, no
-            rounding). Reached today only via the temporary ?storyView=<id>
-            query param (see handleOpenStoryView's effect above), not a real
-            nav entry point yet (that's Phase 1d). Swaps to
-            StoryMemoryEditor in the same slot once a row's been tapped
-            (Phase 1b) — storyViewId itself stays set, so the editor's own
-            close returns to the list rather than closing this overlay. */}
+            rounding). Reached via a real tap on a Stories-list row (Phase
+            1d, handleSelectStory) when the story has memories — an empty
+            story starts a fresh scoped chat instead, never opening this
+            overlay at all. Swaps to StoryMemoryEditor in the same slot
+            once a row's been tapped (Phase 1b) — storyViewId itself stays
+            set, so the editor's own close returns to the list rather than
+            closing this overlay. */}
         {isMobile && storyViewStory && (
           <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
             <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
