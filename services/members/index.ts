@@ -1,6 +1,7 @@
 export {
   createMemberInvite,
   validateMemberToken,
+  memberTokenExists,
   linkInvitedMember,
   acceptInvite,
   hardDeleteMember,

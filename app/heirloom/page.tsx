@@ -1,7 +1,7 @@
 import { getSession, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { headers } from 'next/headers';
-import { validateMemberToken } from '@/services/members';
+import { validateMemberToken, memberTokenExists } from '@/services/members';
 import { validateStoryInviteToken } from '@/services/crm/story-invites';
 import HeirloomApp from './HeirloomApp';
 
@@ -82,6 +82,21 @@ export default async function HeirloomPage({
     }
   }
 
+  // Token exists in this tenant's members table (regardless of
+  // status/used_at/revoked_at) but didn't authorize this visitor — eligible
+  // for the chat-first "expired invite" flow. A garbage/unrelated token
+  // string does NOT qualify (unlike hasInviteToken below, which is raw
+  // presence). Gated on !session so a signed-in visitor with a stale link
+  // never has the chat panel pop open — GateView's "already signed in"
+  // branch still handles that case untouched.
+  let tokenExistsButUnauthorized = false;
+  if (!isAuthorized && inviteToken && tenantId) {
+    tokenExistsButUnauthorized = await memberTokenExists(inviteToken, tenantId);
+    if (tokenExistsButUnauthorized && !session) {
+      autoOpenChat = true;
+    }
+  }
+
   const hasInviteToken = !!inviteToken;
 
   // Pass the raw token to the client only when it was the authorization path
@@ -131,7 +146,7 @@ export default async function HeirloomPage({
     }
   }
 
-  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, validatedInviteToken, autoOpenChat, hasMemberId: !!validatedMemberId, hasStoryInviteToken: !!storyInviteToken });
+  console.log('[heirloom/page] props →', { gateEnabled, isAuthorized, isAdmin, hasInviteToken, tokenExistsButUnauthorized, validatedInviteToken, autoOpenChat, hasMemberId: !!validatedMemberId, hasStoryInviteToken: !!storyInviteToken });
 
   return (
     <HeirloomApp
@@ -142,6 +157,7 @@ export default async function HeirloomPage({
       invitedEmail={invitedEmail}
       invitedPhone={invitedPhone}
       hasInviteToken={hasInviteToken}
+      tokenExistsButUnauthorized={tokenExistsButUnauthorized}
       inviteToken={validatedInviteToken}
       memberId={validatedMemberId}
       autoOpenChat={autoOpenChat}

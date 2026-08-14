@@ -67,6 +67,12 @@ interface HeirloomAppProps {
    *  as invitedEmail above. */
   invitedPhone?: string | null;
   hasInviteToken?: boolean;
+  /** True when the ?invite= token exists in this tenant's members table
+   *  (regardless of status/used_at/revoked_at) but didn't authorize this
+   *  visitor — distinct from hasInviteToken, which is raw query-param
+   *  presence with no server-side validation. Drives the chat-first
+   *  "expired invite" gate bypass in chatStore.tsx. */
+  tokenExistsButUnauthorized?: boolean;
   /** Raw invite token string — present only when the visitor was authorized via
    *  an unused token (not when already an active signed-in member). The
    *  ChatProvider calls /api/heirloom/invites/accept on the false→true
@@ -100,6 +106,7 @@ export default function HeirloomApp({
   invitedEmail,
   invitedPhone,
   hasInviteToken,
+  tokenExistsButUnauthorized,
   inviteToken,
   memberId,
   autoOpenChat,
@@ -116,6 +123,7 @@ export default function HeirloomApp({
       invitedEmail={invitedEmail}
       invitedPhone={invitedPhone}
       hasInviteToken={hasInviteToken}
+      tokenExistsButUnauthorized={tokenExistsButUnauthorized}
       inviteToken={inviteToken}
       memberId={memberId}
       autoOpenChat={autoOpenChat}
