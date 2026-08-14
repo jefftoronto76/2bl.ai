@@ -55,19 +55,68 @@ what used to be an inline `"· {story.name}"` suffix tacked onto the date.
   re-proposed — "looked horrible," per direct feedback, given how little
   horizontal room that row has.
 
-## Known unknowns
+## Known unknowns (stale as of 2026-08-13/14 — corrected below)
 
-- **`main`'s `MemoryCard.tsx` has no story-linkage concept at all** — no
-  `storyId` on `MemoryRow`, and the component's own doc comment states this
-  is deliberate: *"No story chips — memories don't require a story to be
-  saved... a memory may connect to nothing, or to more than one thing,
-  later."* This handover cannot be ported until that data relationship is
-  designed on `main` — there's no `stories` prop, no join table, nothing to
-  read from.
-- If/when that relationship exists, whether a memory can belong to more than
-  one story (per that same doc comment's "or more than one thing") changes
-  the design here — the prototype's `storyId` is singular; "Featured in
-  [Story]" as built only handles one.
-- No production API surface exists for "remove this memory from its story"
-  either — same gap the Admin-panel-member-removal handover already flagged
-  for a related but different relationship.
+This section originally described `main` as having no story-linkage concept
+at all. That was true when this handover was written but is no longer
+current — three passes since then (assign-memory-to-story, 2026-08-13;
+session-memories-panel, 2026-08-14; and this one, remove-memory-from-story +
+trigger state, 2026-08-14) built the real relationship and most of this
+handover's own asks on top of it. Kept here, corrected, rather than deleted,
+so this file still explains what shipped and in which order.
+
+- ~~`main`'s `MemoryCard.tsx` has no story-linkage concept at all~~ —
+  **resolved.** `MemoryRow.storyId` (`services/chat/ui/v1/useMemories.ts`)
+  and real many-to-many linking via `artifact_containments`
+  (`services/crm/story-containments.ts`) shipped 2026-08-13
+  (assign-memory-to-story), landing first on `MemoryCardView.tsx` (the
+  panel/editor chrome) only — at that point `MemoryCard.tsx`/
+  `MemorySavedReceipt` (the in-transcript draft card and saved receipt)
+  still had their own separate, stubbed "+" (fires a toast, no real
+  assignment), since this handover's own scope note (top of this file) only
+  ever targeted the memory detail page and the session-memories list, not
+  the transcript card. **That gap closed independently the same day**
+  (PR #391, memory-receipt-story-picker, 2026-08-14, a separate pass not
+  scoped from this handover at all) — `MemorySavedReceipt`'s "+" now renders
+  the exact same `StoryPicker` component/popover `MemoryCardView`'s header
+  does. Because that PR merged to `main` while the remove-from-story pass
+  below was in flight on its own branch, rebasing surfaced a real
+  consequence, not just a merge conflict: `MemorySavedReceipt` became a
+  fourth real `StoryPicker` caller needing `onRemoveFromStory` threaded to
+  it too, alongside the three this repo's own `Known Gaps.md` entry
+  originally described — see that entry's own correction paragraph for the
+  full wiring.
+- ~~Whether a memory can belong to more than one story changes the
+  design~~ — moot for what's built: single-story-per-memory is enforced at
+  the **application** layer only (`assignMemoryToStory` deletes any existing
+  containment before inserting the new one); the schema itself
+  (`artifact_containments`'s unique constraint on the
+  `(parent_artifact_id, child_artifact_id)` pair, not `child_artifact_id`
+  alone) is genuinely many-to-many already, so a future multi-story UI needs
+  no schema change, only a different application rule and a different
+  `StoryPicker.tsx`/`MemoryCardView.tsx` presentation than the
+  singular-checkmark one built here.
+- ~~No production API surface exists for "remove this memory from its
+  story"~~ — **resolved this pass (2026-08-14).** `removeMemoryFromStory`
+  (`services/crm/story-containments.ts`) + `PATCH
+  /api/sessions/[id]/memories/[memoryId]` action `'remove_story'`, wired to
+  `StoryPicker.tsx`'s new "Remove from '[Story]'" popover item exactly as
+  this handover's own "Built and verified (prototype)" section above
+  describes. Note the unrelated Admin-panel-member-removal gap this bullet
+  used to point at (`revokeStoryCollaborator`) was itself resolved
+  separately, 2026-08-13 — see `System Docs/Known Gaps.md`'s "Collaborator
+  removal" entry — before this memory-removal gap was closed.
+
+### What this handover's other target still is — not attempted here
+
+This pass built the memory detail page's checkmark/remove flow (this file's
+"Built and verified" §1) and confirmed §2's "Featured in [Story]" label
+already shipped in production (`SessionMemoriesPanel.tsx`, as part of the
+2026-08-14 session-memories-panel pass — PR #385, landed the same day as
+this handover, independently of it). **Not attempted:** this handover's
+`AddMemoriesToStoryPanel` reference (§2's other half — "same card markup in
+both" `SessionMemoriesPanel` **and** `AddMemoriesToStoryPanel`) has no
+production counterpart. Bulk-adding several memories to a story from the
+story's own view is unbuilt entirely (confirmed in the Phase 1a
+investigation, `Design Handovers/.../01_real_story_view`) — out of scope
+until that picker exists to receive the same "Featured in" treatment.

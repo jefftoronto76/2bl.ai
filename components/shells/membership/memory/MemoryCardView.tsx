@@ -8,15 +8,21 @@
  * several of the reference's actions have no backend support in this
  * codebase yet and are deliberately stubbed rather than faked:
  *
- *   - "+" (add to a story): real now (assign-memory-to-story, 2026-08-13).
- *     Renders StoryPicker.tsx — a popover matching BlockInserter's own
- *     dismissal mechanics (backdrop + Escape) — listing every story the
- *     member owns or is subscribed to (`stories`, sourced the same way
- *     ChatHero.tsx already sources it for InviteCollaboratorsModal's own
- *     story picker). A single click assigns immediately via onAssignStory
- *     (assignMemoryToStory, services/crm/story-containments.ts), no
- *     separate confirm step. The current story, if any, is highlighted;
- *     re-picking it is a no-op handled inside StoryPicker itself.
+ *   - "+" / checkmark (add to / in a story): real now (assign-memory-to-
+ *     story, 2026-08-13; remove-memory-from-story, 2026-08-14). Renders
+ *     StoryPicker.tsx — a popover matching BlockInserter's own dismissal
+ *     mechanics (backdrop + Escape) — listing every story the member owns or
+ *     is subscribed to (`stories`, sourced the same way ChatHero.tsx already
+ *     sources it for InviteCollaboratorsModal's own story picker). The
+ *     trigger itself reflects assignment state (green check vs. accent plus
+ *     — StoryPicker's own doc comment). A single click assigns immediately
+ *     via onAssignStory (assignMemoryToStory, services/crm/
+ *     story-containments.ts), no separate confirm step; the current story,
+ *     if any, is highlighted, and re-picking it is a no-op handled inside
+ *     StoryPicker itself. When a story is currently assigned, the popover
+ *     also offers "Remove from '[Story]'" at the top, wired to
+ *     onRemoveFromStory (removeMemoryFromStory) — same no-confirm posture as
+ *     assigning.
  *   - Date editing: no route action updates created_at at all. Read-only
  *     text, not the reference's editable date input.
  *   - "Talk about this" / "Use as a base": no backend implementation
@@ -80,6 +86,8 @@ export interface MemoryCardViewProps {
   stories: Story[]
   /** Assigns this memory to a story — PATCH .../memories/[memoryId], action: 'assign_story' (assignMemoryToStory, services/crm/story-containments.ts). Only called for a story that differs from memory.storyId — StoryPicker itself no-ops a re-pick. */
   onAssignStory: (storyId: string) => void
+  /** Detaches this memory from its current story — PATCH .../memories/[memoryId], action: 'remove_story' (removeMemoryFromStory, services/crm/story-containments.ts). Backs StoryPicker's "Remove from '[Story]'" item (remove-memory-from-story, 2026-08-14). */
+  onRemoveFromStory: () => void
 }
 
 /** Not crypto.randomUUID() directly — Node/jsdom test environments don't always polyfill it, and this only needs to be locally unique within one open panel's session, never persisted as a lookup key beyond that. */
@@ -124,7 +132,7 @@ function buildDefaultBlocks(memory: MemoryRow): MemoryBlock[] {
 const footerBtn =
   'grid h-9 w-9 shrink-0 place-items-center rounded-[9px] border border-border bg-transparent text-text-muted transition-colors hover:border-accent hover:text-text-primary [@media(hover:none)]:h-11 [@media(hover:none)]:w-11'
 
-export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, sessionImages, stories, onAssignStory }: MemoryCardViewProps) {
+export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, onReviseBlocks, sessionImages, stories, onAssignStory, onRemoveFromStory }: MemoryCardViewProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
 
@@ -235,7 +243,7 @@ export function MemoryCardView({ memory, onClose, onRetitle, onRemove, onStub, o
             aria-label="Memory title"
             className="min-w-0 flex-1 border-none bg-transparent px-0.5 py-1 font-display text-xl font-medium tracking-tight text-text-primary outline-none"
           />
-          <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} />
+          <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} onRemove={onRemoveFromStory} />
           <button
             type="button"
             aria-label="Close memory panel"

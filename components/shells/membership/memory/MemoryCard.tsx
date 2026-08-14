@@ -99,21 +99,34 @@ export interface MemorySavedReceiptProps {
    */
   onOpen?: (memory: MemoryRow) => void
   /**
-   * The "+" below (add to a story) — real now (assign-memory-to-story,
-   * 2026-08-14), same StoryPicker popover MemoryCardView's own header "+"
-   * already uses (backdrop + Escape dismissal, current story highlighted
-   * with a checkmark, re-picking a no-op handled inside StoryPicker
-   * itself). `stories` is the same list ChatHero.tsx already sources for
+   * The story trigger below — real now (assign-memory-to-story, 2026-08-14;
+   * checkmark trigger state + remove-memory-from-story, 2026-08-14), the
+   * exact same StoryPicker component/popover MemoryCardView's own header
+   * trigger already uses (backdrop + Escape dismissal, green checkmark vs.
+   * accent Plus reflecting assignment state, current story highlighted in
+   * the list, re-picking a no-op handled inside StoryPicker itself).
+   * `stories` is the same list ChatHero.tsx already sources for
    * MemoryCardView (GET /api/stories) — this receipt renders inside the
    * currently-open chat's own transcript (MessageList.tsx), so the memory
    * here always belongs to that same session; no separate scoped fetch is
    * needed the way StoryView's row-tap editor needs its own
-   * (StoryMemoryEditor.tsx). Both optional so a caller that hasn't wired a
-   * picker (none currently outside ChatHero.tsx) renders the receipt with
-   * no "+" at all rather than a silently-broken one.
+   * (StoryMemoryEditor.tsx). `onAssignStory` optional so a caller that
+   * hasn't wired a picker (none currently outside ChatHero.tsx) renders the
+   * receipt with no story trigger at all rather than a silently-broken one.
    */
   stories?: Story[]
   onAssignStory?: (storyId: string) => void
+  /**
+   * Detaches this memory from its current story — PATCH
+   * .../memories/[memoryId], action: 'remove_story' (removeMemoryFromStory,
+   * services/crm/story-containments.ts), same real write MemoryCardView's
+   * own "Remove from '[Story]'" item already uses. Backs StoryPicker's
+   * required `onRemove` — defaulted to a no-op below (not left undefined)
+   * since StoryPicker.tsx's own `onRemove` prop is required, unlike
+   * `onAssignStory`/`onPick` here, which the caller can omit entirely to
+   * suppress the "+" altogether (remove-memory-from-story, 2026-08-14).
+   */
+  onRemoveFromStory?: () => void
   /**
    * The session's own ready image media items — same lookup pattern as
    * BlockCanvas.tsx's ImageBlockRow, already applied to MemoryCard's own
@@ -134,7 +147,7 @@ export interface MemorySavedReceiptProps {
  * MessageList.tsx's call site still passes it (unused here on purpose,
  * not dead code to clean up outside this file's scope).
  */
-export function MemorySavedReceipt({ memory, onOpen, stories = [], onAssignStory, sessionImages = [] }: MemorySavedReceiptProps) {
+export function MemorySavedReceipt({ memory, onOpen, stories = [], onAssignStory, onRemoveFromStory = () => {}, sessionImages = [] }: MemorySavedReceiptProps) {
   const kind = memoryKindOf(memory.source_kind)
   const Icon = KIND_ICONS[kind.icon] ?? Feather
   const linkedImage = memory.media_item_id ? sessionImages.find((img) => img.id === memory.media_item_id) : undefined
@@ -184,7 +197,7 @@ export function MemorySavedReceipt({ memory, onOpen, stories = [], onAssignStory
           // own caller (MemoryCardView) doesn't need, since its header row
           // has no separate open-on-click behavior of its own to guard against.
           <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
-            <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} />
+            <StoryPicker stories={stories} currentStoryId={memory.storyId} onPick={onAssignStory} onRemove={onRemoveFromStory} />
           </span>
         )}
       </div>

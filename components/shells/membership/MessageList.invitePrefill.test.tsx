@@ -75,6 +75,7 @@ const EMPTY_MEMORIES: UseMemoriesReturn = {
   rename: vi.fn(),
   reviseBlocks: vi.fn(),
   assignToStory: vi.fn(),
+  removeFromStory: vi.fn(),
 };
 
 function accountCreateMessage(extraMarker = ''): Message {

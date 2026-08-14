@@ -100,9 +100,9 @@ function makeFetchMock(memory: ReturnType<typeof memoryFixture>) {
 }
 
 // The transcript's own scroll region (MessageList.tsx's role="log" —
-// "Conversation") scopes every query below to the receipt's "+", never the
-// (mutually exclusive, closed-by-default) panel's own copy of the same
-// StoryPicker component.
+// "Conversation") scopes every query below to the receipt's own StoryPicker,
+// never the (mutually exclusive, closed-by-default) panel's own copy of the
+// same component.
 // Exact-string name matches only below, never a `/regex/` — the receipt's
 // own row is itself role="button" with no aria-label, so its OWN computed
 // accessible name flattens in every descendant's text once the popover is
@@ -113,12 +113,18 @@ function makeFetchMock(memory: ReturnType<typeof memoryFixture>) {
 async function openReceiptPicker() {
   await waitFor(() => expect(screen.getByRole('log', { name: 'Conversation' })).toBeInTheDocument());
   const transcript = within(screen.getByRole('log', { name: 'Conversation' }));
-  await waitFor(() => expect(transcript.getByTitle('Add to a story')).toBeInTheDocument());
-  fireEvent.click(transcript.getByTitle('Add to a story'));
+  await waitFor(() => expect(transcript.getByTestId('story-picker-trigger')).toBeInTheDocument());
+  // Targeted by StoryPicker's own stable testid, not title/label text — the
+  // trigger's accessible name changes with assignment state (Plus "Add to a
+  // story" vs. checkmark 'In "X" — click to change or remove',
+  // remove-memory-from-story, 2026-08-14), which a title query would break
+  // on for one of this file's two fixtures (memoryFixture('story-1')).
+  fireEvent.click(transcript.getByTestId('story-picker-trigger'));
   // "The Family Farm" is never the memory's current story in either
-  // fixture below (only story-1/"Summer at the Lake" or none ever is), so
-  // its "Add to ..." label is a safe open-signal regardless of which test
-  // called this helper.
+  // fixture below (only story-1/"Summer at the Lake" or none ever is), and
+  // never appears in the trigger's own label or the "Remove from" item
+  // either, so its "Add to ..." label is a safe open-signal regardless of
+  // which test called this helper.
   await waitFor(() => expect(transcript.getByRole('button', { name: 'Add to The Family Farm' })).toBeInTheDocument());
   return transcript;
 }

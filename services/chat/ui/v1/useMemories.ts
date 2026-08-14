@@ -131,6 +131,16 @@ export interface UseMemoriesReturn {
    * response.
    */
   assignToStory(memoryId: string, storyId: string): Promise<void>
+  /**
+   * Detaches a memory from its current story, if any (StoryPicker's "Remove
+   * from '[Story]'" item — remove-memory-from-story, 2026-08-14). PATCH
+   * .../memories/[memoryId], action: 'remove_story' (removeMemoryFromStory,
+   * services/crm/story-containments.ts) — no story_id needed, it just clears
+   * whatever containment currently exists. Like assignToStory, echoes the
+   * new value (null) into local state directly on success rather than
+   * reading anything back from the response.
+   */
+  removeFromStory(memoryId: string): Promise<void>
 }
 
 /**
@@ -412,6 +422,25 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     }
   }, [])
 
+  const removeFromStory = useCallback(async (memoryId: string) => {
+    const sid = sessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch(`/api/sessions/${sid}/memories/${memoryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove_story' }),
+      })
+      if (!res.ok) {
+        console.error('[useMemories] removeFromStory failed:', res.status)
+        return
+      }
+      setMemories(prev => prev.map(m => (m.id === memoryId ? { ...m, storyId: null } : m)))
+    } catch (err) {
+      console.error('[useMemories] removeFromStory threw:', err)
+    }
+  }, [])
+
   return {
     memories,
     getByAnchor,
@@ -427,5 +456,6 @@ export function useMemories(sessionId: string | null): UseMemoriesReturn {
     rename,
     reviseBlocks,
     assignToStory,
+    removeFromStory,
   }
 }

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest, getCurrentUserId } from '@/services/auth'
 import { publishMemory, discardMemory, renameMemory, reviseMemoryBlocks } from '@/services/crm/memories'
-import { assignMemoryToStory } from '@/services/crm/story-containments'
+import { assignMemoryToStory, removeMemoryFromStory } from '@/services/crm/story-containments'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
 /**
- * PATCH /api/sessions/[id]/memories/[memoryId] — five actions on a memory:
+ * PATCH /api/sessions/[id]/memories/[memoryId] — six actions on a memory:
  * { action: 'keep' } publishes it, { action: 'discard' } soft-discards it,
  * { action: 'retitle', title } corrects its title (the inline edit
  * affordance on MemoryCard/MemorySavedReceipt — works regardless of
@@ -16,11 +16,14 @@ import { AuditAction } from '@/services/audit/types'
  * placement as createMemoryFromAnchor's, so this route just forwards the raw
  * `blocks` value and relays the result), { action: 'assign_story', story_id }
  * assigns the memory to a story (MemoryCardView's "+" via StoryPicker —
- * assign-memory-to-story, 2026-08-13). The first four stay anonymous-safe,
- * session-scoped only, matching the sibling feedback/memories routes'
- * trust posture; assign_story is the one action that requires a signed-in
- * account (a story belongs to a member, not a session) — same 401 shape
- * PATCH /api/stories/[id] already uses for its own account requirement.
+ * assign-memory-to-story, 2026-08-13), { action: 'remove_story' } (no
+ * story_id needed) detaches it from whichever story it's currently in
+ * (StoryPicker's "Remove from '[Story]'" item — remove-memory-from-story,
+ * 2026-08-14). The first four stay anonymous-safe, session-scoped only,
+ * matching the sibling feedback/memories routes' trust posture; assign_story
+ * and remove_story both require a signed-in account (a story relationship
+ * belongs to a member, not a session) — same 401 shape PATCH
+ * /api/stories/[id] already uses for its own account requirement.
  */
 export async function PATCH(
   req: Request,
@@ -45,9 +48,16 @@ export async function PATCH(
     blocks?: unknown
     story_id?: unknown
   }
-  if (action !== 'keep' && action !== 'discard' && action !== 'retitle' && action !== 'revise_blocks' && action !== 'assign_story') {
+  if (
+    action !== 'keep' &&
+    action !== 'discard' &&
+    action !== 'retitle' &&
+    action !== 'revise_blocks' &&
+    action !== 'assign_story' &&
+    action !== 'remove_story'
+  ) {
     return NextResponse.json(
-      { error: "action must be 'keep', 'discard', 'retitle', 'revise_blocks', or 'assign_story'" },
+      { error: "action must be 'keep', 'discard', 'retitle', 'revise_blocks', 'assign_story', or 'remove_story'" },
       { status: 400 },
     )
   }
@@ -61,6 +71,16 @@ export async function PATCH(
       return NextResponse.json({ error: 'story_id is required' }, { status: 400 })
     }
     const result = await assignMemoryToStory(tenantId, userId, memoryId, storyId.trim())
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'remove_story') {
+    const userId = await getCurrentUserId()
+    if (!userId) {
+      return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
+    }
+    const result = await removeMemoryFromStory(tenantId, userId, memoryId)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     return NextResponse.json({ ok: true })
   }
