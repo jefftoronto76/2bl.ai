@@ -280,6 +280,75 @@ export async function createStory(
   return { ok: true, data: { ...toStoryRow(data), isOwner: true } }
 }
 
+export interface StoryWithOwner {
+  id: string
+  title: string
+  body: string | null
+  ownerName: string | null
+}
+
+/**
+ * Single-story lookup with the owner's display name — built for server-side
+ * context building (getStoryContextBlock, services/chat/server/session-
+ * context.ts), not the member-facing list. listStories' batch query plus its
+ * per-row hasActiveInviteOrSubscribers/isOwner computation (both meaningless
+ * for a caller-agnostic server read) is the wrong tool for fetching one row;
+ * this is a plain two-step lookup instead.
+ *
+ * Owner name resolution reuses the same members-join shape
+ * listStoryCollaborators (services/crm/story-invites.ts) already uses for
+ * collaborator names — select from `members` by a resolved key, read `name`
+ * — just keyed by `user_id` (the story's own NOT NULL owner FK) rather than
+ * a subscriber's `member_id`, since a story's owner is identified by
+ * artifacts.user_id, not by an artifact_subscribers row.
+ *
+ * The story lookup failing (bad id, wrong tenant, discarded, or a genuine DB
+ * error) is fatal — 404/500 as appropriate. The owner-name lookup failing is
+ * NOT — the story itself is still valid, so that degrades to `ownerName:
+ * null` rather than failing the whole call, same as a member with no primer
+ * degrading getMemberContext's optional fields rather than erroring.
+ */
+export async function getStoryById(
+  tenantId: string,
+  storyId: string,
+): Promise<StoryResult<StoryWithOwner>> {
+  const supabase = getAdminClient()
+
+  const { data: storyRow, error: storyErr } = await supabase
+    .from('artifacts')
+    .select('id, title, body, user_id')
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('type', ARTIFACT_TYPE)
+    .is('discarded_at', null)
+    .maybeSingle()
+
+  if (storyErr) {
+    console.error('[stories] getStoryById lookup failed:', JSON.stringify(storyErr))
+    return { ok: false, status: 500, error: storyErr.message }
+  }
+  if (!storyRow) {
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const story = storyRow as { id: string; title: string; body: string | null; user_id: string }
+
+  const { data: memberRow, error: memberErr } = await supabase
+    .from('members')
+    .select('name')
+    .eq('tenant_id', tenantId)
+    .eq('user_id', story.user_id)
+    .maybeSingle()
+
+  if (memberErr) {
+    console.error('[stories] getStoryById owner lookup failed (non-fatal):', JSON.stringify(memberErr))
+  }
+
+  const ownerName = memberErr ? null : ((memberRow as { name: string | null } | null)?.name ?? null)
+
+  return { ok: true, data: { id: story.id, title: story.title, body: story.body, ownerName } }
+}
+
 /**
  * Updates a story's description after creation — the Admin panel's
  * (StoryAdminPanel) description field. `description` -> `body`, the exact

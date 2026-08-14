@@ -276,6 +276,21 @@ export interface ChatEngineAccessors {
    * getMediaItems/markMediaItemsDelivered for why that distinction matters.
    */
   markMediaItemsDelivered?(mediaItemIds: string[]): void
+  /**
+   * Optional — a pending context (e.g. a story) to attach to the session at
+   * creation time. Read once, at the exact moment useChatTurn.ts lazily
+   * creates the session (POST /api/sessions) — threading it through that
+   * same request, not a separate post-creation call, is what guarantees the
+   * attachment exists before the first turn that needs to see it (see
+   * app/api/sessions/route.ts's session-context-service handling). Mirrors
+   * getMemberId/getInviteToken's read-only accessor shape. Returns null when
+   * there is no pending context to attach (the common case).
+   */
+  getSessionContextToAttach?(): {
+    contextType: string
+    contextRefId: string
+    contextFrequency: 'once' | 'every_turn'
+  } | null
 }
 
 /** Options passed into the useChatTurn hook. */
