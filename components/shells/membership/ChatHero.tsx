@@ -18,6 +18,7 @@ import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
+import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
 import { MediaGallery } from './MediaGallery';
 import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
@@ -173,6 +174,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setMediaOpen(true);
     setOpenMemory(null);
     setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
   }, []);
 
   // Standalone top-level Media page (MediaPage.tsx) — independent of any
@@ -192,6 +194,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setOpenMemory(null);
     setMediaOpen(false);
     setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
   }, []);
 
   const handleOpenMemory = useCallback((row: MemoryRow | null) => {
@@ -200,7 +203,25 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       setMediaOpen(false);
       setMediaPageOpen(false);
       setAdminStoryId(null);
+      setSessionMemoriesOpen(false);
     }
+  }, []);
+
+  // Session memories panel (session_memories_panel handover, 2026-08-14) —
+  // lists every memory (draft + published) kept during the active session,
+  // opened from ChatHeader's new icon. No "which item" concept of its own
+  // (SessionMemoriesPanel reads the shared `memories` list below), so a
+  // plain boolean is enough here, same as mediaOpen. Mutually exclusive
+  // with the memory/media/admin panes via the wrapping handlers, same
+  // reciprocal-close pattern those already use against each other.
+  const [sessionMemoriesOpen, setSessionMemoriesOpen] = useState(false);
+
+  const handleOpenSessionMemories = useCallback(() => {
+    setSessionMemoriesOpen(true);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
   }, []);
 
   // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
@@ -265,13 +286,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const wasMediaOpenRef = useRef(false);
 
   useEffect(() => {
-    const isOpen = mediaOpen || !!adminStory;
+    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen;
     if (isOpen && !wasMediaOpenRef.current) {
       const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
       setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
     }
     wasMediaOpenRef.current = isOpen;
-  }, [mediaOpen, adminStory]);
+  }, [mediaOpen, adminStory, sessionMemoriesOpen]);
 
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -341,6 +362,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         setOpenMemory(null);
         setMediaOpen(false);
         setMediaPageOpen(false);
+        setSessionMemoriesOpen(false);
       }
       return;
     }
@@ -688,6 +710,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onToggleFullScreen={onToggleFullScreen}
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
         onOpenMedia={handleOpenMedia}
+        onOpenSessionMemories={handleOpenSessionMemories}
       />
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
@@ -722,7 +745,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMediaPage}
-            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId}
+            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen}
           />
         )}
 
@@ -761,6 +784,30 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             />
             <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
               <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: session memories panel is a bottom sheet, same treatment
+            as Media above — a browsable list, not a single-item editor
+            (that's what openMemory's own full-screen overlay below is for).
+            Tapping a row calls handleOpenMemory, which closes this sheet
+            (setSessionMemoriesOpen(false)) and opens that overlay instead —
+            same handoff Media/Memory already have on desktop. */}
+        {isMobile && sessionMemoriesOpen && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Memories from this chat">
+            <div
+              className="hl-animate-fade absolute inset-0 bg-black/45"
+              aria-hidden="true"
+              onClick={() => setSessionMemoriesOpen(false)}
+            />
+            <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
+              <SessionMemoriesPanel
+                memories={memories.memories}
+                stories={stories}
+                onClose={() => setSessionMemoriesOpen(false)}
+                onOpen={handleOpenMemory}
+              />
             </div>
           </div>
         )}
@@ -866,37 +913,40 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           />
         )}
 
-        {/* Memory panel / media pane / admin panel — shared third-pane
-            wrapper since openMemory, mediaOpen, and adminStoryId are
-            mutually exclusive by construction (handleOpenMedia/
-            handleOpenMemory above, and adminStoryId's own setter in
+        {/* Memory panel / media pane / admin panel / session memories panel
+            — shared third-pane wrapper since openMemory, mediaOpen,
+            adminStoryId, and sessionMemoriesOpen are mutually exclusive by
+            construction (handleOpenMedia/handleOpenMemory/
+            handleOpenSessionMemories above, and adminStoryId's own setter in
             handleRowAction). Real drag-resizable pixel width now (Stage C)
-            for memory; media and admin both get the same clamped
-            mediaPanelWidth instead (neither needs resize — the admin
-            panel's own spec calls for a fixed width, same 400px media
-            prefers — but both are clamped down via mediaPanelWidth, above,
-            when the row doesn't have 400px to spare) — flexBasis is inline
-            style either way since Tailwind can't express a runtime-computed
-            value as a static class; min-w-[280px] stays a class-based
-            floor, redundant with the JS clamp on purpose (defense in depth,
-            costs nothing). Transition suppressed while actively dragging so
-            a live resize tracks the cursor instead of animating 300ms
-            behind it. The wrapper stays mounted whenever !isMobile so
-            open/close can still transition; content itself only renders
-            while a memory, media, or admin pane is open. Desktop only —
-            mobile media/memory/admin (Stage F) all use their own
+            for memory; media, admin, and session memories all get the same
+            clamped mediaPanelWidth instead (none of the three need resize —
+            the admin panel's own spec calls for a fixed width, same 400px
+            media prefers, and session memories reuses the same width for
+            the same reason — but all three are clamped down via
+            mediaPanelWidth, above, when the row doesn't have 400px to
+            spare) — flexBasis is inline style either way since Tailwind
+            can't express a runtime-computed value as a static class;
+            min-w-[280px] stays a class-based floor, redundant with the JS
+            clamp on purpose (defense in depth, costs nothing). Transition
+            suppressed while actively dragging so a live resize tracks the
+            cursor instead of animating 300ms behind it. The wrapper stays
+            mounted whenever !isMobile so open/close can still transition;
+            content itself only renders while a memory, media, admin, or
+            session-memories pane is open. Desktop only — mobile media/
+            memory/admin/session-memories (Stage F) all use their own
             full-screen/sheet overlays above instead of this shared
             resizable wrapper. */}
         {!isMobile && (
           <div
             data-testid="third-pane-panel"
             className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
-              openMemory || mediaOpen || adminStory ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
-            } ${mediaOpen || adminStory ? 'border-l border-border' : ''}`}
+              openMemory || mediaOpen || adminStory || sessionMemoriesOpen ? 'min-w-[280px] opacity-100' : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen || adminStory || sessionMemoriesOpen ? 'border-l border-border' : ''}`}
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen || adminStory
+                : mediaOpen || adminStory || sessionMemoriesOpen
                 ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -922,6 +972,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 story={adminStory}
                 onClose={() => setAdminStoryId(null)}
                 onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
+              />
+            )}
+            {sessionMemoriesOpen && (
+              <SessionMemoriesPanel
+                memories={memories.memories}
+                stories={stories}
+                onClose={() => setSessionMemoriesOpen(false)}
+                onOpen={handleOpenMemory}
               />
             )}
           </div>
