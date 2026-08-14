@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import { MemorySavedReceipt } from './MemoryCard';
 import type { MemoryRow } from '@/services/chat/ui/v1/useMemories';
+import type { Story } from '../v2/types';
 
 afterEach(cleanup);
 
@@ -97,21 +98,62 @@ describe('MemorySavedReceipt', () => {
   });
 });
 
-// "+" (add to a story) — same stub pattern as MemoryCardView's own header
-// "+", added 2026-08-08 alongside the photo-bookmark feature.
-describe('MemorySavedReceipt — "+" (add to a story) stub', () => {
-  it('renders "+" and fires the stub toast without opening the memory panel', () => {
+// "+" (add to a story) — real now (assign-memory-to-story), same StoryPicker
+// popover MemoryCardView's own header "+" already uses (see
+// MemoryCardView.test.tsx for the popover's own mechanics — backdrop/Escape
+// dismissal, no-op re-pick — covered there, not duplicated here).
+describe('MemorySavedReceipt — "+" (add to a story)', () => {
+  it('opens the story popover without opening the memory panel', () => {
     const onOpen = vi.fn();
-    const onStub = vi.fn();
+    const onAssignStory = vi.fn();
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
     const m = memory();
-    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} onOpen={onOpen} onStub={onStub} />);
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} onOpen={onOpen} stories={stories} onAssignStory={onAssignStory} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
-    expect(onStub).toHaveBeenCalledWith('Coming soon');
+    expect(screen.getByRole('button', { name: 'Add to Summer at the Lake' })).toBeInTheDocument();
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('does not render "+" when onStub is omitted', () => {
+  it('picking a story calls onAssignStory with that story\'s id', () => {
+    const onAssignStory = vi.fn();
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    render(<MemorySavedReceipt memory={memory()} onRetitle={() => {}} stories={stories} onAssignStory={onAssignStory} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Summer at the Lake' }));
+    expect(onAssignStory).toHaveBeenCalledWith('story-1');
+  });
+
+  it('highlights the memory\'s current story with a checkmark, and re-picking it is a no-op', () => {
+    const onAssignStory = vi.fn();
+    const stories: Story[] = [{ id: 'story-1', name: 'Summer at the Lake' }];
+    const m = memory({ storyId: 'story-1' });
+    render(<MemorySavedReceipt memory={m} onRetitle={() => {}} stories={stories} onAssignStory={onAssignStory} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to a story' }));
+    const currentStoryBtn = screen.getByRole('button', { name: 'Summer at the Lake (current story)' });
+    expect(currentStoryBtn.querySelector('svg')).not.toBeNull();
+    fireEvent.click(currentStoryBtn);
+    expect(onAssignStory).not.toHaveBeenCalled();
+  });
+
+  it('a "+" click does not open the memory panel even via keyboard', () => {
+    const onOpen = vi.fn();
+    render(
+      <MemorySavedReceipt
+        memory={memory()}
+        onRetitle={() => {}}
+        onOpen={onOpen}
+        stories={[]}
+        onAssignStory={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Add to a story' }), { key: 'Enter' });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('does not render "+" when onAssignStory is omitted', () => {
     render(<MemorySavedReceipt memory={memory()} onRetitle={() => {}} onOpen={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Add to a story' })).toBeNull();
   });

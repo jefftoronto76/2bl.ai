@@ -372,7 +372,15 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   memories to a story they were invited into. UI: `MemoryCardView.tsx`'s
   "+" (previously a "coming soon" stub) now opens `StoryPicker.tsx`, a
   popover matching `BlockCanvas.tsx`'s `BlockInserter` dismissal mechanics
-  exactly (backdrop + Escape). **Still not built:** a per-collaborator
+  exactly (backdrop + Escape). **`MemorySavedReceipt.tsx`'s own in-transcript
+  "+" (memory-receipt-story-picker, 2026-08-14)** is wired to the same
+  `StoryPicker`/`assignMemoryToStory` path now too — `stories`/
+  `onAssignStory` thread down from `ChatHero.tsx` through `MessageList.tsx`
+  the same way `sessionImages` already does, reusing `ChatHero`'s own
+  `useMemories(state.sessionId)` instance (no second scoped hook needed,
+  unlike `StoryMemoryEditor.tsx` below — this receipt only ever renders a
+  memory belonging to the currently-open session's own transcript). **Still
+  not built:** a per-collaborator
   memory count in `InviteCollaboratorsModal.tsx`'s roster — the design
   mockup's "Joined `[date]` · `N` memories" still shows no `N` (see the
   "roster gap" paragraph below); computing it needs a `member_id` ->
@@ -1340,10 +1348,12 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     blocks in this panel remain a separate, manual workaround for
     viewing/attaching an already-known photo — unaffected by, and not a
     duplicate of, the photo bookmark's own creation path. Still unaffected
-    by: add-to-memory (`PhotoUploadActions.tsx`'s "+" and
-    `MemorySavedReceipt`'s own "+" are both stubs — no `photo_artifacts`
-    write path exists) and memory canvas sorting/filtering — both still
-    unbuilt. Stage F (mobile slide-up panel) is no longer blocked on this
+    by: add-to-memory (`PhotoUploadActions.tsx`'s own "+" is still a stub —
+    no `photo_artifacts` write path exists) and memory canvas sorting/
+    filtering — both still unbuilt. (`MemorySavedReceipt`'s own, unrelated
+    "+" — add to a *story*, not add-to-memory — is real now; see the
+    Photo Bookmark entry below and the assign-memory-to-story entry above.)
+    Stage F (mobile slide-up panel) is no longer blocked on this
     note; it shipped 2026-08-09, see the sprint-close pointer entry above.
     **GPS
     indicator — no longer a gap, closed same night via GPS Extraction (PR
@@ -1377,11 +1387,13 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     guess once this wired it up for real) is now populated alongside
     `anchor_message_id`, and `useMemories.ts` composes both into a lookup
     key, so two photos on the same chat message resolve to two independent
-    memories instead of colliding. "+" (add to a memory) on the photo row,
-    and a new stubbed "+" on `MemorySavedReceipt` (add to a story, same
-    pattern as `MemoryCardView`'s own header "+"), both fire the existing
-    "coming soon" toast — neither is real; `photo_artifacts` (the actual
-    many-to-many write path either would need) is still unbuilt.
+    memories instead of colliding. "+" (add to a memory) on the photo row
+    still fires the existing "coming soon" toast — not real;
+    `photo_artifacts` (the many-to-many write path it would need) is still
+    unbuilt. `MemorySavedReceipt` also gained a "+" the same night (add to a
+    story, same pattern as `MemoryCardView`'s own header "+") — stubbed at
+    first ship, then wired for real (memory-receipt-story-picker,
+    2026-08-14; see the assign-memory-to-story entry above).
     **Found and fixed same day, live-preview testing:** the pre-existing
     whole-message bookmark was never gated off for a message that also has
     a photo — it still renders right alongside the new per-photo Bookmark

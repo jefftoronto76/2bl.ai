@@ -29,6 +29,7 @@ import { useChatOverlayHost } from './v2/ChatOverlayHost';
 import { useScrollAnchor, ScrollToLatestButton } from './ScrollToLatestButton';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
+import type { Story } from './v2/types';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
 
 
@@ -48,12 +49,12 @@ interface MessageListProps {
    *  MemorySavedReceipt rows immediately, not just after a reload; two
    *  independent hook instances would each hold their own stale copy. */
   memories: UseMemoriesReturn;
-  /** Fires the shared "coming soon" toast for every stubbed action — the
-   *  per-photo "+" (PhotoUploadActions) and MemorySavedReceipt's own "+"
-   *  (add to a story). Same handler ChatHero.tsx already passes to
-   *  MemoryCardView as `onStub`. Optional so this stays a non-breaking
-   *  addition; when omitted, those "+" buttons simply don't render (see
-   *  MemorySavedReceipt's own optional-onStub posture). */
+  /** Fires the shared "coming soon" toast for the still-stubbed per-photo "+"
+   *  (PhotoUploadActions' "Add to Memory"). Same handler ChatHero.tsx already
+   *  passes to MemoryCardView as `onStub`. Optional so this stays a
+   *  non-breaking addition; when omitted, that "+" button simply does
+   *  nothing when clicked. (MemorySavedReceipt's own "+" no longer uses
+   *  this — see stories/onAssignStory below.) */
   onStub?: (message: string) => void;
   /**
    * The session's own ready image media items — same array BlockCanvas.tsx's
@@ -68,6 +69,26 @@ interface MessageListProps {
    * the placeholder in that case, same graceful-degradation posture as
    * every other application of this lookup pattern. */
   sessionImages?: SessionImage[];
+  /**
+   * Every story the signed-in member owns or is subscribed to — threaded
+   * straight through to MemorySavedReceipt's own "+" (add to a story), same
+   * `stories` list ChatHero.tsx already sources for MemoryCardView (GET
+   * /api/stories). Optional (defaults to `[]`), same non-breaking posture
+   * as sessionImages above.
+   */
+  stories?: Story[];
+  /**
+   * Assigns a saved memory to a story — PATCH .../memories/[memoryId],
+   * action: 'assign_story' (assignMemoryToStory, services/crm/
+   * story-containments.ts), same real write ChatHero.tsx's
+   * handleAssignMemoryToStory already backs MemoryCardView's own "+" with.
+   * Takes the memory itself (not just its id) so the caller can read its
+   * PRIOR storyId before the write, same as MemoryCardView's call site does
+   * for its "Added to X" vs "Moved to X" toast copy. Optional so this stays
+   * a non-breaking addition; when omitted, MemorySavedReceipt renders with
+   * no "+" at all (see its own optional-onAssignStory posture).
+   */
+  onAssignStory?: (memory: MemoryRow, storyId: string) => void;
 }
 
 const dotDelays = ['delay-[0ms]', 'delay-[150ms]', 'delay-[300ms]'];
@@ -165,8 +186,8 @@ interface MemorySlotHandlers {
   onDiscard: (memory: MemoryRow) => void;
   onRetitle: (memory: MemoryRow, title: string) => void;
   onOpen?: (memory: MemoryRow) => void;
-  /** Threaded through to MemorySavedReceipt's own "+" (add to a story) — see MessageListProps.onStub. */
-  onStub?: (message: string) => void;
+  /** Threaded through to MemorySavedReceipt's own "+" (add to a story) — see MessageListProps.onAssignStory. */
+  onAssignStory?: (memory: MemoryRow, storyId: string) => void;
 }
 
 /**
@@ -191,6 +212,7 @@ function renderMemorySlot(
   handlers: MemorySlotHandlers,
   mediaItemId?: string,
   sessionImages: SessionImage[] = [],
+  stories: Story[] = [],
 ): ReactNode {
   if (memories.isPending(anchorId, mediaItemId)) {
     const kind = memories.getPendingKind(anchorId, mediaItemId);
@@ -214,7 +236,8 @@ function renderMemorySlot(
         memory={memory}
         onRetitle={(title) => handlers.onRetitle(memory, title)}
         onOpen={handlers.onOpen}
-        onStub={handlers.onStub}
+        stories={stories}
+        onAssignStory={handlers.onAssignStory ? (storyId) => handlers.onAssignStory!(memory, storyId) : undefined}
         sessionImages={sessionImages}
       />
     );
@@ -784,7 +807,7 @@ function renderStreamingIndicator(): ReactNode {
   return <TypingIndicator />;
 }
 
-export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [] }: MessageListProps) {
+export function MessageList({ messages, isLoading, errorType, onOpenMemory, memories, onStub, sessionImages = [], stories = [], onAssignStory }: MessageListProps) {
   const {
     claimCurrentSession,
     inviteToken,
@@ -871,11 +894,11 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
     onDiscard: (memory: MemoryRow) => void memories.discard(memory),
     onRetitle: (memory: MemoryRow, title: string) => void memories.rename(memory.id, title),
     onOpen: onOpenMemory,
-    onStub,
+    onAssignStory,
   };
 
   const renderMemorySlotFn = (anchorId: string, sourceKind: MemorySourceKind, mediaItemId?: string) =>
-    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers, mediaItemId, sessionImages);
+    renderMemorySlot(anchorId, sourceKind, memories, memoryHandlers, mediaItemId, sessionImages, stories);
 
   // Never nag, never go dead (handoff §6): suppressed only while a turn is
   // streaming or *that specific anchor's (and, for a photo bookmark, that
