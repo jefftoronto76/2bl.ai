@@ -1535,3 +1535,26 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (`WaitlistView` has no sign-in UI of its own). **Left in place pending a
   decision to remove it** — not deleted without confirming nothing else
   depends on it.
+
+- **Expired/invalid `?invite=` token now gets the same chat-first
+  deterministic signup flow as valid admin/story invites — built
+  2026-08-13, NOT YET LIVE-VERIFIED.** GateView's old path
+  (`openSignUp()`'s Clerk-prebuilt modal, only reachable when a visitor's
+  invite token fails validation) never guaranteed name capture and
+  violated the marker-fallback principle. Replaced with the same pattern
+  already proven for admin/story invites tonight: a new
+  `memberTokenExists(token, tenantId)` check (services/members/members.ts)
+  distinguishes a genuinely-issued-but-now-invalid token from a garbage
+  `?invite=` string; only the former bypasses the gate. The bypass also
+  requires `isLoaded && !isSignedIn` client-side (and `!session`
+  server-side for `autoOpenChat`), so a signed-in-but-pending member with a
+  stale link still sees GateView's "You're on the list." branch, not an
+  unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
+  branches just become unreachable for this one case.
+  `/api/heirloom/members/claim` + `claimMembership` are now effectively
+  orphaned (no realistic remaining trigger) but left in place, not deleted.
+  **Not yet done:** the four manual verification cases this fix specifically
+  requires (real-expired-token, garbage-token, cross-tenant-token,
+  signed-in-with-stale-token) haven't been run against a live preview —
+  `tsc`/`next build` are clean but that doesn't substitute for the actual
+  behavior check. Do this before trusting the fix in production.
