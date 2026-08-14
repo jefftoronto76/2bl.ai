@@ -107,9 +107,18 @@ session's genuine first assistant turn, not repeatedly.
   effect emits `[ACCOUNT_CREATE: story invite]` itself via
   `injectAssistantMessage` (a synthetic message, no LLM round-trip) for a
   not-signed-in visitor who arrived via a story invite link — `MagicLinkCard`
-  renders identically either way. See the `chatStore` row in
-  `System Docs/Public Site.md` for the full greet/account-create/failure-
-  fallback sequence this belongs to.
+  renders identically either way. **Third source, same mechanism (added
+  2026-08-13, PR #367):** a sibling branch in the same effect emits
+  `[ACCOUNT_CREATE: admin invite]` for a not-signed-in visitor who arrived via
+  an admin/member `?invite=` token instead — mutually exclusive with the
+  story-invite branch (by token presence plus an explicit
+  `!storyInviteTokenRef.current` guard), preceded by a greeting personalized
+  with `invitedName` when the admin set one on the invite, else a generic
+  greeting. The `reason` field itself is display-only in all three cases —
+  `MagicLinkCard` renders identically regardless of its value; it's used
+  only for the muted subheading shown under the card and doesn't affect
+  routing. See the `chatStore` row in `System Docs/Public Site.md` for the
+  full greet/account-create/failure-fallback sequence this belongs to.
 
 ### `[SAVE_MEMORY]` — dispatch `client`
 
