@@ -1800,8 +1800,8 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   landed, but the "click an empty story to start a chat in it" UI flow that
   would actually exercise it is NOT wired up.** `services/chat/server/
   session-context.ts` (`getSessionContext`/`attachSessionContext`,
-  `chat_session_context` table — schema DDL reported to Jeff, not yet run
-  in Studio as of this entry), the route-layer attach-at-creation-time
+  `chat_session_context` table — schema DDL reported to Jeff, now live in
+  Studio, see `System Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time
   wiring (`app/api/sessions/route.ts`), and the client accessor plumbing
   (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) are all
   built and tested. What's still missing: the actual `SidebarV2` story-row
@@ -1828,3 +1828,51 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   a story's `contentCount`) if useful, but implement the empty-story branch
   against the mechanism actually built here, not the WIP's message-
   injection approach.
+
+- **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
+  the last two open items (PR #380).**
+  - **Step 5, client/server message mismatch — verified already closed,
+    no code change.** Original observation: a member's client showed a
+    local "upload failed" message (fired when the client's own `PUT` to
+    Storage threw) while the `media_items` row was simultaneously at
+    `status: 'processing'` — contradictory signals. Deferred pending the
+    trigger-ordering fix (`start-processing` becoming the sole trigger for
+    `processMediaItem`, only called after `uploadRes.ok`) on the theory it
+    would resolve this as a side effect. Traced every `PUT`-failure path
+    through `useMediaUpload.ts` against current code rather than assumed:
+    confirmed `status='processing'` is structurally unreachable without a
+    client-confirmed-successful `PUT`, across the ordinary fresh-upload
+    path, the dedup "failed match, file missing" fallback, a genuine
+    duplicate match (no `PUT` at all), and an `upload-url` rejection/error.
+    See `Utilities/Media.md`'s "Client/server message mismatch" section for
+    the full case-by-case trace, including the one explicitly out-of-scope
+    residual (a `PUT` whose bytes landed but whose response was lost
+    client-side — a display-lag gap of up to ~2 minutes on a separate UI
+    surface, not the instantaneous contradiction originally reported).
+  - **Step 6, raw marker syntax leaking into chat titles — real bug,
+    fixed.** A chat's title could render literally as
+    `[MEDIA_UPLOAD: IMG_1906.jpeg | 3180f20f-bae7-403f-b37a-3c90...]`
+    instead of readable text. Root cause: both `chatStore.tsx`'s
+    `deriveSessionTitle` (the DB-backed session title fallback — used
+    whenever the fire-and-forget, no-retry AI title generation hasn't
+    landed, which can be permanent) and `persistence.ts`'s `deriveTitle`
+    (the shared local IndexedDB thread-index title, both chat surfaces)
+    derived a title directly from the first user message's raw stored
+    content, never stripping `[MEDIA_UPLOAD: ...]`/
+    `[MEDIA_UPLOAD_FAILED: ...]`/`[MEDIA_UPLOAD_DUPLICATE: ...]` marker
+    syntax — a media-only first message (attachment, no typed caption)
+    produced exactly the observed bug. The same raw content was also sent
+    as the literal quoted "user message" in the AI title-generation prompt
+    (`POST /api/sessions/[id]/title`). **Fix:** added
+    `titleSourceFromContent` to the canonical `mediaMarkerPatterns.ts` —
+    strips all three marker types and, only when that empties the message
+    out, falls back to a short type-aware label (`'Photo shared'` /
+    `'Audio shared'` / `'Document shared'`, or `'Attachment shared'` for a
+    bare failed-upload marker with no type field). Wired into both
+    title-deriving call sites and into the payload sent to the AI
+    title-generation route. See `Marker Syntax.md`'s `[MEDIA_UPLOAD: ...]`
+    section for the full writeup and `mediaMarkerPatterns.test.ts` for
+    coverage. Not the same bug as the whole-message-bookmark marker leak
+    above (2026-08-08) — that one leaked into a memory's title/body via
+    `createMemoryFromAnchor`; this one leaked into a chat session's own
+    title.
