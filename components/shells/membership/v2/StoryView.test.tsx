@@ -26,7 +26,7 @@ describe('StoryView', () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ memories: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/stories/story-1/memories'));
   });
@@ -36,7 +36,7 @@ describe('StoryView', () => {
     const fetchMock = vi.fn().mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; }));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();
     resolveFetch(jsonResponse({ memories: [] }));
@@ -56,7 +56,7 @@ describe('StoryView', () => {
       ),
     );
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     expect(screen.getByText('A Life in Full')).toBeInTheDocument();
     expect(await screen.findByText(/2 memories/)).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('StoryView', () => {
       ),
     );
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     expect(await screen.findByText(/1 memory\b/)).toBeInTheDocument();
   });
@@ -82,11 +82,11 @@ describe('StoryView', () => {
   it('shows the ownership line only when story.isOwner is true — a real check, not fixed text', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
 
-    const { unmount } = render(<StoryView story={story} onClose={vi.fn()} />);
+    const { unmount } = render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
     expect(await screen.findByText(/you own this story/)).toBeInTheDocument();
     unmount();
 
-    render(<StoryView story={collaboratorStory} onClose={vi.fn()} />);
+    render(<StoryView story={collaboratorStory} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
     await screen.findByText('0 memories');
     expect(screen.queryByText(/you own this story/)).not.toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe('StoryView', () => {
   it('shows an empty-state message when the story has no memories', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     expect(await screen.findByText(/No memories in this story yet/)).toBeInTheDocument();
   });
@@ -102,7 +102,7 @@ describe('StoryView', () => {
   it('shows an error message when the fetch fails, without crashing', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'Story not found' }, false, 404)));
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
 
     expect(await screen.findByText(/Could not load this story/)).toBeInTheDocument();
   });
@@ -120,7 +120,7 @@ describe('StoryView', () => {
       ),
     );
 
-    render(<StoryView story={story} onClose={vi.fn()} />);
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} />);
     await screen.findByText('Second');
 
     const titles = screen.getAllByRole('listitem').map((li) => li.textContent);
@@ -132,11 +132,32 @@ describe('StoryView', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
     const onClose = vi.fn();
 
-    render(<StoryView story={story} onClose={onClose} />);
+    render(<StoryView story={story} onClose={onClose} onOpenMemory={vi.fn()} />);
     await screen.findByText(/0 memories/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Close story' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('tapping a row calls onOpenMemory with that memory\'s id AND its own session_id — not any other session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', session_id: 'sess-from-another-chat', title: 'The Lake House', body: '', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+    const onOpenMemory = vi.fn();
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={onOpenMemory} />);
+    await screen.findByText('The Lake House');
+
+    fireEvent.click(screen.getByRole('button', { name: /The Lake House/ }));
+
+    expect(onOpenMemory).toHaveBeenCalledWith('mem-1', 'sess-from-another-chat');
   });
 });

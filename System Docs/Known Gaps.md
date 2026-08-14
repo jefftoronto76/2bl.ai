@@ -321,10 +321,26 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   **One relationship remains explicitly deferred, not built:** story ↔
   media (via `media_items.story_id`, a column that already exists and is
   still always null). Story ↔ memory is real now — see "Story ↔ memory
-  linking, real as of 2026-08-13" below. Selecting into a story's own view
-  is also still a no-op — `SidebarV2`'s story rows have an `onClick`
-  affordance already built, but `ChatHero.tsx` never passes
-  `onSelectStory`, and there is no story view to select into yet.
+  linking, real as of 2026-08-13" below. **A real story view now exists**
+  (`components/shells/membership/v2/StoryView.tsx`, real-story-view-1a-
+  static-list 2026-08-14; row-tap-to-editor added the same day, real-
+  story-view-1b-row-tap-editor) — a story's memories in real, ordered-by-
+  the-new-`artifact_containments.position`-column order (every row still
+  `NULL`, so today this reads as "last assigned," not curated; drag-reorder
+  itself remains deferred, blocked on a real position-writing UI), and
+  tapping a row opens a correctly session-scoped editor via
+  `StoryMemoryEditor.tsx` (its own `useMemories(memory's own session_id)`
+  instance, NOT `ChatHero`'s chat-scoped one — a story's memories routinely
+  come from other sessions than whichever chat is open). **What's still
+  genuinely missing:** `SidebarV2`'s story rows still have an `onClick`
+  affordance already built, but `ChatHero.tsx` still never passes
+  `onSelectStory` — the story view above is reachable today only via a
+  temporary, clearly-commented `?storyView=<id>` query param on
+  `ChatHero.tsx`, not any real click path (deferred to a later phase, real-
+  story-view-1d). No Share/"+"-add-existing-memories/Publish buttons exist
+  in this view either — none of those three has a real production
+  counterpart anywhere yet (only a design-handover mockup has them); each
+  is its own separate, later scoping pass.
 
   **Story ↔ memory linking, real as of 2026-08-13 (assign-memory-to-story).**
   `artifact_containments` (schema-only since 2026-08-08 — see above) is now
@@ -376,8 +392,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   — the modal's "Already invited" roster is therefore always empty (`[]`)
   since there's nothing real to populate it from. (2) The prototype's
   second entry point — a "Share this story" button inside a real story
-  view — was not built; there is no real story view yet (deferred, separate
-  stage). (3) Whether the story picker's selection should ever change what
+  view — was not built. A real story view now exists (see the "real story
+  view now exists" paragraph above), but it has no Share button of its own
+  yet — that's still a separate, later scoping pass (it would reuse this
+  same real `InviteCollaboratorsModal`, not need a new one). (3) Whether the story picker's selection should ever change what
   the link actually *grants* (vs. just relabeling the modal's copy) is an
   open product question, not decided — `acceptInvite`'s access grant is
   unchanged (tenant-level only) for this pass.
@@ -397,8 +415,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   invites` to `/api/heirloom/story-invites` the same day; `/api/heirloom/
   invites*` and `createMemberInvite`/`acceptInvite` themselves are
   untouched and still fully functional, just no longer exercised by this
-  particular UI path. (2) — a real story view to select into — remains
-  genuinely deferred; unaffected by this change. (3) is now moot for the
+  particular UI path. (2) — a real story view to select into — is no
+  longer accurate as written; see the "real story view now exists"
+  paragraph above (it still has no Share button of its own, and still has
+  no real nav entry point — both separate, later work). (3) is now moot for the
   reusable link specifically: it always grants access to exactly the one
   story chosen at creation (`artifact_subscribers`), never tenant-level —
   changing the picker on an *existing* link still only relabels the copy

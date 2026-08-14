@@ -240,18 +240,23 @@ export async function getStoryIdsForMemories(
   return { ok: true, data: map }
 }
 
-/** A memory as it appears inside a story's own ordered list — Phase 1a
- *  (real-story-view-1a-static-list) is a read-only first cut, so this is
- *  deliberately narrower than MemoryRow (services/crm/memories.ts): just
- *  enough for a title/kind/snippet/date row, nothing block-canvas or
- *  photo-linkage related. `source_kind` is redeclared as a literal union
- *  here rather than imported from memories.ts — that file already imports
- *  FROM this one (getStoryIdsForMemories), so importing its types back
- *  would set up a needless two-way file dependency for one string union;
- *  memories.ts's client-side sibling (useMemories.ts) makes the same
- *  redeclare-rather-than-import call already. */
+/** A memory as it appears inside a story's own ordered list — deliberately
+ *  narrower than MemoryRow (services/crm/memories.ts): just enough for a
+ *  title/kind/snippet/date row plus `session_id` (Phase 1b,
+ *  real-story-view-1b-row-tap-editor — needed so a tapped row can open a
+ *  correctly-scoped editor: a story's memories routinely come from
+ *  DIFFERENT chat sessions than whichever one is open in ChatHero right
+ *  now, and every mutation on a memory is that memory's OWN session_id
+ *  scoped — see StoryMemoryEditor.tsx's own doc comment for why this
+ *  matters beyond just data shape). `source_kind` is redeclared as a
+ *  literal union here rather than imported from memories.ts — that file
+ *  already imports FROM this one (getStoryIdsForMemories), so importing
+ *  its types back would set up a needless two-way file dependency for one
+ *  string union; memories.ts's client-side sibling (useMemories.ts) makes
+ *  the same redeclare-rather-than-import call already. */
 export interface StoryMemoryRow {
   id: string
+  session_id: string
   title: string
   body: string
   source_kind: 'conversation' | 'photo' | 'video' | 'audio' | 'document'
@@ -322,7 +327,7 @@ export async function getMemoriesForStory(
 
   const { data: memoryRows, error: memoryErr } = await supabase
     .from('artifacts')
-    .select('id, title, body, source_kind, created_at')
+    .select('id, session_id, title, body, source_kind, created_at')
     .eq('tenant_id', tenantId)
     .eq('type', 'memory')
     .is('discarded_at', null)
@@ -340,6 +345,7 @@ export async function getMemoriesForStory(
     .filter((row): row is NonNullable<typeof row> => !!row)
     .map(row => ({
       id: row.id as string,
+      session_id: row.session_id as string,
       title: row.title as string,
       body: row.body as string,
       source_kind: row.source_kind as StoryMemoryRow['source_kind'],
