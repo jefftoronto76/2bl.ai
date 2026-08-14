@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Image as ImageIcon, X } from 'lucide-react';
+import { useState } from 'react';
+import { Image as ImageIcon, Loader2, X } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
+import { useMediaPagination } from './media/useMediaPagination';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import { AddToMemoryPanel } from './media/AddToMemoryPanel';
 
@@ -77,26 +78,26 @@ interface MediaGalleryProps {
 }
 
 export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps) {
-  const [items, setItems] = useState<MediaItemWithUrl[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Same incremental-pagination treatment as the account-wide MediaPage,
+  // applied here too even though a single chat's media is naturally more
+  // bounded — nothing in this codebase caps how many files one
+  // conversation can accumulate, so a long-running chat can still hit the
+  // same "sign every item upfront" cost this closes, just at a higher
+  // attachment count than the account-wide page typically needs before it
+  // shows up. Consistency also matters on its own: MediaItemsGrid/MediaCard
+  // are shared with MediaPage, so a chat-scoped list behaving differently
+  // (full fetch vs. incremental) would be a real, if invisible, gap the
+  // next person touching either surface could easily reintroduce.
+  const { items, setItems, loading, loadingMore, hasMore, sentinelRef } = useMediaPagination({
+    queryKey: sessionId,
+    buildUrl: ({ limit, cursor }) => {
+      const params = new URLSearchParams({ chat_id: sessionId ?? '', limit: String(limit) });
+      if (cursor) params.set('cursor', cursor);
+      return `/api/media?${params.toString()}`;
+    },
+  });
   const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
   const [addToMemoryItem, setAddToMemoryItem] = useState<MediaItemWithUrl | null>(null);
-
-  useEffect(() => {
-    if (!sessionId) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    fetch(`/api/media?chat_id=${sessionId}`)
-      .then((r) => r.json())
-      .then((data: { items?: MediaItemWithUrl[] }) => {
-        setItems(Array.isArray(data.items) ? data.items : []);
-      })
-      .catch((err) => console.error('[MediaGallery] fetch failed:', err))
-      .finally(() => setLoading(false));
-  }, [sessionId]);
 
   const handleRetry = (id: string) => {
     setItems((prev) =>
@@ -144,14 +145,22 @@ export function MediaGallery({ onClose, sessionId, onFlash }: MediaGalleryProps)
             </p>
           </div>
         ) : (
-          <MediaItemsGrid
-            items={items}
-            onRetry={handleRetry}
-            onAddToMemory={setAddToMemoryItem}
-            onEditStub={() => onFlash('Editing media is coming soon')}
-            onDeleteRequest={requestDelete}
-            onRename={handleRename}
-          />
+          <>
+            <MediaItemsGrid
+              items={items}
+              onRetry={handleRetry}
+              onAddToMemory={setAddToMemoryItem}
+              onEditStub={() => onFlash('Editing media is coming soon')}
+              onDeleteRequest={requestDelete}
+              onRename={handleRename}
+            />
+            {hasMore && <div ref={sentinelRef} aria-hidden="true" style={{ height: 1 }} />}
+            {loadingMore && (
+              <div className="flex justify-center py-4" aria-live="polite" aria-label="Loading more media">
+                <Loader2 size={18} className="animate-spin text-text-muted" />
+              </div>
+            )}
+          </>
         )}
       </div>
 

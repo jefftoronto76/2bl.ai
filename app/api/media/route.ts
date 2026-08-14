@@ -7,11 +7,22 @@
 // parallel) so the client can render inline previews without a separate
 // per-image GET /api/media/[id]/url round trip on every reload — see
 // components/shells/membership/MessageList.tsx's InlineImage.
+//
+// Pagination (`limit`, optionally `cursor`) is opt-in — see
+// services/media/index.ts's MediaPaginationParams doc comment for why
+// cursor-based, not offset. Passing `limit` signs URLs for only that
+// page's items, closing the "signs every account/chat item upfront, before
+// anything renders" bottleneck (System Docs/Known Gaps.md). Omitting
+// `limit` keeps this route's original unpaginated behavior — chatStore.tsx's
+// catch-up/poll fetches rely on getting the complete list back, not a page.
 
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { listByChat, listByMember, withDisplayUrl, type MediaItemStatus } from '@/services/media'
+
+const DEFAULT_PAGE_SIZE = 24
+const MAX_PAGE_SIZE = 100
 
 export async function GET(req: Request) {
   const user = await getCurrentUser()
@@ -30,6 +41,12 @@ export async function GET(req: Request) {
   const statuses = statusParam
     ? (statusParam.split(',').filter(Boolean) as MediaItemStatus[])
     : undefined
+  const limitParam = searchParams.get('limit')
+  const cursor = searchParams.get('cursor')
+  const paginated = limitParam !== null
+  const limit = paginated
+    ? Math.min(Math.max(parseInt(limitParam, 10) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE)
+    : undefined
 
   // Resolve members.id for scoping
   const supabase = getAdminClient()
@@ -42,6 +59,18 @@ export async function GET(req: Request) {
 
   if (!memberRow) {
     return Response.json({ items: [] })
+  }
+
+  if (paginated) {
+    const page = chatId
+      ? await listByChat(chatId, tenantId, statuses, { limit: limit!, cursor })
+      : await listByMember(memberRow.id, tenantId, { limit: limit! })
+
+    // Filter to only this member's items (defense-in-depth)
+    const ownItems = page.items.filter((item) => item.member_id === memberRow.id)
+    const itemsWithUrls = await Promise.all(ownItems.map(withDisplayUrl))
+
+    return Response.json({ items: itemsWithUrls, hasMore: page.hasMore, nextCursor: page.nextCursor })
   }
 
   const items = chatId
