@@ -112,6 +112,59 @@ apart:
   logged the same way the stale-processing sweep logs its own flips
   (`MEDIA_PROCESS_FAILED`, `pipeline_step: 'stale_pending_sweep'`).
 
+**Client/server message mismatch — verified closed by this trigger-ordering
+fix, no further code change (2026-08-14).** Original observation: a
+member's client showed a local "upload failed" message (fired when the
+client's own `PUT` to Storage threw/rejected) while the `media_items` row
+was simultaneously sitting at `status: 'processing'` — client and server
+told the member two contradictory things at the same moment. This was
+deferred pending the trigger-ordering fix above, on the theory that it
+might resolve it as a side effect. Traced against current code rather than
+assumed: `useMediaUpload.ts`'s `upload()` only calls
+`POST /api/media/[id]/start-processing` — the sole trigger for
+`processMediaItem` on a fresh upload — **after** `uploadRes.ok` is
+confirmed true. If the `PUT` itself throws (network drop) or resolves
+non-ok, execution jumps straight to the `catch` block; `start-processing`
+is never called, and no other code path can move that row past
+`status='pending'` on a failed PUT. Checked every case a `PUT` failure can
+occur under, not just the plain fresh-upload path:
+- **Ordinary fresh upload** (no dedup match) — row created `'pending'`,
+  stays `'pending'` on a `PUT` failure. Not `'processing'`.
+- **Dedup "failed match with no file in Storage" fallback**
+  (`upload-url/route.ts`) — resets the existing row to `'pending'` and
+  issues a fresh signed URL for a real `PUT`, identical reasoning to the
+  ordinary case above if that `PUT` also fails.
+- **A genuine duplicate match** (`result.duplicate === true`) — no `PUT`
+  ever happens for this attachment; `upload()` returns successfully with
+  the matched row's real status, so this path can never produce the
+  client's local "upload failed" message in the first place.
+- **`upload-url` itself rejects or errors** — no `mediaItemId` is even
+  captured client-side in that case (rejections happen before or during
+  that response), and if a row was already created server-side before an
+  error (e.g. `generateSignedUploadUrl` throwing after `createMediaItem`
+  succeeded), no signed URL ever reaches the client, so no `PUT` is
+  attempted and the row is later swept to `'failed'` by
+  `sweepStalePendingItems`, above — never `'processing'`.
+In every case, the structural fact holds: `processing` is unreachable
+without a client-confirmed-successful `PUT`, and a client-side "failed"
+message only ever fires when that `PUT` didn't succeed. The instantaneous
+contradiction from the original report is provably impossible under the
+current trigger flow — closed as a side effect of the trigger-ordering fix
+above, no code change needed. (A softer, non-contradictory residual gap
+still exists and is out of scope here: a `PUT` that fails client-side after
+the bytes fully landed in Storage — e.g. the response was lost, not the
+request — leaves a `'pending'` row that `sweepStalePendingItems` recovers
+and silently processes up to `MAX_PENDING_AGE_SECONDS` [120s] later, with
+no update to the chat transcript's already-shown "failed" acknowledgment.
+That's a staleness gap measured in up to two minutes, not an instant
+contradiction, and it's a display lag, not a false statement — the AI's
+chat-transcript reply reacting to the `[MEDIA_UPLOAD_FAILED: ...]` marker
+stays as written (chat history doesn't retroactively edit itself), but the
+attachment's own real status is a separate UI surface (`UploadThumbnail.tsx`,
+the gallery), driven by `chatStore.tsx`'s Realtime subscription/poll on
+`media_items` — that surface does catch up once the sweep processes it.
+Not the bug this section was tracking.)
+
 **Execution lifecycle — why every trigger site wraps the call in `after()`.**
 All four call sites above invoke `processMediaItem` fire-and-forget (they
 respond before the job finishes, since a webhook delivery, a retry click, an
