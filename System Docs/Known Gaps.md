@@ -1225,6 +1225,51 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     (`inset-0`/`h-[100dvh]`, no rounding, no scrim — distinct from the
     Media pane's partial `85vh` sheet added the same week); see
     `System Docs/Public Site.md`'s `ChatHero` row for the mechanics.
+  - **Session memories panel — shipped 2026-08-14, PR #385.** Closes a real
+    gap an investigation found (`Design Handovers/ Aug 2026 Atomic
+    Updates/11_session_memory_icon_gap/README.md`): main had the single-memory
+    `MemoryCardView` above and the sidebar's decorative `SidebarMemoryCount`
+    badge, but no way to browse every memory kept during the active session
+    and open one — only the prototype's own `SessionMemoriesPanel`
+    (`chat-widget-canvas.jsx`) had that flow. Entry point is a new
+    `ChatHeader` icon ("Memories from this chat," `Bookmark` glyph, same
+    optional-prop-gated pattern as `onOpenMedia`) — the sidebar badge stays a
+    plain non-interactive `<span>`, a locked decision, not an oversight. The
+    new `SessionMemoriesPanel` component (`components/shells/membership/memory/SessionMemoriesPanel.tsx`)
+    lists every memory for the session, **any status** — draft rows get a
+    small "Draft" label, and the subtitle reads "N memories this session,"
+    not "kept," since a draft isn't kept yet. Tapping a row opens it into the
+    existing `MemoryCardView` editor, same as a transcript receipt click —
+    not a separate read-only view. Joins `ChatHero.tsx`'s third-pane
+    mutual-exclusion group as a fifth state (`sessionMemoriesOpen`, alongside
+    `openMemory`/`mediaOpen`/`adminStoryId` and `storyViewId` — the latter
+    landed the same day via a separate branch,
+    `Design Handovers/ Aug 2026 Atomic Updates/01_real_story_view`/PR #384,
+    merged into this one mid-flight; every shared condition and
+    reciprocal-close handler was updated to account for all five states, not
+    four) — same desktop resizable third-pane / mobile `85vh` bottom-sheet
+    treatment Media already has, not the full-screen no-scrim treatment
+    single-item editors (`MemoryCardView`/`StoryAdminPanel`/`StoryView`) use.
+    See `System Docs/Public Site.md`'s `ChatHero`, `ChatHeader`, and new
+    `SessionMemoriesPanel` rows for the mechanics.
+    **Stale-session-rows bug — found by automated PR review, fixed same PR
+    before merge.** `useMemories.ts`'s `memories` array is **not** cleared
+    when `sessionId` changes — only `loadedForSessionId` (and therefore
+    `isLoaded`) resets, see that hook's own doc comment — and nothing closes
+    `sessionMemoriesOpen` on a session switch (New Chat, or picking a
+    different conversation). Passing `memories.memories` straight through
+    left the *previous* session's rows on screen under "this session" until
+    the next fetch resolved, or indefinitely for a brand-new chat with no
+    `sessionId` to ever fetch for. Fixed with a `currentSessionMemories`
+    derivation in `ChatHero.tsx` (`memories.memories.filter(m => m.session_id
+    === state.sessionId)`) — no extra fetch, just the guard every
+    `MemoryRow`'s own `session_id` field already made possible — covered by
+    a regression test in `ChatHero.sessionMemoriesPanel.test.tsx` (opens the
+    panel, clicks New Chat, asserts the stale rows are gone and the empty
+    state shows). Worth remembering for any other consumer that might read
+    `memories.memories` directly in the future — this same gap is latent
+    wherever that happens without the same filter or an `isLoaded`/session
+    check.
   - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
     2026-08-08, revised same day per the Text+Image Scope Handover
     (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
