@@ -1515,3 +1515,49 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   in shape to the missing delete/rename ones (own entries above). Neither
   is built here — this entry exists only so the idea isn't lost, not as a
   commitment to either flavor.
+
+- **`GET /api/media` fetched and signed every matching item upfront, before
+  anything rendered — found via live testing (not code review alone) and
+  fixed with real pagination, 2026-08-14.** Confirmed no existing design
+  handover covered this: the "Memories - Lazy Load" handover explicitly
+  scoped itself to per-thumbnail `loading="lazy"` (already shipped, see the
+  skeleton-loader entry this doc's git history documents alongside it) and
+  never addressed the initial fetch itself. The real bottleneck was
+  upstream of rendering entirely — `listByChat`/`listByMember`
+  (`services/media/index.ts`) returned every matching row with no limit,
+  and the route generated a signed display URL for every one of them
+  (`Promise.all(ownItems.map(withDisplayUrl))`) before responding at all.
+  `MediaPage.tsx` (account-wide, unbounded) was the more severely affected
+  of the two consumers; `MediaGallery.tsx` (chat-scoped) shared the
+  identical code path at a smaller, but still uncapped, scale.
+
+  **Fix:** `listByChat`/`listByMember` gained a cursor-based paginated
+  overload (`MediaPaginationParams`/`MediaPage`, cursor = the previous
+  page's last row's own `created_at`, chosen over offset/limit because both
+  lists are live — a mid-scroll insert shifts an offset window but can't
+  retroactively land inside an already-fetched cursor range; see the doc
+  comment on `MediaPaginationParams` for the full reasoning, including the
+  accepted same-millisecond-tie edge case at a page boundary). The
+  overload is strictly opt-in: omitting the new `pagination` argument keeps
+  every existing caller — `services/crm/memories.ts`'s two session-
+  membership checks, `chatStore.tsx`'s catch-up/poll fetches — on the exact
+  original unpaginated behavior, since those need the complete list (a
+  membership check must see every item, not just one page) and would
+  silently break if only a page came back. `GET /api/media` mirrors this:
+  `limit`/`cursor` query params are opt-in, and only signs URLs for the
+  page actually requested; omitting `limit` preserves the original
+  unpaginated response shape byte-for-byte.
+
+  `MediaPage.tsx` and `MediaGallery.tsx` both now fetch incrementally via a
+  new shared hook, `components/shells/membership/media/useMediaPagination.ts`
+  — first page on open/session-select (still driving the existing 6-card
+  skeleton), subsequent pages appended (not replacing) on an
+  `IntersectionObserver` sentinel scrolling into view (same create-ref/
+  observe/disconnect shape as `services/shared/useReveal.ts`, the only
+  existing precedent — no other load-more/infinite-scroll pattern existed
+  in this codebase to match instead). Applied to `MediaGallery.tsx` too,
+  not just `MediaPage.tsx`, despite a single chat's media being naturally
+  more bounded — nothing in this schema caps attachments per conversation,
+  and the two surfaces share `MediaItemsGrid`/`MediaCard`, so leaving one
+  unpaginated would be a real, easy-to-reintroduce inconsistency. See
+  `Utilities/Media.md`'s `index.ts`/route rows for the mechanism.

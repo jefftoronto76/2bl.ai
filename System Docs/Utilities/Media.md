@@ -21,7 +21,7 @@ route couldn't simply be deleted once that trigger moved.
 |------|---------|---------|
 | `processor.ts` | `processMediaItem`, `waitForStorageObject`, `STORAGE_WAIT_DELAYS_MS`, `verifyAndReprocess`, `ReprocessOutcome` | The pipeline itself — see "The pipeline" below. `verifyAndReprocess` is the sole remaining place an existing row gets reprocessed — see "Duplicate uploads". |
 | `vision-tool.ts` | `callVisionTool`, `callTextTool`, `AnthropicTool` | Generic forced-tool-use helpers for structured model output — image input and text input respectively, sharing one internal fetch/parse/fallback core. See "The tool-use pattern" below. |
-| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent`, `sweepStaleProcessingItems`, `MAX_PROCESSING_AGE_SECONDS`, `STALE_PROCESSING_ERROR_MESSAGE`, `sweepStalePendingItems`, `MAX_PENDING_AGE_SECONDS`, `STALE_PENDING_ERROR_MESSAGE`, `NEEDS_REUPLOAD_ERROR_MESSAGE` (+ types) | `media_items` CRUD, the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape), and the two stale-row sweep functions the cron route (`app/api/cron/media-sweep`) and the retry route's backstop use. `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
+| `index.ts` | `createMediaItem`, `findDuplicateMediaItem`, `backfillMediaChatId`, `updateMediaItem`, `getMediaItem`, `listByChat`, `listByMember`, `MediaPaginationParams`, `MediaPage`, `isMediaAuditEnabled`, `logMediaEvent`, `logAiMediaEvent`, `logSttMediaEvent`, `sweepStaleProcessingItems`, `MAX_PROCESSING_AGE_SECONDS`, `STALE_PROCESSING_ERROR_MESSAGE`, `sweepStalePendingItems`, `MAX_PENDING_AGE_SECONDS`, `STALE_PENDING_ERROR_MESSAGE`, `NEEDS_REUPLOAD_ERROR_MESSAGE` (+ types) | `media_items` CRUD, the three audit-logging wrappers `processor.ts` uses (kept separate per action family purely for log-query clarity — all three write the same envelope shape), and the two stale-row sweep functions the cron route (`app/api/cron/media-sweep`) and the retry route's backstop use. `listByChat`/`listByMember` also carry an opt-in paginated overload — see "Media list pagination" below. `isMediaAuditEnabled()` reads `ENABLE_MEDIA_AUDIT_LOGGING` (default on) — see `Utilities/Audit.md` for the actions themselves. |
 | `storage.ts` | `generateSignedUploadUrl`, `generateSignedDownloadUrl` (60s), `generateLongLivedSignedUrl` (1hr), `objectExists`, `buildMediaStoragePath` | Supabase Storage (`assets` bucket) signing and existence checks. `objectExists` uses `list()`, not a HEAD request — the basis for `waitForStorageObject`'s retry loop, `sweepStalePendingItems`'s recovered-vs-abandoned check (`index.ts`), `verifyAndReprocess`'s reprocess-vs-needs_reupload check, and `upload-url/route.ts`'s dedup-vs-fresh-upload-fallback check. |
 | `useMediaUpload.ts` | client hook | Drives the client-side upload flow (signed URL request → direct PUT → `media_items` row creation), content-hash dedup. `UploadResult.duplicate` carries through whether the server reused an existing row — see "Duplicate uploads". |
 | `useFreshImageUrl.ts` | `useFreshImageUrl` | Client hook re-resolving a media item's signed display URL at render time via `GET /api/media/[id]/url`, since `sessionImages`' url (`display-url.ts`) carries `storage.ts`'s 60s-expiry signed URL and is never refreshed after session load. Shows the possibly-stale fallback url immediately while the fresh fetch is in flight, then swaps to the resolved value — no loading flicker for the common case. Wired into the memory panel's four photo-display spots (`BlockCanvas.tsx`'s `ImageBlockRow`, `MemoryCard.tsx`'s draft-state image and `MemorySavedReceipt`'s thumbnail). **Chat-transcript images (`UploadThumbnail.tsx`, the actual render spot — not `MessageList.tsx`/`ChatThread` directly) wired in 2026-08-09 too**, closing the gap this row used to flag: gated so the hook only gets a `mediaItemId` when `item.localPreviewUrl` (an instant, non-expiring local blob set at attach time in `ChatInput.tsx`) isn't already serving the image, so a live local blob never triggers a wasted re-fetch — see `System Docs/Public Site.md`'s `UploadThumbnail` row and `Known Gaps.md`'s now-resolved entry. |
@@ -269,6 +269,73 @@ As a consequence, `upload-url/route.ts` no longer calls `processMediaItem`
 at all (its old dedup-reprocess branch and the `after()`/`maxDuration=900`
 it needed are both gone) — reprocessing an existing row only ever happens
 through `verifyAndReprocess`, called from `retry/route.ts`.
+
+## Media list pagination
+
+`GET /api/media` (`app/api/media/route.ts`) — the route both `MediaPage.tsx`
+(account-wide) and `MediaGallery.tsx` (chat-scoped) fetch from — used to
+return every matching `media_items` row and generate a signed display URL
+for every one of them (`Promise.all(ownItems.map(withDisplayUrl))`) before
+responding at all. Found via live testing, not code review, and fixed
+2026-08-14 — see `Known Gaps.md`'s entry for the full incident writeup; this
+section documents the resulting mechanism.
+
+**Query params (opt-in):** `limit` (default 24, clamped to [1, 100]) and
+`cursor` (the previous page's last item's own `created_at`, url-encoded).
+Passing `limit` switches the route into its paginated branch; response
+shape becomes `{ items, hasMore, nextCursor }`. Omitting `limit` entirely
+preserves the route's original behavior byte-for-byte — `{ items }` only,
+every matching row, every one signed — because two existing callers depend
+on getting the complete list, not a page: `chatStore.tsx`'s catch-up (on
+session mount) and poll (while an item is pending/processing) fetches, both
+`GET /api/media?chat_id=...&status=ready,failed`. Neither ever passes
+`limit`, so both are functionally untouched by this change.
+
+**`listByChat`/`listByMember` (`services/media/index.ts`)** carry the same
+opt-in shape via a TypeScript function overload — a 4th `pagination:
+MediaPaginationParams` argument switches the return type from a plain
+`MediaItem[]` to a `MediaPage` (`{ items, hasMore, nextCursor }`). This
+matters beyond the route: `services/crm/memories.ts` calls `listByChat`
+unpaginated twice, both as session-membership checks (`createPhotoMemoryFromMedia`,
+`reviseMemoryBlocks` — "does this media item belong to this session"), and
+a check run against only one page would produce false negatives for a photo
+that exists but sits outside the fetched page. The overload keeps those two
+call sites (and chatStore.tsx's fetches above) on the exact pre-pagination
+code path, with zero risk of a default-on limit silently truncating them.
+
+**Cursor, not offset — see `MediaPaginationParams`'s own doc comment for
+the full reasoning.** Briefly: both lists are live (an upload can complete
+mid-scroll), and an offset window shifts under a concurrent insert in a way
+that reproduces either a skipped or a duplicated item on the next page; a
+cursor anchored to an already-returned row's `created_at` can't be
+retroactively invalidated that way. `listByChat` stays ascending
+(oldest-first, unchanged) with `created_at > cursor` moving forward;
+`listByMember` stays descending (newest-first, unchanged) with
+`created_at < cursor` moving backward — pagination builds on each list's
+existing order, it doesn't introduce a new one. `hasMore`/`nextCursor` are
+computed by fetching `limit + 1` rows and slicing off the extra one
+(`toPage`, `services/media/index.ts`) — one shared helper, not duplicated
+per list.
+
+**Client side:** `components/shells/membership/media/useMediaPagination.ts`
+is a new shared hook behind both `MediaPage.tsx` and `MediaGallery.tsx` —
+fetches page one on open/session-select (still driving the existing 6-card
+skeleton via its `loading` flag), then fetches and appends subsequent pages
+(via a separate `loadingMore` flag, so a scrolled-in page never re-triggers
+the skeleton) when an `IntersectionObserver` sentinel `<div>` at the bottom
+of the grid scrolls into view — the same create-ref/observe/disconnect
+shape `services/shared/useReveal.ts` already uses elsewhere in this
+codebase, re-observing on every intersection rather than disconnecting
+after the first (more pages can exist after each load). Appends are
+deduplicated by item id, so a page re-fetched after a scope reset or a
+boundary-tie cursor collision can never render a duplicate card.
+
+Applied to `MediaGallery.tsx` too, not only `MediaPage.tsx`, despite a
+single chat's media being naturally more bounded than the whole account —
+nothing in this schema caps attachments per conversation, and both surfaces
+share `MediaItemsGrid`/`MediaCard`, so leaving one of the two unpaginated
+would be a real, easily-reintroduced inconsistency rather than a
+deliberate scope cut.
 
 ## Upload-url rejections (before a row exists)
 

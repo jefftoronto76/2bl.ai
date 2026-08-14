@@ -23,11 +23,12 @@
 // animate on open/close; `inert` while closed keeps it out of the tab order
 // and a11y tree the same way ChatDrawerV2 does for its own closed state.
 
-import { useEffect, useRef, useState } from 'react';
-import { Feather, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Feather, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
+import { useMediaPagination } from './media/useMediaPagination';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
 import { AddToMemoryPanel } from './media/AddToMemoryPanel';
 
@@ -89,23 +90,26 @@ interface MediaPageProps {
 }
 
 export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
-  const [items, setItems] = useState<MediaItemWithUrl[]>([]);
-  const [loading, setLoading] = useState(true);
-  const hasFetchedRef = useRef(false);
+  // Fetches once, the first time the page is ever opened — not on every
+  // open/close, since MediaPage stays mounted (see the file header comment)
+  // and re-fetching account-wide media on every reopen would be wasted work.
+  // `hasOpened` only ever flips false -> true, so useMediaPagination's
+  // queryKey stays stable across a later close/reopen.
+  const [hasOpened, setHasOpened] = useState(false);
+  useEffect(() => {
+    if (open) setHasOpened(true);
+  }, [open]);
+
+  const { items, setItems, loading, loadingMore, hasMore, sentinelRef } = useMediaPagination({
+    queryKey: hasOpened ? 'account' : null,
+    buildUrl: ({ limit, cursor }) => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor) params.set('cursor', cursor);
+      return `/api/media?${params.toString()}`;
+    },
+  });
   const { pendingDelete, requestDelete, cancelDelete, confirmDelete } = useMediaDelete(setItems);
   const [addToMemoryItem, setAddToMemoryItem] = useState<MediaItemWithUrl | null>(null);
-
-  useEffect(() => {
-    if (!open || hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
-    fetch('/api/media')
-      .then((r) => r.json())
-      .then((data: { items?: MediaItemWithUrl[] }) => {
-        setItems(Array.isArray(data.items) ? data.items : []);
-      })
-      .catch((err) => console.error('[MediaPage] fetch failed:', err))
-      .finally(() => setLoading(false));
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -197,14 +201,22 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
                 </p>
               </div>
             ) : (
-              <MediaItemsGrid
-                items={items}
-                onRetry={handleRetry}
-                onAddToMemory={setAddToMemoryItem}
-                onEditStub={() => onFlash('Editing media is coming soon')}
-                onDeleteRequest={requestDelete}
-                onRename={handleRename}
-              />
+              <>
+                <MediaItemsGrid
+                  items={items}
+                  onRetry={handleRetry}
+                  onAddToMemory={setAddToMemoryItem}
+                  onEditStub={() => onFlash('Editing media is coming soon')}
+                  onDeleteRequest={requestDelete}
+                  onRename={handleRename}
+                />
+                {hasMore && <div ref={sentinelRef} aria-hidden="true" style={{ height: 1 }} />}
+                {loadingMore && (
+                  <div className="flex justify-center py-4" aria-live="polite" aria-label="Loading more media">
+                    <Loader2 size={18} className="animate-spin text-text-muted" />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
