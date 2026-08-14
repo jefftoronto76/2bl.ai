@@ -18,7 +18,7 @@ vi.mock('@/services/audit', () => ({
   logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 
-import { assignMemoryToStory, getStoryIdsForMemories, getMemoriesForStory } from './story-containments'
+import { assignMemoryToStory, getStoryIdsForMemories, getMemoriesForStory, moveMemoryInStory } from './story-containments'
 
 type Result = { data: unknown; error: unknown }
 
@@ -71,6 +71,10 @@ function makeClient(queues: Partial<Record<string, Result[]>>) {
         delete: () => {
           calls[table].push({ op: 'delete' })
           return makeChain(next(table))
+        },
+        upsert: (payload: unknown, opts?: unknown) => {
+          calls[table].push({ op: 'upsert', payload: { rows: payload, opts } })
+          return Promise.resolve(next(table))
         },
       }
     },
@@ -397,5 +401,158 @@ describe('getMemoriesForStory', () => {
     const result = await getMemoriesForStory('tenant-1', 'collaborator-user', 'story-1')
 
     expect(result).toEqual({ ok: true, data: [] })
+  })
+})
+
+describe('moveMemoryInStory', () => {
+  const MEM_A = { id: 'mem-a', session_id: 'sess-1', title: 'A', body: '', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }
+  const MEM_B = { id: 'mem-b', session_id: 'sess-1', title: 'B', body: '', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' }
+  const MEM_C = { id: 'mem-c', session_id: 'sess-1', title: 'C', body: '', source_kind: 'conversation', created_at: '2026-08-03T00:00:00Z' }
+
+  /** Three memories, current effective order A, B, C (every position NULL,
+   *  so it's the created_at fallback order — exactly what a never-touched
+   *  story looks like). */
+  function makeThreeMemoryClient() {
+    return makeClient({
+      artifacts: [
+        OWNED_STORY_ROW,
+        { data: [MEM_A, MEM_B, MEM_C], error: null },
+      ],
+      artifact_containments: [
+        {
+          data: [
+            { child_artifact_id: 'mem-a', position: null, created_at: MEM_A.created_at },
+            { child_artifact_id: 'mem-b', position: null, created_at: MEM_B.created_at },
+            { child_artifact_id: 'mem-c', position: null, created_at: MEM_C.created_at },
+          ],
+          error: null,
+        },
+        { data: null, error: null }, // the upsert call
+      ],
+    })
+  }
+
+  it('404s and never reaches artifact_containments when the caller has no access to the story', async () => {
+    const { client, calls } = makeClient({
+      artifacts: [{ data: { id: 'story-1', user_id: 'the-owner' }, error: null }],
+      members: [{ data: null, error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'stranger-user', 'story-1', 'mem-a', 'up')
+
+    expect(result).toEqual({ ok: false, status: 404, error: 'Story not found' })
+    expect(calls.artifact_containments).toBeUndefined()
+  })
+
+  it('404s when the memory is not in this story\'s list at all', async () => {
+    const { client } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-missing', 'up')
+
+    expect(result).toEqual({ ok: false, status: 404, error: 'Memory not found in this story' })
+  })
+
+  it('400s moving the first item up — already at the top', async () => {
+    const { client, calls } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-a', 'up')
+
+    expect(result).toEqual({ ok: false, status: 400, error: 'Already at the top of the list' })
+    expect(calls.artifact_containments?.some(c => c.op === 'upsert')).toBe(false)
+  })
+
+  it('400s moving the last item down — already at the bottom', async () => {
+    const { client, calls } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-c', 'down')
+
+    expect(result).toEqual({ ok: false, status: 400, error: 'Already at the bottom of the list' })
+    expect(calls.artifact_containments?.some(c => c.op === 'upsert')).toBe(false)
+  })
+
+  it('moving the middle item up renumbers ALL three (0,1,2 matching current order) then swaps, in one batch upsert', async () => {
+    const { client, calls } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-b', 'up')
+
+    expect(result.ok).toBe(true)
+    const upsertCall = calls.artifact_containments.find(c => c.op === 'upsert')
+    expect(upsertCall).toBeDefined()
+    const { rows, opts } = upsertCall!.payload as { rows: unknown[]; opts: { onConflict: string } }
+    expect(opts).toEqual({ onConflict: 'parent_artifact_id,child_artifact_id' })
+    expect(rows).toEqual([
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-a', position: 1 },
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-b', position: 0 },
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-c', position: 2 },
+    ])
+  })
+
+  it('moving the first item down swaps it with its neighbor, leaving the third untouched in position', async () => {
+    const { client, calls } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-a', 'down')
+
+    expect(result.ok).toBe(true)
+    const upsertCall = calls.artifact_containments.find(c => c.op === 'upsert')
+    const { rows } = upsertCall!.payload as { rows: unknown[] }
+    expect(rows).toEqual([
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-a', position: 1 },
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-b', position: 0 },
+      { tenant_id: 'tenant-1', parent_artifact_id: 'story-1', child_artifact_id: 'mem-c', position: 2 },
+    ])
+  })
+
+  it('logs STORY_MEMORY_REORDERED success with direction and the new positions on success', async () => {
+    const { client } = makeThreeMemoryClient()
+    adminHolder.client = client
+
+    await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-b', 'up')
+
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.STORY_MEMORY_REORDERED,
+        target_id: 'mem-b',
+        outcome: 'success',
+        metadata: expect.objectContaining({ story_id: 'story-1', direction: 'up' }),
+      }),
+    )
+  })
+
+  it('500s and logs failure when the upsert itself errors', async () => {
+    const { client } = makeClient({
+      artifacts: [
+        OWNED_STORY_ROW,
+        { data: [MEM_A, MEM_B, MEM_C], error: null },
+      ],
+      artifact_containments: [
+        {
+          data: [
+            { child_artifact_id: 'mem-a', position: null, created_at: MEM_A.created_at },
+            { child_artifact_id: 'mem-b', position: null, created_at: MEM_B.created_at },
+            { child_artifact_id: 'mem-c', position: null, created_at: MEM_C.created_at },
+          ],
+          error: null,
+        },
+        { data: null, error: { message: 'db down' } },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await moveMemoryInStory('tenant-1', 'user-owner', 'story-1', 'mem-b', 'up')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(500)
+      expect(result.error).toBe('db down')
+    }
+    expect(logEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.STORY_MEMORY_REORDERED, outcome: 'failure' }),
+    )
   })
 })
