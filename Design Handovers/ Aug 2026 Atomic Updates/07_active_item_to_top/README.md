@@ -35,11 +35,17 @@ index 0.
 
 ## Open / not yet done
 
-- **Stories list itself is NOT sorted this way yet.** The ask named
-  "messages/stories" — this handover only covers the conversations
-  (Memories) list. The Stories list (`stories.map(...)`, same file, header
-  row above Memories) still renders in whatever order `stories` state holds,
-  with no active-story-to-top behavior. If that's wanted too, it's the same
-  pattern: sort by `st.id === selectedStoryId` before mapping.
+- **Closed (2026-08-14).** The Stories list is now sorted this way too —
+  `orderedStories`/`filteredStories` in `components/shells/membership/v2/
+  SidebarV2.tsx`, same pattern as `orderedSessions`/`filteredSessions`
+  above. "Active story" turned out not to map onto a `selectedStoryId`
+  the way this note originally guessed — no such concept existed yet.
+  Instead it's `storyViewId` (`ChatHero.tsx`, real-story-view Phase 1a/1b,
+  landed the same day as this note): the story whose StoryView pane is
+  currently open, same spirit as a session being active while its chat is
+  open. Since a story pane isn't chat-store state the way `sessionId` is,
+  it's passed down as a new `activeStoryId` prop rather than read off
+  `useChatStore()`. Tests: `SidebarV2.activeStoryToTop.test.tsx`, mirroring
+  `SidebarV2.activeSessionToTop.test.tsx`'s structure.
 - No persistence question here — this is a pure render-order sort on
   existing state, not a schema or API change.

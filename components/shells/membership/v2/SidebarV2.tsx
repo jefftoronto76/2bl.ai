@@ -64,6 +64,14 @@ export interface SidebarV2Props {
   /** Render the Stories section inert: actions disabled, "soon" tag on the
    *  header. The section stays visible. Default false. */
   storiesDisabled?: boolean;
+  /** The story id whose StoryView pane is currently open (ChatHero's
+   *  `storyViewId`, real-story-view Phase 1a/1b) — moved to the top of the
+   *  Stories list, same spirit as the active session. Unlike `sessionId`
+   *  this isn't chat-store state (a story pane isn't a chat session), so it
+   *  arrives as a prop rather than being read off useChatStore() the way
+   *  orderedSessions reads state.sessionId below. Undefined when no story
+   *  pane is open. */
+  activeStoryId?: string;
 
   // Nav actions (New Chat + the conversation list come from the store)
   onMedia?: () => void;
@@ -372,6 +380,7 @@ export function SidebarV2({
   renamingId,
   onRenameCommit,
   forceCollapsed = false,
+  activeStoryId,
 }: SidebarV2Props) {
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
@@ -394,6 +403,20 @@ export function SidebarV2({
     const active = recentSessions[activeIndex];
     return [active, ...recentSessions.slice(0, activeIndex), ...recentSessions.slice(activeIndex + 1)];
   }, [recentSessions, state.sessionId]);
+
+  // Active-story-to-top (2026-08-14, closing the other half of
+  // active_item_to_top) — same pattern as orderedSessions above: derived,
+  // not a mutation of the `stories` prop, stable sort, no-op (same array
+  // reference) when there's no active story or it's already first.
+  // `activeStoryId` is a prop (ChatHero's storyViewId) rather than store
+  // state, since a story pane isn't a chat session the way sessionId is.
+  const orderedStories = useMemo(() => {
+    if (!activeStoryId) return stories;
+    const activeIndex = stories.findIndex((s) => s.id === activeStoryId);
+    if (activeIndex <= 0) return stories;
+    const active = stories[activeIndex];
+    return [active, ...stories.slice(0, activeIndex), ...stories.slice(activeIndex + 1)];
+  }, [stories, activeStoryId]);
 
   // Whether this docked/overlay instance shows full labels + lists (w-64) or
   // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
@@ -436,9 +459,12 @@ export function SidebarV2({
   const filteredSessions = trimmedQuery
     ? orderedSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
     : orderedSessions;
+  // Filters orderedStories (active-first), not stories directly — same
+  // ordering of operations as filteredSessions above (sort, then filter) so
+  // the active story stays first among search results too.
   const filteredStories = trimmedQuery
-    ? stories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
-    : stories;
+    ? orderedStories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
+    : orderedStories;
 
   // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
   // its window listener on every SidebarV2 render.
