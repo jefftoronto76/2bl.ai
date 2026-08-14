@@ -101,15 +101,35 @@ session's genuine first assistant turn, not repeatedly.
   (`services/chat/ui/v1/registry.ts`) and consumed by
   `components/shells/membership/MessageList.tsx`. Stripped from prose in every
   other context (widget shell, admin transcript) via `createDefaultRegistry()`.
-  **Second, deterministic source (added 2026-08-11, story-invite-first-run):**
+  **Deterministic sources, not just the LLM (three as of 2026-08-14):**
   the registry's `.parse()` runs over every assistant message's raw content
-  regardless of where it came from, so `chatStore.tsx`'s story-invite greet
-  effect emits `[ACCOUNT_CREATE: story invite]` itself via
-  `injectAssistantMessage` (a synthetic message, no LLM round-trip) for a
-  not-signed-in visitor who arrived via a story invite link — `MagicLinkCard`
-  renders identically either way. See the `chatStore` row in
-  `System Docs/Public Site.md` for the full greet/account-create/failure-
-  fallback sequence this belongs to.
+  regardless of where it came from, so `chatStore.tsx`'s one-time auto-greet
+  effect can and does emit this marker itself via `injectAssistantMessage`
+  (a synthetic message, no LLM round-trip) — `MagicLinkCard` renders
+  identically either way, whether the marker came from the model or from
+  this effect. Three deterministic reasons, one per invite-adjacent signup
+  path, checked in order:
+  1. `[ACCOUNT_CREATE: story invite]` (added 2026-08-11,
+     story-invite-first-run) — a not-signed-in visitor who arrived via a
+     valid `?join=` story-invite link.
+  2. `[ACCOUNT_CREATE: admin invite]` (added 2026-08-13,
+     deterministic-account-create) — a not-signed-in visitor who arrived
+     via a valid `?invite=` admin/member invite token, personalized with
+     `invitedName` in the preceding greeting when the admin set one.
+  3. `[ACCOUNT_CREATE: expired invite]` (added 2026-08-14,
+     expired-invite-chat-first) — a not-signed-in visitor whose `?invite=`
+     token exists in the tenant's `members` table (`memberTokenExists`,
+     distinguishing a real-but-expired/used/revoked token from a garbage
+     query-param string) but didn't authorize them. No `invitedName`/story
+     context available for this one, so the preceding greeting is generic:
+     `"Looks like that invite link didn't work — but I can still get you
+     set up."` This is also the only one of the three that required a
+     gate-formula change (`isGated`) rather than just a new greet branch,
+     since this population previously never reached the chat at all —
+     `GateView`'s Clerk-modal button handled it instead. See the
+     `chatStore`/`GateView` rows in `System Docs/Public Site.md` for the
+     full greet/account-create/failure-fallback sequence and the gate
+     bypass mechanics each of these belongs to.
 
 ### `[SAVE_MEMORY]` — dispatch `client`
 
