@@ -271,6 +271,7 @@ export function ChatProvider({
   invitedEmail = null,
   invitedPhone = null,
   hasInviteToken = false,
+  tokenExistsButUnauthorized = false,
   inviteToken,
   autoOpenChat = false,
   memberId,
@@ -298,6 +299,12 @@ export function ChatProvider({
   invitedPhone?: string | null;
   /** True when the visitor arrived with an invite token in the URL. */
   hasInviteToken?: boolean;
+  /** True when the ?invite= token exists in this tenant's members table
+   *  (regardless of status/used_at/revoked_at) but didn't authorize this
+   *  visitor — distinct from hasInviteToken, which is raw query-param
+   *  presence with no server-side validation. Drives the chat-first
+   *  "expired invite" gate bypass below. */
+  tokenExistsButUnauthorized?: boolean;
   /** Raw invite token — present only when the visitor arrived via an unused
    *  token. Stored in a ref (not state) and consumed once on the false→true
    *  isSignedIn transition to call the accept endpoint. */
@@ -502,6 +509,21 @@ export function ChatProvider({
         }
         injectAssistantMessage(
           "It doesn't look like you're signed in, or have an account yet — just use the form below to sort that out. [ACCOUNT_CREATE: admin invite]",
+        );
+      } else if (tokenExistsButUnauthorized && !isSignedInRef.current) {
+        // Invite token existed for this tenant but didn't authorize this
+        // visitor (expired/used/revoked) — same deterministic, no-LLM
+        // pattern as the admin-invite branch above, but with no invitedName
+        // to personalize (an unauthorized token carries no admin-set name)
+        // and no specific story/inviter to reference. autoOpenChat is only
+        // ever true for this population when the server already confirmed
+        // !session, so !isSignedInRef.current here is belt-and-suspenders,
+        // consistent with the other branches in this chain.
+        injectAssistantMessage(
+          "Looks like that invite link didn't work — but I can still get you set up.",
+        );
+        injectAssistantMessage(
+          "It doesn't look like you're signed in, or have an account yet — just use the form below to sort that out. [ACCOUNT_CREATE: expired invite]",
         );
       } else {
         void sendHidden('Hi');
@@ -1362,9 +1384,17 @@ export function ChatProvider({
     isMember: isLoaded && !!isSignedIn,
   };
 
+  // Bypass the gate for a genuinely-issued-but-now-invalid invite token,
+  // same treatment as a valid admin/story invite already gets — but only
+  // once Clerk has resolved sign-in state (isLoaded) and only while signed
+  // out, so a signed-in visitor with a stale link still sees GateView's
+  // "already signed in" branch untouched, and there's no hydration-timing
+  // flash of ungated chat before isLoaded settles.
+  const bypassGateForExpiredInvite = tokenExistsButUnauthorized && isLoaded && !isSignedIn;
+
   return (
     <ChatContext.Provider
-      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized, invitedName, invitedEmail, invitedPhone, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
+      value={{ state, dispatch, sendMessage: send, errorType, retry, stop, regenerate, setActiveVersion, editMessage, resendMessage, recentSessions, loadSession, newChat, dispatchSystemSignal, claimCurrentSession, claimAllSessions, injectAssistantMessage, isGated: gateEnabled && !isAuthorized && !bypassGateForExpiredInvite, invitedName, invitedEmail, invitedPhone, hasInviteToken, isAdmin, inviteToken: inviteTokenRef.current, storyInviteToken: storyInviteTokenRef.current, joinedStoryConfirmation, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, addMediaItem, pendingEcho, setPendingEcho }}
     >
       {children}
     </ChatContext.Provider>

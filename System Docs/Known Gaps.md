@@ -1515,3 +1515,46 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   in shape to the missing delete/rename ones (own entries above). Neither
   is built here — this entry exists only so the idea isn't lost, not as a
   commitment to either flavor.
+
+- **`/api/heirloom/members/claim` (`claimMembership`) is effectively
+  orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
+  invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
+  static "Claim a free membership" button → `openSignUp()`) was replaced
+  with the same deterministic chat-first `[ACCOUNT_CREATE: expired invite]`
+  pattern already used for admin/story invites — signup now happens via
+  `MagicLinkCard` → `/api/members/sync` (`syncMember`, `status: 'active'`),
+  not this route. The route's only caller, `GateView.tsx`'s own top-level
+  `useEffect` watching the Clerk false→true sign-in transition, is shared
+  plumbing across all three `GateView` branches and was left in place (not
+  deleted) — but `GateView` no longer mounts at all for the
+  invalid/expired-token population (`isGated` bypasses it), so the one
+  realistic path that used to trigger this effect's sign-up transition is
+  gone. The only way it could still fire is a signed-out visitor on the
+  no-token `WaitlistView` branch signing in through some other UI element
+  while `GateView` stays mounted — not a real trigger path today
+  (`WaitlistView` has no sign-in UI of its own). **Left in place pending a
+  decision to remove it** — not deleted without confirming nothing else
+  depends on it.
+
+- **Expired/invalid `?invite=` token now gets the same chat-first
+  deterministic signup flow as valid admin/story invites — built
+  2026-08-13, NOT YET LIVE-VERIFIED.** GateView's old path
+  (`openSignUp()`'s Clerk-prebuilt modal, only reachable when a visitor's
+  invite token fails validation) never guaranteed name capture and
+  violated the marker-fallback principle. Replaced with the same pattern
+  already proven for admin/story invites tonight: a new
+  `memberTokenExists(token, tenantId)` check (services/members/members.ts)
+  distinguishes a genuinely-issued-but-now-invalid token from a garbage
+  `?invite=` string; only the former bypasses the gate. The bypass also
+  requires `isLoaded && !isSignedIn` client-side (and `!session`
+  server-side for `autoOpenChat`), so a signed-in-but-pending member with a
+  stale link still sees GateView's "You're on the list." branch, not an
+  unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
+  branches just become unreachable for this one case.
+  `/api/heirloom/members/claim` + `claimMembership` are now effectively
+  orphaned (no realistic remaining trigger) but left in place, not deleted.
+  **Not yet done:** the four manual verification cases this fix specifically
+  requires (real-expired-token, garbage-token, cross-tenant-token,
+  signed-in-with-stale-token) haven't been run against a live preview —
+  `tsc`/`next build` are clean but that doesn't substitute for the actual
+  behavior check. Do this before trusting the fix in production.
