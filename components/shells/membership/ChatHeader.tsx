@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
+  Bookmark,
   ChevronDown,
   CircleUser as UserCircle,
   Images,
@@ -51,9 +52,18 @@ export interface ChatHeaderProps {
    * no longer opens this surface).
    */
   onOpenMedia?: () => void;
+  /**
+   * Opens the session-scoped memories list panel — every memory (draft +
+   * published) kept during the active chat session, listed for browsing;
+   * tapping one opens it into the existing single-memory MemoryCardView
+   * editor. Renders in the icon cluster, right after Media, whenever
+   * provided (session_memories_panel handover, 2026-08-14 — see its
+   * investigation notes: main never had this flow, only the prototype did).
+   */
+  onOpenSessionMemories?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, onOpenSessionMemories }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -203,10 +213,11 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
       )}
 
       <div className="flex items-center gap-1 flex-shrink-0">
-        {/* Icon cluster: gap-1 (4px) between all of Share/Fullscreen/Account/
-            Close — half-gap (2px) horizontally on every button (uniform,
-            not first/last-optimized, to stay correct regardless of which
-            optional buttons render); vertical is open so it expands fully. */}
+        {/* Icon cluster: gap-1 (4px) between all of Media/Memories/Share/
+            Fullscreen/Account/Close — half-gap (2px) horizontally on every
+            button (uniform, not first/last-optimized, to stay correct
+            regardless of which optional buttons render); vertical is open
+            so it expands fully. */}
         {onOpenMedia && (
           <IconButton
             label="Media from this chat"
@@ -214,6 +225,16 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             <Images size={16} />
+          </IconButton>
+        )}
+
+        {onOpenSessionMemories && (
+          <IconButton
+            label="Memories from this chat"
+            onClick={onOpenSessionMemories}
+            className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+          >
+            <Bookmark size={16} />
           </IconButton>
         )}
 
