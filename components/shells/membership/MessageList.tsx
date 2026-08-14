@@ -789,6 +789,9 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
     claimCurrentSession,
     inviteToken,
     storyInviteToken,
+    invitedName,
+    invitedEmail,
+    invitedPhone,
     mediaItems,
     retry,
     regenerate,
@@ -897,6 +900,12 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
   // pre-fill MagicLinkCard fields. Separate from ChatThread's per-message
   // render-time parse (which only sees one message at a time) — this needs
   // every message at once, so it keeps its own registry.parse() pass.
+  // Falls back to the admin/member invite's own email/phone/name (from
+  // members.email/phone/invited_name, see chatStore's invitedEmail/
+  // invitedPhone/invitedName) when no marker has fired yet — a marker
+  // emitted mid-conversation still wins once present, since it's checked
+  // first. Story invites carry no invitee-specific contact info (the link
+  // is durable and multi-use), so there is nothing to fall back to there.
   const scanned = messages.map((m) =>
     m.role === 'assistant' ? markerRegistry.parse(m.content) : null,
   );
@@ -904,17 +913,17 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
   const visitorName = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'NAME')
-    ?.fields[0] ?? null;
+    ?.fields[0] ?? invitedName ?? null;
 
   const visitorEmail = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'EMAIL')
-    ?.fields[0] ?? null;
+    ?.fields[0] ?? invitedEmail ?? null;
 
   const visitorPhone = scanned
     .flatMap((r) => r?.markers ?? [])
     .find((m) => m.type === 'PHONE')
-    ?.fields[0] ?? null;
+    ?.fields[0] ?? invitedPhone ?? null;
 
   // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
   // sync the newly-authenticated user into the members table with their name.

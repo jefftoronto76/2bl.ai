@@ -289,6 +289,17 @@ describe('validateMemberToken', () => {
     expect(result?.id).toBe('member-1')
   })
 
+  it('returns phone alongside email on the row (used to pre-fill the sign-up form)', async () => {
+    const row = { id: 'member-1', tenant_id: 'tenant-1', email: 'a@example.com', phone: '+15551234567' }
+    const { client } = makeTokenSelectClient(row)
+    adminHolder.client = client
+
+    const result = await validateMemberToken('valid-token')
+
+    expect(result?.email).toBe('a@example.com')
+    expect(result?.phone).toBe('+15551234567')
+  })
+
   it('returns null for an empty token string', async () => {
     const { client } = makeTokenSelectClient({ id: 'member-1' })
     adminHolder.client = client

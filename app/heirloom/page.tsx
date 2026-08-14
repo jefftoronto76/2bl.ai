@@ -61,6 +61,8 @@ export default async function HeirloomPage({
 
   // A valid unused members.token also grants full access.
   let invitedName: string | null = null;
+  let invitedEmail: string | null = null;
+  let invitedPhone: string | null = null;
   let autoOpenChat = false;
   let memberId: string | null = null;
   if (!isAuthorized && inviteToken) {
@@ -68,6 +70,8 @@ export default async function HeirloomPage({
     if (row !== null) {
       isAuthorized = true;
       invitedName = row.invited_name ?? null;
+      invitedEmail = row.email ?? null;
+      invitedPhone = row.phone ?? null;
       // Always auto-open for a valid admin/member invite token — the
       // deterministic greet + ACCOUNT_CREATE prompt in chatStore.tsx must
       // fire regardless of the auto_open toggle. The column and the
@@ -135,6 +139,8 @@ export default async function HeirloomPage({
       isAuthorized={isAuthorized}
       isAdmin={isAdmin}
       invitedName={invitedName}
+      invitedEmail={invitedEmail}
+      invitedPhone={invitedPhone}
       hasInviteToken={hasInviteToken}
       inviteToken={validatedInviteToken}
       memberId={validatedMemberId}
