@@ -268,9 +268,11 @@ yet to populate them.
 ### Add `chat_sessions.stop_requested_at`
 
 **Type:** Schema change
-**Executed by:** Jeff in Supabase Studio (proposed — run this before the code
-that reads/writes it deploys, or the writes will fail-and-log-quietly with
-nothing actually working yet)
+**Executed by:** Jeff in Supabase Studio — **confirmed live and wired**
+(status updated during the 2026-08-14 doc audit; `stop_requested_at` is read/
+written across `services/chat/server/index.ts`, `services/chat/server/
+stream.ts`, and `services/crm/sessions.ts` — the "proposed, run before deploy"
+caveat below is historical and no longer applies)
 
 **SQL run:**
 
@@ -477,10 +479,10 @@ revoked_at timestamptz  -- non-null = link is dead (410 at the redirect route,
 ### Add `members.invited_by` — invite provenance
 
 **Type:** Schema change
-**Executed by:** Jeff in Supabase Studio — ⚠️ **PENDING; required before the
-"Invited by" branch (`claude/member-invite-name-field-jw25tq`) deploys.**
-Without the column, the members pages and `validateMemberToken` (the Heirloom
-invite gate) will error on the unknown column.
+**Executed by:** Jeff in Supabase Studio — **confirmed live** (status updated
+during the 2026-08-14 doc audit; the "Invited by" branch shipped and
+`invited_by` is read/written in `services/members/members.ts`; the original
+⚠️ PENDING note below is historical and no longer applies)
 
 **Purpose:** Record which admin created each invite so the members table can
 show an "Invited by" column (and the detail drawer a provenance line). NULL is

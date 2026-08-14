@@ -7,7 +7,9 @@ jefflougheed.ca-only code and assets are isolated from shared/platform code:
 - **Components** live in `app/(jefflougheed)/components/` — the self-contained,
   presentational pieces owned solely by the public site: `Footer`,
   `SectionOutcomes`, `SectionWhy`, `SectionCareer`, `SectionTestimonials`,
-  `Problem`, `Session`. `page.tsx` imports these via relative `./components/…`.
+  `Problem`, `Session`, `Colophon`, `FeaturedTestimonial`, `SectionRail`,
+  `ShareIcons`, `ShareModal`, `useMode`, plus `Nav` and `SectionProcess` (see
+  below). `page.tsx` imports these via relative `./components/…`.
 - **Public assets** live in `public/sage/jefflougheed/` and are referenced as
   `/sage/jefflougheed/…` (favicons, headshots, the ten career logos,
   `ProblemBackground.webp`, `chewing-gum.svg`, `bench.svg`). Next.js only
@@ -24,8 +26,9 @@ shared presentation) — `Hero.tsx` and `Chat.tsx` were subsequently consolidate
 into `WidgetShell.tsx`, exporting `WidgetShellHero` and `WidgetShellChat` — with
 the headless pieces (`useWidgetShell`,
 `useSageParameters`) in `services/chat/ui/v1/`. `SectionProcess.tsx` is a
-jefflougheed marketing section that consumes the widget only via the headless
-`useWidgetShell` store (Step E relocates it into `app/(jefflougheed)/components/`).
+jefflougheed marketing section that consumes the widget via those headless
+`useWidgetShell` and `useSageParameters` hooks (Step E relocates it into
+`app/(jefflougheed)/components/`).
 
 `Nav.tsx` — jefflougheed nav chrome with no chat coupling — has been relocated
 into `app/(jefflougheed)/components/` (it imports `ShareModal` via relative
@@ -38,9 +41,10 @@ Do not move or delete these without explicit instruction from Jeff.
 Notes:
 - `SectionProcess.tsx` now lives in `app/(jefflougheed)/components/`
   (relocated in centralization Step E). It does **not** import
-  `FEATURED_TESTIMONIALS` (an earlier note to that effect was stale); its only
-  cross-module dependency is the headless `useWidgetShell` store
-  (`app→services`, legal).
+  `FEATURED_TESTIMONIALS` (an earlier note to that effect was stale); its
+  cross-module dependencies are the headless `useWidgetShell` store and
+  `useSageParameters` (both `app→services`, legal), both from
+  `services/chat/ui/v1/`.
 - `public/logos/` deliberately still holds the platform `2blai_logo.svg` and
   some duplicate/variant logos — only the specific jefflougheed logos were
   namespaced.
