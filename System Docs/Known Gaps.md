@@ -2072,3 +2072,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     above (2026-08-08) — that one leaked into a memory's title/body via
     `createMemoryFromAnchor`; this one leaked into a chat session's own
     title.
+
+- **Sidebar row hover feedback is background-tint-only since the row-copy
+  darkening — 2026-08-15 (PR #397).** Before that change, all three row
+  groups in `SidebarV2.tsx` (the shared `navBtn` base, conversation titles,
+  story rows) signalled hover two ways at once: a colour shift
+  (`text-text-muted` → `hover:text-text-primary`) **and** a background wash
+  (`bg-text-primary/10`, `/[0.05]` on story rows). Moving the rest state to
+  `text-text-primary` made the colour half a no-op, so it was dropped and
+  only the wash remains. This is not a contrast regression — the rest state
+  got darker, not lighter — and focus-visible rings are untouched, so
+  keyboard affordance is unchanged. But it is strictly less hover signal
+  than these rows carried before, on a tint that is only 10% (5% on story
+  rows) against `--color-background` (`#FAF6EE` on Heirloom). **If the rows
+  read as unresponsive in use, the fix is a hover treatment that still works
+  from a full-ink base** — a deeper wash, or an accent-tinted underline —
+  **not** restoring the muted rest state, which is the thing the change
+  deliberately removed. Untested against the mobile drawer, where there is
+  no hover state at all and the wash never fires either way.
