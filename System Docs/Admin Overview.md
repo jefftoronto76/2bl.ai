@@ -15,13 +15,26 @@ visual values flow through Mantine's theme system.
 
 **Location:** `/components/admin/theme/mantine-theme.ts`
 
-Maps `System Docs/Design System.md` design tokens to Mantine's `createTheme()`:
-- Primary color: `#2d6a4f` (10-shade green scale)
-- Background: `#f9f8f5`
-- Body font: DM Sans
-- Heading font: Playfair Display
-- Monospace font: DM Mono
-- Spacing, radius, shadows mapped from design tokens
+**Stale as static values — corrected 2026-08-14.** The theme is no longer one
+fixed palette mapped from `System Docs/Design System.md`'s jefflougheed/admin
+token table; `buildAdminTheme(branding, tenantId)` builds a distinct Mantine
+theme per tenant, falling back to one of three hardcoded `TENANT_FALLBACKS`
+palettes (keyed by tenant UUID) when a branding field is null:
+- **jefflougheed** (dark inkwell) — accent `#a8c8a8`, background `#181820`,
+  Playfair Display / DM Sans / DM Mono
+- **2bl.ai / SBL** — accent `#C8542E`, background `#FAF6EE`,
+  Newsreader / Manrope / DM Mono
+- **Heirloom** — accent `#2E854D`, background `#ECE3D2`,
+  Cormorant Garamond / DM Sans / DM Mono
+
+None of these match the `#2d6a4f` / `#f9f8f5` pair this section previously
+listed as *the* primary/background — those values now only appear as inert
+CSS-var fallbacks (`var(--mantine-color-green-6, #2d6a4f)`) and in admin mock
+fixtures (`components/admin/lib/fixtures.ts`), not in the live theme.
+Spacing, radius, and shadows remain static, mapped from design tokens as
+before. This overlaps `System Docs/Design System.md`'s token table, which
+still documents the old single-palette jefflougheed/admin values — see this
+audit's cover note for the discrepancy.
 
 ### MantineProvider
 
@@ -55,6 +68,7 @@ so composites don't need changes.
 | `Badge` | `Badge` | default→gray, success→green, warning→yellow, danger→red (all light) |
 | `Card` | `Paper` | default→shadow, outlined→withBorder, interactive→border+hover |
 | `Icon` | Custom span | sm/md/lg sizes, default/muted color via Mantine CSS vars |
+| `PromptFullnessMeter` | Custom (Mantine CSS vars) | Segmented completeness meter for prompt blocks |
 
 ### Composites — `/components/admin/content/`
 

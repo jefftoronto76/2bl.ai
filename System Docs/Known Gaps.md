@@ -160,19 +160,34 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   yet.** The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped
   the presentation layer only. Story creation/read/delete are real now
   (2026-08-09 — see "Real story creation and persistence" below); still
-  outstanding: per-story collaborator invites (member-facing magic-link API
-  — the existing `invites` table is the admin-created access gate, not
-  this); conversation search (the sidebar field is a visible stub);
-  Share Heirloom (sidebar item + ChatHeader icon are inert;
-  `ShareHeirloomModal` is landed but unmounted — pass the real
-  `heirloom.2bl.ai` URL when mounting, its default is a placeholder);
-  Writing Prompts copy review (the 4 static prompts in ChatHero are
-  placeholder-grade). The v1 `Sidebar.tsx` is superseded and unmounted —
-  delete after preview verification. **Uploads removed 2026-08-12**
+  outstanding: Share Heirloom (sidebar item + ChatHeader icon are inert —
+  confirmed still true, `ChatHero.tsx` still never supplies `SidebarV2`'s
+  `onShareHeirloom` prop; `ShareHeirloomModal` is landed but unmounted —
+  pass the real `heirloom.2bl.ai` URL when mounting, its default is a
+  placeholder); Writing Prompts copy review (the 4 static prompts in
+  `ChatHero`'s `WRITING_PROMPTS` are still placeholder-grade, own
+  comment says "Writing Prompts have no backend yet"). The v1
+  `Sidebar.tsx` is superseded and unmounted — delete after preview
+  verification. **Uploads removed 2026-08-12**
   (`sidebar_uploads_scrim_stories_2006` handover) — the sidebar's Uploads
   nav row was a permanently-disabled stub with no backing feature; rather
   than build one, the dead row was deleted outright (uploads already
-  surface inside Media).
+  surface inside Media). **Per-story collaborator invites — resolved
+  2026-08-10**, see "Invite — real as of 2026-08-10" and
+  "Superseded, same day — reusable-story-invite-links" below for the full
+  mechanics (`story_invite_links`, `InviteCollaboratorsModal`). **Conversation
+  search — resolved (Aug 2026 "Search and Collapse Bar" work, commit
+  `a79b295c`, landed by 2026-08-13, doc gap only — corrected here
+  2026-08-14).** The sidebar field was a visible stub when this bullet was
+  first written; it is not one anymore — `SidebarV2`'s `SearchField` now
+  drives a real, live, title-only filter (Phase 1: conversations by title,
+  stories by name; memory content is a separate later phase per the
+  handover) via `query`/`handleSearch`/`filteredSessions`/`filteredStories`
+  in `SidebarV2.tsx`. The doc previously never recorded this as shipped —
+  it was only discoverable indirectly via the "Collapsed-rail search icon
+  does nothing" bug entry below, which describes a real bug in the
+  *collapsed-icon* variant of an otherwise-working search feature, not a
+  stub.
 
   **Per-row kebab actions — resolved for conversations 2026-08-03 (PR
   #247); resolved for story delete 2026-08-09.** `ChatHero.tsx` now passes
@@ -1706,16 +1721,19 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   Mantine theme color / CSS var) but touches ~10 files across both design
   systems, so it's its own task, not a drive-by.
 
-- **Eight dead `.chat-overlay-*` CSS selectors sit interleaved with two live
+- **Nine dead `.chat-overlay-*` CSS selectors sit interleaved with two live
   ones in `app/(jefflougheed)/globals.css:552-593` — found during the same
-  documentation pass, 2026-08-07.** Of the ten class selectors under the
+  documentation pass, 2026-08-07 (miscounted as "eight ... of ten" originally;
+  corrected here to "nine ... of eleven" during the 2026-08-14 audit, matching
+  the already-corrected count in `System Docs/jefflougheed Chat Widget.md`).**
+  Of the eleven class selectors under the
   "Full-screen chat overlay" comment header — `.chat-overlay`,
   `.chat-overlay-inner`, `.chat-overlay-header`, `.chat-overlay-title`,
   `.chat-overlay-dot`, `.chat-overlay-actions`, `.chat-overlay-close`,
   `.chat-overlay-scroll`, `.chat-overlay-greeting`, `.chat-overlay-log`,
   `.chat-overlay-composer` — only the last two are referenced anywhere in
   `components/shells/widget/WidgetShell.tsx` (confirmed via grep: one match
-  each; zero for the other eight). The other eight are an earlier,
+  each; zero for the other nine). The other nine are an earlier,
   hand-rolled-class implementation of the overlay's chrome (header, close
   button, greeting text, etc.), superseded when that markup moved to inline
   Tailwind utilities directly in the JSX — the old CSS was never removed.
@@ -1723,8 +1741,8 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `.chat-overlay-composer`, the two selectors Bug 3's `--color-surface` fix
   actually touched (2026-08-06/07), which is exactly the kind of place this
   becomes a real hazard: a future edit restyling "the overlay" via one of
-  the eight dead selectors would silently do nothing. **Suggested fix:**
-  delete the eight dead selectors; keep `.chat-overlay-log`/
+  the nine dead selectors would silently do nothing. **Suggested fix:**
+  delete the nine dead selectors; keep `.chat-overlay-log`/
   `.chat-overlay-composer`. **Priority: minor cleanup debt**, not urgent —
   no functional impact today, purely a maintenance hazard for future edits.
   Full selector-by-selector accounting: `System Docs/jefflougheed Chat

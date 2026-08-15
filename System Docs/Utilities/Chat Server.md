@@ -36,10 +36,19 @@ non-empty:
 `sanitizeFailureReason(raw)` maps a raw internal `error_message` to one of a
 fixed set of pre-written safe phrases — a category classifier, not string
 scrubbing, so no vendor name or storage path can leak through an error
-shape the mapping didn't anticipate. Categories: upload not finished
-("Storage object not available after"), Deepgram transcription failure,
-Anthropic vision failure, a missing `DEEPGRAM_API_KEY`/`ANTHROPIC_API_KEY`,
-signed-URL/download failures, and a generic fallback for anything else.
+shape the mapping didn't anticipate. The implementation now lives in
+`services/media/errorCopy.ts` (dependency-free, no `getAdminClient`) so
+client components (upload progress cards) can classify a failure reason
+without pulling in this module's server-only import; `media-context.ts`
+re-exports it unchanged so existing importers and this file's own test
+keep working. Categories: upload not finished ("Storage object not
+available after"), processing stalled and timed out, upload never
+completed, a file that needs to be re-uploaded (no file found in Storage
+on reprocess — `isNeedsReupload` checks this same string for the retry-vs-
+reattach UI decision), Deepgram transcription failure, Anthropic vision
+failure, Anthropic file-upload failure, a missing
+`DEEPGRAM_API_KEY`/`ANTHROPIC_API_KEY`, signed-URL/download failures, and a
+generic fallback for anything else.
 
 As of 2026-08-04, `resolveMediaContext()` also fires the
 `CHAT_MEDIA_CONTEXT_RESOLVED` audit event (via `logEvent`) on the path that

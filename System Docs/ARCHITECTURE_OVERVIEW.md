@@ -1,6 +1,14 @@
 # 2BL Platform Architecture — Honest Overview
 *May 26, 2026*
 
+> **Spot-checked against the codebase 2026-08-14** (PRs now past #390 — this
+> document's own PR references top out around #46). Several "still
+> deferred/pending" items below have since shipped; those bullets have been
+> corrected in place. The rest of the narrative (Phase A history, target
+> structure, references) is left as the historical record it is — treat any
+> status bullet not explicitly marked as updated with the same ~3-month-stale
+> caution.
+
 ---
 
 ## Where We Are
@@ -44,8 +52,18 @@ Still deferred or pending:
   tenants migrated onto the hook. The visual components (src/components/sage/*,
   Chat.tsx, Hero.tsx, store.ts) still live in src/ as consumers — sage.ts deleted.
 - services/payments/ — NOT STARTED
-- Heirloom master_prompt — blocks started, not compiled/published
-- Three-tier prompt inheritance — design pending
+- ~~Heirloom master_prompt — blocks started, not compiled/published~~ —
+  **shipped.** Heirloom's tenant has its own live `compiled_prompts` row via
+  the Compile & Publish pipeline (`services/prompt/compile.ts`); see
+  `System Docs/Known Gaps.md`'s Memories entry, confirmed 2026-08-14.
+- Three-tier prompt inheritance — the compile/publish pipeline and a
+  `blocks.scope` field (`'platform' | 'composer' | 'runtime'`) shipped, but
+  that's two real tiers (platform-owned defaults, tenant runtime), not the
+  three (platform → product → tenant) described under "Phase C" below —
+  there is no product-level tier in the schema. `composer` is a separate
+  special category (the admin Composer tool's own prompt), not part of this
+  chain. Confirmed against `System Docs/Database Schema.md`'s `blocks` row,
+  2026-08-14.
 
 ### Chat UI v1 — shared engine extracted (May 26, 2026)
 
@@ -122,8 +140,15 @@ app/
 - RLS is primary enforcement — cross-tenant access impossible at DB
 - Application-layer scoping is secondary defense only
 - Clerk JWT claims power RLS policies
-- Service role key has exactly ONE justified use: anonymous public 
-  chat write path, isolated in services/auth
+- Service role key use has grown past the original single case —
+  **stale as of 2026-08-14.** Confirmed three separate local
+  service-role client factories now: `services/crm/sessions.ts`
+  (anonymous session writes) and `services/crm/feedback.ts` (message
+  feedback writes) each carry their own, plus `services/auth/supabase-admin.ts`.
+  Each site's comment documents its own justification and scopes every
+  write by tenant_id to prevent cross-tenant IDOR, but the key is no
+  longer isolated to one path in services/auth — it's a documented
+  pattern repeated per-caller, not a single choke point
 - Audit log on all data access and mutations
 - HIPAA/SOC2 ready by design
 - Security hardening informs service design — not retrofitted after
@@ -196,10 +221,10 @@ Phase A is complete, so Heirloom is now underway.
 - Landing page ✅
 - Chat wired ✅ — full session lifecycle (POST /api/sessions → session_id to /api/sage → PATCH on completion), PR #39; migrated onto the shared `useChatTurn` engine, PR #44
 - Multi-tenant admin ✅
-- Blocks: in progress
-- master_prompt: pending compile/publish
-- Memory creation: pending
-- Clerk account creation in chat: pending
+- Blocks ✅ — Prompt Studio Blocks/Compile/Publish flow is live (`app/admin/prompt-studio/blocks/`)
+- master_prompt ✅ — compiled and published; Heirloom has its own live `compiled_prompts` row (confirmed 2026-08-14)
+- Memory creation ✅ — manual + auto capture shipped 2026-07-29 (`services/crm/memories.ts`), plus Real Story Creation (2026-08-08/09) on top
+- Clerk account creation in chat ✅ — `[ACCOUNT_CREATE: reason]` marker (`services/chat/ui/v1/registry.ts`) dispatches `MagicLinkCard` inline
 
 ### Phase C — Platform prompt studio
 
@@ -210,6 +235,14 @@ answered before Phase C starts.
 
 Inheritance order: platform defaults → product defaults → 
 tenant overrides → master prompt
+
+**Status check, 2026-08-14:** still not built as described above. The
+`blocks.scope` field that shipped (`'platform' | 'composer' | 'runtime'`,
+see the "Where We Are" correction) gives two real tiers — platform-owned
+defaults and tenant runtime — not the three (platform → product → tenant)
+this section describes; there is no product-level scope value in the
+schema. Phase C's product tier and its removal-semantics question are
+still open, unstarted design work.
 
 ### Phase D — Security hardening
 
@@ -250,23 +283,35 @@ app/
     globals.css            ← Sage product tokens (when built)
 ```
 
-**Current violation:** inkwell (jefflougheed), SBL, and Heirloom 
+**Resolved as of 2026-08-14.** The violation described below is fixed:
+`app/globals.css` now holds only Tailwind directives, the universal reset,
+and one cross-brand keyframe (`.chat-bubble-shake`) — no brand tokens.
+Inkwell, SBL, and Heirloom tokens each live in their own product-scoped
+file as this section originally called for (confirmed against
+`System Docs/Design System.md`'s "globals.css structure" table, which
+documents the same split). Left below for history:
+
+~~**Current violation:** inkwell (jefflougheed), SBL, and Heirloom 
 tokens all live in the root `app/globals.css`. This must be fixed 
 as part of properly scaffolding each product — it is part of the 
-Definition of Done for each product, not a cleanup task.
+Definition of Done for each product, not a cleanup task.~~
 
-**Known violations to fix:**
-- Move inkwell tokens → `app/(jefflougheed)/globals.css`
-- Move SBL tokens → `app/secondbrainlabs/globals.css`
-- Move Heirloom tokens → `app/heirloom/globals.css`
-- Root `app/globals.css` becomes base resets only
+**Known violations to fix:** ~~all done~~
+- ~~Move inkwell tokens → `app/(jefflougheed)/globals.css`~~ done
+- ~~Move SBL tokens → `app/secondbrainlabs/globals.css`~~ done
+- ~~Move Heirloom tokens → `app/heirloom/globals.css`~~ done
+- ~~Root `app/globals.css` becomes base resets only~~ done
 
 ## Known Deferred Items
 
 - Infinite loop prevention in tenant hierarchy (circular parent_id)
 - OpenAI fallback circuit breaker (seam exists, not wired)
-- Visual chat components (Chat.tsx, Hero.tsx, src/components/sage/*, store.ts)
-  still in src/ — the engine/registry/hook already extracted to services/chat/ui/v1/ (PRs #42-46)
+- ~~Visual chat components (Chat.tsx, Hero.tsx, src/components/sage/*,
+  store.ts) still in src/~~ — **stale as of 2026-08-14.** `src/` now holds
+  only `calendly.d.ts`; the old Chat.tsx/Hero.tsx have been superseded by
+  `components/shells/membership/` (`ChatHero.tsx`, `ChatHeader.tsx`,
+  `chatStore.tsx`, `v2/ChatDrawerV2.tsx`, etc.), consuming the
+  `services/chat/ui/v1/` engine/registry/hook.
 - HUGS (requires BAA before any PHI work)
 - Per-tenant AI API keys
 - Payments (Stripe Connect)
