@@ -371,19 +371,24 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages
               </div>
             )}
 
-            {/* Row 2 — the spine. Keep this first, Rewrite and Discard last, one line, never wraps, never reorders.
-                Horizontal padding here is sized against a real budget, not picked by eye — do not re-inflate it
-                without re-measuring. The row's available width is the viewport minus 114px of fixed chrome:
-                MessageList.tsx's scroll container px-4 (32) + RAIL w-8 (32) + this card's outer gap-3 (12) +
-                the wrapper's 1px border either side (2) + the card column's own px-[18px] (36). That leaves
-                261px at 375px, 276px at 390px, 314px at 428px.
-                At px-4 / px-[13px] the three buttons measured 263.0px in DM Sans — over budget at 375px and
-                below, with nothing to spare at 390px. Overflow eats the card's 18px right padding first (Discard
-                creeping up against the card edge), then goes truly invisible behind the wrapper's overflow-hidden
-                (line ~267) once it exceeds that — i.e. below ~359px, which is ordinary Android-narrow territory.
-                At px-3 / px-2.5 the row is 243.0px: 18px of clearance at 375px and still 3px at 360px.
-                Vertical sizing is NOT part of this budget — py-2 and the
-                [@media(hover:none)]:min-h-[44px] tap target stay as they are.
+            {/* Row 2 — the spine. Keep first, Rewrite and Discard last, one line, never wraps, never reorders.
+                Horizontal sizing here is measured against a real budget, not picked by eye — do not re-inflate
+                the padding or re-lengthen the labels without re-measuring. The row's available width is the
+                viewport minus 114px of fixed chrome: MessageList.tsx's scroll container px-4 (32) + RAIL w-8
+                (32) + this card's outer gap-3 (12) + the wrapper's 1px border either side (2) + the card
+                column's own px-[18px] (36). That leaves 261px at 375px, 276px at 390px, 314px at 428px.
+                That budget only holds while nothing upstream indents the card further. It didn't: MessageList
+                used to render the guide-anchored memory slot inside the ml-[60px] wrapper that aligns
+                MessageActions under the assistant's text, cutting the budget to 201px at 375px while a
+                visitor-anchored card kept the full 261px — which is exactly why Discard clipped on
+                guide-proposed memories and not on visitor-proposed ones. Fixed in MessageList.tsx; if this row
+                ever clips again, re-check the ancestors' indentation there BEFORE shaving anything here.
+                Measured in DM Sans: "Keep this" at px-4/px-[13px] was 263.0px (over budget at 375px, nothing to
+                spare at 390px); px-3/px-2.5 took it to 243.0px; shortening the label to "Keep" takes it to
+                217.3px, clearing 375px by 43.7px. Overflow eats the card's 18px right padding first (Discard
+                creeping up against the card edge), then goes truly invisible behind the wrapper's
+                overflow-hidden (line ~267) once it exceeds that. Vertical sizing is NOT part of this budget —
+                py-2 and the [@media(hover:none)]:min-h-[44px] tap target stay as they are.
                 overflow-x-auto is the belt-and-braces half: at any width the padding math doesn't cover, Discard
                 is reachable by a swipe instead of being invisibly clipped. shrink-0 makes the buttons scroll
                 rather than compress, overscroll-x-contain keeps an edge swipe off iOS back-nav, and -my-1 py-1
@@ -396,7 +401,7 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages
                 className="inline-flex shrink-0 items-center gap-[7px] whitespace-nowrap rounded-[9px] bg-accent px-3 py-2 font-body text-[12.5px] font-semibold text-bg hover:bg-accent-hover [@media(hover:none)]:min-h-[44px]"
               >
                 <Bookmark size={13} aria-hidden />
-                Keep this
+                Keep
               </button>
               <button
                 type="button"
