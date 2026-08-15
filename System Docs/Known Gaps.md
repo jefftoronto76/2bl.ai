@@ -1525,6 +1525,39 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     button's threshold to match `ChatThread.tsx`'s 100px, or thread
     `ChatThread.tsx`'s own near-bottom state out to drive the button instead
     of a second, independent measurement.
+  - **Draft card's "Discard" clipped on mobile, for guide-anchored memories
+    only (fixed 2026-08-15, PR #400).** Two independent causes, and the
+    first fix shipped without the second, which is why it looked half-fixed.
+    (1) The action spine (`Keep`/`Rewrite`/`Discard`) never wraps by design,
+    so it has a hard width budget, and the card wrapper's `overflow-hidden`
+    ate the overflow silently. At its original `px-4`/`px-[13px]` padding
+    the row measured 263.0px against 261px of room at a 375px viewport —
+    over budget, nothing to spare at 390px. (2) The real reason the two
+    flows disagreed: `MessageList.tsx` rendered the guide-anchored memory
+    slot INSIDE the `ml-[60px]` wrapper that aligns `MessageActions` under
+    the assistant's text, so a guide-anchored card got 60px less width than
+    a visitor-anchored one at every viewport — 201px at 375px, clipping
+    Discard clean out of the card, while a visitor-anchored card at the full
+    261px rendered fine. Reproduced in Chromium with both flows side by side
+    before fixing; the gap was exactly 60px at every width. Ruled out rather
+    than assumed along the way: font fallback and text scaling both affect
+    the two flows equally and so cannot produce a per-flow difference, and
+    the `overflow-x-auto` safety net was present and working in the deployed
+    build (the row WAS scrollable) — but a card that needs a swipe to reveal
+    its third button still reads as clipped at rest, which is the whole
+    reason (2) still had to be fixed rather than left to the net. Fix:
+    scope the indent to `MessageActions`, render the memory slot as its
+    sibling, tighten the spine padding to `px-3`/`px-2.5`, and shorten the
+    primary label from "Keep this" to "Keep" (row now 217.3px, 43.7px of
+    clearance at 375px). See `System Docs/Public Site.md`'s memory bookmark
+    row for the full width budget and the `MessageList` row for the indent
+    contract. **Watch item, not currently broken:** `app/heirloom/layout.tsx`
+    loads DM Sans at weights 400/500 only, while the `Keep` button is
+    `font-semibold` (600). It renders correctly today because DM Sans v17 is
+    a variable font, so the 600 is a real instance and nothing is
+    synthesized — but if that font is ever pinned to static instances the
+    button gets faux-bold, which is wider, and eats into the clearance
+    above.
 - **`members.user_id` left null on some active, Clerk-linked members —
   root-caused and fixed in code 2026-08-06; historical rows need a Studio
   backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
