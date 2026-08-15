@@ -54,6 +54,14 @@ vi.mock('@/services/auth/supabase', () => ({
   }),
 }));
 
+// Spelled out here rather than imported from ShareHeirloomModal on purpose:
+// importing the component's own constant would make these assertions
+// tautological — they'd follow any future edit to it, including a wrong one.
+// This is the contract (real production domain + the three share UTMs), so a
+// change to it should fail here and be re-approved deliberately.
+const DEFAULT_SHARE_URL =
+  'https://heirloom.2bl.ai/?utm_source=share&utm_medium=social&utm_campaign=withlove';
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -68,7 +76,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   return jsonResponse({ ok: true });
 });
 
-const writeText = vi.fn(async () => {});
+const writeText = vi.fn(async (_text: string) => {});
 const windowOpen = vi.fn();
 
 beforeEach(() => {
@@ -192,16 +200,26 @@ describe('Share Heirloom — actions', () => {
     await waitFor(() => expect(shareDialog()).toBeInTheDocument());
   }
 
-  it('copies the default share URL to the clipboard and confirms it', async () => {
+  it('copies the default share URL — real domain, UTMs intact — and confirms it', async () => {
     await openShare();
 
     const dialog = within(shareDialog());
-    expect(dialog.getByText('heirloom.life')).toBeInTheDocument();
+    // The displayed value is the copied value minus the scheme (cleanUrl), so
+    // the UTMs are part of what's shown too, not just what's copied.
+    expect(dialog.getByText(DEFAULT_SHARE_URL.replace(/^https?:\/\//, ''))).toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole('button', { name: 'Copy' }));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://heirloom.life'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(DEFAULT_SHARE_URL));
     await waitFor(() => expect(dialog.getByRole('button', { name: 'Copied' })).toBeInTheDocument());
+
+    // Named individually so a dropped/renamed param fails on its own name
+    // rather than as an opaque whole-string mismatch. Parsed, not substring-
+    // matched, so `utm_source=shared` can't satisfy `utm_source=share`.
+    const params = new URL(writeText.mock.calls[0][0]).searchParams;
+    expect(params.get('utm_source')).toBe('share');
+    expect(params.get('utm_medium')).toBe('social');
+    expect(params.get('utm_campaign')).toBe('withlove');
   });
 
   it('opens each default channel intent in a new tab with the share URL', async () => {
@@ -218,8 +236,10 @@ describe('Share Heirloom — actions', () => {
     expect(hrefs[1]).toContain('facebook.com/sharer');
     expect(hrefs[2]).toContain('linkedin.com/sharing');
     expect(hrefs[3]).toMatch(/^mailto:/);
+    // Every channel carries the full default URL — domain AND all three UTMs —
+    // percent-encoded into its intent (the mailto puts it in the body).
     for (const href of hrefs) {
-      expect(href).toContain(encodeURIComponent('https://heirloom.life'));
+      expect(href).toContain(encodeURIComponent(DEFAULT_SHARE_URL));
     }
     for (const call of windowOpen.mock.calls) {
       expect(call[1]).toBe('_blank');
