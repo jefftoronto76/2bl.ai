@@ -758,35 +758,46 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
       <div key={msg.id} className="group flex flex-col gap-3">
         {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
         {prose && !isActive && (
-          // 60px, not the avatar-only 44px (w-8 avatar + gap-3): the text
-          // bubble itself adds another 16px of left padding (px-4) before
-          // its actual text starts, so ml-11 alone left the action row
-          // sitting under the avatar rather than under the text — visibly
-          // misaligned next to jefflougheed's equivalent (SageReply's prose
-          // and its MessageActions row share a single pl-4, no avatar to
-          // offset for, so they align by construction there).
-          <div className="ml-[60px] flex flex-col gap-2">
-            <MessageActions
-              content={msg.content}
-              stopped={msg.stopped}
-              versionIdx={versionIdx}
-              versionCount={versions.length}
-              onRegenerate={isLast ? () => config.regenerate(msg.id) : undefined}
-              onVersionChange={(dir) => config.setActiveVersion(msg.id, versionIdx + dir)}
-              rating={rating}
-              onRate={(val) => config.feedback.rate(messageIndex, val)}
-              onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
-              onKeep={() => {
-                // Same double-save guard as the visitor row — matters more
-                // here, since a SAVE_MEMORY marker (see the effect above)
-                // can already have created a memory for this exact anchor
-                // before the visitor ever touches the bookmark.
-                if (config.memories.getByAnchor(msg.id) || config.memories.isPending(msg.id)) return;
-                config.memories.create(msg.id, 'conversation');
-              }}
-              hasMemory={!!config.memories.getByAnchor(msg.id)}
-              keepDisabled={config.keepDisabled(msg.id)}
-            />
+          <div className="flex flex-col gap-2">
+            {/* 60px, not the avatar-only 44px (w-8 avatar + gap-3): the text
+                bubble itself adds another 16px of left padding (px-4) before
+                its actual text starts, so ml-11 alone left the action row
+                sitting under the avatar rather than under the text — visibly
+                misaligned next to jefflougheed's equivalent (SageReply's prose
+                and its MessageActions row share a single pl-4, no avatar to
+                offset for, so they align by construction there).
+                This indent is scoped to MessageActions ALONE. It used to wrap
+                the memory slot below too, which is what made a guide-anchored
+                memory card 60px narrower than a visitor-anchored one — enough
+                to push Discard out of the card at every iPhone-class width
+                (201px of room at 375px against a 243px spine). MemoryCard
+                carries its own w-8 rail to line up with the avatar (see RAIL
+                in MemoryCard.tsx), so nesting it in here double-indented it to
+                104px and broke that alignment on top of the clipping. Keep the
+                slot OUT of this div. */}
+            <div className="ml-[60px]">
+              <MessageActions
+                content={msg.content}
+                stopped={msg.stopped}
+                versionIdx={versionIdx}
+                versionCount={versions.length}
+                onRegenerate={isLast ? () => config.regenerate(msg.id) : undefined}
+                onVersionChange={(dir) => config.setActiveVersion(msg.id, versionIdx + dir)}
+                rating={rating}
+                onRate={(val) => config.feedback.rate(messageIndex, val)}
+                onFeedback={(reasons, note) => config.feedback.submitFeedback(messageIndex, reasons, note)}
+                onKeep={() => {
+                  // Same double-save guard as the visitor row — matters more
+                  // here, since a SAVE_MEMORY marker (see the effect above)
+                  // can already have created a memory for this exact anchor
+                  // before the visitor ever touches the bookmark.
+                  if (config.memories.getByAnchor(msg.id) || config.memories.isPending(msg.id)) return;
+                  config.memories.create(msg.id, 'conversation');
+                }}
+                hasMemory={!!config.memories.getByAnchor(msg.id)}
+                keepDisabled={config.keepDisabled(msg.id)}
+              />
+            </div>
             {config.renderMemorySlotFn(msg.id, 'conversation')}
           </div>
         )}

@@ -168,7 +168,7 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     const groupB = photoGroup('b.jpg');
 
     fireEvent.click(within(groupA).getByRole('button', { name: 'Bookmark as a memory' }));
-    await waitFor(() => expect(within(groupA).getByRole('button', { name: 'Keep this' })).toBeInTheDocument());
+    await waitFor(() => expect(within(groupA).getByRole('button', { name: 'Keep' })).toBeInTheDocument());
 
     // The draft card shows the REAL photo, not the dashed placeholder —
     // sessionImages now reaches MessageList.tsx/MemoryCard.tsx too, same
@@ -181,10 +181,10 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     expect(postMemoryCalls).toEqual([{ anchor_message_id: 'm1', source_kind: 'photo', media_item_id: 'media-a' }]);
     // Photo B is completely untouched by photo A's bookmark.
     expect(within(groupB).getByRole('button', { name: 'Bookmark as a memory' })).toBeInTheDocument();
-    expect(within(groupB).queryByRole('button', { name: 'Keep this' })).not.toBeInTheDocument();
+    expect(within(groupB).queryByRole('button', { name: 'Keep' })).not.toBeInTheDocument();
 
     fireEvent.click(within(groupB).getByRole('button', { name: 'Bookmark as a memory' }));
-    await waitFor(() => expect(within(groupB).getByRole('button', { name: 'Keep this' })).toBeInTheDocument());
+    await waitFor(() => expect(within(groupB).getByRole('button', { name: 'Keep' })).toBeInTheDocument());
 
     expect(postMemoryCalls).toEqual([
       { anchor_message_id: 'm1', source_kind: 'photo', media_item_id: 'media-a' },
@@ -192,13 +192,13 @@ describe('Photo bookmark — two photos on one message resolve independently', (
     ]);
     // Photo A's draft card is still there — B's bookmark didn't collide with
     // or replace it (the actual bug this task exists to fix).
-    expect(within(groupA).getByRole('button', { name: 'Keep this' })).toBeInTheDocument();
+    expect(within(groupA).getByRole('button', { name: 'Keep' })).toBeInTheDocument();
 
     // "Keep" photo A — its own saved receipt appears with a working "+",
     // and photo B (still a draft) is unaffected.
-    fireEvent.click(within(groupA).getByRole('button', { name: 'Keep this' }));
+    fireEvent.click(within(groupA).getByRole('button', { name: 'Keep' }));
     await waitFor(() => expect(within(groupA).getByRole('button', { name: 'Add to a story' })).toBeInTheDocument());
-    expect(within(groupB).getByRole('button', { name: 'Keep this' })).toBeInTheDocument();
+    expect(within(groupB).getByRole('button', { name: 'Keep' })).toBeInTheDocument();
 
     // The saved receipt shows the real photo thumbnail, not the icon circle
     // — the draft card unmounted on Keep, so exactly two "a.jpg" images

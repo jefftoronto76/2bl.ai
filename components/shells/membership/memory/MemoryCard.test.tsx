@@ -99,8 +99,59 @@ describe('MemoryCard — draft photo memory shows the real photo when sessionIma
   });
 });
 
+// Guards the narrow-mobile fit of the footer spine (2026-08-15). NOTE: these
+// are structural assertions, not pixel ones — happy-dom has no layout engine, so
+// nothing here can prove the row actually fits its 261px budget at a 375px
+// viewport. That was measured in headless Chromium against real DM Sans (263.0px
+// at the original padding, 243.0px tightened, 217.3px once the label became
+// "Keep") and is verified on the Vercel preview; see the sizing comment in
+// MemoryCard.tsx. What these DO catch is the ways a later edit silently
+// reintroduces the clipping from inside this component: re-inflating the
+// horizontal padding, re-lengthening the label, or dropping the overflow-x-auto
+// safety net. The other half of the 2026-08-15 fix lived OUTSIDE this component
+// — MessageList.tsx was rendering the guide-anchored slot inside an ml-[60px]
+// wrapper — and is covered by MessageList.memorySlotIndent.test.tsx instead.
+describe('MemoryCard — footer spine survives narrow mobile widths', () => {
+  const spineOf = (label: string) => screen.getByRole('button', { name: label }).parentElement!;
+
+  it('scrolls rather than clips: the spine is a horizontal scroll container', () => {
+    render(<MemoryCard memory={memory()} onKeep={noop} onDiscard={noop} onRetitle={noop} />);
+
+    const spine = spineOf('Discard');
+    expect(spine.className).toContain('overflow-x-auto');
+    // An edge swipe inside the row must not trigger iOS back-navigation.
+    expect(spine.className).toContain('overscroll-x-contain');
+  });
+
+  it('keeps the tightened horizontal padding — the whole reason the row fits at 375px', () => {
+    render(<MemoryCard memory={memory()} onKeep={noop} onDiscard={noop} onRetitle={noop} />);
+
+    expect(screen.getByRole('button', { name: 'Keep' }).className).toContain('px-3');
+    expect(screen.getByRole('button', { name: 'Rewrite' }).className).toContain('px-2.5');
+    expect(screen.getByRole('button', { name: 'Discard' }).className).toContain('px-2.5');
+  });
+
+  it('holds the "one line, never wraps, never reorders" constraint and the 44px tap target', () => {
+    render(<MemoryCard memory={memory()} onKeep={noop} onDiscard={noop} onRetitle={noop} />);
+
+    const spine = spineOf('Discard');
+    // The constraint the fix was explicitly not allowed to relax.
+    expect(spine.className).not.toContain('flex-wrap');
+    expect([...spine.children].map(el => el.textContent?.trim())).toEqual(['Keep', 'Rewrite', 'Discard']);
+
+    for (const label of ['Keep', 'Rewrite', 'Discard']) {
+      const btn = screen.getByRole('button', { name: label });
+      // Buttons scroll out of view, they never compress to fit.
+      expect(btn.className).toContain('whitespace-nowrap');
+      expect(btn.className).toContain('shrink-0');
+      // Only horizontal padding was reduced — the tap target is untouched.
+      expect(btn.className).toContain('[@media(hover:none)]:min-h-[44px]');
+    }
+  });
+});
+
 describe('MemoryCard — Keep action unaffected by this change', () => {
-  it('still calls onKeep when "Keep this" is clicked, whether the real photo rendered or the placeholder did', () => {
+  it('still calls onKeep when "Keep" is clicked, whether the real photo rendered or the placeholder did', () => {
     const onKeep = vi.fn();
     render(
       <MemoryCard
@@ -112,7 +163,7 @@ describe('MemoryCard — Keep action unaffected by this change', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Keep this' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
     expect(onKeep).toHaveBeenCalledTimes(1);
   });
 });
