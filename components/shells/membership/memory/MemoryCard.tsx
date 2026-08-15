@@ -371,12 +371,29 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages
               </div>
             )}
 
-            {/* Row 2 — the spine. Keep this first, Rewrite and Discard last, one line, never wraps, never reorders. */}
-            <div className="flex items-center gap-2">
+            {/* Row 2 — the spine. Keep this first, Rewrite and Discard last, one line, never wraps, never reorders.
+                Horizontal padding here is sized against a real budget, not picked by eye — do not re-inflate it
+                without re-measuring. The row's available width is the viewport minus 114px of fixed chrome:
+                MessageList.tsx's scroll container px-4 (32) + RAIL w-8 (32) + this card's outer gap-3 (12) +
+                the wrapper's 1px border either side (2) + the card column's own px-[18px] (36). That leaves
+                261px at 375px, 276px at 390px, 314px at 428px.
+                At px-4 / px-[13px] the three buttons measured 263.0px in DM Sans — over budget at 375px and
+                below, with nothing to spare at 390px. Overflow eats the card's 18px right padding first (Discard
+                creeping up against the card edge), then goes truly invisible behind the wrapper's overflow-hidden
+                (line ~267) once it exceeds that — i.e. below ~359px, which is ordinary Android-narrow territory.
+                At px-3 / px-2.5 the row is 243.0px: 18px of clearance at 375px and still 3px at 360px.
+                Vertical sizing is NOT part of this budget — py-2 and the
+                [@media(hover:none)]:min-h-[44px] tap target stay as they are.
+                overflow-x-auto is the belt-and-braces half: at any width the padding math doesn't cover, Discard
+                is reachable by a swipe instead of being invisibly clipped. shrink-0 makes the buttons scroll
+                rather than compress, overscroll-x-contain keeps an edge swipe off iOS back-nav, and -my-1 py-1
+                gives the focus outline room (overflow-x: auto forces overflow-y to auto, and these buttons use
+                the UA default outline — heirloom defines no focus ring of its own). */}
+            <div className="-my-1 flex items-center gap-2 overflow-x-auto overscroll-x-contain py-1">
               <button
                 type="button"
                 onClick={onKeep}
-                className="inline-flex items-center gap-[7px] whitespace-nowrap rounded-[9px] bg-accent px-4 py-2 font-body text-[12.5px] font-semibold text-bg hover:bg-accent-hover [@media(hover:none)]:min-h-[44px]"
+                className="inline-flex shrink-0 items-center gap-[7px] whitespace-nowrap rounded-[9px] bg-accent px-3 py-2 font-body text-[12.5px] font-semibold text-bg hover:bg-accent-hover [@media(hover:none)]:min-h-[44px]"
               >
                 <Bookmark size={13} aria-hidden />
                 Keep this
@@ -384,14 +401,14 @@ export function MemoryCard({ memory, onKeep, onDiscard, onRetitle, sessionImages
               <button
                 type="button"
                 onClick={() => fireExtra('Rewrite is being reworked — check back soon.')}
-                className="whitespace-nowrap rounded-[9px] border border-border px-[13px] py-2 font-body text-[12.5px] font-medium text-text-muted hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]"
+                className="shrink-0 whitespace-nowrap rounded-[9px] border border-border px-2.5 py-2 font-body text-[12.5px] font-medium text-text-muted hover:border-accent hover:text-text-primary [@media(hover:none)]:min-h-[44px]"
               >
                 Rewrite
               </button>
               <button
                 type="button"
                 onClick={onDiscard}
-                className="ml-auto whitespace-nowrap rounded-[9px] px-[13px] py-2 font-body text-[12.5px] font-medium text-text-muted hover:text-red-400 [@media(hover:none)]:min-h-[44px]"
+                className="ml-auto shrink-0 whitespace-nowrap rounded-[9px] px-2.5 py-2 font-body text-[12.5px] font-medium text-text-muted hover:text-red-400 [@media(hover:none)]:min-h-[44px]"
               >
                 Discard
               </button>
