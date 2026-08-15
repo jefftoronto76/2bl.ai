@@ -492,8 +492,8 @@ export function SidebarV2({
   // overflow-x-hidden, so there's no room to expand into without either
   // clipping or widening the collapsed column itself (a visible change).
   const navBtn =
-    'relative flex items-center gap-3 rounded-lg text-text-muted hover:bg-text-primary/10 ' +
-    'hover:text-text-primary transition-all duration-200 focus:outline-none ' +
+    'relative flex items-center gap-3 rounded-lg text-text-primary hover:bg-text-primary/10 ' +
+    'transition-all duration-200 focus:outline-none ' +
     "focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[1px]";
 
   return (
