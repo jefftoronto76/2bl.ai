@@ -20,25 +20,27 @@ is what gives the isolation:
 
 | File | Holds | Imported by |
 |------|-------|-------------|
-| `app/globals.css` | Tailwind directives, shared base reset, scrollbars, and cross-brand component styles (the Sage chat overlay, chat-first hero stage, `nav-chat-*`, Calendly overrides, `.highlight-marker`/`.mark-highlight`). **No brand token blocks.** Token-consuming rules here resolve against whichever brand file loads on the route. | `app/layout.tsx` (root — loads on every route) |
-| `app/(jefflougheed)/globals.css` | The inkwell `:root` tokens **and** the full `html[data-palette="inkwell"]` block (the jefflougheed.ca + admin/platform palette). | `app/(jefflougheed)/layout.tsx`, **and** `app/admin/layout.tsx` + `app/(platform)/layout.tsx` — admin/platform live outside the `(jefflougheed)` route group but share the inkwell palette, so they import this file explicitly. |
+| `app/globals.css` | Tailwind directives and the shared base reset only (`box-sizing`, `html`/`body` reset, `scroll-behavior`, font-smoothing) plus one cross-brand keyframe/utility (`.chat-bubble-shake`, used by `components/chat/DeliveryStatus.tsx`). **No brand token blocks, no per-product component CSS.** | `app/layout.tsx` (root — loads on every route) |
+| `app/(jefflougheed)/globals.css` | The default `:root` tokens (the jefflougheed.ca + admin/platform palette), the `html[data-brand="jefflougheed"]` dark-mode landing override block (plus its light-section exceptions — `#outcomes`, `#how-it-works`, `#testimonials`, chat surfaces) — **and** all jefflougheed public-site component CSS: the Sage chat overlay, chat-first hero stage (`.stage`/`.hero`/`.composer`), `nav-chat-*`, Calendly overrides, scrollbars, `.highlight-marker`/`.mark-highlight`. (`data-brand="jefflougheed"` is set in `app/layout.tsx` on every route except SBL/Heirloom/Legacy/admin.) | `app/(jefflougheed)/layout.tsx`, **and** `app/admin/layout.tsx` + `app/(platform)/layout.tsx` — admin/platform live outside the `(jefflougheed)` route group but share the inkwell palette, so they import this file explicitly. |
 | `app/secondbrainlabs/globals.css` | SBL tokens promoted to `:root` + the `sb-pulse` / `sb-dot` keyframes. | `app/secondbrainlabs/layout.tsx` |
-| `app/heirloom/globals.css` | Heirloom colour/`hl` tokens + `background`/`color` promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` / `.bg-pattern-dots` utilities (kept `[data-brand="heirloom"]`-scoped). | `app/heirloom/layout.tsx` |
-
-Note: the jefflougheed public-site component CSS (Sage overlay, hero stage,
-`nav-chat-*`) intentionally stays in `app/globals.css` for now — it is coupled
-to the `Chat`/`Nav`/`Hero` components that don't move until Phase 3.
+| `app/heirloom/globals.css` | Canonical `--color-*` tokens (`background`, `surface`, `surface-2`, `accent`, `accent-hover`, `text-primary`, `text-muted`, `text-dim`, `border`, `border-hover`) plus `--color-modal-*` tokens, promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` utilities (kept `[data-brand="heirloom"]`-scoped — `.bg-pattern-dots` is no longer defined in this file). | `app/heirloom/layout.tsx` |
 
 The token table below is the **jefflougheed.ca + admin palette** (the default
-`:root` / `html[data-palette="inkwell"]` tokens in
-`app/(jefflougheed)/globals.css`):
+`:root` tokens in `app/(jefflougheed)/globals.css`), consumed via Tailwind
+CSS-var utilities. **This is a separate mechanism from Mantine's own admin
+theme** (`components/admin/theme/mantine-theme.ts`'s `buildAdminTheme`,
+which builds a distinct per-tenant Mantine `createTheme()` object — three
+hardcoded `TENANT_FALLBACKS` palettes, none matching the values below — for
+Mantine-component-internal styling specifically). See `System Docs/Admin
+Overview.md`'s "Theme" section for that system; don't assume this table's
+values apply inside Mantine components.
 
 | Token | Value |
 |-------|-------|
 | Background | `#f9f8f5` |
 | Accent green | `#2d6a4f` |
 | Text primary | `#1a1917` |
-| Text muted | `rgba(26,25,23,0.55)` |
+| Text muted | `rgba(26,25,23,0.70)` |
 | Font display | Playfair Display |
 | Font body | DM Sans |
 | Font mono | DM Mono |
@@ -57,9 +59,10 @@ reusing the alpha-aware `rgb(var(--color-accent) / <alpha-value>)` token —
 `accent-deep`, `accent-soft`, `pos`). Because the SBL token file only loads on
 SBL routes, the Tailwind tokens are inert everywhere else and **the two token
 sets do not conflict**: the inkwell `:root` palette ships in a separate file
-that does not load on SBL pages, and the root layout drops `data-palette="inkwell"`
-whenever the request is SBL (see `System Docs/App Structure and Routing.md`) so the inkwell rules
-never bleed in.
+that does not load on SBL pages, and the root layout only sets
+`data-brand="jefflougheed"` when the request is neither SBL, Heirloom, Legacy,
+nor admin (see `System Docs/App Structure and Routing.md`), so the inkwell
+rules never bleed in.
 
 | SBL token | Value |
 |-----------|-------|
@@ -84,37 +87,50 @@ Neither font set bleeds into the other.
 The Heirloom storefront (`heirloom.2bl.ai`, served from `/heirloom`) ships its
 own design tokens, **fully isolated** from the jefflougheed/inkwell and SBL
 palettes. They live in `app/heirloom/globals.css` (imported only by the
-`/heirloom` layout, so they load only on Heirloom routes). The colour tokens are
-promoted to `:root`: `--color-surface` and `--color-accent` are re-scoped there
-so the existing `surface` / `accent` Tailwind tokens render Heirloom values on
-these routes, and Heirloom-only tokens (`--hl-bg`, `--hl-text-primary`,
-`--hl-text-muted`, `--hl-accent-hover`, `--hl-border`) are surfaced as Tailwind
-utilities in `tailwind.config.js` (`background`, `text-primary`, `text-muted`,
-`accent-hover`, `border`). Because the Heirloom token file only loads on
-Heirloom routes, these tokens are inert everywhere else and do not conflict with
-the other palettes — the root layout drops `data-palette="inkwell"` whenever the
-request is Heirloom (see `System Docs/App Structure and Routing.md`). The background-image helpers
-(`.bg-hero-glow`, `.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`,
-`.bg-pattern-dots`) and the `--font-*` remaps **remain scoped to
-`[data-brand="heirloom"]`** in that file — the wrapper `<div>` is where
-next/font defines `--font-heirloom-serif` / `--font-heirloom-sans`, so the
-remaps must resolve there rather than at `:root`.
+`/heirloom` layout, so they load only on Heirloom routes). As of the landing
+redesign, the file uses the **canonical `--color-*` token names directly**
+(no `--hl-*`-prefixed tokens — `scripts/lint-tokens.ts` fails the build on
+those), promoted to `:root`: `--color-background`, `--color-surface`,
+`--color-surface-2`, `--color-accent`, `--color-accent-hover`,
+`--color-text-primary`, `--color-text-muted`, `--color-text-dim`,
+`--color-border`, `--color-border-hover`, plus a parallel set of
+`--color-modal-*` tokens for surfaces that float above the page (modals,
+Clerk forms). Because these are the same canonical names Tailwind already
+maps (`background`, `surface`, `surface-2`, `accent`, `text-primary`,
+`text-muted`, `accent-hover`, `border` in `tailwind.config.js`), the mapping
+is direct — no per-brand remap table needed. Because the Heirloom token file
+only loads on Heirloom routes, these tokens are inert everywhere else and do
+not conflict with the other palettes — the root layout only sets
+`data-brand="jefflougheed"` when the request is neither SBL, Heirloom, Legacy,
+nor admin (see `System Docs/App Structure and Routing.md`). The background-image helpers
+(`.bg-hero-glow`, `.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`)
+and the `--font-*` remaps **remain scoped to `[data-brand="heirloom"]`** in
+that file — the wrapper `<div>` is where next/font defines
+`--font-heirloom-serif` / `--font-heirloom-sans` / `--font-heirloom-mono` /
+`--font-heirloom-hand`, so the remaps must resolve there rather than at
+`:root`. Per the redesign, the four `.bg-*-glow` utilities collapse to the
+flat `--color-background` (no radial glow, no grain); `.bg-pattern-dots` is
+no longer defined in this file at all — the redesigned landing doesn't use it.
 
 | Heirloom token | Value |
 |----------------|-------|
-| Background (`--hl-bg`) | `#1C0F06` |
-| Surface (`--color-surface`) | `#2A1A0E` |
-| Text primary / muted | `#F5EFE6` / `rgba(245,239,230,0.55)` |
-| Accent (`--color-accent`) | `rgb(201 169 110)` (gold) |
-| Accent hover | `#B8935A` |
-| Border | `rgba(245,239,230,0.12)` |
+| Background (`--color-background`) | `#FAF6EE` |
+| Surface / Surface 2 (`--color-surface` / `--color-surface-2`) | `#FFFFFF` / `#F4EFE5` |
+| Text primary / muted | `#1F1A14` / `rgba(46,36,23,0.62)` |
+| Text dim (`--color-text-dim`) | `#9A917F` |
+| Accent (`--color-accent`) | `#C8542E` (SBL terracotta) |
+| Accent hover | `#A93F1D` |
+| Border / border hover | `rgba(46,36,23,0.14)` / `#D6C9AC` |
+| Modal background / surface | `#FFFCF7` / `#F4EFE5` |
+| Modal text muted / border | `rgba(46,36,23,0.55)` / `rgba(46,36,23,0.14)` |
 
 **Fonts are scoped per brand.** Cormorant Garamond (serif/display), DM Sans
-(body), and DM Mono (mono) are loaded via `next/font/google` in
-`app/heirloom/layout.tsx` and exposed as `--font-heirloom-serif` /
-`--font-heirloom-sans` / `--font-heirloom-mono`, which `app/heirloom/globals.css`
-remaps onto `--font-display` / `--font-serif` / `--font-body` / `--font-mono`
-**on the Heirloom layout wrapper only**, so Tailwind `font-display`, `font-body`,
-and `font-mono` resolve correctly on Heirloom routes.
+(body), DM Mono (mono), **and Caveat (hand-lettered accent)** are loaded via
+`next/font/google` in `app/heirloom/layout.tsx` and exposed as
+`--font-heirloom-serif` / `--font-heirloom-sans` / `--font-heirloom-mono` /
+`--font-heirloom-hand`, which `app/heirloom/globals.css` remaps onto
+`--font-display` / `--font-accent` / `--font-body` / `--font-mono` /
+`--font-hand` **on the Heirloom layout wrapper only**, so Tailwind
+`font-display` and `font-body` resolve correctly on Heirloom routes.
 
 ---

@@ -19,7 +19,7 @@ tenants. Products, tenants, and resellers are data, not code.
 | Product | Purpose | Status |
 |---------|---------|--------|
 | Sage | AI inbound assistant for SMBs | Live |
-| Heirloom | AI biography and story engine | In migration — storefront + AI chat live; memory-creation flow next |
+| Heirloom | AI biography and story engine | In migration — storefront, AI chat, and memory/story creation live (confirmed 2026-08-14, `services/crm/memories.ts` + `services/crm/stories.ts`); collaboration features (invites, sharing) still landing |
 | HUGS | Family and aging parent support | Planned |
 
 Products are not hardcoded. Adding a new product means adding a tenant
@@ -66,10 +66,10 @@ is a data/config change, not a code change.
 Capabilities cascade with the tenant tree: a parent provisions which
 capabilities its sub-tenants receive, and access inherits down the tree.
 
-### Three-Tier Prompt Studio
+### Three-Tier Prompt Studio — target design, not yet built
 
-When the Prompt Studio capability is enabled, a tenant's system prompt compiles
-from three inherited tiers, merged top-down:
+When the Prompt Studio capability is enabled, a tenant's system prompt is
+meant to compile from three inherited tiers, merged top-down:
 
 1. **Platform (2BL)** — base defaults shared by every product and tenant.
 2. **Product (Sage / Heirloom / HUGS)** — product-specific defaults layered on
@@ -77,9 +77,16 @@ from three inherited tiers, merged top-down:
 3. **Tenant** — per-tenant overrides and additions.
 
 Lower tiers inherit the tier above and may override it; the compile merges
-**platform → product → tenant** so the most specific tier wins. Today this maps
-onto `is_default` platform/product blocks plus tenant-scoped blocks in the
-`blocks` table; the compile pipeline moves into `services/prompt` once extracted.
+**platform → product → tenant** so the most specific tier wins.
+
+**Confirmed against code 2026-08-14: this is still the target, not the
+current behavior.** The shipped `services/prompt/compile.ts` pipeline reads
+`blocks.scope IN ('runtime', 'platform')` — two tiers (platform-owned
+defaults, tenant runtime), not three. There is no product-level scope value
+in the schema; `'composer'` is a separate special category (the admin
+Composer tool's own prompt), not a rung in this inheritance chain. See
+`System Docs/ARCHITECTURE_OVERVIEW.md`'s Phase C section, which tracks this
+same gap as still-open design work.
 
 ---
 
@@ -223,5 +230,5 @@ Headlines:
 | System Docs/Utilities/ | Service internals, one file per service |
 | Backlog/MIGRATION.md | Full migration plan, phases 1-6 |
 | Backlog/SERVICEMIGRATION.md | Critical path — current state, what's moving, what's blocked |
-| DB_CHANGELOG.md | Schema changes log |
+| System Docs/DB_CHANGELOG.md | Schema changes log |
 | 2BL.md | This document — platform bible |
