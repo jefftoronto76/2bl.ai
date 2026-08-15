@@ -2105,3 +2105,28 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   **not** restoring the muted rest state, which is the thing the change
   deliberately removed. Untested against the mobile drawer, where there is
   no hover state at all and the wash never fires either way.
+
+- **Share links carry UTM params that nothing reads — 2026-08-15
+  (wire-share-heirloom-modal).** `ShareHeirloomModal`'s default `shareUrl`
+  is `https://heirloom.2bl.ai/?utm_source=share&utm_medium=social&utm_campaign=withlove`.
+  Those params were added deliberately ahead of any consumer, so links
+  shared now stay attributable once something can read them — but **there
+  is no analytics tool in this codebase at all**: no GA/Plausible/PostHog
+  dependency in `package.json`, no tag in any layout, and no server-side
+  landing handler that reads `utm_*` off the query string. A visit from a
+  shared link is currently indistinguishable from any other visit. Two
+  things follow. **First, whoever wires analytics up should know these
+  already exist** — grep `utm_` before inventing a second, differently-named
+  scheme; this file and the `ShareHeirloomModal` row in
+  `System Docs/Public Site.md` are the only records that they do.
+  **Second, the params are unvalidated by anything downstream**, so a typo
+  in them would be silent — the component's own test
+  (`ChatHero.shareHeirloom.test.tsx`) asserts each param by name against a
+  literal spelled out in the test file, deliberately not imported from the
+  component, precisely because nothing else would catch a drift.
+  Related: one `utm_medium=social` covers every channel including Email and
+  the plain copied link, neither of which is social. That is a consequence
+  of one default URL shared by all four channels — per-channel mediums would
+  require the `ShareChannel` contract to build URLs rather than receive one
+  already built. Worth revisiting if per-network attribution ever matters;
+  today the campaign is "someone passed this on", which one medium covers.
