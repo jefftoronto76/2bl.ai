@@ -54,7 +54,9 @@ export const DEFAULT_SHARE_CHANNELS: ShareChannel[] = [
 export interface ShareHeirloomModalProps {
   open: boolean;
   onClose: () => void;
-  /** The URL to share. Default https://heirloom.life */
+  /** The URL to share. Default https://heirloom.2bl.ai/ with the default
+   *  share UTM params (see DEFAULT_URL). An override replaces the whole
+   *  string — UTMs included — so pass them yourself if you still want them. */
   shareUrl?: string;
   /** Prefilled share message for social/email intents. */
   shareMessage?: string;
@@ -66,7 +68,16 @@ export interface ShareHeirloomModalProps {
   onShare?: (channelKey: string) => void;
 }
 
-const DEFAULT_URL = 'https://heirloom.life';
+// The real production domain (heirloom.life was a leftover placeholder), with
+// standard UTM params so shared-link visits are attributable once something
+// reads them. Nothing consumes these yet — no analytics tool is wired up in
+// this codebase — they're here so links shared before that lands are still
+// countable afterwards. One `utm_medium` for every channel on purpose: the
+// campaign is "someone passed this on", not per-network attribution, and
+// per-channel values would mean per-channel URLs (a ShareChannel already gets
+// the URL handed to it, it doesn't build one).
+const DEFAULT_URL =
+  'https://heirloom.2bl.ai/?utm_source=share&utm_medium=social&utm_campaign=withlove';
 const DEFAULT_MSG =
   'Every life deserves to be told. I’m using Heirloom to turn memories into a real, lasting book — you have to see this.';
 
