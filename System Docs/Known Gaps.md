@@ -160,13 +160,22 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   yet.** The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped
   the presentation layer only. Story creation/read/delete are real now
   (2026-08-09 — see "Real story creation and persistence" below); still
-  outstanding: Share Heirloom (sidebar item + ChatHeader icon are inert —
-  confirmed still true, `ChatHero.tsx` still never supplies `SidebarV2`'s
-  `onShareHeirloom` prop; `ShareHeirloomModal` is landed but unmounted —
-  pass the real `heirloom.2bl.ai` URL when mounting, its default is a
-  placeholder); Writing Prompts copy review (the 4 static prompts in
+  outstanding: Writing Prompts copy review (the 4 static prompts in
   `ChatHero`'s `WRITING_PROMPTS` are still placeholder-grade, own
-  comment says "Writing Prompts have no backend yet"). The v1
+  comment says "Writing Prompts have no backend yet"). **Share Heirloom —
+  resolved 2026-08-15** (wire-share-heirloom-modal): `ShareHeirloomModal`
+  is mounted by `ChatHero.tsx` and both entry points are live — the
+  `SidebarV2` nav row and the `ChatHeader` icon are no longer inert. The
+  sidebar row needed a real fix, not just the prop it had never been fed:
+  its `onShareHeirloom?.()` call was already wired but sat behind a
+  hardcoded `opacity-40 pointer-events-none` (the same leftover-inert-
+  classes bug as the Stories "Create" button below, which that entry
+  already flags as a pattern worth grepping for). Its default `shareUrl`
+  is now the real `heirloom.2bl.ai` domain plus share UTMs, replacing the
+  `heirloom.life` placeholder — **no analytics tool reads those UTMs
+  yet**, they're on the URL so links shared now stay attributable once
+  something does. There is still no share *backend* (no counts, no
+  per-share records) — the modal is client-only by design. The v1
   `Sidebar.tsx` is superseded and unmounted — delete after preview
   verification. **Uploads removed 2026-08-12**
   (`sidebar_uploads_scrim_stories_2006` handover) — the sidebar's Uploads
@@ -898,9 +907,15 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
   `SidebarV2`'s Create button was built inert in the original V2 UI-first
-  pass (2026-06-12), alongside the still-inert Uploads/Share Heirloom nav
+  pass (2026-06-12), alongside the then-inert Uploads/Share Heirloom nav
   buttons and Writing Prompts section, via two unconditional
-  `opacity-40 pointer-events-none` classes. When real
+  `opacity-40 pointer-events-none` classes. (**The Share Heirloom row had
+  the identical bug and it survived until 2026-08-15** — see the
+  chat-widget-V2 entry above. Same shape: real handler wired, inert
+  classes left hardcoded rather than made conditional on the handler's
+  presence, so the button looked disabled and swallowed every click.
+  Worth grepping `pointer-events-none` for unconditional occurrences
+  before assuming any V2-era control is actually live.) When real
   `disabled={storiesDisabled || !onCreateStory}` logic was wired in later
   (real story creation, 2026-08-09), the leftover inert classes were never
   removed — the button was functionally enabled (`onCreateStory` genuinely
