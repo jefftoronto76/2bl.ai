@@ -26,7 +26,14 @@ is what gives the isolation:
 | `app/heirloom/globals.css` | Canonical `--color-*` tokens (`background`, `surface`, `surface-2`, `accent`, `accent-hover`, `text-primary`, `text-muted`, `text-dim`, `border`, `border-hover`) plus `--color-modal-*` tokens, promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` utilities (kept `[data-brand="heirloom"]`-scoped — `.bg-pattern-dots` is no longer defined in this file). | `app/heirloom/layout.tsx` |
 
 The token table below is the **jefflougheed.ca + admin palette** (the default
-`:root` tokens in `app/(jefflougheed)/globals.css`):
+`:root` tokens in `app/(jefflougheed)/globals.css`), consumed via Tailwind
+CSS-var utilities. **This is a separate mechanism from Mantine's own admin
+theme** (`components/admin/theme/mantine-theme.ts`'s `buildAdminTheme`,
+which builds a distinct per-tenant Mantine `createTheme()` object — three
+hardcoded `TENANT_FALLBACKS` palettes, none matching the values below — for
+Mantine-component-internal styling specifically). See `System Docs/Admin
+Overview.md`'s "Theme" section for that system; don't assume this table's
+values apply inside Mantine components.
 
 | Token | Value |
 |-------|-------|
