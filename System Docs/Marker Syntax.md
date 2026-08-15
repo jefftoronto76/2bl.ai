@@ -101,6 +101,14 @@ session's genuine first assistant turn, not repeatedly.
   (`services/chat/ui/v1/registry.ts`) and consumed by
   `components/shells/membership/MessageList.tsx`. Stripped from prose in every
   other context (widget shell, admin transcript) via `createDefaultRegistry()`.
+  **Fallback (per CLAUDE.md's marker fallback principle):** the LLM emitting
+  this marker is the fast path, not the only path — `SaveChatCTA.tsx`
+  (`components/shells/membership/`) renders a "Save this chat" button once
+  `messages.length >= 4` and the visitor is not yet a member, independent of
+  whether `[ACCOUNT_CREATE:]` ever fired. It opens the same magic-link/OTP
+  flow, pre-filling name/email/phone by re-scanning the transcript for
+  `[NAME:]`/`[EMAIL:]`/`[PHONE:]` at click time. This is the turn-count-gated
+  CTA pattern named directly in CLAUDE.md's principle.
   **Deterministic sources, not just the LLM (three as of 2026-08-14):**
   the registry's `.parse()` runs over every assistant message's raw content
   regardless of where it came from, so `chatStore.tsx`'s one-time auto-greet
@@ -161,7 +169,7 @@ session's genuine first assistant turn, not repeatedly.
   `deriveFallbackMemoryTitle()` derives one from the passage itself (60-char
   cap, breaks at the last full word).
 
-### `[MEDIA_UPLOAD: filename | media_item_id | type]` / `[MEDIA_UPLOAD_FAILED: filename]` — dispatch `client`
+### `[MEDIA_UPLOAD: filename | media_item_id | type]` / `[MEDIA_UPLOAD_FAILED: filename]` / `[MEDIA_UPLOAD_DUPLICATE: filename | media_item_id | type | status]` — dispatch `client`
 
 - The one exception to this page's "Sage emits" framing: these are written
   into a **visitor** message's own stored content by the client-side upload
@@ -181,12 +189,26 @@ session's genuine first assistant turn, not repeatedly.
   per-photo Bookmark, `PhotoUploadActions.tsx`) left the raw
   `[MEDIA_UPLOAD: ...]` bracket text sitting in that memory's title and
   body, ahead of the person's own typed caption.
-- The two parsers used to define this syntax as two independent regexes,
-  correct only because nobody had changed either one. As of 2026-08-09 the
-  regex source is canonical in `services/chat/ui/v1/mediaMarkerPatterns.ts`
-  — both `MessageList.tsx`'s parser and `registry.ts`'s two `MarkerDefinition`s
-  construct their own `RegExp` from that one shared source string, so the
-  syntax can only be changed in one place.
+- `[MEDIA_UPLOAD_DUPLICATE: filename | media_item_id | type | status]` —
+  written by `ChatInput.tsx` instead of `MEDIA_UPLOAD` when a content-hash
+  match reuses an existing `media_items` row instead of a fresh upload.
+  Parsed by `MEDIA_UPLOAD_DUPLICATE_MARKER` (`services/chat/ui/v1/registry.ts`,
+  added after the two markers above). Same rationale as `MEDIA_UPLOAD` above
+  (registered purely so it strips cleanly everywhere except its real
+  consumer): `MessageList.tsx`'s own `MEDIA_UPLOAD_DUPLICATE_RE` is the real
+  consumer, rendering the reused item's thumbnail with a
+  `duplicateLabelForStatus` status chip (via `UploadThumbnail.tsx`'s
+  `duplicateLabel` prop) instead of treating it as a fresh attachment.
+  `status` is the matched row's status **at match time** — the renderer
+  prefers the live status off `mediaItems` (chatStore) when available,
+  falling back to this captured value only before that catches up.
+- The three parsers used to define this syntax as independent regexes each,
+  correct only because nobody had changed any of them out of sync. As of
+  2026-08-09 the regex source is canonical in
+  `services/chat/ui/v1/mediaMarkerPatterns.ts` — `MessageList.tsx`'s parser
+  and `registry.ts`'s three `MarkerDefinition`s each construct their own
+  `RegExp` from that one shared source string, so the syntax can only be
+  changed in one place.
 - **Chat title generation is a third real consumer, fixed 2026-08-14.**
   A session's title (both the client-derived fallback and the payload sent
   to the AI title-generation call) is built directly from the session's

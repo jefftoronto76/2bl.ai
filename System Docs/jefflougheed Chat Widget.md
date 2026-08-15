@@ -115,7 +115,7 @@ Three real call sites in the app:
 |---|---|---|---|---|
 | `WidgetShellChat` (`WidgetShell.tsx:249-253`) | `isExpanded` | `true` | `false` | Full-screen overlay |
 | `WidgetShellHero` (`WidgetShell.tsx:620-624`) | `isEngaged \|\| composerFocused` | `false` | `false` | Inline |
-| `ChatHero.tsx` (Heirloom membership shell, `components/shells/membership/ChatHero.tsx:147-150`) | `state.isChatOpen` | `true` | (default `true`) | Modal panel — genuinely a different surface/shell, not this widget |
+| `ChatHero.tsx` (Heirloom membership shell, `components/shells/membership/ChatHero.tsx:780-783`) | `state.isChatOpen` | `true` | (default `true`) | Modal panel — genuinely a different surface/shell, not this widget |
 
 **Prior approach (superseded 2026-08-06/07, commit `e96ea4be` on
 `WidgetShell.tsx`):** `WidgetShellHero`'s call passed `lockBodyScroll:
@@ -286,14 +286,14 @@ Both findings below are logged as real backlog items in `System Docs/Known
 Gaps.md`, not just documented here — this section is the full writeup those
 entries point back to.
 
-**Dead `.chat-overlay-*` block (`globals.css:552-593`).** Of the ten class
+**Dead `.chat-overlay-*` block (`globals.css:552-593`).** Of the eleven class
 selectors defined under the "Full-screen chat overlay" comment header —
 `.chat-overlay`, `.chat-overlay-inner`, `.chat-overlay-header`,
 `.chat-overlay-title`, `.chat-overlay-dot`, `.chat-overlay-actions`,
 `.chat-overlay-close`, `.chat-overlay-scroll`, `.chat-overlay-greeting`,
 `.chat-overlay-log`, `.chat-overlay-composer` — **only the last two are
 referenced anywhere in `WidgetShell.tsx`** (confirmed via grep, one match
-each; zero for the other eight). The other eight are an earlier,
+each; zero for the other nine). The other nine are an earlier,
 hand-rolled-class implementation of the overlay's chrome, superseded by
 inline Tailwind utility classes directly in the JSX, with the old CSS never
 removed. They sit visually indistinguishable from the two live selectors —
