@@ -561,7 +561,7 @@ export function SidebarV2({
           type="button"
           aria-label="Share Heirloom"
           onClick={onShareHeirloom}
-          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} opacity-40 pointer-events-none`}
+          className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onShareHeirloom ? '' : 'opacity-40 pointer-events-none'}`}
         >
           <Share2 size={16} className="flex-shrink-0" />
           {isExpanded && (

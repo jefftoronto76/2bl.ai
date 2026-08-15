@@ -7,6 +7,7 @@ import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
 import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
 import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
+import { ShareHeirloomModal } from './v2/ShareHeirloomModal';
 import type { Collaborator, RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
 import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
@@ -185,6 +186,16 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // via ChatHeader's own icon (Stage 1, media_stages_08_2026) — the sidebar's
   // "Media" row no longer opens this surface, see mediaPageOpen below.
   const [mediaOpen, setMediaOpen] = useState(false);
+
+  // "Share Heirloom" — a self-contained modal (ShareHeirloomModal.tsx: copy
+  // link + social/email intents, no store, no API), so a plain boolean is all
+  // this needs, same as mediaOpen. Deliberately NOT part of the third-pane
+  // reciprocal-close wiring below: it's a centered modal layered over the
+  // whole drawer (z-[80], alongside BeginStory/InviteCollaborators), not a
+  // pane competing for the same slot, so it doesn't close — or get closed by —
+  // anything else. Two entry points share it: ChatHeader's icon and
+  // SidebarV2's nav row.
+  const [shareHeirloomOpen, setShareHeirloomOpen] = useState(false);
 
   const handleOpenMedia = useCallback(() => {
     setMediaOpen(true);
@@ -860,6 +871,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
         onOpenMedia={handleOpenMedia}
         onOpenSessionMemories={handleOpenSessionMemories}
+        onShareHeirloom={() => setShareHeirloomOpen(true)}
       />
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
@@ -895,6 +907,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             renamingId={renamingId ?? undefined}
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMediaPage}
+            onShareHeirloom={() => setShareHeirloomOpen(true)}
             forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId}
             activeStoryId={storyViewId ?? undefined}
           />
@@ -917,6 +930,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onRenameCommit={handleRenameCommit}
                 onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
                 onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMediaPage(); }}
+                // Closes the drawer on the way, same as onMedia/onSelectStory
+                // above: the modal outranks the drawer (z-[80] vs z-30) so it
+                // would render fine either way, but leaving a full-height nav
+                // drawer mounted under a focus-trapped dialog is exactly what
+                // every other mobile sidebar action already avoids.
+                onShareHeirloom={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); setShareHeirloomOpen(true); }}
                 activeStoryId={storyViewId ?? undefined}
               />
             </div>
@@ -1240,6 +1259,16 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           }
           setPendingDelete(null);
         }}
+      />
+      {/* Same z-[80] modal layer as BeginStory/InviteCollaborators above —
+          clears every overlay it can coexist with (mobile sheets and
+          MediaPage at z-40, the mobile sidebar at z-30). The only things
+          above it are ConfirmDeleteModal (z-[85]) and the toast (z-[100]),
+          neither of which can be up at the same time as this. Defaults on
+          shareUrl/shareMessage/channels — no per-tenant customization yet. */}
+      <ShareHeirloomModal
+        open={shareHeirloomOpen}
+        onClose={() => setShareHeirloomOpen(false)}
       />
 
       {/* Kebab action confirmation toast — fixed bottom-center, auto-dismiss 2.2s */}

@@ -61,9 +61,17 @@ export interface ChatHeaderProps {
    * investigation notes: main never had this flow, only the prototype did).
    */
   onOpenSessionMemories?: () => void;
+  /**
+   * Opens ShareHeirloomModal — the "pass the product on" share sheet (copy
+   * link + social/email intents, no backend). Renders in the icon cluster,
+   * right after Memories, whenever provided; the same handler also backs
+   * SidebarV2's own "Share Heirloom" nav row, so both entry points open one
+   * modal owned by ChatHero.
+   */
+  onShareHeirloom?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, onOpenSessionMemories }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, onOpenSessionMemories, onShareHeirloom }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -238,15 +246,15 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
           </IconButton>
         )}
 
-        {/* Share Heirloom — deliberately inert in this pass (decision: item
-            visible, action stubbed; no share backend/modal mounted yet). */}
-        <IconButton
-          label="Share Heirloom"
-          aria-disabled="true"
-          className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
-        >
-          <Share2 size={16} />
-        </IconButton>
+        {onShareHeirloom && (
+          <IconButton
+            label="Share Heirloom"
+            onClick={onShareHeirloom}
+            className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
+          >
+            <Share2 size={16} />
+          </IconButton>
+        )}
 
         {onToggleFullScreen && (
           <IconButton
