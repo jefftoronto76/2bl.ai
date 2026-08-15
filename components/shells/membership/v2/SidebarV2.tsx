@@ -624,7 +624,7 @@ export function SidebarV2({
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
                               ? 'bg-text-primary/10 text-text-primary'
-                              : 'text-text-muted hover:bg-text-primary/10 hover:text-text-primary'
+                              : 'text-text-primary hover:bg-text-primary/10'
                           }`}
                         >
                           {session.title}
@@ -741,7 +741,7 @@ export function SidebarV2({
                         title={story.description ?? story.name}
                         onClick={() => onSelectStory?.(story.id)}
                         disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-muted hover:bg-text-primary/[0.05] hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-muted"
+                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
                         <span className="flex-1 min-w-0 font-display text-base truncate">
