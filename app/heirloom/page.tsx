@@ -1,7 +1,8 @@
 import { getSession, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services/auth';
 import { getAdminClient } from '@/services/auth/supabase-admin';
 import { headers } from 'next/headers';
-import { validateMemberToken, memberTokenExists } from '@/services/members';
+import { validateMemberToken, memberTokenExists, parseMemberRole } from '@/services/members';
+import type { MemberRole } from '@/services/members';
 import { validateStoryInviteToken } from '@/services/crm/story-invites';
 import HeirloomApp from './HeirloomApp';
 
@@ -29,6 +30,10 @@ export default async function HeirloomPage({
   let gateEnabled = false;
   let isAuthorized = false;
   let isAdmin = false;
+  // The visitor's own members.role on this tenant. Stays null for anonymous
+  // visitors and invite-token holders (no active members row yet) — see
+  // ChatInput's caption gate, which shows the caption for null and 'viewer'.
+  let memberRole: MemberRole | null = null;
 
   if (tenantId) {
     // Read the invite gate toggle from tenants.settings JSONB.
@@ -55,6 +60,7 @@ export default async function HeirloomPage({
       console.log('[heirloom/page] member row:', member);
       isAuthorized = !!member;
       isAdmin = member?.role === 'admin' || member?.role === 'owner';
+      memberRole = parseMemberRole(member?.role);
       console.log('[heirloom/page] isAdmin:', isAdmin, '| isAuthorized:', isAuthorized, '| tenantId:', tenantId);
     }
   }
@@ -153,6 +159,7 @@ export default async function HeirloomPage({
       gateEnabled={gateEnabled}
       isAuthorized={isAuthorized}
       isAdmin={isAdmin}
+      memberRole={memberRole}
       invitedName={invitedName}
       invitedEmail={invitedEmail}
       invitedPhone={invitedPhone}

@@ -41,6 +41,28 @@ export type MembersResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error: string }
 
+/**
+ * The roles `members.role` can carry (text column, NOT NULL, default 'member').
+ * Distinct from `tenant_users.role`, which is the admin-console identity
+ * boundary (see services/auth/get-auth-context.ts) — Heirloom visitors are
+ * end-customers and never have a tenant_users row.
+ */
+export type MemberRole = 'owner' | 'admin' | 'member' | 'viewer'
+
+const MEMBER_ROLES: readonly string[] = ['owner', 'admin', 'member', 'viewer']
+
+/**
+ * Narrows the raw `members.role` text column to MemberRole.
+ *
+ * Returns null for an absent row or an unrecognised value, so callers treat
+ * "no known role" (an anonymous visitor, or a value added in Studio that the
+ * app doesn't know yet) as its own case rather than silently collapsing it
+ * into 'member' — the column's DB-level default must not become a UI default.
+ */
+export function parseMemberRole(raw: unknown): MemberRole | null {
+  return typeof raw === 'string' && MEMBER_ROLES.includes(raw) ? (raw as MemberRole) : null
+}
+
 function generateToken(): string {
   return randomBytes(24).toString('base64url')
 }

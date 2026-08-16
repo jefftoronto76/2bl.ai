@@ -5,6 +5,7 @@ import { ChatProvider, useChatStore } from '@/components/shells/membership/chatS
 import { ChatDrawerV2 } from '@/components/shells/membership/v2/ChatDrawerV2';
 import { LandingPage } from './components/landing/LandingPage';
 import { ChatHero } from '@/components/shells/membership/ChatHero';
+import type { MemberRole } from '@/services/members';
 
 function HeirloomInner() {
   const { state, dispatch } = useChatStore();
@@ -59,6 +60,9 @@ interface HeirloomAppProps {
   gateEnabled: boolean;
   isAuthorized: boolean;
   isAdmin?: boolean;
+  /** The visitor's members.role on this tenant; null when they have no active
+   *  members row (anonymous visitor or pre-auth invite holder). */
+  memberRole?: MemberRole | null;
   invitedName?: string | null;
   /** Email the admin set on the invite (members.email) — pre-fills
    *  MagicLinkCard's sign-up form when no [EMAIL:] marker has fired yet. */
@@ -102,6 +106,7 @@ export default function HeirloomApp({
   gateEnabled,
   isAuthorized,
   isAdmin,
+  memberRole,
   invitedName,
   invitedEmail,
   invitedPhone,
@@ -119,6 +124,7 @@ export default function HeirloomApp({
       gateEnabled={gateEnabled}
       isAuthorized={isAuthorized}
       isAdmin={isAdmin}
+      memberRole={memberRole}
       invitedName={invitedName}
       invitedEmail={invitedEmail}
       invitedPhone={invitedPhone}
