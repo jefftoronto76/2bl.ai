@@ -222,7 +222,16 @@ export function ChatInput() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const { sendMessage, injectAssistantMessage, state, addMediaItem, setPendingEcho, stop } = useChatStore();
-  const { isMember } = state;
+  const { isMember, memberRole } = state;
+
+  // Supporting caption is shown only to visitors who aren't running the
+  // account: 'viewer', and anonymous visitors (null — no active members row).
+  // Hidden for 'owner', 'admin' and 'member' alike. Deliberately NOT keyed off
+  // `isMember` — that flag is Clerk sign-in state, not a role, so it can't
+  // separate a viewer from a member. Written as an explicit allow-list so a
+  // role added in Studio later defaults to hidden rather than silently
+  // inheriting the caption.
+  const showCaption = memberRole === null || memberRole === 'viewer';
 
   const overlayHost = useChatOverlayHost();
 
@@ -772,10 +781,12 @@ export function ChatInput() {
         )}
       </div>
 
-      {/* Optional supporting caption — remove if undesired. */}
-      <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
-        Your guide listens, asks, and never forgets a detail.
-      </p>
+      {/* Supporting caption — gated to non-'member' roles (see showCaption). */}
+      {showCaption && (
+        <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
+          Your guide listens, asks, and never forgets a detail.
+        </p>
+      )}
 
       {/* STEP 2 · full-screen surface — portaled into ChatDrawerV2's relative body
           so it covers the whole drawer (absolute, transform-safe). */}

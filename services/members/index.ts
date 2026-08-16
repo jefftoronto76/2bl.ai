@@ -5,6 +5,7 @@ export {
   linkInvitedMember,
   acceptInvite,
   hardDeleteMember,
+  parseMemberRole,
   HEIRLOOM_TENANT_ID,
 } from './members'
-export type { MemberInviteRow, MembersResult } from './members'
+export type { MemberInviteRow, MembersResult, MemberRole } from './members'

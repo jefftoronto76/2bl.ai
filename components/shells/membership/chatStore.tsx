@@ -15,6 +15,9 @@ import { createClient } from '@/services/auth/supabase';
 import type { MediaItem, MediaItemStatus } from '@/services/media/types';
 import type { MediaAttachmentInput } from '@/services/chat/server/types';
 import type { ChatErrorType } from '@/services/chat/ui/v1/types';
+// Type-only — erased at compile time, so the server-only members service
+// (crypto, supabase-admin) is never pulled into this client bundle.
+import type { MemberRole } from '@/services/members';
 import { titleSourceFromContent } from '@/services/chat/ui/v1/mediaMarkerPatterns';
 import { mergeMediaItem } from './mediaItemMerge';
 
@@ -80,6 +83,11 @@ export interface ChatState {
   /** True when the visitor is signed in via Clerk. Drives feature gates
    *  (voice, uploads, memory persistence) and sidebar activation. */
   isMember: boolean;
+  /** The visitor's `members.role` on this tenant — the real role enum, not to
+   *  be confused with `isMember` above (which is only Clerk sign-in state).
+   *  Null when they have no active members row: anonymous visitors and
+   *  pre-auth invite holders. Server-resolved in app/heirloom/page.tsx. */
+  memberRole: MemberRole | null;
 }
 
 // Re-export the shell action union + Message so existing consumers keep importing
@@ -288,6 +296,7 @@ export function ChatProvider({
   gateEnabled = false,
   isAuthorized = false,
   isAdmin = false,
+  memberRole = null,
   enableExitWarning = false,
   invitedName = null,
   invitedEmail = null,
@@ -308,6 +317,10 @@ export function ChatProvider({
   isAuthorized?: boolean;
   /** True when the signed-in member has role 'admin' or 'owner' on this tenant. Default: false. */
   isAdmin?: boolean;
+  /** The visitor's raw `members.role` on this tenant — carries the distinction
+   *  isAdmin collapses away ('member' vs 'viewer'). Null when they have no
+   *  active members row. Default: null. */
+  memberRole?: MemberRole | null;
   /** Register the beforeunload exit warning. Pass true only from the chat widget
    *  mount point — never from a landing-page-only context. Default: false. */
   enableExitWarning?: boolean;
@@ -1437,6 +1450,7 @@ export function ChatProvider({
     isChatOpen: shellState.isChatOpen,
     sessionId,
     isMember: isLoaded && !!isSignedIn,
+    memberRole,
   };
 
   // Bypass the gate for a genuinely-issued-but-now-invalid invite token,
