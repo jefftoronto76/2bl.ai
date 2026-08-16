@@ -437,7 +437,11 @@ function MessageBubble({
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
             <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
           </div>
-          <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap text-text-primary">
+          {/* Dead path (see the note above), but kept at the same percentage
+              as AssistantMarkdownBubble so that if it is ever revived it does
+              not resurrect the 75%/90% mismatch — width contract is documented
+              on AssistantMarkdownBubble. */}
+          <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap text-text-primary">
             {content}
           </div>
         </div>
@@ -480,6 +484,15 @@ function MessageBubble({
           // Verified via Playwright against the real dev server (not a
           // synthetic harness): before 71.7×76.2px (wrapped), after
           // 79.7×51.1px (single line) for the same "Hello" content.
+          //
+          // ── Width contract (see AssistantMarkdownBubble for the full note) ──
+          // This 90% resolves against the SAME max-w-2xl (672px) column the
+          // assistant bubble and the composer (ChatInput.tsx) all share, so
+          // there are only two width knobs: max-w-2xl (moves messages AND the
+          // composer together) and each bubble's own percentage (moves that
+          // one bubble type only). Keep this percentage and
+          // AssistantMarkdownBubble's identical — they drifted to 90/75 once
+          // already, and the member bubble visibly outran the guide's reply.
           'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
           deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45 chat-bubble-shake' : 'bg-surface border-border',
           deliveryStatus === 'sending' ? 'opacity-55' : '',
@@ -512,7 +525,45 @@ function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
         <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
-      <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed text-text-primary">
+      {/* ── Bubble width contract (canonical note; MessageBubble points here) ──
+          Both bubble types AND the composer resolve their width against the
+          same shared max-w-2xl (672px) column: MessageList's scroll body wraps
+          the whole transcript in `max-w-2xl mx-auto` (see the render return
+          below) and ChatInput.tsx's composer wrapper uses the identical
+          `max-w-2xl mx-auto`. So changing max-w-2xl re-columns messages and
+          the composer together — it is never a per-bubble knob.
+
+          There are exactly two width knobs:
+            1. the shared container's max-w-2xl — affects everything (both
+               bubble types and the composer), and
+            2. each bubble's own percentage (max-w-[90%] here and on
+               MessageBubble) — controls only how close THAT bubble type gets
+               to the shared column's edge, independent of the other type.
+
+          The two percentages should normally be kept in sync. This one was
+          75% against the member bubble's 90% (fixed 2026-08-16), which read as
+          the guide replying in a visibly narrower column than the member was
+          typing in. Changing one without the other reintroduces exactly that
+          mismatch.
+
+          Deliberately NOT in scope of that sync: the member-side attachment
+          chips (FailedUploadChip, PendingEchoAttachment's non-image branch,
+          and their shipped counterpart in UploadThumbnail.tsx) keep their own
+          max-w-[75%]. Those are filename/status chrome, not prose — a chip
+          that runs to 90% of the column just stretches whitespace around a
+          truncated filename. MagicLinkCard is likewise unaffected: its
+          max-w-[75%] sits alongside a fixed w-72, so the percentage is inert
+          at any realistic column width.
+
+          No `w-fit` here, deliberately, unlike MessageBubble. This bubble is a
+          direct flex item of the `flex gap-3 justify-start` row above, so it
+          is already shrink-to-fit on the main axis by default (flex: 0 1
+          auto); the member bubble needs w-fit because it sits in a `flex-col
+          items-end` stack with the percentage-resolution history documented on
+          it. Adding width:fit-content here would also make flex-basis definite
+          for markdown block content (tables, <pre>) whose max-content can be
+          very wide — a real behavior change for no visual gain. */}
+      <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed text-text-primary">
         {children}
       </div>
     </div>
@@ -525,7 +576,14 @@ function ErrorBubble({ retry, errorType }: { retry: () => void; errorType: ChatE
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center overflow-hidden mt-0.5">
         <img src="/heirloom/favicons/icons/heirloom-feather-cream.svg" alt="" width="22" height="22" />
       </div>
-      <div className="max-w-[75%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
+      {/* Same avatar + transparent-bubble chrome as AssistantMarkdownBubble,
+          so it moves in step with it — see the width contract documented
+          there. Kept at the same percentage rather than deliberately narrower:
+          the Retry button is a fixed-size, left-aligned child of this
+          items-start column, so widening only affects where the error copy
+          wraps, and a guide-side error rendered in a narrower column than the
+          guide's own prose is the exact inconsistency this fix removes. */}
+      <div className="max-w-[90%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
         <span>{ERROR_COPY[errorType]}</span>
         <button
           type="button"
