@@ -23,7 +23,19 @@ const PRIMER_MAX_LENGTH = 500;
 export interface InviteCollaboratorsModalProps {
   open: boolean;
   onClose: () => void;
-  /** The private join link, e.g. "heirloom.life/join/AB12-CD34-EF56".
+  /** The private join link, scheme already stripped by the caller, e.g.
+   *  "heirloom.2bl.ai/join/_my36dUzN_t1xUNy-QF7hxMkNhs8kofm". Real tokens are
+   *  `randomBytes(24).toString('base64url')` (services/crm/story-invites.ts):
+   *  always exactly 32 chars over the base64url alphabet, which is
+   *  `A-Z a-z 0-9 - _` — so `-` and `_` DO occur, at random positions, in
+   *  roughly 40% of tokens each. Don't validate against a no-dash pattern;
+   *  what this shape rules out is *fixed separators* at set offsets (the
+   *  earlier example here was "AB12-CD34-EF56", which implied both a
+   *  license-key grouping and a much shorter token — wrong on both counts).
+   *  This value is rendered verbatim in the link row below, so what shows up
+   *  there is host + "/join/" + 32 chars (~53 for the Heirloom host), not a
+   *  bare token — though that row is `flex-1 min-w-0 truncate`, so it clips
+   *  rather than being sized to fit.
    *  Absent until the member deliberately clicks Create — opening the modal
    *  no longer mints a link on its own (see ChatHero.tsx's handleInviteStory). */
   magicLink?: string;
