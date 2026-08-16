@@ -18,6 +18,24 @@
 //                     its own invite icon (onInviteStory);
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
+//
+// Hover is desktop-only here — every `hover:`/`group-hover:` utility in this
+// file is prefixed `[@media(hover:hover)]:`. Unguarded, they compile to bare
+// `:hover` pseudo-classes (this repo is on Tailwind v3, where
+// `hoverOnlyWhenSupported` is opt-in and is NOT enabled in
+// tailwind.config.js), and WebKit suppresses a tap's click when the
+// synthesized hover changes what is rendered under the finger. A row does
+// exactly that twice over — background highlight plus the opacity-0 →
+// opacity-100 kebab/invite/start-chat reveal — so on iOS Safari the first tap
+// only armed hover and a second was needed to actually fire
+// loadSession/onSelectStory. The guard is scoped to this file rather than
+// flipping the global flag: 10 other components drive visibility (not just
+// colour) off hover, and several would become unreachable on touch.
+// Consequence, by design and sequenced: the hover-revealed row controls are
+// unreachable on touch until the long-press gesture lands. They keep their
+// DOM slot at opacity-0, so they also take `[@media(hover:none)]:
+// pointer-events-none` — an invisible-but-tappable control at the row's edge
+// would swallow the very tap this fix exists to deliver.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -276,8 +294,8 @@ function RowMenu({
             }}
             className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               it.danger
-                ? 'text-[#E58D80] hover:bg-[#E58D80]/10'
-                : 'text-text-primary hover:bg-text-primary/[0.08]'
+                ? 'text-[#E58D80] [@media(hover:hover)]:hover:bg-[#E58D80]/10'
+                : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.08]'
             }`}
           >
             <it.icon
@@ -323,7 +341,7 @@ function SearchField({
         aria-label="Search"
         className={`w-9 h-8 flex items-center justify-center rounded-lg text-text-muted transition-opacity ${
           revealed ? 'opacity-80' : 'opacity-40'
-        } hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+        } [@media(hover:hover)]:hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
       >
         <Search size={16} />
       </button>
@@ -492,7 +510,7 @@ export function SidebarV2({
   // overflow-x-hidden, so there's no room to expand into without either
   // clipping or widening the collapsed column itself (a visible change).
   const navBtn =
-    'relative flex items-center gap-3 rounded-lg text-text-primary hover:bg-text-primary/10 ' +
+    'relative flex items-center gap-3 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/10 ' +
     'transition-all duration-200 focus:outline-none ' +
     "focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[1px]";
 
@@ -624,7 +642,7 @@ export function SidebarV2({
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
                               ? 'bg-text-primary/10 text-text-primary'
-                              : 'text-text-primary hover:bg-text-primary/10'
+                              : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/10'
                           }`}
                         >
                           {session.title}
@@ -638,7 +656,7 @@ export function SidebarV2({
                           {starredConversationIds.includes(session.id) && (
                             <span
                               className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
-                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                                isMenuOpen ? 'opacity-0' : 'opacity-100 [@media(hover:hover)]:group-hover:opacity-0'
                               }`}
                             >
                               <Star size={13} fill="currentColor" />
@@ -649,8 +667,10 @@ export function SidebarV2({
                             aria-label="Conversation options"
                             aria-expanded={isMenuOpen}
                             onClick={(e) => toggleMenu(id, e)}
-                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                              isMenuOpen
+                                ? 'opacity-100'
+                                : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                             }`}
                           >
                             <MoreVertical size={15} />
@@ -709,7 +729,7 @@ export function SidebarV2({
                   title="Create a new story"
                   onClick={() => { onCreateStory?.(); setStoriesOpen(true); }}
                   disabled={storiesDisabled || !onCreateStory}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-accent [@media(hover:hover)]:hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                 >
                   <Plus size={14} />
                 </button>
@@ -718,7 +738,7 @@ export function SidebarV2({
                   aria-label={storiesOpen ? 'Collapse stories' : 'Expand stories'}
                   aria-expanded={storiesOpen}
                   onClick={() => setStoriesOpen((o) => !o)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <ChevronRight
                     size={14}
@@ -741,7 +761,7 @@ export function SidebarV2({
                         title={story.description ?? story.name}
                         onClick={() => onSelectStory?.(story.id)}
                         disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
                         <span className="flex-1 min-w-0 font-display text-base truncate">
@@ -754,8 +774,10 @@ export function SidebarV2({
                           aria-label={`Start a chat in ${story.name}`}
                           title="Start a new chat"
                           onClick={() => onStartStoryChat(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen
+                              ? 'opacity-100'
+                              : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                           }`}
                         >
                           <MessageCircle size={14} />
@@ -769,8 +791,10 @@ export function SidebarV2({
                           aria-label={`Invite collaborators to ${story.name}`}
                           title="Invite collaborators"
                           onClick={() => onInviteStory(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen
+                              ? 'opacity-100'
+                              : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                           }`}
                         >
                           <UserPlus size={14} />
@@ -791,7 +815,7 @@ export function SidebarV2({
                           {starredStoryIds.includes(story.id) && (
                             <span
                               className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
-                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                                isMenuOpen ? 'opacity-0' : 'opacity-100 [@media(hover:hover)]:group-hover:opacity-0'
                               }`}
                             >
                               <Star size={13} fill="currentColor" />
@@ -802,8 +826,10 @@ export function SidebarV2({
                             aria-label="Story options"
                             aria-expanded={isMenuOpen}
                             onClick={(e) => toggleMenu(id, e)}
-                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                              isMenuOpen
+                                ? 'opacity-100'
+                                : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                             }`}
                           >
                             <MoreVertical size={15} />
@@ -836,7 +862,7 @@ export function SidebarV2({
                   key={prompt.id}
                   type="button"
                   onClick={() => onSelectPrompt?.(prompt)}
-                  className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted hover:bg-accent/15 hover:border-accent/30 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:border-accent/30 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Quote size={13} className="flex-shrink-0 text-accent/80 mt-0.5" />
                   <span className="font-display italic text-base leading-snug">{prompt.text}</span>

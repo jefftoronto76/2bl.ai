@@ -2187,13 +2187,61 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
   focus-visible:ring-2 focus-visible:ring-accent text-text-muted
   hover:bg-text-primary/10 hover:text-text-primary`), plus its own
-  `relative` + `before:` hit-area. Identical today, so there is no visual
-  inconsistency to see — the cost is that a future restyle of `IconButton`
-  would silently skip this one button, and the drift would show up as one
-  odd-looking control in an otherwise-updated cluster. Not folded into the
+  `relative` + `before:` hit-area. **This drift is no longer hypothetical —
+  it happened on 2026-08-16**, the same day the entry was written: the
+  mobile single-tap fix below guarded `IconButton`'s hover behind
+  `[@media(hover:hover)]:` and, being scoped to the sidebar, did not touch
+  either copy in `ChatHeader.tsx` — the Account trigger (line ~317) or the
+  `md:hidden` nav toggle (line ~194), which is mobile-only and so is the
+  copy that actually pays for it. Both still arm hover on a first tap where
+  their five `IconButton` siblings no longer do. Folding them in is a
+  two-token edit per line; it was left out only to keep that fix inside the
+  sidebar. The original cost still stands too: a future restyle of
+  `IconButton` would silently skip these buttons, and the drift would show
+  up as odd-looking controls in an otherwise-updated cluster. Not folded into the
   dismissal fix above deliberately (one change at a time, and that change
   needed a `ref` on this button, which would have made the swap a
   behavioral change rather than a cosmetic one). `IconButton` spreads
   `...props`, so `aria-haspopup`/`aria-expanded` already pass through; under
   React 19 `ref` is an ordinary prop, so the swap is likely a small typing
   change to `IconButtonProps` rather than a rewrite.
+
+- **Sidebar row controls are unreachable on touch until long-press lands —
+  2026-08-16 (mobile single-tap fix).** Sidebar rows used to need two taps
+  on iOS Safari: the first only armed the hover state (row background
+  highlight plus the kebab/invite/start-chat reveal), the second fired the
+  real `loadSession`/`onSelectStory`. Cause was unguarded `hover:`/
+  `group-hover:` utilities — this repo is on Tailwind v3, where
+  `hoverOnlyWhenSupported` is opt-in and `tailwind.config.js` does not
+  enable it, so they compile to bare `:hover` pseudo-classes, and WebKit
+  suppresses a tap's click when the synthesized hover repaints what is under
+  the finger. A row did that twice over. The fix prefixes every hover
+  utility in `SidebarV2.tsx` (and in `ui/IconButton.tsx`, which renders the
+  drawer's own Close-X) with `[@media(hover:hover)]:`.
+  **The deliberate consequence:** the three hover-revealed row controls —
+  kebab, invite, start-chat — no longer appear on touch at all, so they are
+  unreachable there until the follow-up long-press gesture ships. That
+  sequencing was the explicit intent, not an oversight, and the follow-up is
+  the thing that closes it. They keep their DOM slot at `opacity-0`, so they
+  also carry `[@media(hover:none)]:pointer-events-none` — without it they
+  would be invisible but still tappable, and a tap near a row's right edge
+  would hit an unseeable control instead of selecting the row (28px of dead
+  zone per control: 28px on conversation rows, 84px on story rows). Desktop
+  hover behaviour is unchanged.
+  **Scoped deliberately, not global.** Enabling `hoverOnlyWhenSupported` in
+  `tailwind.config.js` is the one-line version and remains the better
+  long-term answer, but it is sitewide: 282 hover utilities across 57 files,
+  of which 10 files drive *visibility* (not just colour) off hover —
+  `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`, `StoryPicker.tsx`,
+  `MemoryCard.tsx`, `PhotoUploadActions.tsx`, `BookingCard.tsx`,
+  `UserMessageActions.tsx`, `MessageActions.tsx`. Two of those
+  (`MemoryCard`, `PhotoUploadActions`) already carry explicit
+  `[@media(hover:none)]:opacity-100` overrides and would be fine; the rest
+  were not audited control-by-control and some would go unreachable on
+  touch. **If that flag is ever flipped on, those nine files are the audit
+  list**, and the per-class guards in `SidebarV2.tsx`/`IconButton.tsx`
+  become redundant and should be stripped in the same change.
+  Regression coverage is `SidebarV2.touchTapTargets.test.tsx`, which walks
+  every class token the sidebar renders (RowMenu's `document.body` portal
+  included) and fails on any unguarded hover utility — jsdom cannot
+  reproduce WebKit's tap heuristic, so the class contract is the guard.
