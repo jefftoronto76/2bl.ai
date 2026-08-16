@@ -597,7 +597,7 @@ export function SidebarV2({
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {filteredSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
-                  {trimmedQuery ? 'No matches' : 'No sessions yet'}
+                  {trimmedQuery ? 'No matches' : 'No memories yet'}
                 </span>
               ) : (
                 filteredSessions.map((session) => {
