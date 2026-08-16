@@ -134,6 +134,23 @@ export interface SidebarV2Props {
    * Default false.
    */
   forceCollapsed?: boolean;
+
+  /**
+   * Tailwind width class applied to the <aside> in its EXPANDED state, in
+   * place of the default `w-64`. The collapsed icon rail (`w-12`) is never
+   * affected — it is a fixed rail by definition.
+   *
+   * Exists because the same component serves two different jobs: the desktop
+   * DOCKED sidebar (a persistent column beside the chat, where 256px is the
+   * intended size) and the MOBILE OVERLAY drawer (which sits ON the chat and
+   * should cover most of the screen, per standard mobile drawer convention).
+   * The mobile caller (ChatHero) sizes its own absolutely-positioned wrapper
+   * and passes `w-full` here so the aside fills it — a percentage passed
+   * directly to the aside would resolve against a shrink-to-fit parent and
+   * be undefined, so the definite width belongs on the wrapper.
+   * Default 'w-64'.
+   */
+  expandedWidthClassName?: string;
 }
 
 // ── Section label ───────────────────────────────────────────────────────────
@@ -399,6 +416,7 @@ export function SidebarV2({
   onRenameCommit,
   forceCollapsed = false,
   activeStoryId,
+  expandedWidthClassName = 'w-64',
 }: SidebarV2Props) {
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
@@ -436,8 +454,9 @@ export function SidebarV2({
     return [active, ...stories.slice(0, activeIndex), ...stories.slice(activeIndex + 1)];
   }, [stories, activeStoryId]);
 
-  // Whether this docked/overlay instance shows full labels + lists (w-64) or
-  // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
+  // Whether this docked/overlay instance shows full labels + lists
+  // (expandedWidthClassName, w-64 by default) or just the icon rail (w-12).
+  // Deliberately NOT state.isSidebarExpanded —
   // that flag means "is the mobile overlay open at all" (owned by ChatHero /
   // the shell reducer). Conflating the two meant the desktop sidebar — which
   // always renders — started in the collapsed icon rail (isSidebarExpanded's
@@ -517,7 +536,7 @@ export function SidebarV2({
   return (
     <aside
       className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
-        isExpanded ? 'w-64' : 'w-12'
+        isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
       {/* Header row — search + collapse (desktop) or Close-X (mobile, when
