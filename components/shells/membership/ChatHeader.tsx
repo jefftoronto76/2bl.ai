@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthUser, useAuthActions } from '@/services/auth/client';
 import {
   Bookmark,
@@ -78,6 +78,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
 
   // "Your Story ⌄" is the conversation switcher — its label reflects the
   // active conversation (falling back to "Your Story" for a brand new,
@@ -135,7 +136,46 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
     openSignIn({ appearance: heirloomClerkAppearance });
   }, [openSignIn]);
 
-  // Close dropdown on outside click.
+  // Close the account dropdown on outside click / tap, and on Escape.
+  //
+  // The blur handler below is kept for keyboard tab-out, but it can never be
+  // the only mechanism: it fires only when the trigger actually held focus,
+  // and Safari (desktop and iOS) does not focus a <button> on click/tap. So
+  // on those browsers the menu opened and then nothing outside it would ever
+  // close it — only an explicit action inside the menu did.
+  //
+  // `pointerdown` rather than `mousedown` (the pattern in ChatInput.tsx /
+  // FeedbackPopover.tsx, both of which are desktop-gated or overlay-scoped):
+  // it covers touch taps directly instead of relying on the browser
+  // synthesizing mouse events, which is what this menu needs on mobile.
+  // It fires before `click`, so the trigger's own onClick still toggles
+  // correctly — the trigger lives inside dropdownRef and is treated as inside.
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (!dropdownRef.current?.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+        // Return focus to the trigger so keyboard users aren't stranded on a
+        // node that just unmounted.
+        accountButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [dropdownOpen]);
+
+  // Close dropdown when focus leaves it entirely (keyboard tab-out).
   const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
     if (!dropdownRef.current?.contains(e.relatedTarget as Node)) {
       setDropdownOpen(false);
@@ -268,8 +308,10 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
 
         <div ref={dropdownRef} className="relative" onBlur={handleBlur}>
           <button
+            ref={accountButtonRef}
             type="button"
             aria-label="Account"
+            aria-haspopup="menu"
             aria-expanded={dropdownOpen}
             onClick={handleAccountClick}
             className="relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent text-text-muted hover:bg-text-primary/10 hover:text-text-primary before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
