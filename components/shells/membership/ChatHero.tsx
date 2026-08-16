@@ -916,6 +916,30 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
         {isMobile && state.isSidebarExpanded && (
           <>
+            {/* Tap-outside-to-close catcher — deliberately INVISIBLE (no
+                bg, no fade). sidebar_uploads_scrim_stories_2006 removed this
+                drawer's old `bg-black/40` scrim on purpose: on mobile this
+                drawer reads as a wider panel sitting on the chat, not a
+                modal, so it gets no dimming. That handover flagged, rather
+                than resolved, the side effect — the deleted scrim was also
+                the tap-outside target, and it named "a different, invisible
+                tap-catcher" as the way to get dismissal back without the
+                dimming. This is that catcher, so tap-outside works like any
+                standard drawer while the no-dim decision stands. Restoring a
+                visible scrim is a one-class change here if the app later
+                standardizes the other way (that scrim-everywhere vs
+                scrim-nowhere question is still open — see the handover).
+                z-20 keeps it under the drawer's own z-30, so the drawer
+                itself stays fully interactive. aria-hidden + no button role
+                matches the app's other scrims: this is the pointer
+                affordance, not a control — keyboard dismissal is the Escape
+                handler above, which already closes this same overlay. */}
+            <div
+              data-testid="mobile-sidebar-scrim"
+              className="absolute inset-0 z-20"
+              aria-hidden="true"
+              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+            />
             <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
               <SidebarV2
                 stories={stories}
