@@ -167,7 +167,12 @@ Responsibilities:
 | auth | Tenant resolution, RBAC, rate limiting, user sync | Chat + all services |
 | prompt | Compile blocks, safety check, version history | Chat |
 | crm | Persist sessions, state machine, inbound triage | Chat |
-| payments | Stripe checkout, webhooks, entitlements | Chat |
+| payments *(not built)* | Stripe checkout, webhooks, entitlements | Chat |
+
+*`payments` is the one row above that does not exist yet — `services/payments/`
+is NOT STARTED (planned as the Step 5 scaffold in `System Docs/ARCHITECTURE_OVERVIEW.md`);
+`auth`, `prompt` and `crm` are all live. Its row describes the target boundary, not
+current state.*
 
 No circular dependencies. No shared mutable state between services.
 Cross-service calls go through published interfaces only.
