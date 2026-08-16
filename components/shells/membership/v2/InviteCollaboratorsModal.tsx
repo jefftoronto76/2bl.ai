@@ -23,7 +23,11 @@ const PRIMER_MAX_LENGTH = 500;
 export interface InviteCollaboratorsModalProps {
   open: boolean;
   onClose: () => void;
-  /** The private join link, e.g. "heirloom.life/join/AB12-CD34-EF56".
+  /** The private join link, scheme already stripped by the caller, e.g.
+   *  "heirloom.2bl.ai/join/nJ8pQ2vX7mK4tR9wZ1yB6cD3fG5hL0sA". Real tokens are
+   *  `randomBytes(24).toString('base64url')` (services/crm/story-invites.ts) —
+   *  a fixed 32 chars of base64url, no dashes, so size the field for that
+   *  rather than the short dashed shape this example used to show.
    *  Absent until the member deliberately clicks Create — opening the modal
    *  no longer mints a link on its own (see ChatHero.tsx's handleInviteStory). */
   magicLink?: string;
