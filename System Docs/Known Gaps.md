@@ -2130,3 +2130,42 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   require the `ShareChannel` contract to build URLs rather than receive one
   already built. Worth revisiting if per-network attribution ever matters;
   today the campaign is "someone passed this on", which one medium covers.
+
+- **The conversation-switcher dropdown still has the blur-only dismissal
+  bug the Account dropdown was just fixed for — 2026-08-16.** `ChatHeader`'s
+  Account menu closed only on an explicit in-menu action, because its sole
+  outside-close mechanism was an `onBlur` on its wrapper `div` — which fires
+  only if the trigger actually held focus, and Safari (desktop and iOS)
+  doesn't focus a `<button>` on click/tap. That one is fixed (document
+  `pointerdown` + `Escape`; see the `ChatHeader` row in
+  `System Docs/Public Site.md`). The story-switcher dropdown a few lines
+  above it in the same file — `storyDropdownOpen` / `handleStoryBlur` —
+  still has the identical `onBlur`-only pattern and was deliberately left
+  untouched, because `SHOW_STORY_SWITCHER` is `false` and the whole block is
+  unreachable, so the fix could not have been verified against anything.
+  **If that flag is ever flipped back to `true`, this must be fixed in the
+  same change** — copy the `dropdownOpen`-gated effect the Account menu now
+  uses; it is a dozen lines directly below. A grep confirmed these two were
+  the only `onBlur`-based *dismissal* handlers in the app (every other
+  `onBlur=` in `components/` is commit-a-rename-on-blur on a text input,
+  which is a different and legitimate pattern), so there is no third
+  instance of this to hunt down.
+
+- **`ChatHeader`'s Account trigger duplicates `IconButton` instead of using
+  it — 2026-08-16.** Every other button in that header's icon cluster
+  (Media, Memories, Share, Fullscreen, Close) is an `IconButton`; the
+  Account trigger is a raw `<button>` whose className is a verbatim copy of
+  `IconButton`'s inactive-branch classes (`flex items-center justify-center
+  w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
+  focus-visible:ring-2 focus-visible:ring-accent text-text-muted
+  hover:bg-text-primary/10 hover:text-text-primary`), plus its own
+  `relative` + `before:` hit-area. Identical today, so there is no visual
+  inconsistency to see — the cost is that a future restyle of `IconButton`
+  would silently skip this one button, and the drift would show up as one
+  odd-looking control in an otherwise-updated cluster. Not folded into the
+  dismissal fix above deliberately (one change at a time, and that change
+  needed a `ref` on this button, which would have made the swap a
+  behavioral change rather than a cosmetic one). `IconButton` spreads
+  `...props`, so `aria-haspopup`/`aria-expanded` already pass through; under
+  React 19 `ref` is an ordinary prop, so the swap is likely a small typing
+  change to `IconButtonProps` rather than a rewrite.
