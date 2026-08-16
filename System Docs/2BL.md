@@ -149,8 +149,8 @@ app/
 
 Chat is the central service. It is the interface between the user and
 everything else in the platform. All user interactions flow through
-chat — it orchestrates prompt, crm, auth, and payments on behalf of
-the user.
+chat — it orchestrates prompt, crm, auth, and payments *(not built)* on
+behalf of the user.
 
 Responsibilities:
 - Streaming AI responses
