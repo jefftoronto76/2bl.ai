@@ -21,6 +21,12 @@ import { __clearSingletonRegistry } from '@/services/chat/ui/v1/core/store-regis
 // getAllByRole rather than using getByRole. Document order is
 // header-then-sidebar: <ChatHeader> is emitted before the
 // sidebar|chat|panel row SidebarV2 mounts inside.
+//
+// The two entry points are DESKTOP-only-both as of the mobile chat header
+// redesign (2026-08-16): the header icon comes off on mobile, leaving the
+// sidebar nav row as the sole entry point there. That's why the mobile
+// describe block at the bottom counts triggers differently from this file's
+// desktop blocks — see its own tests for the specifics.
 
 vi.mock('@/services/auth/client', () => ({
   useAuthUser: () => ({ isLoaded: true, isSignedIn: true, user: { providerUserId: 'u1' } }),
@@ -264,27 +270,31 @@ describe('Share Heirloom — mobile (390px)', () => {
     });
   });
 
-  it('opens from the header icon with no sidebar mounted', async () => {
+  it('has no entry point at rest — the header icon is desktop-only now', async () => {
     renderHero();
-    // Mobile: the sidebar is an overlay, so only the header icon is present.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument());
+
+    // Updated for the mobile chat header redesign (2026-08-16). This used to
+    // assert the opposite — one trigger, the header icon, with the sidebar
+    // overlay unmounted. Share came off the mobile header in that change, so
+    // at rest a phone has NO share trigger: the sidebar's nav row (below) is
+    // the single remaining entry point, and this is the guard that it really
+    // is the only one rather than the header icon quietly coming back.
+    expect(screen.queryAllByRole('button', { name: 'Share Heirloom' })).toHaveLength(0);
+  });
+
+  it('opens from the sidebar overlay — its only entry point — and closes the drawer on the way', async () => {
+    renderHero();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    // One, not two: the drawer's nav row, with no header icon behind it.
     await waitFor(() => expect(shareTriggers()).toHaveLength(1));
 
     fireEvent.click(shareTriggers()[0]);
 
     await waitFor(() => expect(shareDialog()).toBeInTheDocument());
-  });
-
-  it('opens from the sidebar overlay and closes the drawer on the way', async () => {
-    renderHero();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Open navigation' })).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
-    await waitFor(() => expect(shareTriggers()).toHaveLength(2));
-
-    fireEvent.click(shareTriggers()[1]);
-
-    await waitFor(() => expect(shareDialog()).toBeInTheDocument());
-    // Drawer dismissed — the sidebar's own nav row is gone again.
-    expect(screen.getAllByRole('button', { name: 'Share Heirloom' })).toHaveLength(1);
+    // Drawer dismissed — and with the header icon gone, that leaves none.
+    expect(screen.queryAllByRole('button', { name: 'Share Heirloom' })).toHaveLength(0);
   });
 });

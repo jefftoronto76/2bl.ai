@@ -50,6 +50,12 @@ export interface ChatHeaderProps {
    * media_stages_08_2026 — this icon didn't exist before that handover; see
    * its investigation notes for why it's needed now that the sidebar button
    * no longer opens this surface).
+   *
+   * Presence is the caller's call, and it is no longer unconditional: as of
+   * the mobile chat header redesign (2026-08-16) ChatHero passes this on
+   * mobile ONLY when the active session actually has a media item, so the
+   * icon can never open an empty gallery on a phone. Desktop still passes it
+   * always.
    */
   onOpenMedia?: () => void;
   /**
@@ -59,6 +65,9 @@ export interface ChatHeaderProps {
    * editor. Renders in the icon cluster, right after Media, whenever
    * provided (session_memories_panel handover, 2026-08-14 — see its
    * investigation notes: main never had this flow, only the prototype did).
+   *
+   * Same conditional contract as onOpenMedia above: on mobile ChatHero
+   * passes this only when the active session actually has a memory.
    */
   onOpenSessionMemories?: () => void;
   /**
@@ -67,6 +76,11 @@ export interface ChatHeaderProps {
    * right after Memories, whenever provided; the same handler also backs
    * SidebarV2's own "Share Heirloom" nav row, so both entry points open one
    * modal owned by ChatHero.
+   *
+   * Desktop-only as of the mobile chat header redesign (2026-08-16) —
+   * ChatHero passes undefined on mobile, where SidebarV2's nav row is the
+   * remaining entry point. Same for onToggleFullScreen above, which has no
+   * meaning on a phone-width drawer.
    */
   onShareHeirloom?: () => void;
 }
@@ -185,7 +199,10 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
   const initials = getInitials(user?.name ?? null);
 
   return (
-    <header className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
+    <header
+      data-testid="chat-header"
+      className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0"
+    >
       {onMenuOpen && (
         <button
           type="button"
@@ -244,6 +261,14 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
         // Static brand mark — same markup as LandingNav.tsx's logo (the
         // project's one definition of it), scaled down for this 48px
         // in-app header instead of LandingNav's 64px marketing bar.
+        //
+        // This branch is SHARED, not mobile-only: ChatHero renders one
+        // ChatHeader for both breakpoints, so the mobile-only "icon, no
+        // wordmark" rule (mobile chat header redesign, 2026-08-16) has to be
+        // a split inside it rather than a separate branch. It's a CSS split
+        // (`hidden md:inline`) rather than an isMobile prop for two reasons:
+        // the hamburger directly above already gates itself the same way, and
+        // a class costs no JS media query and no post-hydration text flash.
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-6 h-6 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center flex-shrink-0">
             <img
@@ -254,7 +279,10 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
               aria-hidden="true"
             />
           </div>
-          <span className="font-display font-semibold text-base text-text-primary tracking-wide truncate">
+          <span
+            data-testid="chat-header-wordmark"
+            className="hidden md:inline font-display font-semibold text-base text-text-primary tracking-wide truncate"
+          >
             Legacy
           </span>
         </div>
