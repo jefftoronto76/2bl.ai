@@ -842,6 +842,29 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
+  // Mobile chat header (2026-08-16 redesign). Desktop is untouched — it keeps
+  // Media, Memories, Share and Fullscreen exactly as they were. On mobile the
+  // header narrows to hamburger, brand icon, whatever this session actually
+  // holds, profile, and Close: Share and Fullscreen come off entirely (Share
+  // still has SidebarV2's own nav row as its entry point; Fullscreen has no
+  // meaning at drawer-is-the-viewport widths), and Media/Memories become
+  // count-gated so neither can open an empty pane on a phone.
+  //
+  // Both counts reuse state this component ALREADY holds — no new fetch, no
+  // new endpoint, no count column:
+  //   - `mediaItems` is the store's session-scoped list (chatStore.tsx: catch-
+  //     up GET /api/media?chat_id= on session load, Realtime UPDATEs, the
+  //     pending-item poll, and an optimistic addMediaItem the moment an upload
+  //     starts). It's already destructured above for sessionImages, and the
+  //     store clears it on every session switch / New Chat, so it can't carry
+  //     a previous conversation's count forward.
+  //   - `currentSessionMemories` is the exact array SessionMemoriesPanel
+  //     renders, already filtered to state.sessionId above — so "the icon is
+  //     there" and "the panel has rows" are the same fact by construction,
+  //     not two sources that can drift.
+  const hasSessionMedia = mediaItems.length > 0;
+  const hasSessionMemories = currentSessionMemories.length > 0;
+
   // On mobile, close the overlay when Esc is pressed (capture phase so it runs
   // before any modal Esc handlers that would also stop propagation).
   useEffect(() => {
@@ -867,11 +890,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           cites as source of truth, not scoped to one pane. */}
       <ChatHeader
         isFullScreen={isFullScreen}
-        onToggleFullScreen={onToggleFullScreen}
+        onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
-        onOpenMedia={handleOpenMedia}
-        onOpenSessionMemories={handleOpenSessionMemories}
-        onShareHeirloom={() => setShareHeirloomOpen(true)}
+        onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+        onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+        onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
       />
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
