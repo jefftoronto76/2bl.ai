@@ -12,7 +12,7 @@
 //                    to a collapse toggle (desktop) or Close-X (mobile, when
 //                    onClose is provided)
 //   • New Chat · Share Heirloom
-//   • Conversations — collapsible; lists store recentSessions (kebab per row)
+//   • Sessions      — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
 //   • Stories       — Create action, then the story list, each row carrying
 //                     its own invite icon (onInviteStory);
@@ -77,7 +77,7 @@ export interface SidebarV2Props {
   onMedia?: () => void;
   onShareHeirloom?: () => void;
   /** Fires on every keystroke in the search field. SidebarV2 already uses the
-   *  query itself to filter the Memories/Stories lists below (title/name,
+   *  query itself to filter the Sessions/Stories lists below (title/name,
    *  case-insensitive) — this is only for a parent that wants to observe it
    *  too; no-op if omitted. */
   onSearch?: (query: string) => void;
@@ -569,7 +569,7 @@ export function SidebarV2({
           )}
         </button>
 
-        {/* Conversations — collapsible, last in the primary nav */}
+        {/* Sessions — collapsible, last in the primary nav */}
         <div>
           <button
             type="button"
@@ -597,7 +597,7 @@ export function SidebarV2({
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {filteredSessions.length === 0 ? (
                 <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
-                  {trimmedQuery ? 'No matches' : 'No memories yet'}
+                  {trimmedQuery ? 'No matches' : 'No sessions yet'}
                 </span>
               ) : (
                 filteredSessions.map((session) => {
