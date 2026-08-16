@@ -181,7 +181,23 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (`sidebar_uploads_scrim_stories_2006` handover) — the sidebar's Uploads
   nav row was a permanently-disabled stub with no backing feature; rather
   than build one, the dead row was deleted outright (uploads already
-  surface inside Media). **Per-story collaborator invites — resolved
+  surface inside Media). **Mobile drawer tap-outside-to-close — regressed
+  2026-08-12 by that same handover, resolved 2026-08-16
+  (`mobile-sidebar-tap-outside`).** Dropping the drawer's `bg-black/40`
+  scrim also deleted the only tap-outside dismiss target, which the
+  handover flagged as an open question ("decide which before shipping")
+  rather than resolving — it shipped undecided, leaving the Close-X as
+  the sole touch-reachable way out of the drawer for four days. Fixed
+  the way that handover proposed: an invisible `absolute inset-0 z-20`
+  tap-catcher in `ChatHero.tsx`'s mobile branch, carrying no background
+  and no fade, so the deliberate no-dimming decision stands untouched.
+  See the `ChatHero` row in `System Docs/Public Site.md`. **Still open,
+  and deliberately not decided by that fix:** the same handover's
+  broader question of whether the app standardizes on scrim-everywhere
+  (matching Media's bottom sheets) or scrim-nowhere (matching this
+  drawer and the full-screen mobile overlays) — it also blocks
+  `handover_mobile_memory_panel_scrim`, which was written assuming the
+  sidebar's since-deleted scrim was the reference to copy. **Per-story collaborator invites — resolved
   2026-08-10**, see "Invite — real as of 2026-08-10" and
   "Superseded, same day — reusable-story-invite-links" below for the full
   mechanics (`story_invite_links`, `InviteCollaboratorsModal`). **Conversation
