@@ -222,7 +222,25 @@ export function ChatInput() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const { sendMessage, injectAssistantMessage, state, addMediaItem, setPendingEcho, stop } = useChatStore();
-  const { isMember } = state;
+  const { isMember, memberRole } = state;
+
+  // Supporting caption is shown only to visitors who aren't running the
+  // account: the 'viewer' role, and genuinely anonymous visitors. Hidden for
+  // 'owner', 'admin' and 'member' alike.
+  //
+  // memberRole alone can't decide this: it is null both for a real anonymous
+  // visitor AND whenever the server couldn't resolve the role at all (the
+  // tenant lookup in app/heirloom/page.tsx is skipped when the host doesn't
+  // map to a tenant — e.g. a Vercel preview host without PREVIEW_TENANT_ID).
+  // Pairing it with isMember (Clerk sign-in, no tenant dependency) splits
+  // those two cases apart, so an unresolved role on a signed-in visitor fails
+  // to HIDDEN — the correct default, since owner/admin/member all hide and
+  // that covers effectively every signed-in visitor.
+  //
+  // isMember is never the gate on its own — it's sign-in state, not a role,
+  // so it cannot separate a viewer from a member. The explicit 'viewer' check
+  // does that, and keeps a role added in Studio later defaulting to hidden.
+  const showCaption = memberRole === 'viewer' || (memberRole === null && !isMember);
 
   const overlayHost = useChatOverlayHost();
 
@@ -772,10 +790,12 @@ export function ChatInput() {
         )}
       </div>
 
-      {/* Optional supporting caption — remove if undesired. */}
-      <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
-        Your guide listens, asks, and never forgets a detail.
-      </p>
+      {/* Supporting caption — gated to non-'member' roles (see showCaption). */}
+      {showCaption && (
+        <p className="text-center font-mono text-[11px] tracking-wide text-text-muted/70 mt-2.5">
+          Your guide listens, asks, and never forgets a detail.
+        </p>
+      )}
 
       {/* STEP 2 · full-screen surface — portaled into ChatDrawerV2's relative body
           so it covers the whole drawer (absolute, transform-safe). */}

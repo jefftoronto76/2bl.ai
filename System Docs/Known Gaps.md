@@ -195,9 +195,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   and deliberately not decided by that fix:** the same handover's
   broader question of whether the app standardizes on scrim-everywhere
   (matching Media's bottom sheets) or scrim-nowhere (matching this
-  drawer and the full-screen mobile overlays) — it also blocks
-  `handover_mobile_memory_panel_scrim`, which was written assuming the
-  sidebar's since-deleted scrim was the reference to copy. **Per-story collaborator invites — resolved
+  drawer and the full-screen mobile overlays). Note the scope of that
+  open question is narrower than the `sidebar_uploads_scrim_stories_2006`
+  handover implies. It warns the change also affects
+  `handover_mobile_memory_panel_scrim` — an earlier handover that asked
+  the mobile memory panel to copy the sidebar's (now-deleted) scrim.
+  **That handover is not in this repo** — grep finds the name only inside
+  the sidebar handover's own prose, with no matching file or directory
+  under `Design Handovers/`, so it is unreachable as a reference and may
+  never have been checked in. It is also moot in practice: the mobile
+  memory panel shipped as a fully opaque `inset-0`/`h-[100dvh]` overlay,
+  which settles its own scrim question on independent grounds (nothing is
+  left visible behind it to dim or catch a dismiss-tap on — see the
+  comment above that block in `ChatHero.tsx`). So the standardization
+  question is live only for surfaces that leave a visible strip behind
+  them, which today means this drawer and Media's `85vh` sheets. **Per-story collaborator invites — resolved
   2026-08-10**, see "Invite — real as of 2026-08-10" and
   "Superseded, same day — reusable-story-invite-links" below for the full
   mechanics (`story_invite_links`, `InviteCollaboratorsModal`). **Conversation

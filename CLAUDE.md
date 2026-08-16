@@ -18,10 +18,14 @@ one file per topic, loaded on demand rather than read every session:
 
 | Looking for... | See |
 |---|---|
+| What 2BL is, products, tenant hierarchy, capability model, service boundaries, security model | `System Docs/2BL.md` |
+| Where the architecture actually stands vs. where it's going — migration plan, deferred items | `System Docs/ARCHITECTURE_OVERVIEW.md` |
 | DB tables/columns | `System Docs/Database Schema.md` |
+| Dated record of every schema change (the log behind the schema doc above) | `System Docs/DB_CHANGELOG.md` |
 | API routes | `System Docs/API Routes.md` |
 | Known issues, orphaned code, deferred work | `System Docs/Known Gaps.md` |
 | Design tokens, palettes, fonts per brand | `System Docs/Design System.md` |
+| Admin design system — component inventory, build status | `System Docs/Admin Overview.md` |
 | `[BOOKING:]`/`[NAME:]`/etc. marker syntax | `System Docs/Marker Syntax.md` |
 | Shared admin/UI components | `System Docs/Shared Primitives.md` |
 | Admin page routes | `System Docs/Pages.md` |
@@ -35,6 +39,13 @@ one file per topic, loaded on demand rather than read every session:
 
 If a task touches one of these areas, read the relevant file before starting —
 don't assume the summary here (there isn't one) covers it.
+
+Two of those are not on-demand lookups. `2BL.md` is the platform bible — it
+defines what 2BL is and where the service boundaries fall, and every
+architectural decision is meant to start there. `ARCHITECTURE_OVERVIEW.md` is
+its honest counterpart: what is actually built today versus what 2BL.md
+describes, plus the plan between the two. Read both before any design
+decision, not just when a task happens to touch them.
 
 ---
 
