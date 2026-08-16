@@ -74,11 +74,25 @@ describe('ChatInput — supporting caption gate', () => {
     expect(screen.getByText(CAPTION)).toBeInTheDocument()
   })
 
-  it('shows the caption for an anonymous visitor (no members row)', () => {
+  it('shows the caption for an anonymous visitor (signed out, no members row)', () => {
     mockState.memberRole = null
     mockState.isMember = false
     render(<ChatInput />)
     expect(screen.getByText(CAPTION)).toBeInTheDocument()
+  })
+
+  it('hides the caption when the role is unresolved but the visitor is signed in', () => {
+    // memberRole is null both for a real anonymous visitor and whenever the
+    // server could not resolve a role at all — the tenant lookup in
+    // app/heirloom/page.tsx is skipped when the host maps to no tenant, which
+    // is exactly what happens on a Vercel preview host without
+    // PREVIEW_TENANT_ID. A signed-in visitor in that state must fail to
+    // HIDDEN, since owner/admin/member all hide and that covers effectively
+    // every signed-in visitor. This is the case that shipped wrong.
+    mockState.memberRole = null
+    mockState.isMember = true
+    render(<ChatInput />)
+    expect(screen.queryByText(CAPTION)).not.toBeInTheDocument()
   })
 
   it('separates viewer from member — both signed in, only viewer keeps it', () => {

@@ -225,13 +225,22 @@ export function ChatInput() {
   const { isMember, memberRole } = state;
 
   // Supporting caption is shown only to visitors who aren't running the
-  // account: 'viewer', and anonymous visitors (null — no active members row).
-  // Hidden for 'owner', 'admin' and 'member' alike. Deliberately NOT keyed off
-  // `isMember` — that flag is Clerk sign-in state, not a role, so it can't
-  // separate a viewer from a member. Written as an explicit allow-list so a
-  // role added in Studio later defaults to hidden rather than silently
-  // inheriting the caption.
-  const showCaption = memberRole === null || memberRole === 'viewer';
+  // account: the 'viewer' role, and genuinely anonymous visitors. Hidden for
+  // 'owner', 'admin' and 'member' alike.
+  //
+  // memberRole alone can't decide this: it is null both for a real anonymous
+  // visitor AND whenever the server couldn't resolve the role at all (the
+  // tenant lookup in app/heirloom/page.tsx is skipped when the host doesn't
+  // map to a tenant — e.g. a Vercel preview host without PREVIEW_TENANT_ID).
+  // Pairing it with isMember (Clerk sign-in, no tenant dependency) splits
+  // those two cases apart, so an unresolved role on a signed-in visitor fails
+  // to HIDDEN — the correct default, since owner/admin/member all hide and
+  // that covers effectively every signed-in visitor.
+  //
+  // isMember is never the gate on its own — it's sign-in state, not a role,
+  // so it cannot separate a viewer from a member. The explicit 'viewer' check
+  // does that, and keeps a role added in Studio later defaulting to hidden.
+  const showCaption = memberRole === 'viewer' || (memberRole === null && !isMember);
 
   const overlayHost = useChatOverlayHost();
 
