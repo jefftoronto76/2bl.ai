@@ -31,9 +31,11 @@ export interface InviteCollaboratorsModalProps {
    *  roughly 40% of tokens each. Don't validate against a no-dash pattern;
    *  what this shape rules out is *fixed separators* at set offsets (the
    *  earlier example here was "AB12-CD34-EF56", which implied both a
-   *  license-key grouping and a much shorter token — wrong on both counts,
-   *  and this is the string the modal actually renders, so size the field
-   *  for 32 chars).
+   *  license-key grouping and a much shorter token — wrong on both counts).
+   *  This value is rendered verbatim in the link row below, so what shows up
+   *  there is host + "/join/" + 32 chars (~53 for the Heirloom host), not a
+   *  bare token — though that row is `flex-1 min-w-0 truncate`, so it clips
+   *  rather than being sized to fit.
    *  Absent until the member deliberately clicks Create — opening the modal
    *  no longer mints a link on its own (see ChatHero.tsx's handleInviteStory). */
   magicLink?: string;
