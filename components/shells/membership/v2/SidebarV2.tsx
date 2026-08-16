@@ -573,7 +573,7 @@ export function SidebarV2({
         <div>
           <button
             type="button"
-            aria-label="Memories"
+            aria-label="Sessions"
             aria-expanded={convosOpen}
             onClick={() => setConvosOpen((o) => !o)}
             className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
@@ -582,7 +582,7 @@ export function SidebarV2({
             {isExpanded && (
               <>
                 <span className="font-body text-sm font-normal truncate flex-1 text-left">
-                  Memories
+                  Sessions
                 </span>
                 <SidebarMemoryCount count={totalMemoryCount} />
                 <ChevronRight
