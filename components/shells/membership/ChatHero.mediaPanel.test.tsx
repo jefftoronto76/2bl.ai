@@ -334,8 +334,12 @@ describe('Media — mobile (390px)', () => {
     const dialog = screen.getByRole('dialog', { name: 'Media' });
     fireEvent.click(screen.getByRole('button', { name: 'Media' }));
     await waitFor(() => expect(dialog).not.toHaveAttribute('inert'));
-    // The drawer overlay itself unmounts once Media takes over the screen.
-    expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
+    // The drawer overlay itself unmounts once Media takes over the screen —
+    // but no longer on the same tick: closing now plays an exit animation and
+    // the unmount trails it (useAnimatedPresence, 2026-08-17). The dismissal
+    // is unchanged, only its timing, so this waits the way the scrim/width
+    // suites already do.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: 'Close media page' }));
     await waitFor(() => expect(dialog).toHaveAttribute('inert'));
