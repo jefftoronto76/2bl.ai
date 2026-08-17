@@ -77,9 +77,24 @@ export default createAuthMiddleware(async (auth, req) => {
   if (process.env.VERCEL_ENV !== 'production' && !isApiPath && !isAdminPath && !isPlatformPath && !isInvitePath && !isJoinPath) {
     const previewTenant = req.nextUrl.searchParams.get('preview')
 
+    // Each branch below also forwards x-preview-tenant on the PAGE request.
+    // The block further down sets that header for API paths only, so before
+    // this the page render itself had no way to resolve a tenant: preview
+    // hosts never match tenants.domain, so getTenantFromRequest fell through
+    // to PREVIEW_TENANT_ID and returned null when it wasn't set. That made
+    // app/heirloom/page.tsx skip its whole member lookup, so isAdmin (and
+    // members.role) silently resolved false for everyone on preview while
+    // the API-driven parts of the same page worked fine.
+    //
+    // Setting it here rather than dropping the isApiPath guard below is
+    // deliberate: that block ends in `return NextResponse.next(...)`, so
+    // widening it to page requests would short-circuit ahead of the
+    // host-routing rewrites AND ahead of auth.protect() on /admin.
+
     if (previewTenant === 'heirloom') {
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-heirloom', '1')
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const url = req.nextUrl.clone()
       if (!isHeirloomPath) {
@@ -93,6 +108,7 @@ export default createAuthMiddleware(async (auth, req) => {
     if (previewTenant === 'legacy') {
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-legacy', '1')
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const url = req.nextUrl.clone()
       if (!isLegacyPath) {
@@ -106,6 +122,7 @@ export default createAuthMiddleware(async (auth, req) => {
     if (previewTenant === 'sbl') {
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-sbl', '1')
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const url = req.nextUrl.clone()
       if (!isSblPath) {
@@ -119,6 +136,7 @@ export default createAuthMiddleware(async (auth, req) => {
     if (previewTenant === 'second-brain-labs') {
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-sbl', '1')
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const url = req.nextUrl.clone()
       if (!isSblPath) {
@@ -133,6 +151,7 @@ export default createAuthMiddleware(async (auth, req) => {
       // No rewrite or brand header — root layout's default (data-brand="jefflougheed")
       // applies when no brand header is set.
       const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const res = NextResponse.next({ request: { headers: requestHeaders } })
       res.cookies.set('hl-preview', 'jefflougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
@@ -142,6 +161,7 @@ export default createAuthMiddleware(async (auth, req) => {
     if (previewTenant === 'jeff-lougheed') {
       // No rewrite or brand header — jefflougheed.ca is the fallthrough default.
       const requestHeaders = new Headers(req.headers)
+      requestHeaders.set('x-preview-tenant', previewTenant)
       requestHeaders.set('x-correlation-id', correlationId)
       const res = NextResponse.next({ request: { headers: requestHeaders } })
       res.cookies.set('hl-preview', 'jeff-lougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
@@ -151,10 +171,16 @@ export default createAuthMiddleware(async (auth, req) => {
   }
 
   // ─── Preview tenant header for API routes (non-production only) ───
-  // Page requests with ?preview=<tenant> set the hl-preview cookie above.
-  // API calls from those pages don't carry ?preview= in their URL, so we read
-  // the cookie here and forward it as x-preview-tenant so that
-  // getTenantFromRequest can resolve the correct tenant by slug.
+  // Page requests with ?preview=<tenant> set the hl-preview cookie above, and
+  // set x-preview-tenant on themselves directly from the param. API calls from
+  // those pages don't carry ?preview= in their URL, so we read the cookie here
+  // and forward it as x-preview-tenant so that getTenantFromRequest can resolve
+  // the correct tenant by slug.
+  //
+  // Stays gated on isApiPath: the early `return NextResponse.next(...)` below
+  // would short-circuit page requests ahead of the host-routing rewrites and
+  // ahead of auth.protect() on /admin. Page requests are served by the preview
+  // block above instead.
   if (process.env.VERCEL_ENV !== 'production' && isApiPath) {
     const previewValue = req.cookies.get('hl-preview')?.value
     if (previewValue) {
