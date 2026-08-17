@@ -133,6 +133,11 @@ function MessageTimestamp({ timestamp, align }: { timestamp: number; align: 'sta
   const label = formatMessageTime(timestamp);
   if (!label) return null;
   return (
+    // suppressHydrationWarning + title(full localized timestamp) — same
+    // contract formatShortDate's own consumers follow (see BlockRow.tsx's
+    // Created column), since toLocaleTimeString/toLocaleDateString resolve
+    // against the runtime's local zone and can render a different day/time
+    // server- vs. client-side.
     <div
       className={
         align === 'end'
@@ -143,6 +148,8 @@ function MessageTimestamp({ timestamp, align }: { timestamp: number; align: 'sta
           // bubble (ml-[60px] in makeRenderAssistantMessage).
           : 'pl-[60px] font-mono text-[11px] tracking-wide text-text-muted'
       }
+      suppressHydrationWarning
+      title={new Date(timestamp).toLocaleString()}
     >
       {label}
     </div>
