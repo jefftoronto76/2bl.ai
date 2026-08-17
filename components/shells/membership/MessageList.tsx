@@ -1058,7 +1058,30 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto overscroll-contain px-4 py-6"
+        // overflow-x-hidden is load-bearing, not decorative: per the CSS
+        // Overflow spec, a non-`visible` overflow-y with an unset overflow-x
+        // computes overflow-x to `auto` (SidebarV2.tsx's <aside> pairs the
+        // same two classes for the same reason; MemoryCard.tsx documents the
+        // mechanic directly). That implicit auto let this container pick up
+        // a real horizontal scrollLeft — content here never legitimately
+        // needs one (messages wrap via whitespace-pre-wrap, nothing here
+        // renders wide unwrapped content) — most plausibly from
+        // ChatThread.tsx's scrollAnchorRef.scrollIntoView() call, whose
+        // default `inline: 'nearest'` is evaluated against this element's
+        // live painted bounding rect. On mobile that rect sits inside
+        // ChatHero's push-transformed content column (translate-x-[30%] while
+        // the sidebar drawer is open, transitioning back over 240ms on
+        // close) — if the scroll-into-view fires while that transition is
+        // still mid-flight, the anchor can momentarily read as
+        // horizontally out of view even though the layout box never
+        // actually overflowed, and the browser "corrects" it by scrolling
+        // this container sideways. Nothing else ever resets that scrollLeft
+        // afterward, so it stuck the whole transcript off-center — the
+        // reported "shifted right, text clipped on the left" bug. Root cause
+        // was this container being able to scroll horizontally at all, not
+        // the push transform itself, which was already computing correctly
+        // on every render.
+        className="absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6"
         role="log"
         aria-live="polite"
         aria-label="Conversation"
