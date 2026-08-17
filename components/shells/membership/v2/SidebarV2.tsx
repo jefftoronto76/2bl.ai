@@ -31,14 +31,29 @@
 // loadSession/onSelectStory. The guard is scoped to this file rather than
 // flipping the global flag: 10 other components drive visibility (not just
 // colour) off hover, and several would become unreachable on touch.
-// Consequence, by design and sequenced: the hover-revealed row controls are
-// unreachable on touch until the long-press gesture lands. They keep their
-// DOM slot at opacity-0, so they also take `[@media(hover:none)]:
-// pointer-events-none` — an invisible-but-tappable control at the row's edge
-// would swallow the very tap this fix exists to deliver.
+// Consequence, by design and sequenced: the hover-revealed row controls were
+// unreachable on touch until the long-press gesture landed (2026-08-17,
+// companion to the single-tap fix above — #25a). They keep their DOM slot at
+// opacity-0, so they also take `[@media(hover:none)]:pointer-events-none` —
+// an invisible-but-tappable control at the row's edge would swallow the very
+// tap this fix exists to deliver.
+//
+// Long-press (mobile only, isMobile-gated — desktop hover is untouched): a
+// 450ms hold on a row sets the same `menuId`/`menuRect` state the desktop
+// kebab's onClick already drives. No new reveal mechanism was needed —
+// kebab, invite, and start-chat all already key their opacity off
+// `isMenuOpen` (see each button's className below), not just hover, so
+// setting menuId from a long-press reveals all three at once and opens
+// RowMenu, exactly mirroring hover+click on desktop in a single gesture.
+// Cancelled if the touch moves past LONG_PRESS_MOVE_PX before the timer
+// fires (a scroll must not also open a menu). A fired long-press calls
+// touchend.preventDefault() to suppress the trailing synthetic click, so it
+// doesn't also fire the row's own tap-to-select (#25a) or get closed by
+// RowMenu's own outside-click listener the instant it opens.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   BookOpen,
   Bookmark,
@@ -421,6 +436,11 @@ export function SidebarV2({
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
 
+  // Same breakpoint/hook ChatHero.tsx already uses for its isMobile-gated
+  // branches — long-press only attaches on touch-sized viewports; desktop
+  // keeps pure hover.
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
+
   // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
   // by updated_at DESC (services/crm/sessions.ts) and just switching to an
   // older session (no new message sent) never touches updated_at, so without
@@ -521,6 +541,93 @@ export function SidebarV2({
       setMenuId(id);
     }
   };
+
+  // ── Long-press → row action menu (mobile only) ────────────────────────────
+  // First long-press implementation in this codebase — see the file-header
+  // comment above for the design (why 450ms, why it reuses menuId instead of
+  // a separate reveal state, why touchend.preventDefault() matters).
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_PX = 10; // touch drift past this cancels — a scroll, not a press
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Set true the instant the timer fires, read (and cleared) by the row's own
+  // onClick so a completed long-press never also fires loadSession/onSelectStory.
+  const longPressFiredRef = useRef(false);
+  // Drives the subtle build-up highlight while a press is held — silent
+  // until fired felt unresponsive on a 450ms hold; a slow tint ramp (CSS
+  // transition, not JS-driven) gives feedback without being a distracting
+  // animation, and doubles as a progress cue for how close the hold is to
+  // firing.
+  const [pressingId, setPressingId] = useState<string | null>(null);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // Returns the touch handlers for a given row id, or {} on desktop — spread
+  // onto the row wrapper div. Not memoized per-id (cheap object literal); the
+  // outer useCallback only changes with isMobile/clearLongPress.
+  const longPressHandlers = useCallback(
+    (id: string) => {
+      if (!isMobile) return {};
+      return {
+        onTouchStart: (e: React.TouchEvent<HTMLDivElement>) => {
+          const touch = e.touches[0];
+          touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          longPressFiredRef.current = false;
+          setPressingId(id);
+          const rowEl = e.currentTarget;
+          clearLongPress();
+          longPressTimerRef.current = setTimeout(() => {
+            longPressFiredRef.current = true;
+            setPressingId(null);
+            // Best-effort haptic tick — no-op where unsupported (iOS Safari
+            // has no Vibration API), so this is safe to call unconditionally.
+            navigator.vibrate?.(10);
+            setMenuRect(rowEl.getBoundingClientRect());
+            setMenuId(id);
+          }, LONG_PRESS_MS);
+        },
+        onTouchMove: (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!touchStartRef.current) return;
+          const touch = e.touches[0];
+          const dx = touch.clientX - touchStartRef.current.x;
+          const dy = touch.clientY - touchStartRef.current.y;
+          if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) {
+            clearLongPress();
+            setPressingId(null);
+          }
+        },
+        onTouchEnd: (e: React.TouchEvent<HTMLDivElement>) => {
+          clearLongPress();
+          setPressingId(null);
+          touchStartRef.current = null;
+          // Suppresses the browser's trailing synthetic click for this touch
+          // sequence — without it, the click that follows a completed
+          // long-press would either re-trigger the row's tap-to-select or hit
+          // RowMenu's outside-click listener and instantly close the menu
+          // that just opened.
+          if (longPressFiredRef.current) {
+            e.preventDefault();
+          }
+        },
+        onTouchCancel: () => {
+          clearLongPress();
+          setPressingId(null);
+          touchStartRef.current = null;
+        },
+        // Some Android browsers fire a native contextmenu on long-press —
+        // suppress it so it doesn't fight the menu we're opening ourselves.
+        onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => {
+          e.preventDefault();
+        },
+      };
+    },
+    [isMobile, clearLongPress],
+  );
 
   // gap-0.5 (2px) stacks these buttons vertically — half-gap (1px) top/bottom
   // is as far as an invisible hit-area can safely grow without adjacent rows'
@@ -641,7 +748,13 @@ export function SidebarV2({
                   const id = `conversation:${session.id}`;
                   const isMenuOpen = menuId === id;
                   return (
-                    <div key={session.id} className="relative group flex items-center">
+                    <div
+                      key={session.id}
+                      className={`relative group flex items-center rounded-lg select-none [-webkit-touch-callout:none] transition-colors duration-[450ms] ease-out ${
+                        pressingId === id ? 'bg-text-primary/5' : ''
+                      }`}
+                      {...longPressHandlers(id)}
+                    >
                       {renamingId === session.id ? (
                         <input
                           autoFocus
@@ -656,7 +769,17 @@ export function SidebarV2({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { loadSession(session.id); onClose?.(); }}
+                          onClick={() => {
+                            // A completed long-press already opened the menu
+                            // for this row (see longPressHandlers) — the
+                            // trailing click must not also select it.
+                            if (longPressFiredRef.current) {
+                              longPressFiredRef.current = false;
+                              return;
+                            }
+                            loadSession(session.id);
+                            onClose?.();
+                          }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
@@ -774,11 +897,26 @@ export function SidebarV2({
                   const id = `story:${story.id}`;
                   const isMenuOpen = menuId === id;
                   return (
-                    <div key={story.id} className="relative group flex items-center gap-0.5">
+                    <div
+                      key={story.id}
+                      className={`relative group flex items-center gap-0.5 rounded-lg select-none [-webkit-touch-callout:none] transition-colors duration-[450ms] ease-out ${
+                        pressingId === id ? 'bg-text-primary/5' : ''
+                      }`}
+                      // storiesDisabled: the "soon" section is inert — no
+                      // kebab is rendered for it (see below), so long-press
+                      // must not open one either.
+                      {...(!storiesDisabled ? longPressHandlers(id) : {})}
+                    >
                       <button
                         type="button"
                         title={story.description ?? story.name}
-                        onClick={() => onSelectStory?.(story.id)}
+                        onClick={() => {
+                          if (longPressFiredRef.current) {
+                            longPressFiredRef.current = false;
+                            return;
+                          }
+                          onSelectStory?.(story.id);
+                        }}
                         disabled={storiesDisabled}
                         className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                       >
