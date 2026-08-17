@@ -426,6 +426,67 @@ export async function getMemoriesForStory(
   return { ok: true, data: ordered }
 }
 
+/**
+ * Batched memory counts for a set of stories, keyed by storyId — backs the
+ * sidebar's per-story-row SidebarMemoryCount badge (SidebarV2.tsx), one bulk
+ * query for the whole list rather than one per story. Mirrors two existing
+ * patterns rather than inventing a third: the two-step containment-rows-
+ * then-artifacts shape getMemoriesForStory already uses (a containment row
+ * can outlive its memory — discardMemory only stamps artifacts.discarded_at,
+ * it never cleans up artifact_containments — so a raw containment count
+ * would overcount), and the single-bulk-fetch-keyed-by-parent-id shape
+ * services/crm/sessions.ts's listStories uses for memoriesBySession. No
+ * access check here (unlike getMemoriesForStory) — the caller (listStories)
+ * already scoped storyIds to what this user can see before calling in.
+ */
+export async function getMemoryCountsForStories(
+  tenantId: string,
+  storyIds: string[],
+): Promise<StoryContainmentResult<Record<string, number>>> {
+  if (storyIds.length === 0) return { ok: true, data: {} }
+
+  const supabase = getAdminClient()
+
+  const { data: containments, error: containmentErr } = await supabase
+    .from('artifact_containments')
+    .select('parent_artifact_id, child_artifact_id')
+    .eq('tenant_id', tenantId)
+    .in('parent_artifact_id', storyIds)
+
+  if (containmentErr) {
+    console.error('[story-containments] getMemoryCountsForStories — containment lookup failed:', containmentErr.message)
+    return { ok: false, status: 500, error: containmentErr.message }
+  }
+  if (!containments || containments.length === 0) {
+    return { ok: true, data: {} }
+  }
+
+  const childIds = containments.map(row => row.child_artifact_id as string)
+
+  const { data: memoryRows, error: memoryErr } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('type', 'memory')
+    .is('discarded_at', null)
+    .in('id', childIds)
+
+  if (memoryErr) {
+    console.error('[story-containments] getMemoryCountsForStories — memory lookup failed:', memoryErr.message)
+    return { ok: false, status: 500, error: memoryErr.message }
+  }
+
+  const validMemoryIds = new Set((memoryRows ?? []).map(row => row.id as string))
+
+  const counts: Record<string, number> = {}
+  for (const row of containments) {
+    if (!validMemoryIds.has(row.child_artifact_id as string)) continue
+    const storyId = row.parent_artifact_id as string
+    counts[storyId] = (counts[storyId] ?? 0) + 1
+  }
+  return { ok: true, data: counts }
+}
+
 export type MoveDirection = 'up' | 'down'
 
 /**

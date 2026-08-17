@@ -27,6 +27,7 @@
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { resolveUserIdForMember } from '@/services/crm/memories'
+import { getMemoryCountsForStories } from '@/services/crm/story-containments'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
@@ -56,6 +57,13 @@ export interface StoryRow {
    *  is overridden to true in createStory) since the creator is always the
    *  owner; listStories computes the real per-row value against its caller. */
   isOwner: boolean
+  /** Count of this story's memories — artifact_containments rows whose
+   *  parent_artifact_id is this story, filtered to memories that still
+   *  exist (see getMemoryCountsForStories, services/crm/story-
+   *  containments.ts). Always 0 on a freshly-created row (toStoryRow's
+   *  default) — listStories below is the only place that computes a real
+   *  value, same batched-not-per-row shape as hasActiveInviteOrSubscribers. */
+  memoryCount: number
 }
 
 const ARTIFACT_TYPE = 'story' as const
@@ -71,6 +79,7 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
     updated_at: row.updated_at as string,
     hasActiveInviteOrSubscribers: false,
     isOwner: false,
+    memoryCount: 0,
   }
 }
 
@@ -146,16 +155,23 @@ export async function listStories(
 
   let idsWithActiveLink = new Set<string>()
   let idsWithSubscribers = new Set<string>()
+  let memoryCounts: Record<string, number> = {}
   if (storyIds.length > 0) {
-    const [linkResult, subscriberResult] = await Promise.all([
+    const [linkResult, subscriberResult, memoryCountResult] = await Promise.all([
       supabase.from('story_invite_links').select('story_id').in('story_id', storyIds).is('revoked_at', null),
       supabase.from('artifact_subscribers').select('artifact_id').in('artifact_id', storyIds),
+      getMemoryCountsForStories(tenantId, storyIds),
     ])
     if (linkResult.error) {
       console.error('[stories] active-link lookup error (non-fatal):', JSON.stringify(linkResult.error))
     }
     if (subscriberResult.error) {
       console.error('[stories] subscriber lookup error (non-fatal):', JSON.stringify(subscriberResult.error))
+    }
+    if (!memoryCountResult.ok) {
+      console.error('[stories] memory count lookup error (non-fatal):', memoryCountResult.error)
+    } else {
+      memoryCounts = memoryCountResult.data
     }
     idsWithActiveLink = new Set((linkResult.data ?? []).map(r => r.story_id as string))
     idsWithSubscribers = new Set((subscriberResult.data ?? []).map(r => r.artifact_id as string))
@@ -167,6 +183,7 @@ export async function listStories(
       ...toStoryRow(row),
       hasActiveInviteOrSubscribers: idsWithActiveLink.has(row.id as string) || idsWithSubscribers.has(row.id as string),
       isOwner: (row.user_id as string) === userId,
+      memoryCount: memoryCounts[row.id as string] ?? 0,
     })),
   }
 }
