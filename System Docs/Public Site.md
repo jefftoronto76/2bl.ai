@@ -434,9 +434,13 @@ Covered by `media/MediaCard.test.tsx` (thumbnail vs.
 fallback tile, status badge in both states, fresh-url re-resolution).
 
 **Stage 3 additions, 2026-08-13 (`media_stages_08_2026/stage-3-icon-actions-workflows`, folding in the Aug 2026 Atomic Updates `09_media_metadata_lazyload` handover):** footer gains three new icon-only buttons (`CardIconButton`, styled after `MemoryCardView`'s own icon-only footer actions) — `+` add-to-memory (opens `media/AddToMemoryPanel.tsx`, own row below), pen edit-stub (`onEditStub` → "Editing media is coming soon" toast), and a right-aligned (`ml-auto`) trash delete (opens the now-generalized `ConfirmDeleteModal`, own row below) — added **alongside** the existing Download/Reprocess, not replacing them (the design prototype removes Download; this codebase's Reprocess is a real feature the prototype doesn't have at all, so neither was touched).
-Thumbnail `<img>` now carries `loading="lazy"` (no fade-in wrapper — one was tried and reverted as unreliable per the handover).
+Thumbnail `<img>` now carries `loading="lazy"` (no fade-in wrapper at this stage — one was tried and reverted as unreliable per the handover; superseded 2026-08-17, see below).
 The metadata line now always states the upload date, appending "· Processing" instead of the file size while `status === 'processing'` — additive to the separate status badge, not a replacement.
 Filename is click-to-rename (pencil affordance, inline `<input>`, autofocus, commit on Enter/blur, Escape cancels without forcing a blur — mirrors `MemoryCardView.tsx`'s own fix for the same stale-value-on-synchronous-blur bug) via a new `onRename(id, name)` prop — **local-state only, no PATCH endpoint exists for media items; see `Known Gaps.md`.**
+
+**Thumbnail fade-in, 2026-08-17 (PR #441):** the thumbnail `<img>` gains a `hl-thumb-fade` class (`app/heirloom/globals.css`) plus `hl-thumb-loaded` toggled on by a new `thumbLoaded` state, set via the `<img>`'s own `onLoad` handler — replaces the abrupt pop-in from Stage 3 above with a short (0.18s) opacity transition once the browser actually finishes loading the image.
+`hl-thumb-fade`/`hl-thumb-loaded` follow the same two-class convention as the file's other `hl-*` animation pairs (e.g. `hl-reveal`/`hl-visible`), and the new rule sits in the same `prefers-reduced-motion: reduce` guard block as those others — `hl-thumb-fade { opacity: 1 !important; transition: none !important; }` — so it stays instant for visitors who've opted out of motion, exactly like the rest of the `hl-*` set.
+Covered by `media/MediaCard.test.tsx`.
 
 ### `AddToMemoryPanel` / `useMediaItemActions`
 
@@ -675,6 +679,10 @@ Close stays on mobile by explicit decision.
 The `<header>` gained `data-testid="chat-header"` so tests can scope to the icon cluster rather than matching `SidebarV2`'s same-named Share row.
 Covered by `ChatHero.mobileHeader.test.tsx` (every behavior asserted at both 390px and 1024px, so a change that trims desktop by accident fails there first).
 
+**Icon count badges, 2026-08-17 (PR #440):** the Media and Memories icons each gain a small accent corner badge, rendered by a local `HeaderIconCount({ count })` helper — returns `null` at `count === 0` (or `undefined`), matching `SidebarV2`'s `SidebarMemoryCount` "absence is the signal" convention rather than showing a literal "0". Counts above 99 display as `"99+"`. The badge is `aria-hidden="true"` so it doesn't disturb the icon buttons' existing accessible names, which several tests query by exact match — it's a visual overlay only, not part of the button's label.
+Two new optional props, `mediaCount?: number` / `memoriesCount?: number`, kept separate from `onOpenMedia`/`onOpenSessionMemories` so those handlers stay plain callbacks.
+`ChatHero.tsx` passes `mediaCount={mediaItems.length}` / `memoriesCount={currentSessionMemories.length}` at its one `ChatHeader` call site — the same two arrays already backing the mobile show/hide gates described above (`hasSessionMedia`/`hasSessionMemories`), so the badge count and the icon's visibility can't drift apart. Desktop still shows both icons unconditionally regardless of count; only the badge itself gates on it, so a fresh desktop session shows a plain icon with no badge until content exists.
+
 ### `ChatInput`
 
 **File:** `components/shells/membership/ChatInput.tsx`
@@ -748,6 +756,13 @@ A client-side pre-upload failure (no `media_items` row ever existed) still rende
 Rendered by `MessageList.tsx`'s own `PendingEchoAttachment`/`PendingEchoBubble` (standalone, not built by reusing `UploadThumbnail`).
 Each `echo.attachments[]` entry also carries `width`/`height` (2026-08-07, client-captured in `ChatInput.tsx`) so `PendingEchoAttachment` sizes its own box with the same real-aspect-ratio math `UploadThumbnail` uses (own row above) — `PendingEchoAttachment` never reaches a `ready` state (no `status` concept at all; it's torn down the instant the real message exists, which only happens after uploads have already resolved), so it has no equivalent of the ready-checkmark badge.
 See `System Docs/Utilities/Chat UI.md`'s "Optimistic-send echo" section for the state mechanics and why it has no interaction with the `chat_id` backfill fix (PR #291); regression coverage in `components/shells/membership/optimistic-echo.test.tsx`.
+
+**Per-message timestamps, 2026-08-17 (PR #443):** a new local `MessageTimestamp({ timestamp, align })` component renders a small muted caption below each bubble — `align="end"` under member bubbles, `align="start"` under assistant ones — using the same caption typography as `DeliveryStatus`'s "Sending…"/"Not delivered" row, so a bubble's timestamp and its delivery state read as one family of captions.
+No new fetch or field: both bubble types already carry `UIMessage.timestamp` (epoch ms, set at creation), and this is the only input.
+Formatting comes from a new `formatMessageTime` in `services/shared/time.ts` — absolute, not relative ("3:14 PM", or "Jan 5, 3:14 PM" once the message is no longer from today) — deliberately following `formatShortDate`'s absolute-time convention rather than `formatRelativeTime`'s, since a chat bubble is a fixed one-time event and a relative "5m ago" caption would go stale every render and force interval-ticking every visible bubble. `formatMessageTime`'s own doc comment in `time.ts` covers this reasoning in full, plus its epoch-ms/string/Date input handling and `""` on empty/invalid input — that comment is the primary reference; this entry exists so the component's usage of it is discoverable from the `MessageList` side too.
+Because `formatMessageTime` resolves the "is this today" check and the time string itself against the runtime's local zone, a message sent near local midnight can render a different day server- vs. client-side — so `MessageTimestamp` carries `suppressHydrationWarning` plus a `title` of the full `Date.toLocaleString()` string, matching `BlockRow.tsx`'s existing pattern for the same `formatShortDate` hydration risk exactly (fixed in the same PR, as a follow-up commit correcting an initial miss against `formatMessageTime`'s own documented contract).
+Alignment: the assistant-side caption uses `pl-[60px]` — the same avatar (`w-8`) + `gap-3` + bubble `px-4` offset as the debug-pills row below it (see `makeRenderAssistantMessage`'s own `ml-[60px]` above) — so the timestamp lines up under the actual prose start, not the avatar.
+Gated off while a reply is streaming: assistant messages render it only when `!isActive` (`isActive = config.isStreaming && isLast`), so the active/still-typing message shows no timestamp until it settles.
 
 ### `MagicLinkCard`
 

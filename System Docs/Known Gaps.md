@@ -2248,6 +2248,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   unpaginated would be a real, easy-to-reintroduce inconsistency. See
   `Utilities/Media.md`'s `index.ts`/route rows for the mechanism.
 
+  **Follow-up bug, found and fixed 2026-08-17 (PR #442):** the cursor-based
+  pagination this entry describes shipped 2026-08-14 with a real defect in
+  `GET /api/media`'s account-wide (no `chat_id`) paginated branch — it
+  parsed `cursor` from the query string but never actually passed it into
+  the `listByMember(memberId, tenantId, { limit })` call, so every "load
+  more" scroll on `MediaPage.tsx` silently re-fetched the exact same first
+  page forever instead of advancing. `listByChat` (the chat-scoped branch,
+  `MediaGallery.tsx`) was unaffected — it already forwarded `cursor`
+  correctly. Found while investigating the sort-toggle feature that shipped
+  in the same PR (a working sort control depends on cursor pagination
+  actually working) and fixed alongside it. See the `API Routes.md`
+  `GET /api/media` row for the sort toggle itself — not yet reflected in
+  `Public Site.md`'s `MediaPage` section, which still only covers the
+  2026-08-14 pagination work above.
+
 - **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
   the last two open items (PR #380).**
   - **Step 5, client/server message mismatch — verified already closed,
