@@ -2267,14 +2267,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   all five (Media, Memories, Share, Fullscreen, Close), mobile renders Close
   plus whichever of Media/Memories this session's own content earns — Share
   and Fullscreen are not passed at all there. The Account trigger is the
-  constant in both. The
-  Account trigger is a raw `<button>` whose className is a verbatim copy of
-  `IconButton`'s inactive-branch classes (`flex items-center justify-center
-  w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
-  focus-visible:ring-2 focus-visible:ring-accent text-text-muted
-  hover:bg-text-primary/10 hover:text-text-primary`), plus its own
-  `relative` + `before:` hit-area. **This drift is no longer hypothetical —
-  it happened on 2026-08-16**, the same day the entry was written: the
+  constant in both — a raw `<button>` whose className today still reads
+  `flex items-center justify-center w-10 h-10 rounded-lg transition-all
+  duration-200 focus:outline-none focus-visible:ring-2
+  focus-visible:ring-accent text-text-muted hover:bg-text-primary/10
+  hover:text-text-primary` (plus its own `relative` + `before:` hit-area) —
+  **that string used to be a byte-for-byte copy of `IconButton`'s
+  inactive-branch classes; it no longer is**, and quoting `IconButton`'s
+  current classes here would only go stale again the next time either file
+  changes, so see `ui/IconButton.tsx` directly for the live comparison.
+  **This drift is no longer hypothetical — it happened on 2026-08-16**,
+  the same day the entry was written: the
   mobile single-tap fix below guarded `IconButton`'s hover behind
   `[@media(hover:hover)]:` and, being scoped to the sidebar, did not touch
   either copy in `ChatHeader.tsx` — the Account trigger (line ~341) or the
@@ -2282,7 +2285,7 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   copy that actually pays for it. Both still arm hover on a first tap where
   their `IconButton` siblings no longer do. (Line numbers refreshed
   2026-08-16 after the mobile chat header redesign shifted them; the
-  sibling count is no longer a fixed five either — see the note below.) Folding them in is a
+  sibling count is no longer a fixed five either — see the note above.) Folding them in is a
   two-token edit per line; it was left out only to keep that fix inside the
   sidebar. The original cost still stands too: a future restyle of
   `IconButton` would silently skip these buttons, and the drift would show
@@ -2318,14 +2321,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   hover behaviour is unchanged.
   **Scoped deliberately, not global.** Enabling `hoverOnlyWhenSupported` in
   `tailwind.config.js` is the one-line version and remains the better
-  long-term answer, but it is sitewide: 282 hover utilities across 57 files,
-  of which 10 files drive *visibility* (not just colour) off hover. One is
-  `SidebarV2.tsx` itself, already handled by this fix; the nine still
-  unguarded are `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`,
+  long-term answer, but it is sitewide: **282 hover utilities across 57
+  files as of 2026-08-16** (re-grep before acting on this — that count only
+  ever moves in one direction as the app grows, so treat it as a floor, not
+  a current figure), of which 10 files drive *visibility* (not just colour)
+  off hover. One is `SidebarV2.tsx` itself, already handled by this fix; the
+  nine still unguarded are `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`,
   `StoryPicker.tsx`, `MemoryCard.tsx`, `PhotoUploadActions.tsx`,
   `BookingCard.tsx`, `UserMessageActions.tsx`, `MessageActions.tsx`.
-  (The count and the list disagreed as first written — the list named
-  nine against a stated ten, the missing tenth being the fixed file.)
   Two of those
   (`MemoryCard`, `PhotoUploadActions`) already carry explicit
   `[@media(hover:none)]:opacity-100` overrides and would be fine; the rest
