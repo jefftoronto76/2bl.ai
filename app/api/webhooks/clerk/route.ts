@@ -7,6 +7,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { linkInvitedMember } from '@/services/members'
 import { acceptStoryInvite } from '@/services/crm/story-invites'
+import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -126,12 +127,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     const supabase = getAdminClient()
 
     // Upsert users row — creates on user.created, updates on user.updated
+    // Same identity rule as every other write path. setIdentityEmail also
+    // normalises case here, which it previously did not — this upsert wrote raw
+    // case while linkInvitedMember lowercased the same column moments later in
+    // the same request.
     const usersPayload: Record<string, unknown> = {
       clerk_id: clerkUserId,
     }
-    if (name != null) usersPayload.name = name
-    if (email != null) usersPayload.email = email
-    if (phone != null) usersPayload.phone = phone
+    setIdentityField(usersPayload, 'name', name)
+    setIdentityEmail(usersPayload, 'email', email)
+    setIdentityField(usersPayload, 'phone', phone)
 
     const { error: usersErr } = await supabase
       .from('users')

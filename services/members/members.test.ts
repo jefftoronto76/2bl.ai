@@ -98,11 +98,13 @@ function makeLinkClient({
   updateError?: unknown
 }) {
   const updateCalls: unknown[] = []
+  const usersUpsertCalls: unknown[] = []
   const client = {
     from(table: string) {
       if (table === 'users') {
         return {
-          upsert(_payload: unknown, _opts: unknown) {
+          upsert(payload: unknown, _opts: unknown) {
+            usersUpsertCalls.push(payload)
             return {
               select(_cols: string) {
                 return { single: async () => ({ data: userRow, error: userError }) }
@@ -111,23 +113,20 @@ function makeLinkClient({
           },
         }
       }
-      // members table
+      // members table. Two lookup chains reach the same result:
+      //   token: select → eq('token') → eq('status') → is('used_at') → maybeSingle
+      //   email: select → ilike('email') → eq('status') → is('used_at') → maybeSingle
+      const terminal = {
+        is(_col: string, _val: unknown) {
+          return { maybeSingle: async () => ({ data: inviteRow, error: findError }) }
+        },
+      }
+      const afterFilter = { eq: (_col: string, _val: unknown) => terminal }
       return {
         select(_cols: string) {
           return {
-            ilike(_col: string, _val: unknown) {
-              return {
-                eq(_col: string, _val: unknown) {
-                  return {
-                    is(_col: string, _val: unknown) {
-                      return {
-                        maybeSingle: async () => ({ data: inviteRow, error: findError }),
-                      }
-                    },
-                  }
-                },
-              }
-            },
+            ilike: (_col: string, _val: unknown) => afterFilter,
+            eq: (_col: string, _val: unknown) => afterFilter,
           }
         },
         update(payload: unknown) {
@@ -137,7 +136,11 @@ function makeLinkClient({
       }
     },
   }
-  return { client, getUpdateCalls: () => updateCalls }
+  return {
+    client,
+    getUpdateCalls: () => updateCalls,
+    getUsersUpsertCalls: () => usersUpsertCalls,
+  }
 }
 
 // Two-call delete mock for hardDeleteMember:
@@ -358,6 +361,40 @@ describe('linkInvitedMember', () => {
     expect(update.user_id).toBe('user-uuid-1')
     expect(update.status).toBe('active')
     expect(typeof update.used_at).toBe('string')
+  })
+
+  // ── D5: the users-leg upsert must not write an empty email ───────────────
+  //
+  // The Clerk webhook calls this as `linkInvitedMember(clerkId, email ?? '', …)`.
+  // '' is not nullish, so `email?.toLowerCase() ?? null` previously evaluated to
+  // '' and wrote it over a good users.email on every phone-only signup.
+  it('omits email from the users upsert when called with an empty email and a token', async () => {
+    const { client, getUsersUpsertCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-d5' },
+      inviteRow: { id: 'member-uuid-d5', tenant_id: 'tenant-1' },
+    })
+    adminHolder.client = client
+
+    // Empty email + a token is the phone-only signup shape: the top-of-function
+    // guard passes because a token is present, and the users upsert still runs.
+    await linkInvitedMember('clerk-d5', '', 'tok_abc')
+
+    const [payload] = getUsersUpsertCalls() as [Record<string, unknown>]
+    expect('email' in payload).toBe(false)
+    expect(payload.clerk_id).toBe('clerk-d5')
+  })
+
+  it('writes a real email lowercased on the users upsert', async () => {
+    const { client, getUsersUpsertCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-d5b' },
+      inviteRow: { id: 'member-uuid-d5b', tenant_id: 'tenant-1' },
+    })
+    adminHolder.client = client
+
+    await linkInvitedMember('clerk-d5b', '  Alice@Example.COM ')
+
+    const [payload] = getUsersUpsertCalls() as [Record<string, unknown>]
+    expect(payload.email).toBe('alice@example.com')
   })
 
   it('no-ops on the members update when no matching invite row exists (normal sign-up)', async () => {

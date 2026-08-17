@@ -8,6 +8,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { deleteClerkUser } from '@/services/auth'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
+import { identityValue, setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 export const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
 
@@ -115,15 +116,12 @@ export async function createMemberInvite(
   if (actorId != null) {
     payload.invited_by = actorId
   }
-  if (invitedName != null && invitedName.trim().length > 0) {
-    payload.invited_name = invitedName.trim()
-  }
-  if (email != null && email.trim().length > 0) {
-    payload.email = email.trim().toLowerCase()
-  }
-  if (phone != null && phone.trim().length > 0) {
-    payload.phone = phone.trim()
-  }
+  // Behaviourally unchanged — these guards were already correct. Routed through
+  // the shared helper so there is one implementation of the rule rather than a
+  // hand-rolled copy per call site, which is how D1/D4/D5 diverged.
+  setIdentityField(payload, 'invited_name', invitedName)
+  setIdentityEmail(payload, 'email', email)
+  setIdentityField(payload, 'phone', phone)
   if (autoOpen === true) {
     payload.auto_open = true
   }
@@ -254,9 +252,19 @@ export async function linkInvitedMember(
 
   // Resolve users.id for this Clerk user (may not exist yet if webhook fires
   // before the first sign-in write — create it if missing).
+  // D5: this previously wrote `email: email?.toLowerCase() ?? null`
+  // unconditionally. The webhook calls this function as
+  // `linkInvitedMember(clerkUserId, email ?? '', …)`, and '' is not nullish, so
+  // `''.toLowerCase()` wrote an empty string over a good users.email on every
+  // phone-only signup. Same identity rule as everywhere else now, which also
+  // makes the lowercase normalisation consistent with the webhook's own users
+  // upsert (which wrote raw case moments earlier in the same request).
+  const usersPayload: Record<string, unknown> = { clerk_id: clerkId }
+  setIdentityEmail(usersPayload, 'email', email)
+
   const { data: userRow, error: userErr } = await supabase
     .from('users')
-    .upsert({ clerk_id: clerkId, email: email?.toLowerCase() ?? null }, { onConflict: 'clerk_id' })
+    .upsert(usersPayload, { onConflict: 'clerk_id' })
     .select('id')
     .single()
 
@@ -366,7 +374,10 @@ export async function linkInvitedMember(
       source: 'invite',
       used_at: now,
       updated_at: now,
-      ...(name && !invitedRow.name ? { name } : {}),
+      // Fill-only-when-null is deliberate (PRs #368/#371) and stricter than the
+      // shared invariant requires — it never overwrites, so it can never delete.
+      // identityValue here just stops a whitespace-only Clerk name being written.
+      ...(identityValue(name) && !invitedRow.name ? { name: identityValue(name) } : {}),
     })
     .eq('id', memberId)
 

@@ -6,6 +6,7 @@
 
 import { getAdminClient } from './supabase-admin'
 import { HEIRLOOM_TENANT_ID } from './sync-member'
+import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 export type ClaimMembershipResult = { ok: true } | { ok: false; error: string }
 
@@ -54,9 +55,9 @@ export async function claimMembership(
     status: 'pending',
     updated_at: new Date().toISOString(),
   }
-  if (contact.name != null) insertPayload.name = contact.name
-  if (contact.email != null) insertPayload.email = contact.email
-  if (contact.phone != null) insertPayload.phone = contact.phone
+  setIdentityField(insertPayload, 'name', contact.name)
+  setIdentityEmail(insertPayload, 'email', contact.email)
+  setIdentityField(insertPayload, 'phone', contact.phone)
 
   const { error: insertErr } = await supabase.from('members').insert(insertPayload)
 
