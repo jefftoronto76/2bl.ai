@@ -2417,22 +2417,40 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   fight the span's existing `truncate` on desktop, i.e. it risks a desktop
   regression to solve a non-problem on mobile.
 
-- **`services/transcription/` logs to `console`, not `audit_events` —
-  documented 2026-08-16 while writing `Utilities/Transcription.md`.**
-  CLAUDE.md's logging convention calls for an `AuditAction` for anything
-  worth debugging later, on the grounds that Vercel's log retention is
-  short and unqueryable. The Deepgram provider
-  (`services/transcription/providers/deepgram/index.ts`) predates that
-  convention being applied here and uses `console.error` / `console.log`
-  throughout: the non-OK branch captures HTTP status, Deepgram's own
-  `request_id`, and the attempt count, and the success/empty branches log
-  transcript length — genuinely useful support-correlation detail that
-  currently expires with the log window. There is no transcription
-  `AuditAction` in `services/audit/types.ts` today, so closing this means
-  adding one (naming convention: dot-separated lowercase, e.g.
-  `transcription.completed` / `transcription.failed`) rather than reusing
-  an unrelated action. Worth noting for whoever does: the retry path makes
-  `attempts` the interesting field, and none of the existing logs include
-  audio bytes or transcript text beyond a length — that restraint should
-  survive the migration, matching the media pipeline's counts-and-presence
-  -only rule.
+- **`services/transcription/`'s failure paths lose their diagnostics before
+  they reach `audit_events` — documented 2026-08-16, corrected 2026-08-17.**
+  **The original entry claimed there was no transcription `AuditAction` at
+  all. That was already wrong when it was written:**
+  `services/audit/types.ts` has carried `TRANSCRIPTION_REQUESTED` /
+  `_SUCCEEDED` / `_EMPTY` / `_FAILED` (`transcription.requested` /
+  `.succeeded` / `.empty` / `.failed`) since 2026-08-13, and
+  `app/api/transcribe/route.ts` emits all four. **Do not add a
+  `transcription.completed`** — the original entry suggested that name, and
+  it collides with the real `transcription.succeeded`.
+  **The real gap is narrower: the failure paths, and only those.** On
+  success and on an empty transcript the provider *returns*
+  `{ text, requestId, attempts }`, and the route puts `requestId`,
+  `attempts` and `durationMs` straight into the audit row (plus `charCount`
+  on the success event) — so the provider's own `console.log` on those two
+  branches duplicates a durable record rather than being the only copy of
+  it. On failure the provider *throws*, and a thrown `Error` carries only a
+  message: the non-OK branch's `console.error` holds the HTTP status,
+  Deepgram's `request_id`, the response body and the attempt count, but the
+  only part of that reaching `TRANSCRIPTION_FAILED` is the status, carried
+  incidentally inside the message string `Deepgram returned <status>`. The two
+  fetch-level branches are worse — the rethrown error doesn't record whether
+  the first attempt or the retry failed. Net effect: `request_id` and
+  `attempts`, the two fields that make a Deepgram support ticket
+  answerable, are durably recorded exactly when nothing went wrong.
+  **Closing it needs a channel, not a new action.** Either attach the fields
+  to the thrown error (a typed error carrying `status` / `requestId` /
+  `attempts`) and widen the route's existing `TRANSCRIPTION_FAILED`
+  metadata, or have the provider emit its own audit events. Either way this
+  is a metadata change against an `AuditAction` that already exists. Two
+  things to preserve: the retry path is what makes `attempts` the
+  interesting field, and no existing log carries audio bytes or transcript
+  text beyond a length (`chars` in the provider, `charCount` in the route),
+  matching the media pipeline's counts-and-presence-only rule. The one field
+  that would need sanitizing on the way in is the non-OK branch's raw
+  `body` — Deepgram's own response text, unbounded and not currently
+  truncated.

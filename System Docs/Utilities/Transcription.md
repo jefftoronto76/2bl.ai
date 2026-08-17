@@ -16,9 +16,17 @@ call-site migration. Deepgram is the only provider implemented today.
 | `types.ts` | `TranscriptionResult` | `{ text: string; requestId?: string; attempts: number }`. `attempts` is always populated (1 or 2) so callers can see whether a retry was needed; `requestId` is Deepgram's own id, carried through for support correlation. |
 | `providers/deepgram/index.ts` | `transcribeAudio(audioBuffer, contentType, apiKey)` | Posts the audio to Deepgram's `/v1/listen` (`model=nova-3`, `smart_format=true`). **Retries exactly once**, after a fixed 1s wait, and only on `429` or `5xx` — a `4xx` other than 429 is not retried. Each attempt sends `audioBuffer.slice(0)`, a fresh copy, because `fetch` may transfer/detach the original and would otherwise leave the retry path with a detached buffer. Throws on a non-OK final response (`Deepgram returned <status>`) and rethrows fetch-level failures; an empty transcript is **not** an error — it returns `{ text: '' }` and logs. |
 
-**Logging convention gap, deliberate to note rather than silently fix:** this
-service logs to `console.error` / `console.log`, not `audit_events` — see
-CLAUDE.md's logging convention, which calls for `AuditAction` for anything
-worth debugging later. There is no `AuditAction` for transcription today, so
-the failure detail (status, `requestId`, `attempts`) lives only in Vercel's
-short log retention. Recorded in `System Docs/Known Gaps.md`.
+**Logging convention gap — failure paths only, deliberate to note rather than
+silently fix:** four transcription `AuditAction`s do exist
+(`transcription.requested` / `.succeeded` / `.empty` / `.failed` in
+`services/audit/types.ts`) and `app/api/transcribe/route.ts` emits all four,
+so the success and empty paths are durably recorded: `requestId` and
+`attempts` come back in `TranscriptionResult` and land in the audit row
+alongside `durationMs` (and `charCount` on success). The gap is on failure.
+This provider throws, and a thrown `Error` carries only a message, so the
+`requestId`, `attempts` and response body in its `console.error` calls never
+reach `audit_events` — `TRANSCRIPTION_FAILED` gets only the message string
+`Deepgram returned <status>`, and the two fetch-level branches don't
+distinguish the first attempt from the retry. Closing it means widening what the failure path can
+hand the route, not adding an `AuditAction`. Recorded in
+`System Docs/Known Gaps.md`.
