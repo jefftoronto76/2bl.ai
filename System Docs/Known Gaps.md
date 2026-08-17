@@ -740,24 +740,32 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   string matched against `tenants.slug`, so the alias values `sbl` and
   `jefflougheed` only resolve if a tenant carries that exact slug.
 
-- **`ChatState.isMember` is not a role, despite the name — live footgun.**
-  `isMember` (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk
-  sign-in state. It is therefore **true for owners and admins too**, so any
-  gate written as `!isMember`/`isMember` to mean "a plain member" is wrong in
-  both directions. This bit the composer caption gate during its first pass
-  (2026-08-17, PR #409) and is the reason `ChatState.memberRole` (the real
-  `members.role`) was plumbed through — see `System Docs/Public Site.md`'s
-  `ChatInput`/`chatStore` rows and `System Docs/Utilities/Members.md`'s
-  `MemberRole` entry. `isAdmin` is a second partial signal (`role === 'admin'
-  || role === 'owner'`) that cannot separate a `member` from a `viewer`. The
-  field has **not** been renamed — the existing feature gates (voice,
-  uploads, sidebar activation) genuinely want "signed in", which is what it
-  means; renaming it touches every consumer and was out of scope. Until then:
-  read `memberRole` for anything role-shaped, and treat `isMember` strictly
-  as sign-in state. Related trap on `memberRole` itself — it is null both for
-  a genuinely anonymous visitor and for a visitor whose role the server
-  couldn't resolve, so pair it with `isMember` rather than reading null as
-  "anonymous".
+- **`ChatState.isMember` means signed-in, not role.** `isMember`
+  (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk sign-in state,
+  so it is true for **every** signed-in role (`owner`, `admin`, `member`,
+  `viewer`). That is correct behaviour, not a defect: every consumer — voice
+  access, uploads, `SaveChatCTA`, the sidebar sign-in nudge — wants exactly
+  that boundary, and an owner or admin genuinely is a member, so they should
+  get member features. The name matches how it is used; no rename is called
+  for. The one rule it carries: **don't use `isMember` to tell roles apart.**
+  It cannot distinguish a `member` from an `admin`, `owner` or `viewer` — use
+  `ChatState.memberRole` (the real `members.role`) for anything role-shaped.
+  `isAdmin` is a second, partial signal (`role === 'admin' || role ===
+  'owner'`) that likewise cannot separate a `member` from a `viewer`. See
+  `System Docs/Public Site.md`'s `ChatInput`/`chatStore` rows and
+  `System Docs/Utilities/Members.md`'s `MemberRole` entry. Worth documenting
+  only because of one historical near-miss: the composer caption gate's first
+  draft (2026-08-17, PR #409) assumed `isMember` specifically excluded
+  admin/owner/viewer. That assumption was wrong, not the variable; it was
+  corrected within the same PR, and prompted plumbing `memberRole` through.
+  **Open question (raised 2026-08-17, not yet investigated):** `isMember` is
+  true for the `viewer` role too, so a viewer currently gets the same voice
+  and upload access as a full member. Nobody has decided whether that is
+  intentional or whether viewers should be scoped out of those features —
+  flagged for a decision, not filed as a bug. Separate trap on `memberRole`
+  itself: it is null both for a genuinely anonymous visitor and for one whose
+  role the server couldn't resolve, so pair it with `isMember` rather than
+  reading null as "anonymous".
 
 - **Story invite acceptance not reaching its expected end state for a real
   member — instrumented 2026-08-10 (PR #341), four independent real gaps
