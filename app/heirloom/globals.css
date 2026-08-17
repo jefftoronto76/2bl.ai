@@ -99,6 +99,11 @@
 .hl-reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .hl-reveal.hl-visible { opacity: 1; transform: translateY(0); }
 
+/* ── Media thumbnail fade-in (MediaCard.tsx) — replaces the abrupt pop once
+   the <img> finishes loading with a short opacity transition. */
+.hl-thumb-fade { opacity: 0; transition: opacity 0.18s ease; }
+.hl-thumb-fade.hl-thumb-loaded { opacity: 1; }
+
 @media (prefers-reduced-motion: reduce) {
   .hl-animate-sheet,
   .hl-animate-sheet-left,
@@ -106,4 +111,5 @@
   .hl-animate-fade,
   .hl-animate-modal { animation: none !important; }
   .hl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .hl-thumb-fade { opacity: 1 !important; transition: none !important; }
 }
