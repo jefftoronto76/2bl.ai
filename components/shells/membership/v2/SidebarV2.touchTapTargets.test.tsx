@@ -26,11 +26,15 @@
 //      still tappable, so a tap near the right edge of a row would hit an
 //      unseeable control instead of selecting the row.
 //   3. Single activation still fires the row's real action — one click, one
-//      loadSession/onSelectStory, and (2026-08-17) no longer a mobile overlay
-//      close — selecting a row must never close the sidebar as a side
-//      effect. Passes before the fix too (jsdom has no hover heuristic); it
-//      is here so the guard classes can never be "fixed" by breaking
-//      selection itself.
+//      loadSession/onSelectStory. Session rows also assert (2026-08-17) that
+//      SidebarV2 itself never calls onClose as a side effect of selection —
+//      story rows have no such assertion here since SidebarV2 only forwards
+//      onSelectStory; whether a story tap closes the mobile sidebar is
+//      decided one level up, in ChatHero's handleSelectStory (it does, but
+//      only when the story is non-empty and StoryView actually opens — see
+//      ChatHero.selectStory.test.tsx). Passes before the fix too (jsdom has
+//      no hover heuristic); it is here so the guard classes can never be
+//      "fixed" by breaking selection itself.
 //
 // Deliberately NOT covered: desktop hover reveal. That is pure CSS inside a
 // media query jsdom does not evaluate — verified on the Vercel preview.
