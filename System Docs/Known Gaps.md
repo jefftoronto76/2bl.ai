@@ -165,7 +165,11 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   comment says "Writing Prompts have no backend yet"). **Share Heirloom —
   resolved 2026-08-15** (wire-share-heirloom-modal): `ShareHeirloomModal`
   is mounted by `ChatHero.tsx` and both entry points are live — the
-  `SidebarV2` nav row and the `ChatHeader` icon are no longer inert. The
+  `SidebarV2` nav row and the `ChatHeader` icon are no longer inert.
+  (**Narrowed 2026-08-16** by the mobile chat header redesign: the header
+  icon is desktop-only now, so on mobile the sidebar nav row is the sole
+  entry point and a phone shows no Share affordance until the drawer is
+  opened. Both entry points remain live on desktop.) The
   sidebar row needed a real fix, not just the prop it had never been fed:
   its `onShareHeirloom?.()` call was already wired but sat behind a
   hardcoded `opacity-40 pointer-events-none` (the same leftover-inert-
@@ -706,6 +710,54 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   **Lesson for the next new top-level public route:** grep `isInvitePath`'s
   usages in `middleware.ts` first and mirror every one, don't just add the
   route file.
+
+- **`x-preview-tenant` forwarded for API paths but not page requests —
+  found and fixed 2026-08-17 (PR #411).** `middleware.ts` set the header
+  only inside a block gated on `isApiPath`, so a preview *page* render had
+  no way to resolve a tenant: `*.vercel.app` never matches `tenants.domain`,
+  so `getTenantFromRequest` fell through to `PREVIEW_TENANT_ID` and returned
+  null when that wasn't set. `app/heirloom/page.tsx` wraps its entire member
+  lookup in `if (tenantId)`, so `isAdmin` and `members.role` silently
+  resolved false/null for **every** visitor on preview, making any
+  owner/admin-gated UI untestable there. Fixed by setting the header in each
+  recognized `?preview=` branch, from the param those branches already hold.
+  **Note the fix that was deliberately not taken:** widening the API block by
+  dropping its `isApiPath` guard. That block ends in an early
+  `return NextResponse.next(...)`, so covering page requests there would
+  short-circuit them ahead of the host-rewrite blocks *and* ahead of
+  `auth.protect()` on `/admin` — leaving the admin surface unauthenticated
+  on preview. `middleware.test.ts` (the first tests this file has had) pins
+  that: the `auth.protect()` case fails if the guard is removed.
+  **Lesson:** a request header set on one path class and not another fails
+  asymmetrically and quietly — the API-driven parts of the page worked
+  perfectly while the server-rendered parts silently degraded, which is
+  precisely why it survived so long. When adding a header for tenant/identity
+  resolution, ask which path classes need it, not just the one in front of
+  you. Consequence to be aware of: `gateEnabled`/`isAuthorized`/`isAdmin` now
+  resolve for real on preview pages, so a tenant with
+  `invite_gate_enabled: true` will genuinely gate there. Remaining caveat
+  (pre-existing, unchanged): the forwarded value is the raw param/cookie
+  string matched against `tenants.slug`, so the alias values `sbl` and
+  `jefflougheed` only resolve if a tenant carries that exact slug.
+
+- **`ChatState.isMember` is not a role, despite the name — live footgun.**
+  `isMember` (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk
+  sign-in state. It is therefore **true for owners and admins too**, so any
+  gate written as `!isMember`/`isMember` to mean "a plain member" is wrong in
+  both directions. This bit the composer caption gate during its first pass
+  (2026-08-17, PR #409) and is the reason `ChatState.memberRole` (the real
+  `members.role`) was plumbed through — see `System Docs/Public Site.md`'s
+  `ChatInput`/`chatStore` rows and `System Docs/Utilities/Members.md`'s
+  `MemberRole` entry. `isAdmin` is a second partial signal (`role === 'admin'
+  || role === 'owner'`) that cannot separate a `member` from a `viewer`. The
+  field has **not** been renamed — the existing feature gates (voice,
+  uploads, sidebar activation) genuinely want "signed in", which is what it
+  means; renaming it touches every consumer and was out of scope. Until then:
+  read `memberRole` for anything role-shaped, and treat `isMember` strictly
+  as sign-in state. Related trap on `memberRole` itself — it is null both for
+  a genuinely anonymous visitor and for a visitor whose role the server
+  couldn't resolve, so pair it with `isMember` rather than reading null as
+  "anonymous".
 
 - **Story invite acceptance not reaching its expected end state for a real
   member — instrumented 2026-08-10 (PR #341), four independent real gaps
@@ -1428,7 +1480,16 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     (`chat-widget-canvas.jsx`) had that flow. Entry point is a new
     `ChatHeader` icon ("Memories from this chat," `Bookmark` glyph, same
     optional-prop-gated pattern as `onOpenMedia`) — the sidebar badge stays a
-    plain non-interactive `<span>`, a locked decision, not an oversight. The
+    plain non-interactive `<span>`, a locked decision, not an oversight.
+    **Made conditional on mobile 2026-08-16** (mobile chat header redesign):
+    `ChatHero` passes `onOpenSessionMemories` on mobile only when the active
+    session actually has a memory, so the icon can't open an empty panel on a
+    phone — desktop still passes it unconditionally, and `onOpenMedia` got
+    the same treatment. Both gates read state `ChatHero` already holds
+    (`currentSessionMemories`, `useChatStore().mediaItems`), so this added no
+    fetch. Note this interacts with the stale-session-rows bug below: the
+    icon's mobile visibility and the panel's contents are now driven by the
+    *same* filtered array, so they cannot disagree. The
     new `SessionMemoriesPanel` component (`components/shells/membership/memory/SessionMemoriesPanel.tsx`)
     lists every memory for the session, **any status** — draft rows get a
     small "Draft" label, and the subtitle reads "N memories this session,"
@@ -2192,8 +2253,13 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   instance of this to hunt down.
 
 - **`ChatHeader`'s Account trigger duplicates `IconButton` instead of using
-  it — 2026-08-16.** Every other button in that header's icon cluster
-  (Media, Memories, Share, Fullscreen, Close) is an `IconButton`; the
+  it — 2026-08-16.** Every other button in that header's icon cluster is an
+  `IconButton`. **Which buttons are in that cluster is breakpoint-dependent
+  as of the mobile chat header redesign, same day:** desktop still renders
+  all five (Media, Memories, Share, Fullscreen, Close), mobile renders Close
+  plus whichever of Media/Memories this session's own content earns — Share
+  and Fullscreen are not passed at all there. The Account trigger is the
+  constant in both. The
   Account trigger is a raw `<button>` whose className is a verbatim copy of
   `IconButton`'s inactive-branch classes (`flex items-center justify-center
   w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
@@ -2203,10 +2269,12 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   it happened on 2026-08-16**, the same day the entry was written: the
   mobile single-tap fix below guarded `IconButton`'s hover behind
   `[@media(hover:hover)]:` and, being scoped to the sidebar, did not touch
-  either copy in `ChatHeader.tsx` — the Account trigger (line ~317) or the
-  `md:hidden` nav toggle (line ~194), which is mobile-only and so is the
+  either copy in `ChatHeader.tsx` — the Account trigger (line ~341) or the
+  `md:hidden` nav toggle (line ~209), which is mobile-only and so is the
   copy that actually pays for it. Both still arm hover on a first tap where
-  their five `IconButton` siblings no longer do. Folding them in is a
+  their `IconButton` siblings no longer do. (Line numbers refreshed
+  2026-08-16 after the mobile chat header redesign shifted them; the
+  sibling count is no longer a fixed five either — see the note below.) Folding them in is a
   two-token edit per line; it was left out only to keep that fix inside the
   sidebar. The original cost still stands too: a future restyle of
   `IconButton` would silently skip these buttons, and the drift would show
@@ -2293,3 +2361,70 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   that was reported. Each would additionally need its own `-out` keyframe
   added to `app/heirloom/globals.css` and to the `prefers-reduced-motion`
   block there.
+- **The mobile breakpoint is defined two ways, and they disagree at exactly
+  768px — pre-existing, surfaced 2026-08-16.** Two mechanisms decide "is
+  this mobile" in the chat drawer and they are off by one pixel:
+  Tailwind's `md:` prefix applies at `min-width: 768px` (so `md:hidden`
+  hides *at* 768), while `ChatHero.tsx`'s `useMediaQuery('(max-width:
+  768px)')` is true *at* 768. At exactly 768px CSS says desktop and JS says
+  mobile. The consequence predates the mobile chat header redesign and is
+  worse than cosmetic: `isMobile` renders the sidebar as an overlay instead
+  of the docked `SidebarV2`, but the hamburger that opens that overlay is
+  `md:hidden` and therefore *not rendered* at 768 — so a viewport exactly
+  768px wide has no way to open navigation at all. (`onMenuOpen` is
+  additionally `isMobile`-gated, so the two agree everywhere except this one
+  pixel.) The redesign added one more consequence at the same width: the
+  "Legacy" wordmark is `hidden md:inline`, so it shows, while Share and
+  Fullscreen — gated on `isMobile` — do not. **The fix is to pick one
+  source of truth**, most cheaply by changing the query to `(max-width:
+  767.98px)` so JS matches Tailwind's boundary rather than straddling it;
+  but it moves behaviour at a real width, so it wants its own change and its
+  own verification rather than riding along with unrelated work. **There are
+  two callers, not one** — `ChatHero.tsx` (line ~843) and `ChatInput.tsx`
+  (line ~218) each construct the query independently, so a fix has to touch
+  both or they will disagree with each other on top of disagreeing with
+  Tailwind. That duplication is itself the underlying gap: the breakpoint is
+  a magic string in two components rather than one shared constant. Verified
+  2026-08-16 by grep; the only other `max-width: 768px` hits are the
+  jefflougheed CSS blocks (`Nav`/`Problem`/`Session`), which are a separate
+  isolated surface, and test-file comments.
+
+- **The mobile chat header's brand mark has no accessible name —
+  2026-08-16, deliberate.** In the `SHOW_STORY_SWITCHER`-false branch the
+  feather `<img>` is `alt="" aria-hidden="true"` (decorative, because the
+  visible "Legacy" wordmark beside it carried the name), and the mobile
+  redesign hid that wordmark with `hidden md:inline` — `display:none`
+  removes it from the accessibility tree, not just from view. So on mobile
+  a screen reader gets nothing at all from the brand slot. This is
+  acceptable and was chosen knowingly: the mark is neither a link nor a
+  control, so no interactive element lost its name, and an icon-only logo
+  announcing nothing is ordinary. Recorded because the *reason* it is
+  acceptable is not visible from the markup — someone auditing the header
+  later will see an `aria-hidden` image next to a `display:none` label and
+  reasonably read it as an oversight. **If the mark ever becomes
+  interactive** (a link home, a menu trigger), it needs a real accessible
+  name at that point. The tempting fix today — `sr-only md:not-sr-only` to
+  keep the wordmark in the a11y tree while hiding it visually — was
+  rejected because `not-sr-only` resets `overflow`/`white-space` and would
+  fight the span's existing `truncate` on desktop, i.e. it risks a desktop
+  regression to solve a non-problem on mobile.
+
+- **`services/transcription/` logs to `console`, not `audit_events` —
+  documented 2026-08-16 while writing `Utilities/Transcription.md`.**
+  CLAUDE.md's logging convention calls for an `AuditAction` for anything
+  worth debugging later, on the grounds that Vercel's log retention is
+  short and unqueryable. The Deepgram provider
+  (`services/transcription/providers/deepgram/index.ts`) predates that
+  convention being applied here and uses `console.error` / `console.log`
+  throughout: the non-OK branch captures HTTP status, Deepgram's own
+  `request_id`, and the attempt count, and the success/empty branches log
+  transcript length — genuinely useful support-correlation detail that
+  currently expires with the log window. There is no transcription
+  `AuditAction` in `services/audit/types.ts` today, so closing this means
+  adding one (naming convention: dot-separated lowercase, e.g.
+  `transcription.completed` / `transcription.failed`) rather than reusing
+  an unrelated action. Worth noting for whoever does: the retry path makes
+  `attempts` the interesting field, and none of the existing logs include
+  audio bytes or transcript text beyond a length — that restraint should
+  survive the migration, matching the media pipeline's counts-and-presence
+  -only rule.
