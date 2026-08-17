@@ -192,4 +192,29 @@ describe('listByMember — paginated overload', () => {
     const page = await listByMember('member-1', 'tenant-1', { limit: 3 })
     expect(page).toEqual({ items: [], hasMore: false, nextCursor: null })
   })
+
+  it('orders ascending and applies created_at > cursor when sort is "oldest"', async () => {
+    queuedResult = { data: [], error: null }
+    await listByMember('member-1', 'tenant-1', {
+      limit: 3,
+      cursor: '2026-08-01T00:05:00.000Z',
+      sort: 'oldest',
+    })
+
+    expect(hasFilter(lastQuery!.__filters as FilterCall[], 'order', 'created_at', { ascending: true })).toBe(true)
+    expect(hasFilter(lastQuery!.__filters as FilterCall[], 'gt', 'created_at', '2026-08-01T00:05:00.000Z')).toBe(true)
+    expect(hasFilter(lastQuery!.__filters as FilterCall[], 'lt')).toBe(false)
+  })
+
+  it('still orders descending and applies created_at < cursor when sort is "newest" (explicit default)', async () => {
+    queuedResult = { data: [], error: null }
+    await listByMember('member-1', 'tenant-1', {
+      limit: 3,
+      cursor: '2026-08-01T00:05:00.000Z',
+      sort: 'newest',
+    })
+
+    expect(hasFilter(lastQuery!.__filters as FilterCall[], 'order', 'created_at', { ascending: false })).toBe(true)
+    expect(hasFilter(lastQuery!.__filters as FilterCall[], 'lt', 'created_at', '2026-08-01T00:05:00.000Z')).toBe(true)
+  })
 })

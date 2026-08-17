@@ -186,6 +186,17 @@ export interface MediaPaginationParams {
   cursor?: string | null
 }
 
+/**
+ * Sort direction for listByMember's paginated overload — the account-wide
+ * Media page's sort toggle (MediaPage.tsx). Not offered on listByChat: that
+ * list's chronological (oldest-first) order matches its use as a session
+ * transcript, not a browsable gallery, so there's nothing to toggle.
+ */
+export interface MediaSortParam {
+  /** 'newest' (default, omit) sorts created_at descending; 'oldest' ascending. */
+  sort?: 'newest' | 'oldest'
+}
+
 export interface MediaPage {
   items: MediaItem[]
   hasMore: boolean
@@ -269,20 +280,24 @@ export async function listByMember(memberId: string, tenantId: string): Promise<
 export async function listByMember(
   memberId: string,
   tenantId: string,
-  pagination: MediaPaginationParams,
+  pagination: MediaPaginationParams & MediaSortParam,
 ): Promise<MediaPage>
 export async function listByMember(
   memberId: string,
   tenantId: string,
-  pagination?: MediaPaginationParams,
+  pagination?: MediaPaginationParams & MediaSortParam,
 ): Promise<MediaItem[] | MediaPage> {
   const supabase = getAdminClient()
+  // 'oldest' flips to ascending order; default (unspecified, or 'newest')
+  // stays descending — the account-wide Media page's original, unchanged
+  // behavior when no sort is requested.
+  const ascending = pagination?.sort === 'oldest'
   let query = supabase
     .from('media_items')
     .select()
     .eq('member_id', memberId)
     .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending })
 
   if (!pagination) {
     const { data, error } = await query
@@ -290,10 +305,12 @@ export async function listByMember(
     return (data ?? []) as MediaItem[]
   }
 
-  // Descending order (newest first) — the next page moves backward in
+  // Descending (newest first, default): the next page moves backward in
   // time, so the cursor excludes everything at or after the last row seen.
+  // Ascending ('oldest' sort): the next page moves forward in time, so the
+  // cursor excludes everything at or before the last row seen.
   if (pagination.cursor) {
-    query = query.lt('created_at', pagination.cursor)
+    query = ascending ? query.gt('created_at', pagination.cursor) : query.lt('created_at', pagination.cursor)
   }
   const { data, error } = await query.limit(pagination.limit + 1)
   if (error) return { items: [], hasMore: false, nextCursor: null }
