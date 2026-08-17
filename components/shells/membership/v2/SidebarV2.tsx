@@ -778,7 +778,6 @@ export function SidebarV2({
                               return;
                             }
                             loadSession(session.id);
-                            onClose?.();
                           }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-base truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${

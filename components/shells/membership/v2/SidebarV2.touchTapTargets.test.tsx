@@ -26,9 +26,11 @@
 //      still tappable, so a tap near the right edge of a row would hit an
 //      unseeable control instead of selecting the row.
 //   3. Single activation still fires the row's real action — one click, one
-//      loadSession/onSelectStory, plus the mobile overlay close. Passes
-//      before the fix too (jsdom has no hover heuristic); it is here so the
-//      guard classes can never be "fixed" by breaking selection itself.
+//      loadSession/onSelectStory, and (2026-08-17) no longer a mobile overlay
+//      close — selecting a row must never close the sidebar as a side
+//      effect. Passes before the fix too (jsdom has no hover heuristic); it
+//      is here so the guard classes can never be "fixed" by breaking
+//      selection itself.
 //
 // Deliberately NOT covered: desktop hover reveal. That is pure CSS inside a
 // media query jsdom does not evaluate — verified on the Vercel preview.
@@ -138,7 +140,7 @@ describe('SidebarV2 — hover styles are guarded behind (hover: hover)', () => {
 });
 
 describe('SidebarV2 — a single activation selects the row', () => {
-  it('one click on a session row loads it and closes the mobile overlay', () => {
+  it('one click on a session row loads it without closing the mobile overlay', () => {
     const onClose = vi.fn();
     render(
       <SidebarV2
@@ -152,7 +154,7 @@ describe('SidebarV2 — a single activation selects the row', () => {
 
     expect(loadSession).toHaveBeenCalledTimes(1);
     expect(loadSession).toHaveBeenCalledWith('session-1');
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('one click on a story row selects it', () => {

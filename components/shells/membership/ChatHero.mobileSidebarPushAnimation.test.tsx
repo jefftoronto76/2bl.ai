@@ -17,9 +17,11 @@
 //      nothing" requirement, checked as an equality between the two class
 //      strings rather than two separate assertions, so a future edit that
 //      drifts one without the other fails here.
-//   3. Every close trigger (scrim, Close-X, Escape, a session row, the header
-//      hamburger acting as a toggle) returns both elements to translate-x-0 —
-//      not just the scrim, so a partially-wired close path is caught.
+//   3. Every close trigger (scrim, Close-X, Escape, the header hamburger
+//      acting as a toggle) returns both elements to translate-x-0 — not just
+//      the scrim, so a partially-wired close path is caught. Selecting a
+//      session row is deliberately NOT a close trigger (mobile sidebar no
+//      longer auto-closes on select), so it stays pushed instead.
 //   4. Rapid re-open mid-close: state flips open -> close -> open inside one
 //      synchronous batch of events; the push is driven straight off
 //      state.isSidebarExpanded (not a lagged presence/exiting pair like the
@@ -214,14 +216,14 @@ describe('Mobile sidebar push animation — content shifts in lockstep with the 
     expect(isAtRest(chatColumn())).toBe(true);
   });
 
-  it('closing via a session row returns both elements to rest', async () => {
+  it('selecting a session row does not close the sidebar — both elements stay pushed', async () => {
     await renderReady();
     await openSidebar();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Push animation session' }));
 
-    expect(isAtRest(headerWrapper())).toBe(true);
-    expect(isAtRest(chatColumn())).toBe(true);
+    expect(isPushed(headerWrapper())).toBe(true);
+    expect(isPushed(chatColumn())).toBe(true);
   });
 
   it('the header hamburger, doubling as a close, returns both elements to rest', async () => {
