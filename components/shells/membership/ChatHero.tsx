@@ -391,6 +391,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // asked for. Also closes every other pane on the empty branch, matching
   // every other handleOpenX function in this file — a fresh chat becomes
   // the primary view, not something layered under a stale pane.
+  //
+  // Non-empty branch also dispatches SET_SIDEBAR:false (what closeMobileSidebar
+  // below does — inlined rather than referencing that callback, which is
+  // declared later in this component and would be a forward reference).
+  // StoryView renders as a focus-trapped full-screen dialog, the same
+  // pattern as Media/Share, both of which close the mobile sidebar first for
+  // exactly this reason: a nav drawer mounted under a focus-trapped dialog
+  // is dead weight. The empty branch is a plain content swap behind the
+  // still-open sidebar (same as selecting a session row) and must NOT close
+  // it — which is why this dispatches only on the branch that actually opens
+  // StoryView, not unconditionally for every story tap. On desktop this
+  // dispatch is inert: nothing here reads state.isSidebarExpanded.
   const handleSelectStory = useCallback(async (storyId: string) => {
     let hasMemories = true;
     try {
@@ -404,6 +416,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
 
     if (hasMemories) {
+      dispatch({ type: 'SET_SIDEBAR', payload: false });
       handleOpenStoryView(storyId);
       return;
     }
@@ -417,7 +430,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setStoryMemory(null);
     newChat();
     setSessionContextToAttach({ contextType: 'story', contextRefId: storyId, contextFrequency: 'every_turn' });
-  }, [handleOpenStoryView, newChat, setSessionContextToAttach]);
+  }, [dispatch, handleOpenStoryView, newChat, setSessionContextToAttach]);
 
   // Media/admin pane width (fix for close-button-clipped-offscreen bug):
   // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
@@ -875,15 +888,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // ── Mobile sidebar open/close ─────────────────────────────────────────────
   // ONE mechanism for closing, not a delay taught to each trigger. Every
   // deliberate close path — scrim tap, Close-X, Escape, hamburger toggle,
-  // Media, Share — calls closeMobileSidebar, and useAnimatedPresence below is
-  // the only thing that knows an animation is involved at all. Session row
-  // and story row selection do NOT close the sidebar: closing must be a
-  // deliberate user action, never a side effect of selecting something.
+  // Media, Share, and (see handleSelectStory above) a story selection that
+  // opens StoryView — calls closeMobileSidebar (or dispatches the same
+  // SET_SIDEBAR:false action directly), and useAnimatedPresence below is the
+  // only thing that knows an animation is involved at all. The rule: opening
+  // a focus-trapped full-screen surface closes the sidebar first, since a nav
+  // drawer mounted underneath one is dead weight. A plain content swap behind
+  // the still-open sidebar does not — session row selection, and story
+  // selection on the empty-story/fresh-chat branch, are both that case, and
+  // must not close it: closing must be a deliberate user action or a
+  // consequence of a full-screen surface opening, never a side effect of a
+  // plain selection.
   //
   // SET_SIDEBAR rather than the TOGGLE_SIDEBAR these all used before: closing
   // is now idempotent. That matters more than it looks — a second close while
   // one is already in flight used to flip the drawer back OPEN mid-exit, and
-  // Media/Share fire it alongside other work (opening their own surface).
+  // Media/Share/story-select fire it alongside other work (opening their own
+  // surface).
   const openMobileSidebar = useCallback(() => {
     dispatch({ type: 'SET_SIDEBAR', payload: true });
   }, [dispatch]);
@@ -1109,10 +1130,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onRenameCommit={handleRenameCommit}
                 onClose={closeMobileSidebar}
                 onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
-                // Closes the drawer on the way, same as onMedia above: unlike
-                // plain row selection, this opens a focus-trapped dialog (z-[80]
-                // vs the drawer's z-30) that would render fine either way, but
-                // leaving a full-height nav drawer mounted under a
+                // Closes the drawer on the way, same as onMedia above and as
+                // handleSelectStory's own non-empty-story branch: unlike a
+                // plain content-swap selection (a session row, or an
+                // empty-story fresh chat), this opens a focus-trapped dialog
+                // (z-[80] vs the drawer's z-30) that would render fine either
+                // way, but leaving a full-height nav drawer mounted under a
                 // focus-trapped dialog is exactly what every other mobile
                 // sidebar action already avoids.
                 onShareHeirloom={() => { closeMobileSidebar(); setShareHeirloomOpen(true); }}

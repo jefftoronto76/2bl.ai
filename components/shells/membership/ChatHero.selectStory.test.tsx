@@ -242,7 +242,7 @@ describe('Story row click — mobile (390px)', () => {
     });
   });
 
-  it('selecting a story opens the real StoryView without closing the sidebar overlay', async () => {
+  it('selecting a non-empty story closes the sidebar overlay and opens the real StoryView', async () => {
     render(
       <ChatProvider>
         <ChatHero />
@@ -253,10 +253,29 @@ describe('Story row click — mobile (390px)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: STORY_FULL.name }));
 
+    // StoryView opens as a focus-trapped full-screen dialog — same pattern
+    // as Media/Share, both of which close the drawer first so it isn't left
+    // mounted uselessly underneath. The overlay's own "New Chat" button is
+    // gone once it's dismissed.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'New Chat' })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument());
-    // Selecting a row must never close the sidebar as a side effect — the
-    // overlay's own "New Chat" button is still there until the user
-    // dismisses the drawer deliberately (X, tap-outside, Escape, hamburger).
+  });
+
+  it('selecting an empty story does not close the sidebar overlay — it is a plain content swap, not a full-screen dialog', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await screen.findByRole('button', { name: STORY_EMPTY.name });
+
+    fireEvent.click(screen.getByRole('button', { name: STORY_EMPTY.name }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/stories/story-empty/memories'));
+    // Same reasoning as a session row: no StoryView opens, so nothing
+    // justifies closing the sidebar as a side effect of the tap.
     expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument();
   });
 });

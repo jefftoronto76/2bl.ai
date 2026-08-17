@@ -9,13 +9,15 @@
 // the timing mechanism itself:
 //   1. Every close trigger routes through the one central path. The task's
 //      whole point is that no call site carries its own delay, so each of the
-//      five — scrim, Close-X, Escape, Media, Share — plus the header hamburger
-//      acting as a toggle — is asserted to leave the drawer mounted-and-exiting
-//      rather than instantly gone. A trigger that still dispatched the raw
-//      action would fail here by unmounting straight away. Session row and
-//      story row selection are deliberately NOT close triggers (mobile
-//      sidebar no longer auto-closes on select) and are covered instead in
-//      the "no longer closes" describe block below.
+//      six — scrim, Close-X, Escape, a story row that opens StoryView, Media,
+//      Share — plus the header hamburger acting as a toggle — is asserted to
+//      leave the drawer mounted-and-exiting rather than instantly gone. A
+//      trigger that still dispatched the raw action would fail here by
+//      unmounting straight away. Session row selection, and story row
+//      selection on the empty-story/fresh-chat branch, are plain content
+//      swaps behind the still-open sidebar — deliberately NOT close triggers
+//      — and are covered instead in the "does not close" describe block
+//      below.
 //   2. The exit class is the reverse keyframe, and the entrance class is gone
 //      while it plays — both applied to the same node, so a half-wired swap
 //      that leaves both on at once is caught.
@@ -77,6 +79,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const STORIES = [{ id: 'story-1', name: 'A Full Story', isOwner: true }];
 
+const STORY_MEMORY = {
+  id: 'mem-story-1',
+  session_id: 'sess-other',
+  title: 'A memory in the story',
+  body: '',
+  source_kind: 'conversation',
+  created_at: '2026-08-17T00:00:00Z',
+};
+
 const SESSION = {
   id: 'sess-exit-anim',
   messages: [
@@ -95,6 +106,12 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   const method = init?.method ?? 'GET';
   if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: [SESSION] });
   if (url === '/api/stories' && method === 'GET') return jsonResponse({ stories: STORIES });
+  // Real memories on story-1 — handleSelectStory's non-empty branch is what
+  // opens StoryView (and, per the fix under test, closes the drawer); an
+  // empty-story mock here would silently route through the fresh-chat
+  // branch instead and the "story row animates out" case below would never
+  // exercise the close it claims to.
+  if (url === '/api/stories/story-1/memories' && method === 'GET') return jsonResponse({ memories: [STORY_MEMORY] });
   if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
   if (url.includes('/memories') && method === 'GET') return jsonResponse({ memories: [] });
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
@@ -192,6 +209,21 @@ describe('Mobile sidebar exit animation — every close trigger routes through i
     expectExiting();
   });
 
+  it('selecting a story row that opens StoryView animates out', async () => {
+    await renderReady();
+    await openSidebar();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'A Full Story' }));
+    await screen.findByRole('button', { name: 'Close story' });
+
+    // Unlike the synchronous triggers above, this state change lands after
+    // an awaited fetch (the memory check) resolves outside of a single
+    // fireEvent-wrapped act() — the "Close story" button and the drawer's
+    // own isExiting-driven class can land in two separate render passes, so
+    // this polls instead of asserting immediately.
+    await waitFor(() => expectExiting());
+  });
+
   it('the Media row animates out', async () => {
     await renderReady();
     await openSidebar();
@@ -220,7 +252,7 @@ describe('Mobile sidebar exit animation — every close trigger routes through i
   });
 });
 
-describe('Mobile sidebar exit animation — session/story selection no longer closes (390px)', () => {
+describe('Mobile sidebar exit animation — plain content-swap selection does not close (390px)', () => {
   beforeEach(() => setViewport(390));
   afterEach(() => setViewport(1024));
 
@@ -229,17 +261,6 @@ describe('Mobile sidebar exit animation — session/story selection no longer cl
     await openSidebar();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Exit animation session' }));
-
-    expect(drawer(), 'drawer unmounted — selection must not close the sidebar').not.toBeNull();
-    expect(hasClass(drawer()!, 'hl-animate-sheet-left')).toBe(true);
-    expect(hasClass(drawer()!, 'hl-animate-sheet-left-out')).toBe(false);
-  });
-
-  it('selecting a story row leaves the drawer open, not exiting', async () => {
-    await renderReady();
-    await openSidebar();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'A Full Story' }));
 
     expect(drawer(), 'drawer unmounted — selection must not close the sidebar').not.toBeNull();
     expect(hasClass(drawer()!, 'hl-animate-sheet-left')).toBe(true);
