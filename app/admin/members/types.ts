@@ -86,6 +86,12 @@ export interface UserRow {
    *  but members.user_id is null — a data-integrity gap, not a normal invite.
    *  See System Docs/Known Gaps.md. Read-only until backfilled or self-healed. */
   isOrphaned?: boolean;
+  /** Count of this user's non-discarded memories (artifacts, type='memory'),
+   *  joined through their chat_sessions and scoped to the current tenant.
+   *  Null/undefined for invite-only/orphaned rows (no user_id to join sessions
+   *  through) and for callers that don't compute this (e.g. the cross-tenant
+   *  platform members page) — both render as an empty state. */
+  memoryCount?: number | null;
 }
 
 export interface TenantOption {
