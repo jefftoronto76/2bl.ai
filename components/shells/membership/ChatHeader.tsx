@@ -34,6 +34,26 @@ function getInitials(fullName: string | null | undefined): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
+// ── Icon count badge ────────────────────────────────────────────────────────
+// Corner overlay on Media/Memories — same "renders nothing at 0" convention
+// as SidebarV2's SidebarMemoryCount (accent-colored mono numeral; absence is
+// the signal, not a "0" badge). Not that component directly, since it
+// pairs its own Bookmark glyph with the numeral for a text row's trailing
+// slot, which would duplicate the icon these icon-only buttons already show.
+// Same numeral convention, rendered as a solid corner badge instead, matching
+// the accent-fill treatment used elsewhere (e.g. SaveChatCTA's active pill).
+function HeaderIconCount({ count }: { count: number }) {
+  if (!count) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[15px] h-[15px] px-[3px] rounded-full bg-accent text-background ring-2 ring-background font-mono text-[9px] font-semibold leading-none"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 export interface ChatHeaderProps {
   /** Drawer width state; the expand toggle renders only when the handler is
    *  provided (keeps the header usable outside the V2 drawer). */
@@ -58,6 +78,10 @@ export interface ChatHeaderProps {
    * always.
    */
   onOpenMedia?: () => void;
+  /** Session media count, shown as a corner badge on the Media icon. A
+   *  separate prop rather than bundling with onOpenMedia so the handler stays
+   *  a plain callback; renders nothing at 0/undefined (see HeaderIconCount). */
+  mediaCount?: number;
   /**
    * Opens the session-scoped memories list panel — every memory (draft +
    * published) kept during the active chat session, listed for browsing;
@@ -70,6 +94,9 @@ export interface ChatHeaderProps {
    * passes this only when the active session actually has a memory.
    */
   onOpenSessionMemories?: () => void;
+  /** Session memory count, shown as a corner badge on the Memories icon.
+   *  Same contract as mediaCount above. */
+  memoriesCount?: number;
   /**
    * Opens ShareHeirloomModal — the "pass the product on" share sheet (copy
    * link + social/email intents, no backend). Renders in the icon cluster,
@@ -85,7 +112,7 @@ export interface ChatHeaderProps {
   onShareHeirloom?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, onOpenSessionMemories, onShareHeirloom }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, mediaCount, onOpenSessionMemories, memoriesCount, onShareHeirloom }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -301,6 +328,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             <Images size={16} />
+            <HeaderIconCount count={mediaCount ?? 0} />
           </IconButton>
         )}
 
@@ -311,6 +339,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             <Bookmark size={16} />
+            <HeaderIconCount count={memoriesCount ?? 0} />
           </IconButton>
         )}
 
