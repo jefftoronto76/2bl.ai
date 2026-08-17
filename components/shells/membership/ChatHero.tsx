@@ -882,6 +882,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   //     renders, already filtered to state.sessionId above — so "the icon is
   //     there" and "the panel has rows" are the same fact by construction,
   //     not two sources that can drift.
+  //
+  // The same two lengths back ChatHeader's mediaCount/memoriesCount corner
+  // badges below (chat-header-count-badges, 2026-08-17) — booleans here for
+  // mobile's show/hide gate, raw counts passed through separately for the
+  // badge, both derived from the same arrays so they can't disagree.
   const hasSessionMedia = mediaItems.length > 0;
   const hasSessionMemories = currentSessionMemories.length > 0;
 
@@ -1005,7 +1010,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               : undefined
           }
           onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+          mediaCount={mediaItems.length}
           onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+          memoriesCount={currentSessionMemories.length}
           onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
         />
       </div>
