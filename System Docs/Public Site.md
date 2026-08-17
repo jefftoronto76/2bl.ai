@@ -932,6 +932,15 @@ The test above deliberately asserts nothing about the empty state either way, so
 Note also that `SessionMemoriesPanel.tsx` has its own separate "No memories yet" which is simply correct — that panel really does list memory records, and `ChatHero.sessionMemoriesPanel.test.tsx` asserts the string.
 Three mentions elsewhere in this file are pre-rename by design and were left as-is rather than back-dated: the "Memories/Conversations list hidden" bug (pre-2026-07-30), the `navBtn` enumeration under PR #397, and PR #397's muted-elements list naming the "No memories yet" copy — each describes the row correctly for its own date.
 
+**Story-row memory-count badge, 2026-08-17 (`sidebar-story-memory-badge`):** each story row now renders the same `SidebarMemoryCount` mark session rows already use (accent bookmark + mono numeral) — `<SidebarMemoryCount count={story.memoryCount ?? 0} />`, placed right after the story-name button, mirroring the session row's exact placement.
+No new component and no new empty-state convention: `SidebarMemoryCount` already renders nothing at `count=0`, so a story with no memories shows no badge, exactly like a session with no memories.
+The count itself comes from a new `story.memoryCount` field, not a client-side computation.
+`services/crm/story-containments.ts` gained `getMemoryCountsForStories(tenantId, storyIds)` — a batched, whole-list sibling of that file's existing `getMemoriesForStory`: the same two-step containment-rows-then-artifacts shape, but one query pair for the entire story list rather than one round trip per story (mirrors the bulk-fetch-by-parent-id shape `services/crm/sessions.ts`'s `listSessions` already uses for session memory counts).
+The containment-rows query scopes by `artifact_containments.tenant_id`; the second-step memory-validity query scopes by `artifacts.tenant_id` directly (`.eq('tenant_id', tenantId)`, not a join through `artifact_containments`), the same direct-column tenant-scoping convention `services/crm/memories.ts` uses throughout.
+The second step exists because a containment row can outlive its memory — `discardMemory` (`services/crm/memories.ts`) only stamps `artifacts.discarded_at`, it never cleans up `artifact_containments` — so counting raw containment rows would overcount discarded/missing memories; the function instead fetches every `child_artifact_id` still `type='memory'` and `discarded_at is null` and only counts containment rows whose child made that cut.
+`services/crm/stories.ts`'s `listStories` calls it alongside its existing `hasActiveInviteOrSubscribers` batch lookups (`story_invite_links`/`artifact_subscribers`), same non-fatal-on-error handling — a failed count lookup degrades every returned story to `memoryCount: 0` rather than failing the whole list.
+`GET`/`POST /api/stories` now surface `memoryCount` on the response; the client `Story` type (`v2/types.ts`) gained it as `memoryCount?: number`.
+
 ### `ChatDrawerV2`
 
 **File:** `components/shells/membership/v2/ChatDrawerV2.tsx`
