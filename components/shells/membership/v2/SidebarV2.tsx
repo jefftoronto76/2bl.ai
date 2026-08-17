@@ -162,7 +162,7 @@ function SectionLabel({
   children,
 }: {
   icon: typeof Clock;
-  /** When true, renders a slightly larger icon (14px) and text-sm label. */
+  /** When true, renders a slightly larger icon (14px) and text-base label. */
   large?: boolean;
   /** Optional right-aligned adornment (e.g. the "soon" tag). */
   trailing?: React.ReactNode;
@@ -174,7 +174,7 @@ function SectionLabel({
       <span
         className={
           large
-            ? 'font-mono text-sm tracking-[0.2em] uppercase text-text-muted'
+            ? 'font-mono text-base tracking-[0.2em] uppercase text-text-muted'
             : 'font-mono text-[11px] tracking-[0.2em] uppercase text-text-muted'
         }
       >
@@ -309,7 +309,7 @@ function RowMenu({
               onAction(it.key);
               onClose();
             }}
-            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-base transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               it.danger
                 ? 'text-[#E58D80] [@media(hover:hover)]:hover:bg-[#E58D80]/10'
                 : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.08]'
@@ -386,7 +386,7 @@ function SearchField({
           onBlur={() => setFocused(false)}
           placeholder="Search your story"
           aria-label="Search your story"
-          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-base text-text-primary placeholder-text-muted"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-lg text-text-primary placeholder-text-muted"
         />
       </div>
     </div>
@@ -582,8 +582,8 @@ export function SidebarV2({
           onClick={() => { newChat(); onClose?.(); }}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
-          <SquarePen size={16} className="flex-shrink-0" />
-          {isExpanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
+          <SquarePen size={18} className="flex-shrink-0" />
+          {isExpanded && <span className="font-body text-base font-normal truncate">New Chat</span>}
         </button>
         <button
           type="button"
@@ -591,8 +591,8 @@ export function SidebarV2({
           onClick={onMedia}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onMedia ? '' : 'opacity-40 pointer-events-none'}`}
         >
-          <Images size={16} className="flex-shrink-0" />
-          {isExpanded && <span className="font-body text-sm font-normal truncate">Media</span>}
+          <Images size={18} className="flex-shrink-0" />
+          {isExpanded && <span className="font-body text-base font-normal truncate">Media</span>}
         </button>
         <button
           type="button"
@@ -600,9 +600,9 @@ export function SidebarV2({
           onClick={onShareHeirloom}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onShareHeirloom ? '' : 'opacity-40 pointer-events-none'}`}
         >
-          <Share2 size={16} className="flex-shrink-0" />
+          <Share2 size={18} className="flex-shrink-0" />
           {isExpanded && (
-            <span className="font-body text-sm font-normal truncate">Share Heirloom</span>
+            <span className="font-body text-base font-normal truncate">Share Heirloom</span>
           )}
         </button>
 
@@ -615,10 +615,10 @@ export function SidebarV2({
             onClick={() => setConvosOpen((o) => !o)}
             className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
           >
-            <MessageSquare size={16} className="flex-shrink-0" />
+            <MessageSquare size={18} className="flex-shrink-0" />
             {isExpanded && (
               <>
-                <span className="font-body text-sm font-normal truncate flex-1 text-left">
+                <span className="font-body text-base font-normal truncate flex-1 text-left">
                   Sessions
                 </span>
                 <SidebarMemoryCount count={totalMemoryCount} />
@@ -633,7 +633,7 @@ export function SidebarV2({
           {isExpanded && convosOpen && (
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {filteredSessions.length === 0 ? (
-                <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
+                <span className="px-2 py-1.5 font-body text-base italic text-text-muted">
                   {trimmedQuery ? 'No matches' : 'No memories yet'}
                 </span>
               ) : (
@@ -651,14 +651,14 @@ export function SidebarV2({
                             if (e.key === 'Escape') { onRenameCommit?.(session.id, ''); }
                           }}
                           onBlur={(e) => onRenameCommit?.(session.id, e.currentTarget.value)}
-                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-base bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-lg bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
                         />
                       ) : (
                         <button
                           type="button"
                           onClick={() => { loadSession(session.id); onClose?.(); }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
-                          className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-base truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
                               ? 'bg-text-primary/10 text-text-primary'
                               : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/10'
@@ -733,7 +733,7 @@ export function SidebarV2({
           <div>
             <div className="flex items-center gap-2 mb-3">
               <BookOpen size={14} className="text-text-muted" />
-              <span className="font-mono text-sm tracking-[0.2em] uppercase text-text-muted">
+              <span className="font-mono text-base tracking-[0.2em] uppercase text-text-muted">
                 Stories
               </span>
               <div className="ml-auto flex items-center gap-1">
@@ -783,7 +783,7 @@ export function SidebarV2({
                         className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
-                        <span className="flex-1 min-w-0 font-display text-base truncate">
+                        <span className="flex-1 min-w-0 font-display text-lg truncate">
                           {story.name}
                         </span>
                       </button>
@@ -884,7 +884,7 @@ export function SidebarV2({
                   className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:border-accent/30 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Quote size={13} className="flex-shrink-0 text-accent/80 mt-0.5" />
-                  <span className="font-display italic text-base leading-snug">{prompt.text}</span>
+                  <span className="font-display italic text-lg leading-snug">{prompt.text}</span>
                 </button>
               ))}
             </div>
