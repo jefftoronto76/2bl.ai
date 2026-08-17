@@ -1072,9 +1072,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 reason it isn't 100%: the invisible tap-catcher above sits at
                 z-20 UNDER this z-30 drawer, so tap-outside-to-close only works
                 if a real strip of it stays reachable. 14% is ≥44px (the
-                minimum touch target) at any viewport ≥315px — 52px at 390px,
-                94px at the 672px drawer cap — so the catcher always has room
-                to receive a tap.
+                minimum touch target) at any viewport ≥315px — 54.6px at
+                390px, 94px at the 672px drawer cap — so the catcher always
+                has room to receive a tap.
 
                 The width is on this wrapper rather than passed straight to the
                 aside because the wrapper is absolutely positioned with `left-0`
