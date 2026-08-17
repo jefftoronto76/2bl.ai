@@ -90,17 +90,21 @@ export default async function MembersPage() {
   // Per-user memory counts. Memories are `artifacts` rows (type='memory',
   // discarded_at null) with no user_id of their own — resolving "whose memory
   // is this" means joining through chat_sessions.user_id. Only signed-up
-  // members can match (chat_sessions.user_id is null for anonymous visitors),
-  // and scoping by chat_sessions.tenant_id (not artifacts.tenant_id) matches
-  // how every other CRM query in this codebase scopes through the session.
-  // Supabase's JS client has no GROUP BY, so counts are summed client-side
-  // from this scoped fetch rather than via an RPC (schema/function changes
-  // are Jeff's to make in Studio, not this task's job).
+  // members can match (chat_sessions.user_id is null for anonymous visitors).
+  // Scoped by BOTH artifacts.tenant_id directly (the established convention —
+  // every artifacts query in services/crm/memories.ts scopes this way, see
+  // its 7 `.eq('tenant_id', tenantId)` calls) AND chat_sessions.tenant_id via
+  // the join, as defense in depth against a memory whose own tenant_id and
+  // session's tenant_id have drifted apart. Supabase's JS client has no
+  // GROUP BY, so counts are summed client-side from this scoped fetch rather
+  // than via an RPC (schema/function changes are Jeff's to make in Studio,
+  // not this task's job).
   const { data: memoryData } = await supabase
     .from('artifacts')
     .select('chat_sessions!inner(user_id, tenant_id)')
     .eq('type', 'memory')
     .is('discarded_at', null)
+    .eq('tenant_id', authCtx.tenant_id)
     .eq('chat_sessions.tenant_id', authCtx.tenant_id)
     .not('chat_sessions.user_id', 'is', null);
 
