@@ -2295,7 +2295,8 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   change to `IconButtonProps` rather than a rewrite.
 
 - **Sidebar row controls are unreachable on touch until long-press lands —
-  2026-08-16 (mobile single-tap fix).** Sidebar rows used to need two taps
+  2026-08-16 (mobile single-tap fix), closed 2026-08-17 (long-press).**
+  Sidebar rows used to need two taps
   on iOS Safari: the first only armed the hover state (row background
   highlight plus the kebab/invite/start-chat reveal), the second fired the
   real `loadSession`/`onSelectStory`. Cause was unguarded `hover:`/
@@ -2337,6 +2338,24 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   every class token the sidebar renders (RowMenu's `document.body` portal
   included) and fails on any unguarded hover utility — jsdom cannot
   reproduce WebKit's tap heuristic, so the class contract is the guard.
+  **Closed 2026-08-17.** A 450ms hold on a row now sets the same
+  `menuId`/`menuRect` state the desktop kebab's `onClick` already drove —
+  no new reveal mechanism, since kebab/invite/start-chat all already keyed
+  their opacity off `isMenuOpen` (not just hover), so setting `menuId` from
+  a long-press reveals all three at once and opens `RowMenu` in one gesture,
+  mirroring desktop hover+click. isMobile-gated (`useMediaQuery('(max-width:
+  768px)')`, same breakpoint `ChatHero.tsx` already uses) — desktop hover is
+  untouched. Cancelled if the touch drifts past 10px before the timer fires,
+  so a scroll doesn't also open a menu. A completed long-press calls
+  `touchend.preventDefault()` to suppress the trailing synthetic click,
+  which would otherwise either re-fire the row's own tap-to-select (#25a)
+  or hit `RowMenu`'s outside-click listener and instantly close the menu
+  that just opened; the row's `onClick` also carries a ref-based check as a
+  fallback in case that suppression doesn't hold on some browser. Story rows
+  with `storiesDisabled` are excluded — no kebab renders there either, so a
+  long-press must not open one. Coverage is
+  `SidebarV2.longPress.test.tsx`. First long-press implementation in this
+  codebase.
 
 - **Re-opening the mobile drawer mid-close snaps back before sliding in —
   2026-08-17 (mobile sidebar exit animation).** The drawer's exit is a
