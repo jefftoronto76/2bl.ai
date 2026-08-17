@@ -206,6 +206,21 @@ describe('Mobile sidebar push animation — content shifts in lockstep with the 
     expect(isAtRest(chatColumn())).toBe(true);
   });
 
+  it('closing via the drawer\'s own Close-X returns both elements to rest', async () => {
+    await renderReady();
+    await openSidebar();
+
+    // Distinct from the header hamburger test below — this is SidebarV2's own
+    // X button (aria-label "Close menu"), a different element/onClick than
+    // ChatHeader's "Open navigation" toggle, even though both ultimately call
+    // the same closeMobileSidebar. Was previously untested here despite the
+    // file's own doc comment listing it as covered.
+    fireEvent.click(screen.getByRole('button', { name: 'Close menu' }));
+
+    expect(isAtRest(headerWrapper())).toBe(true);
+    expect(isAtRest(chatColumn())).toBe(true);
+  });
+
   it('closing via Escape returns both elements to rest', async () => {
     await renderReady();
     await openSidebar();
