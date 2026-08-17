@@ -376,7 +376,7 @@ function PendingEchoBubble({ echo }: { echo: PendingEcho }) {
       ))}
       {echo.text && (
         <div className="flex flex-col items-end gap-1.5">
-          <div className="w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border border-border bg-surface px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary opacity-55">
+          <div className="w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border border-border bg-surface px-4 py-3 font-body text-lg leading-[1.62] whitespace-pre-wrap text-text-primary opacity-55">
             {echo.text}
           </div>
         </div>
@@ -441,7 +441,7 @@ function MessageBubble({
               as AssistantMarkdownBubble so that if it is ever revived it does
               not resurrect the 75%/90% mismatch — width contract is documented
               on AssistantMarkdownBubble. */}
-          <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed whitespace-pre-wrap text-text-primary">
+          <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-lg leading-relaxed whitespace-pre-wrap text-text-primary">
             {content}
           </div>
         </div>
@@ -466,8 +466,10 @@ function MessageBubble({
         onClick={deliveryStatus === 'failed' ? onRetry : undefined}
         className={[
           // Visitor bubble spec (Design Handovers/spec_visitor_bubble.md): shrink-to-fit
-          // measure, 18px radius with a 5px bottom-right tail, 15.5/1.62
-          // type ramp. Widened past the spec's original 76% (2026-07-28) —
+          // measure, 18px radius with a 5px bottom-right tail. Type ramp bumped
+          // from the spec's 15.5/1.62 to 18/1.62 to match the assistant bubble
+          // (2026-08-17) — spec doc not yet updated to reflect this.
+          // Widened past the spec's original 76% (2026-07-28) —
           // it read as cramped next to the assistant's much wider reply.
           //
           // The shake animation used to live on a wrapping <div> around this
@@ -493,7 +495,7 @@ function MessageBubble({
           // one bubble type only). Keep this percentage and
           // AssistantMarkdownBubble's identical — they drifted to 90/75 once
           // already, and the member bubble visibly outran the guide's reply.
-          'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-[15.5px] leading-[1.62] whitespace-pre-wrap text-text-primary',
+          'w-fit max-w-[90%] rounded-[18px] rounded-br-[5px] border px-4 py-3 font-body text-lg leading-[1.62] whitespace-pre-wrap text-text-primary',
           deliveryStatus === 'failed' ? 'cursor-pointer bg-red-400/10 border-red-400/45 chat-bubble-shake' : 'bg-surface border-border',
           deliveryStatus === 'sending' ? 'opacity-55' : '',
         ].filter(Boolean).join(' ')}
@@ -563,7 +565,7 @@ function AssistantMarkdownBubble({ children }: { children: ReactNode }) {
           it. Adding width:fit-content here would also make flex-basis definite
           for markdown block content (tables, <pre>) whose max-content can be
           very wide — a real behavior change for no visual gain. */}
-      <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-base leading-relaxed text-text-primary">
+      <div className="max-w-[90%] rounded-2xl rounded-bl-sm bg-transparent px-4 py-3 font-body text-lg leading-relaxed text-text-primary">
         {children}
       </div>
     </div>
@@ -583,7 +585,7 @@ function ErrorBubble({ retry, errorType }: { retry: () => void; errorType: ChatE
           items-start column, so widening only affects where the error copy
           wraps, and a guide-side error rendered in a narrower column than the
           guide's own prose is the exact inconsistency this fix removes. */}
-      <div className="max-w-[90%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-base leading-relaxed bg-transparent text-text-primary">
+      <div className="max-w-[90%] flex flex-col items-start gap-2 rounded-2xl rounded-bl-sm px-4 py-3 font-body text-lg leading-relaxed bg-transparent text-text-primary">
         <span>{ERROR_COPY[errorType]}</span>
         <button
           type="button"
