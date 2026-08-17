@@ -29,6 +29,7 @@ import { useChatOverlayHost } from './v2/ChatOverlayHost';
 import { useScrollAnchor, ScrollToLatestButton } from './ScrollToLatestButton';
 import { membershipMarkdownComponents } from './markdownComponents';
 import { ERROR_COPY } from '@/components/chat/errorCopy';
+import { formatMessageTime } from '@/services/shared/time';
 import type { Story } from './v2/types';
 import type { ChatErrorType, MarkerParseResult } from '@/services/chat/ui/v1/types';
 
@@ -120,6 +121,37 @@ function DebugPill({ raw }: { raw: string }) {
       <span className="font-mono text-xs text-text-muted opacity-75 break-all">
         {raw}
       </span>
+    </div>
+  );
+}
+
+// Absolute send time, right below a bubble — same muted caption typography as
+// DeliveryStatus.tsx's "Sending…"/"Not delivered" row, so a member bubble's
+// timestamp and its delivery state read as one family of small captions
+// rather than two different styles competing under the same bubble.
+function MessageTimestamp({ timestamp, align }: { timestamp: number; align: 'start' | 'end' }) {
+  const label = formatMessageTime(timestamp);
+  if (!label) return null;
+  return (
+    // suppressHydrationWarning + title(full localized timestamp) — same
+    // contract formatShortDate's own consumers follow (see BlockRow.tsx's
+    // Created column), since toLocaleTimeString/toLocaleDateString resolve
+    // against the runtime's local zone and can render a different day/time
+    // server- vs. client-side.
+    <div
+      className={
+        align === 'end'
+          ? 'pr-1 text-right font-mono text-[11px] tracking-wide text-text-muted'
+          // 44px = avatar (w-8) + gap-3, +16px of the bubble's own left
+          // padding (px-4) = 60px, aligning under the bubble's actual text
+          // start — same offset as the debug-pills row below the assistant
+          // bubble (ml-[60px] in makeRenderAssistantMessage).
+          : 'pl-[60px] font-mono text-[11px] tracking-wide text-text-muted'
+      }
+      suppressHydrationWarning
+      title={new Date(timestamp).toLocaleString()}
+    >
+      {label}
     </div>
   );
 }
@@ -502,6 +534,7 @@ function MessageBubble({
       >
         {content}
       </div>
+      <MessageTimestamp timestamp={message.timestamp} align="end" />
       {onRetry && <DeliveryStatus status={deliveryStatus} onRetry={onRetry} />}
       {deliveryStatus === 'sent' && onStartEdit && onResend && (
         <UserMessageActions
@@ -817,6 +850,7 @@ function makeRenderAssistantMessage(config: AssistantRenderConfig) {
     return (
       <div key={msg.id} className="group flex flex-col gap-3">
         {prose && <AssistantMarkdownBubble>{markdown}</AssistantMarkdownBubble>}
+        {prose && !isActive && <MessageTimestamp timestamp={msg.timestamp} align="start" />}
         {prose && !isActive && (
           <div className="flex flex-col gap-2">
             {/* 60px, not the avatar-only 44px (w-8 avatar + gap-3): the text
