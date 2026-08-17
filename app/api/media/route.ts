@@ -15,6 +15,12 @@
 // anything renders" bottleneck (System Docs/Known Gaps.md). Omitting
 // `limit` keeps this route's original unpaginated behavior — chatStore.tsx's
 // catch-up/poll fetches rely on getting the complete list back, not a page.
+//
+// `sort=oldest` reverses the account-wide (no `chat_id`) paginated list to
+// oldest-first — MediaPage.tsx's sort toggle. Omitting it (or any other
+// value) keeps the default newest-first order. Not honored on the
+// chat-scoped list — see services/media/index.ts's MediaSortParam doc
+// comment for why.
 
 import { getCurrentUser } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
@@ -43,6 +49,7 @@ export async function GET(req: Request) {
     : undefined
   const limitParam = searchParams.get('limit')
   const cursor = searchParams.get('cursor')
+  const sort = searchParams.get('sort') === 'oldest' ? 'oldest' : undefined
   const paginated = limitParam !== null
   const limit = paginated
     ? Math.min(Math.max(parseInt(limitParam, 10) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE)
@@ -64,7 +71,7 @@ export async function GET(req: Request) {
   if (paginated) {
     const page = chatId
       ? await listByChat(chatId, tenantId, statuses, { limit: limit!, cursor })
-      : await listByMember(memberRow.id, tenantId, { limit: limit! })
+      : await listByMember(memberRow.id, tenantId, { limit: limit!, cursor, sort })
 
     // Filter to only this member's items (defense-in-depth)
     const ownItems = page.items.filter((item) => item.member_id === memberRow.id)

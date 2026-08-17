@@ -113,7 +113,7 @@ describe('GET /api/media — paginated (limit param present)', () => {
     const res = await GET(req)
     const body = await res.json()
 
-    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 5 })
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 5, cursor: null, sort: undefined })
     expect(body.items.length).toBe(5)
     // Exactly one signed-url generation per item on the page — not per
     // item in some larger, unfetched result set.
@@ -158,13 +158,57 @@ describe('GET /api/media — paginated (limit param present)', () => {
     })
   })
 
+  it('passes cursor through to listByMember for an account-wide paginated request', async () => {
+    // Regression coverage: this previously never reached listByMember at
+    // all, so "load more" on the standalone Media page silently refetched
+    // page one forever instead of advancing.
+    mockListByMember.mockResolvedValue({ items: [], hasMore: false, nextCursor: null })
+
+    const req = new Request(
+      'http://localhost/api/media?limit=10&cursor=2026-08-01T00%3A00%3A00.000Z',
+    )
+    await GET(req)
+
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', {
+      limit: 10,
+      cursor: '2026-08-01T00:00:00.000Z',
+      sort: undefined,
+    })
+  })
+
+  it('passes sort=oldest through to listByMember when requested', async () => {
+    mockListByMember.mockResolvedValue({ items: [], hasMore: false, nextCursor: null })
+
+    const req = new Request('http://localhost/api/media?limit=10&sort=oldest')
+    await GET(req)
+
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', {
+      limit: 10,
+      cursor: null,
+      sort: 'oldest',
+    })
+  })
+
+  it('ignores an unrecognized sort value and keeps the default (newest) order', async () => {
+    mockListByMember.mockResolvedValue({ items: [], hasMore: false, nextCursor: null })
+
+    const req = new Request('http://localhost/api/media?limit=10&sort=bogus')
+    await GET(req)
+
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', {
+      limit: 10,
+      cursor: null,
+      sort: undefined,
+    })
+  })
+
   it('clamps an oversized limit to the maximum page size', async () => {
     mockListByMember.mockResolvedValue({ items: [], hasMore: false, nextCursor: null })
 
     const req = new Request('http://localhost/api/media?limit=99999')
     await GET(req)
 
-    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 100 })
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 100, cursor: null, sort: undefined })
   })
 
   it('falls back to the default page size on a non-numeric limit', async () => {
@@ -173,7 +217,7 @@ describe('GET /api/media — paginated (limit param present)', () => {
     const req = new Request('http://localhost/api/media?limit=notanumber')
     await GET(req)
 
-    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 24 })
+    expect(mockListByMember).toHaveBeenCalledWith('member-1', 'tenant-1', { limit: 24, cursor: null, sort: undefined })
   })
 
   it('still filters out items not owned by the resolved member (defense-in-depth)', async () => {

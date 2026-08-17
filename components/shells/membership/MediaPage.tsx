@@ -24,7 +24,15 @@
 // and a11y tree the same way ChatDrawerV2 does for its own closed state.
 
 import { useEffect, useState } from 'react';
-import { Feather, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
+import {
+  ArrowDownWideNarrow,
+  ArrowUpWideNarrow,
+  Feather,
+  Image as ImageIcon,
+  Loader2,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { MediaItemWithUrl } from '@/services/media/display-url';
 import { MediaItemsGrid } from './media/MediaItemsGrid';
 import { useMediaDelete } from './media/useMediaItemActions';
@@ -89,6 +97,13 @@ interface MediaPageProps {
   onFlash: (message: string) => void;
 }
 
+type MediaSort = 'newest' | 'oldest';
+
+const SORT_OPTIONS: { value: MediaSort; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+];
+
 export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
   // Fetches once, the first time the page is ever opened — not on every
   // open/close, since MediaPage stays mounted (see the file header comment)
@@ -100,11 +115,17 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
     if (open) setHasOpened(true);
   }, [open]);
 
+  // Included in useMediaPagination's queryKey below so switching sort resets
+  // pagination cleanly (fresh items array, cursor, hasMore) instead of
+  // appending an oldest-first page onto an already-loaded newest-first list.
+  const [sort, setSort] = useState<MediaSort>('newest');
+
   const { items, setItems, loading, loadingMore, hasMore, sentinelRef } = useMediaPagination({
-    queryKey: hasOpened ? 'account' : null,
+    queryKey: hasOpened ? `account:${sort}` : null,
     buildUrl: ({ limit, cursor }) => {
       const params = new URLSearchParams({ limit: String(limit) });
       if (cursor) params.set('cursor', cursor);
+      if (sort === 'oldest') params.set('sort', 'oldest');
       return `/api/media?${params.toString()}`;
     },
   });
@@ -183,6 +204,35 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
 
         <div className="flex-1 overflow-y-auto flex justify-center">
           <div className="w-full max-w-[780px] px-6 py-7">
+            {hasOpened && (
+              <div
+                role="tablist"
+                aria-label="Sort order"
+                className="flex gap-0.5 mb-5 w-fit bg-surface-2 border border-border rounded-lg p-0.5"
+              >
+                {SORT_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={sort === value}
+                    onClick={() => setSort(value)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-body font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                      sort === value
+                        ? 'bg-surface text-text-primary shadow-sm'
+                        : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    {value === 'newest' ? (
+                      <ArrowDownWideNarrow size={13} />
+                    ) : (
+                      <ArrowUpWideNarrow size={13} />
+                    )}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             {loading ? (
               <div
                 aria-busy="true"
