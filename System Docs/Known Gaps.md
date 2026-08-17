@@ -191,7 +191,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   the way that handover proposed: an invisible `absolute inset-0 z-20`
   tap-catcher in `ChatHero.tsx`'s mobile branch, carrying no background
   and no fade, so the deliberate no-dimming decision stands untouched.
-  See the `ChatHero` row in `System Docs/Public Site.md`. **Still open,
+  See the `ChatHero` row in `System Docs/Public Site.md`.
+  **The catcher now depends on the drawer NOT being full-bleed —
+  2026-08-16 (`mobile-sidebar-drawer-width`), same day.** That change
+  widened the mobile drawer from `w-64` to `w-[86%]`, so the catcher is
+  `inset-0` but only its uncovered ~14% strip is actually reachable (it
+  sits at `z-20`, under the drawer's `z-30`). The remaining strip is
+  therefore load-bearing, not slack: taking the drawer to 100% would
+  leave the catcher fully covered and silently re-open this same
+  regression, with no test failing on width alone — which is why
+  `ChatHero.mobileSidebarWidth.test.tsx` asserts the `z-30`/`z-20`
+  ordering and tap-outside dismissal alongside the width. **Still open,
   and deliberately not decided by that fix:** the same handover's
   broader question of whether the app standardizes on scrim-everywhere
   (matching Media's bottom sheets) or scrim-nowhere (matching this
@@ -2231,10 +2241,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   **Scoped deliberately, not global.** Enabling `hoverOnlyWhenSupported` in
   `tailwind.config.js` is the one-line version and remains the better
   long-term answer, but it is sitewide: 282 hover utilities across 57 files,
-  of which 10 files drive *visibility* (not just colour) off hover —
-  `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`, `StoryPicker.tsx`,
-  `MemoryCard.tsx`, `PhotoUploadActions.tsx`, `BookingCard.tsx`,
-  `UserMessageActions.tsx`, `MessageActions.tsx`. Two of those
+  of which 10 files drive *visibility* (not just colour) off hover. One is
+  `SidebarV2.tsx` itself, already handled by this fix; the nine still
+  unguarded are `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`,
+  `StoryPicker.tsx`, `MemoryCard.tsx`, `PhotoUploadActions.tsx`,
+  `BookingCard.tsx`, `UserMessageActions.tsx`, `MessageActions.tsx`.
+  (The count and the list disagreed as first written — the list named
+  nine against a stated ten, the missing tenth being the fixed file.)
+  Two of those
   (`MemoryCard`, `PhotoUploadActions`) already carry explicit
   `[@media(hover:none)]:opacity-100` overrides and would be fine; the rest
   were not audited control-by-control and some would go unreachable on
