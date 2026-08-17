@@ -897,6 +897,51 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const { isPresent: isMobileSidebarPresent, isExiting: isMobileSidebarExiting } =
     useAnimatedPresence(state.isSidebarExpanded, prefersReducedMotion ? 0 : SIDEBAR_EXIT_MS);
 
+  // "Push" — the content column visibly shifts right as the drawer slides in,
+  // instead of the drawer merely sliding over a static background. Applied to
+  // ChatHeader and the chat column (MessageList + ChatInput) as two separately
+  // transformed elements rather than one shared wrapper, since ChatHeader sits
+  // outside panelRowRef (it spans the full drawer width, above sidebar|chat|
+  // panel — see the comment where it renders). Both use this same class
+  // string, computed once, so they move in exact lockstep — same trigger, same
+  // duration, same curve, same target — which reads as one cohesive unit even
+  // though they're not physically nested together.
+  //
+  // Driven directly by state.isSidebarExpanded (not isMobileSidebarPresent/
+  // isMobileSidebarExiting): unlike the drawer, neither ChatHeader nor the
+  // chat column ever unmounts, so a plain CSS transition on transform — not a
+  // keyframe pair — is enough. A transition also handles rapid re-open mid-
+  // close for free: the browser interpolates from wherever the transform
+  // currently sits toward the new target, rather than needing the drawer's
+  // useAnimatedPresence machinery (built specifically to cover a conditionally
+  // -mounted element, which this isn't).
+  //
+  // 240ms matches SIDEBAR_EXIT_MS so the push and the drawer's own slide run
+  // for the same duration. translate-x-[30%] (of the pushed element's own
+  // width, so it scales with viewport rather than a fixed px): dramatic enough
+  // to read clearly as a push, but the sidebar already overlays on top (z-30)
+  // regardless of how far content shifts, so the push doesn't need to match
+  // its 86% width to look connected — 30% keeps the message list mostly on
+  // screen and legible instead of shoving it out of view.
+  //
+  // ease-in-out, not the drawer's own exit curve (cubic-bezier(0.64,0,0.78,0)):
+  // that curve stays nearly flat then accelerates hard all the way to the
+  // boundary with no deceleration at the end — right for a sheet leaving the
+  // screen (nothing is there to see it stop), wrong for content that stays on
+  // screen and has to visibly settle into its new position. Tailwind's
+  // ease-in-out (cubic-bezier(0.4,0,0.2,1)) eases into the motion and back out
+  // of it symmetrically at both ends, which is what "gentle" means here.
+  //
+  // duration-0 under reduced motion (mirroring prefersReducedMotion above):
+  // the push still reaches its final position, just without an animated
+  // transition — collapses to instant per the existing prefers-reduced-motion
+  // contract (app/heirloom/globals.css) rather than adding a second contract.
+  const mobileSidebarPushClass = isMobile
+    ? `transition-transform ${prefersReducedMotion ? 'duration-0' : 'duration-[240ms]'} ease-in-out ${
+        state.isSidebarExpanded ? 'translate-x-[30%]' : 'translate-x-0'
+      }`
+    : '';
+
   // On mobile, close the overlay when Esc is pressed (capture phase so it runs
   // before any modal Esc handlers that would also stop propagation).
   useEffect(() => {
@@ -920,22 +965,28 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           panel became a sibling pane: this bar has to sit above the whole
           row, matching the Story Canvas reference the panel-layout handoff
           cites as source of truth, not scoped to one pane. */}
-      <ChatHeader
-        isFullScreen={isFullScreen}
-        onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
-        // The header sits above the drawer, so this button stays reachable
-        // while the drawer is open and has always doubled as a close. It keeps
-        // that, but the closing half now routes through the same animated path
-        // as every other trigger instead of dropping the node instantly.
-        onMenuOpen={
-          isMobile
-            ? (state.isSidebarExpanded ? closeMobileSidebar : openMobileSidebar)
-            : undefined
-        }
-        onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
-        onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
-        onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
-      />
+      {/* Wrapped (rather than a className prop on ChatHeader itself) so the
+          push transform lives entirely in ChatHero, next to the chat column's
+          matching class below, instead of adding a layout concern to
+          ChatHeader's public props. */}
+      <div data-testid="chat-header-push-wrapper" className={mobileSidebarPushClass}>
+        <ChatHeader
+          isFullScreen={isFullScreen}
+          onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
+          // The header sits above the drawer, so this button stays reachable
+          // while the drawer is open and has always doubled as a close. It keeps
+          // that, but the closing half now routes through the same animated path
+          // as every other trigger instead of dropping the node instantly.
+          onMenuOpen={
+            isMobile
+              ? (state.isSidebarExpanded ? closeMobileSidebar : openMobileSidebar)
+              : undefined
+          }
+          onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+          onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+          onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
+        />
+      </div>
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
           ChatHero mounts inside ChatDrawerV2, a drawer capped at
@@ -1194,7 +1245,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
             mobile — chat is always flex-1 there, unaffected by any of this. */}
         <div
-          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'}`}
+          data-testid="chat-column-push-wrapper"
+          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'} ${mobileSidebarPushClass}`}
         >
           <div className="flex flex-col flex-1 min-h-0">
             {isGated ? (
