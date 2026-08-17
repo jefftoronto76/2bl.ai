@@ -842,6 +842,29 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
+  // Mobile chat header (2026-08-16 redesign). Desktop is untouched — it keeps
+  // Media, Memories, Share and Fullscreen exactly as they were. On mobile the
+  // header narrows to hamburger, brand icon, whatever this session actually
+  // holds, profile, and Close: Share and Fullscreen come off entirely (Share
+  // still has SidebarV2's own nav row as its entry point; Fullscreen has no
+  // meaning at drawer-is-the-viewport widths), and Media/Memories become
+  // count-gated so neither can open an empty pane on a phone.
+  //
+  // Both counts reuse state this component ALREADY holds — no new fetch, no
+  // new endpoint, no count column:
+  //   - `mediaItems` is the store's session-scoped list (chatStore.tsx: catch-
+  //     up GET /api/media?chat_id= on session load, Realtime UPDATEs, the
+  //     pending-item poll, and an optimistic addMediaItem the moment an upload
+  //     starts). It's already destructured above for sessionImages, and the
+  //     store clears it on every session switch / New Chat, so it can't carry
+  //     a previous conversation's count forward.
+  //   - `currentSessionMemories` is the exact array SessionMemoriesPanel
+  //     renders, already filtered to state.sessionId above — so "the icon is
+  //     there" and "the panel has rows" are the same fact by construction,
+  //     not two sources that can drift.
+  const hasSessionMedia = mediaItems.length > 0;
+  const hasSessionMemories = currentSessionMemories.length > 0;
+
   // On mobile, close the overlay when Esc is pressed (capture phase so it runs
   // before any modal Esc handlers that would also stop propagation).
   useEffect(() => {
@@ -867,11 +890,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           cites as source of truth, not scoped to one pane. */}
       <ChatHeader
         isFullScreen={isFullScreen}
-        onToggleFullScreen={onToggleFullScreen}
+        onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
         onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
-        onOpenMedia={handleOpenMedia}
-        onOpenSessionMemories={handleOpenSessionMemories}
-        onShareHeirloom={() => setShareHeirloomOpen(true)}
+        onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+        onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+        onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
       />
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
@@ -940,8 +963,34 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               aria-hidden="true"
               onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
             />
-            <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
+            {/* Mobile drawer width lives HERE, not on SidebarV2's own base
+                class: the docked desktop sidebar's w-64 is correct — it's a
+                persistent column beside the chat — while this overlay sits ON
+                the chat and should cover most of the screen like any standard
+                mobile drawer. Before this, both shared w-64, so the drawer
+                covered a 256px sliver of a ~390px viewport.
+
+                86% (not a fixed px width) keeps the uncovered strip
+                proportional across phone widths, and the strip is the whole
+                reason it isn't 100%: the invisible tap-catcher above sits at
+                z-20 UNDER this z-30 drawer, so tap-outside-to-close only works
+                if a real strip of it stays reachable. 14% is ≥44px (the
+                minimum touch target) at any viewport ≥315px — 52px at 390px,
+                94px at the 672px drawer cap — so the catcher always has room
+                to receive a tap.
+
+                The width is on this wrapper rather than passed straight to the
+                aside because the wrapper is absolutely positioned with `left-0`
+                and no `right`: a percentage on its child would resolve against
+                a shrink-to-fit parent. A definite width here also gives the
+                hl-animate-sheet-left translateX(-100%) slide something exact to
+                animate from. SidebarV2 then fills it via w-full. */}
+            <div
+              data-testid="mobile-sidebar-drawer"
+              className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30 w-[86%]"
+            >
               <SidebarV2
+                expandedWidthClassName="w-full"
                 stories={stories}
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}

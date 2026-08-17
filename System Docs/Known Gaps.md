@@ -191,7 +191,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   the way that handover proposed: an invisible `absolute inset-0 z-20`
   tap-catcher in `ChatHero.tsx`'s mobile branch, carrying no background
   and no fade, so the deliberate no-dimming decision stands untouched.
-  See the `ChatHero` row in `System Docs/Public Site.md`. **Still open,
+  See the `ChatHero` row in `System Docs/Public Site.md`.
+  **The catcher now depends on the drawer NOT being full-bleed —
+  2026-08-16 (`mobile-sidebar-drawer-width`), same day.** That change
+  widened the mobile drawer from `w-64` to `w-[86%]`, so the catcher is
+  `inset-0` but only its uncovered ~14% strip is actually reachable (it
+  sits at `z-20`, under the drawer's `z-30`). The remaining strip is
+  therefore load-bearing, not slack: taking the drawer to 100% would
+  leave the catcher fully covered and silently re-open this same
+  regression, with no test failing on width alone — which is why
+  `ChatHero.mobileSidebarWidth.test.tsx` asserts the `z-30`/`z-20`
+  ordering and tap-outside dismissal alongside the width. **Still open,
   and deliberately not decided by that fix:** the same handover's
   broader question of whether the app standardizes on scrim-everywhere
   (matching Media's bottom sheets) or scrim-nowhere (matching this
@@ -999,7 +1009,9 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (PRs #275–#280).** Follow-up investigation after the #269–#272 saga
   above, scoped to the rest of the media pipeline (upload, processing,
   retry, dedup) rather than just `chatStore.tsx`'s delivery tracking.
-  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`.
+  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`
+  — **note that file is not in the repo** (`Backlog/` exists but has never
+  contained it), so the six fixes below are the surviving record of that sweep.
   Six distinct fixes, all merged:
   1. **#275 — stale delivered-status tracking blocking retry resurfacing.**
      `deliveredTerminalIdsRef` (the #270/#271 fix above) tracked only
@@ -2187,16 +2199,68 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
   focus-visible:ring-2 focus-visible:ring-accent text-text-muted
   hover:bg-text-primary/10 hover:text-text-primary`), plus its own
-  `relative` + `before:` hit-area. Identical today, so there is no visual
-  inconsistency to see — the cost is that a future restyle of `IconButton`
-  would silently skip this one button, and the drift would show up as one
-  odd-looking control in an otherwise-updated cluster. Not folded into the
+  `relative` + `before:` hit-area. **This drift is no longer hypothetical —
+  it happened on 2026-08-16**, the same day the entry was written: the
+  mobile single-tap fix below guarded `IconButton`'s hover behind
+  `[@media(hover:hover)]:` and, being scoped to the sidebar, did not touch
+  either copy in `ChatHeader.tsx` — the Account trigger (line ~317) or the
+  `md:hidden` nav toggle (line ~194), which is mobile-only and so is the
+  copy that actually pays for it. Both still arm hover on a first tap where
+  their five `IconButton` siblings no longer do. Folding them in is a
+  two-token edit per line; it was left out only to keep that fix inside the
+  sidebar. The original cost still stands too: a future restyle of
+  `IconButton` would silently skip these buttons, and the drift would show
+  up as odd-looking controls in an otherwise-updated cluster. Not folded into the
   dismissal fix above deliberately (one change at a time, and that change
   needed a `ref` on this button, which would have made the swap a
   behavioral change rather than a cosmetic one). `IconButton` spreads
   `...props`, so `aria-haspopup`/`aria-expanded` already pass through; under
   React 19 `ref` is an ordinary prop, so the swap is likely a small typing
   change to `IconButtonProps` rather than a rewrite.
+
+- **Sidebar row controls are unreachable on touch until long-press lands —
+  2026-08-16 (mobile single-tap fix).** Sidebar rows used to need two taps
+  on iOS Safari: the first only armed the hover state (row background
+  highlight plus the kebab/invite/start-chat reveal), the second fired the
+  real `loadSession`/`onSelectStory`. Cause was unguarded `hover:`/
+  `group-hover:` utilities — this repo is on Tailwind v3, where
+  `hoverOnlyWhenSupported` is opt-in and `tailwind.config.js` does not
+  enable it, so they compile to bare `:hover` pseudo-classes, and WebKit
+  suppresses a tap's click when the synthesized hover repaints what is under
+  the finger. A row did that twice over. The fix prefixes every hover
+  utility in `SidebarV2.tsx` (and in `ui/IconButton.tsx`, which renders the
+  drawer's own Close-X) with `[@media(hover:hover)]:`.
+  **The deliberate consequence:** the three hover-revealed row controls —
+  kebab, invite, start-chat — no longer appear on touch at all, so they are
+  unreachable there until the follow-up long-press gesture ships. That
+  sequencing was the explicit intent, not an oversight, and the follow-up is
+  the thing that closes it. They keep their DOM slot at `opacity-0`, so they
+  also carry `[@media(hover:none)]:pointer-events-none` — without it they
+  would be invisible but still tappable, and a tap near a row's right edge
+  would hit an unseeable control instead of selecting the row (28px of dead
+  zone per control: 28px on conversation rows, 84px on story rows). Desktop
+  hover behaviour is unchanged.
+  **Scoped deliberately, not global.** Enabling `hoverOnlyWhenSupported` in
+  `tailwind.config.js` is the one-line version and remains the better
+  long-term answer, but it is sitewide: 282 hover utilities across 57 files,
+  of which 10 files drive *visibility* (not just colour) off hover. One is
+  `SidebarV2.tsx` itself, already handled by this fix; the nine still
+  unguarded are `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`,
+  `StoryPicker.tsx`, `MemoryCard.tsx`, `PhotoUploadActions.tsx`,
+  `BookingCard.tsx`, `UserMessageActions.tsx`, `MessageActions.tsx`.
+  (The count and the list disagreed as first written — the list named
+  nine against a stated ten, the missing tenth being the fixed file.)
+  Two of those
+  (`MemoryCard`, `PhotoUploadActions`) already carry explicit
+  `[@media(hover:none)]:opacity-100` overrides and would be fine; the rest
+  were not audited control-by-control and some would go unreachable on
+  touch. **If that flag is ever flipped on, those nine files are the audit
+  list**, and the per-class guards in `SidebarV2.tsx`/`IconButton.tsx`
+  become redundant and should be stripped in the same change.
+  Regression coverage is `SidebarV2.touchTapTargets.test.tsx`, which walks
+  every class token the sidebar renders (RowMenu's `document.body` portal
+  included) and fails on any unguarded hover utility — jsdom cannot
+  reproduce WebKit's tap heuristic, so the class contract is the guard.
 
 - **`services/transcription/` logs to `console`, not `audit_events` —
   documented 2026-08-16 while writing `Utilities/Transcription.md`.**
