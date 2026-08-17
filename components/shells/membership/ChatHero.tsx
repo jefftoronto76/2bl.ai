@@ -873,16 +873,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   const hasSessionMemories = currentSessionMemories.length > 0;
 
   // ── Mobile sidebar open/close ─────────────────────────────────────────────
-  // ONE mechanism for closing, not a delay taught to each trigger. Every close
-  // path — scrim tap, Close-X, Escape, session row, story row, Media, Share —
-  // calls closeMobileSidebar, and useAnimatedPresence below is the only thing
-  // that knows an animation is involved at all.
+  // ONE mechanism for closing, not a delay taught to each trigger. Every
+  // deliberate close path — scrim tap, Close-X, Escape, hamburger toggle,
+  // Media, Share — calls closeMobileSidebar, and useAnimatedPresence below is
+  // the only thing that knows an animation is involved at all. Session row
+  // and story row selection do NOT close the sidebar: closing must be a
+  // deliberate user action, never a side effect of selecting something.
   //
   // SET_SIDEBAR rather than the TOGGLE_SIDEBAR these all used before: closing
   // is now idempotent. That matters more than it looks — a second close while
   // one is already in flight used to flip the drawer back OPEN mid-exit, and
-  // several of these triggers fire alongside other work (Media and Share also
-  // open a surface, the row handlers also load a session).
+  // Media/Share fire it alongside other work (opening their own surface).
   const openMobileSidebar = useCallback(() => {
     dispatch({ type: 'SET_SIDEBAR', payload: true });
   }, [dispatch]);
@@ -1100,7 +1101,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}
                 onInviteStory={handleInviteStory}
-                onSelectStory={(storyId) => { closeMobileSidebar(); void handleSelectStory(storyId); }}
+                onSelectStory={(storyId) => { void handleSelectStory(storyId); }}
                 onSelectPrompt={handleSelectPrompt}
                 onRowAction={handleRowAction}
                 starredConversationIds={starredIds}
@@ -1108,11 +1109,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 onRenameCommit={handleRenameCommit}
                 onClose={closeMobileSidebar}
                 onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
-                // Closes the drawer on the way, same as onMedia/onSelectStory
-                // above: the modal outranks the drawer (z-[80] vs z-30) so it
-                // would render fine either way, but leaving a full-height nav
-                // drawer mounted under a focus-trapped dialog is exactly what
-                // every other mobile sidebar action already avoids.
+                // Closes the drawer on the way, same as onMedia above: unlike
+                // plain row selection, this opens a focus-trapped dialog (z-[80]
+                // vs the drawer's z-30) that would render fine either way, but
+                // leaving a full-height nav drawer mounted under a
+                // focus-trapped dialog is exactly what every other mobile
+                // sidebar action already avoids.
                 onShareHeirloom={() => { closeMobileSidebar(); setShareHeirloomOpen(true); }}
                 activeStoryId={storyViewId ?? undefined}
               />
