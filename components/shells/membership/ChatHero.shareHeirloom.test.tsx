@@ -295,6 +295,10 @@ describe('Share Heirloom — mobile (390px)', () => {
 
     await waitFor(() => expect(shareDialog()).toBeInTheDocument());
     // Drawer dismissed — and with the header icon gone, that leaves none.
-    expect(screen.queryAllByRole('button', { name: 'Share Heirloom' })).toHaveLength(0);
+    // Waited rather than asserted inline: the drawer now plays an exit
+    // animation before it unmounts (useAnimatedPresence, 2026-08-17).
+    await waitFor(() =>
+      expect(screen.queryAllByRole('button', { name: 'Share Heirloom' })).toHaveLength(0),
+    );
   });
 });

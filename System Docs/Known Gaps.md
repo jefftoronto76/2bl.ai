@@ -2338,6 +2338,37 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   included) and fails on any unguarded hover utility — jsdom cannot
   reproduce WebKit's tap heuristic, so the class contract is the guard.
 
+- **Re-opening the mobile drawer mid-close snaps back before sliding in —
+  2026-08-17 (mobile sidebar exit animation).** The drawer's exit is a
+  keyframe (`hl-animate-sheet-left-out`), and `useAnimatedPresence` cancels
+  the pending unmount when the user re-opens before it finishes, so the node
+  is continuously mounted and the state always settles correctly — the
+  element ends open, `isExiting` false, no timer pending. What it does *not*
+  do is interpolate: swapping back to `hl-animate-sheet-left` restarts from
+  that keyframe's own `from` (`translateX(-100%)`), so a re-open caught
+  mid-flight jumps back to fully-off-screen and slides in from there instead
+  of reversing smoothly out of wherever it had reached. Purely cosmetic, and
+  only visible inside the 240ms window. **The fix, if it ever reads badly, is
+  to swap both keyframes for a `transition` on `transform`** — transitions
+  interpolate from the current computed value, so an interrupted exit
+  reverses in place. That was not done here because the entrance animation is
+  shared, working, and untouched by this change, and converting it would mean
+  the mount-then-next-frame dance a transition needs to animate on first
+  paint. Covered (as a state guarantee, not a visual one) by
+  `useAnimatedPresence.test.tsx` and
+  `ChatHero.mobileSidebarExitAnimation.test.tsx`.
+
+- **Only the mobile sidebar drawer got an exit animation — the other
+  conditionally-rendered overlays still vanish — 2026-08-17.** The same
+  bug the drawer had applies to every `{open && <Overlay/>}` in this shell:
+  the mobile Media bottom sheet, the mobile memory overlay, and the session
+  memories sheet all mount with `hl-animate-sheet`/`hl-animate-fade` and
+  unmount instantly. `useAnimatedPresence` is deliberately general enough to
+  serve them (it takes only `isOpen` + a duration and knows nothing about the
+  animation), but they were left alone to keep this change to the one surface
+  that was reported. Each would additionally need its own `-out` keyframe
+  added to `app/heirloom/globals.css` and to the `prefers-reduced-motion`
+  block there.
 - **The mobile breakpoint is defined two ways, and they disagree at exactly
   768px — pre-existing, surfaced 2026-08-16.** Two mechanisms decide "is
   this mobile" in the chat drawer and they are off by one pixel:

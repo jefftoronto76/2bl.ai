@@ -77,6 +77,24 @@
 @keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Exit half of the mobile sidebar drawer. The element is conditionally
+   rendered, so it needs useAnimatedPresence to hold the unmount for the same
+   0.24s this runs for — keep the two in step (the hook's duration is a
+   constant in ChatHero.tsx that names this class).
+
+   The easing is the true mirror of the entrance curve, not a copy of it:
+   reversing cubic-bezier(x1,y1,x2,y2) is cubic-bezier(1-x2,1-y2,1-x1,1-y1),
+   which turns the entrance's (0.22, 1, 0.36, 1) ease-out into this ease-in.
+   Reusing the ease-out verbatim would make the drawer leave fast and then
+   crawl the last few pixels, which reads as a stutter rather than a mirror of
+   the way it arrived.
+
+   `both` holds translateX(-100%) after the final keyframe, so if the unmount
+   timer lands a frame late the drawer waits off-screen instead of snapping
+   back into view. */
+@keyframes hl-sheet-left-out { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.hl-animate-sheet-left-out { animation: hl-sheet-left-out 0.24s cubic-bezier(0.64, 0, 0.78, 0) both; }
+
 /* ── Landing scroll-reveal (matches .hl-reveal in LandingPage.tsx) ────────── */
 .hl-reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .hl-reveal.hl-visible { opacity: 1; transform: translateY(0); }
@@ -84,6 +102,7 @@
 @media (prefers-reduced-motion: reduce) {
   .hl-animate-sheet,
   .hl-animate-sheet-left,
+  .hl-animate-sheet-left-out,
   .hl-animate-fade,
   .hl-animate-modal { animation: none !important; }
   .hl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
