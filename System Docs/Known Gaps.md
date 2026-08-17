@@ -2476,3 +2476,44 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   that would need sanitizing on the way in is the non-OK branch's raw
   `body` — Deepgram's own response text, unbounded and not currently
   truncated.
+
+- **Mobile transcript could get stuck horizontally scrolled after closing
+  the sidebar — found and fixed 2026-08-17 (#433).** Reported as "content
+  shifted right, text clipped mid-word on the left" after closing the
+  mobile sidebar drawer. Investigated as a possible regression in the
+  mobile sidebar push-transform animation (`mobileSidebarPushClass` in
+  `ChatHero.tsx`) first — ruled out with confidence: that value is a plain
+  inline `const` re-derived from `state.isSidebarExpanded` on every
+  render, with no memoization and no stale-closure path to go wrong
+  against, and a diff across both of that day's earlier sidebar fixes
+  (#431, #432) showed neither touched the mechanism at all. The reported
+  symptom also doesn't match a stuck rightward push in the first place — a
+  `translate-x-[30%]` stuck open would show a blank gap on the *left* edge
+  and clip the *right*, not truncate text at the start of lines.
+  **Real root cause:** `MessageList.tsx`'s transcript scroll container had
+  `overflow-y-auto` with no explicit `overflow-x`. Per the CSS Overflow
+  spec, a non-`visible` overflow-y with overflow-x unset computes
+  overflow-x to `auto` too — the exact mechanic `SidebarV2.tsx`'s
+  `<aside>` already pairs `overflow-x-hidden overflow-y-auto` to avoid,
+  and `MemoryCard.tsx` documents directly elsewhere in this codebase (see
+  that row in `System Docs/Public Site.md`). That implicit `auto` gave the
+  transcript a real, if unintended, ability to develop a horizontal
+  scroll offset — most plausibly from `ChatThread.tsx`'s
+  `scrollAnchorRef.scrollIntoView()` (default `inline: 'nearest'`) firing
+  while its ancestor content column was mid-transform from the sidebar's
+  own 240ms push-back transition, misjudging horizontal visibility
+  against the live painted (transform-shifted) bounding rect and
+  "correcting" by scrolling the transcript sideways. Nothing ever reset
+  that `scrollLeft` afterward, so it stuck the whole transcript
+  off-center. **Fixed** by pairing `overflow-x-hidden` with the
+  transcript's `overflow-y-auto`, same as `SidebarV2.tsx`'s `<aside>` —
+  the container never legitimately needs horizontal scroll (messages wrap
+  via `whitespace-pre-wrap`, nothing renders wide unwrapped content), so
+  this removes the mechanism outright with no loss of capability.
+  `happy-dom` has no layout engine and doesn't implement `scrollIntoView`'s
+  viewport-visibility math, so the dynamic mechanism itself can't be
+  reproduced in a test — `MessageList.transcriptOverflowX.test.tsx` is a
+  structural regression guard instead, asserting the container carries
+  `overflow-x-hidden`, the same "assert the durable class contract"
+  convention `SidebarV2.touchTapTargets.test.tsx` uses for a CSS-only fix
+  jsdom can't otherwise exercise.
