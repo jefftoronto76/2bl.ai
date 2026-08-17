@@ -35,7 +35,7 @@ one file per topic, loaded on demand rather than read every session:
 | Middleware, domain routing, multi-tenant admin | `System Docs/App Structure and Routing.md` |
 | jefflougheed.ca-only code/assets | `System Docs/jefflougheed Isolation.md` |
 | Contact-capture design | `System Docs/Contact Capture Architecture.md` |
-| Service internals (`services/*/`) | `System Docs/Utilities/` — one file per service (Auth, Prompt, CRM, Audit, Members, Tenant, Content, Chat Server, Chat UI, Shared, Media) |
+| Service internals (`services/*/`) | `System Docs/Utilities/` — one file per service (Auth, Prompt, CRM, Audit, Members, Tenant, Content, Chat Server, Chat UI, Shared, Media, Branding, Transcription). `chat/` is split across Chat Server and Chat UI; every other `services/*/` directory maps to one file of the same name |
 
 If a task touches one of these areas, read the relevant file before starting —
 don't assume the summary here (there isn't one) covers it.

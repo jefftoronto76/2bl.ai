@@ -2329,3 +2329,23 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   rejected because `not-sr-only` resets `overflow`/`white-space` and would
   fight the span's existing `truncate` on desktop, i.e. it risks a desktop
   regression to solve a non-problem on mobile.
+
+- **`services/transcription/` logs to `console`, not `audit_events` —
+  documented 2026-08-16 while writing `Utilities/Transcription.md`.**
+  CLAUDE.md's logging convention calls for an `AuditAction` for anything
+  worth debugging later, on the grounds that Vercel's log retention is
+  short and unqueryable. The Deepgram provider
+  (`services/transcription/providers/deepgram/index.ts`) predates that
+  convention being applied here and uses `console.error` / `console.log`
+  throughout: the non-OK branch captures HTTP status, Deepgram's own
+  `request_id`, and the attempt count, and the success/empty branches log
+  transcript length — genuinely useful support-correlation detail that
+  currently expires with the log window. There is no transcription
+  `AuditAction` in `services/audit/types.ts` today, so closing this means
+  adding one (naming convention: dot-separated lowercase, e.g.
+  `transcription.completed` / `transcription.failed`) rather than reusing
+  an unrelated action. Worth noting for whoever does: the retry path makes
+  `attempts` the interesting field, and none of the existing logs include
+  audio bytes or transcript text beyond a length — that restraint should
+  survive the migration, matching the media pipeline's counts-and-presence
+  -only rule.
