@@ -9,11 +9,13 @@
 // the timing mechanism itself:
 //   1. Every close trigger routes through the one central path. The task's
 //      whole point is that no call site carries its own delay, so each of the
-//      seven — scrim, Close-X, Escape, session row, story row, Media, Share,
-//      plus the header hamburger acting as a toggle — is asserted to leave the
-//      drawer mounted-and-exiting rather than instantly gone. A trigger that
-//      still dispatched the raw action would fail here by unmounting straight
-//      away.
+//      five — scrim, Close-X, Escape, Media, Share — plus the header hamburger
+//      acting as a toggle — is asserted to leave the drawer mounted-and-exiting
+//      rather than instantly gone. A trigger that still dispatched the raw
+//      action would fail here by unmounting straight away. Session row and
+//      story row selection are deliberately NOT close triggers (mobile
+//      sidebar no longer auto-closes on select) and are covered instead in
+//      the "no longer closes" describe block below.
 //   2. The exit class is the reverse keyframe, and the entrance class is gone
 //      while it plays — both applied to the same node, so a half-wired swap
 //      that leaves both on at once is caught.
@@ -190,24 +192,6 @@ describe('Mobile sidebar exit animation — every close trigger routes through i
     expectExiting();
   });
 
-  it('selecting a session row animates out', async () => {
-    await renderReady();
-    await openSidebar();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Exit animation session' }));
-
-    expectExiting();
-  });
-
-  it('selecting a story row animates out', async () => {
-    await renderReady();
-    await openSidebar();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'A Full Story' }));
-
-    expectExiting();
-  });
-
   it('the Media row animates out', async () => {
     await renderReady();
     await openSidebar();
@@ -233,6 +217,33 @@ describe('Mobile sidebar exit animation — every close trigger routes through i
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
 
     expectExiting();
+  });
+});
+
+describe('Mobile sidebar exit animation — session/story selection no longer closes (390px)', () => {
+  beforeEach(() => setViewport(390));
+  afterEach(() => setViewport(1024));
+
+  it('selecting a session row leaves the drawer open, not exiting', async () => {
+    await renderReady();
+    await openSidebar();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Exit animation session' }));
+
+    expect(drawer(), 'drawer unmounted — selection must not close the sidebar').not.toBeNull();
+    expect(hasClass(drawer()!, 'hl-animate-sheet-left')).toBe(true);
+    expect(hasClass(drawer()!, 'hl-animate-sheet-left-out')).toBe(false);
+  });
+
+  it('selecting a story row leaves the drawer open, not exiting', async () => {
+    await renderReady();
+    await openSidebar();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'A Full Story' }));
+
+    expect(drawer(), 'drawer unmounted — selection must not close the sidebar').not.toBeNull();
+    expect(hasClass(drawer()!, 'hl-animate-sheet-left')).toBe(true);
+    expect(hasClass(drawer()!, 'hl-animate-sheet-left-out')).toBe(false);
   });
 });
 

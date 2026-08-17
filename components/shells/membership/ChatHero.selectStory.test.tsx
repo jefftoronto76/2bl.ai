@@ -242,7 +242,7 @@ describe('Story row click — mobile (390px)', () => {
     });
   });
 
-  it('selecting a story closes the sidebar overlay and still opens the real StoryView', async () => {
+  it('selecting a story opens the real StoryView without closing the sidebar overlay', async () => {
     render(
       <ChatProvider>
         <ChatHero />
@@ -253,8 +253,10 @@ describe('Story row click — mobile (390px)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: STORY_FULL.name }));
 
-    // The overlay's own "New Chat" button is gone once it's dismissed.
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'New Chat' })).not.toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument());
+    // Selecting a row must never close the sidebar as a side effect — the
+    // overlay's own "New Chat" button is still there until the user
+    // dismisses the drawer deliberately (X, tap-outside, Escape, hamburger).
+    expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument();
   });
 });
