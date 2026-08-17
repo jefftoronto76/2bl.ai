@@ -11,6 +11,35 @@
 - **Rule:** No new admin screen is built before the relevant Mantine component
   foundation exists. Design system before screens — always.
 
+### Breakpoints
+
+`tailwind.config.js` defines **no custom `screens` key**, so Tailwind's
+defaults are the breakpoints for the whole app: `sm` 640px, `md` 768px, `lg`
+1024px, `xl` 1280px, `2xl` 1536px. Tailwind breakpoints are `min-width`, so
+`md:hidden` hides **at and above** 768px and `hidden md:inline` shows **at and
+above** 768px. **`md` (768px) is the mobile/desktop line** for the membership
+chat shell — it is where the sidebar switches between docked and overlay and
+where the chat header changes shape.
+
+**Two ways of asking "is this mobile" coexist, and they are not equivalent.**
+CSS-side is Tailwind's `md:` prefix. JS-side is
+`useMediaQuery('(max-width: 768px)')` (`@mantine/hooks`), used by
+`ChatHero.tsx` and `ChatInput.tsx` where a decision can't be expressed as a
+class — conditional *rendering* rather than conditional styling, e.g. not
+mounting a component at all, or passing a handler as `undefined`.
+
+Prefer the CSS form when either would work: it needs no JS media query, has no
+post-hydration flash, and is server-renderable. Reach for the JS form only
+when the component tree itself must differ.
+
+⚠️ **`max-width: 768px` and `min-width: 768px` both match at exactly 768px**,
+so the two mechanisms disagree on that single pixel — and that disagreement is
+a live bug today, not a theoretical one. See the breakpoint entry in
+`System Docs/Known Gaps.md` for what breaks and how to fix it. Until it is
+fixed, **don't mix the two mechanisms to gate the same element**, and if you
+must, know that 768px exactly will take the JS branch's rendering with the CSS
+branch's styling.
+
 ### globals.css structure (split by product)
 
 Brand design tokens are **split into per-product, route-scoped CSS files** so
@@ -89,8 +118,7 @@ own design tokens, **fully isolated** from the jefflougheed/inkwell and SBL
 palettes. They live in `app/heirloom/globals.css` (imported only by the
 `/heirloom` layout, so they load only on Heirloom routes). As of the landing
 redesign, the file uses the **canonical `--color-*` token names directly**
-(no `--hl-*`-prefixed tokens — `scripts/lint-tokens.ts` fails the build on
-those), promoted to `:root`: `--color-background`, `--color-surface`,
+(no `--hl-*`-prefixed tokens), promoted to `:root`: `--color-background`, `--color-surface`,
 `--color-surface-2`, `--color-accent`, `--color-accent-hover`,
 `--color-text-primary`, `--color-text-muted`, `--color-text-dim`,
 `--color-border`, `--color-border-hover`, plus a parallel set of
@@ -102,7 +130,20 @@ is direct — no per-brand remap table needed. Because the Heirloom token file
 only loads on Heirloom routes, these tokens are inert everywhere else and do
 not conflict with the other palettes — the root layout only sets
 `data-brand="jefflougheed"` when the request is neither SBL, Heirloom, Legacy,
-nor admin (see `System Docs/App Structure and Routing.md`). The background-image helpers
+nor admin (see `System Docs/App Structure and Routing.md`).
+
+> **The no-tenant-prefix rule is convention only — nothing enforces it.**
+> `Backlog/css-token-unification-spec.md` specifies a `scripts/lint-tokens.ts`
+> build gate (`tsx scripts/lint-tokens.ts && next build`) that would fail the
+> build on `--hl-*`/`--lg-*` tokens, and this doc previously described that
+> gate as live. It is not: `scripts/` contains only `sync-branding.ts`, and
+> `package.json`'s build script is `tsx scripts/sync-branding.ts && next
+> build`. The spec is a proposal that was never implemented. Until it is,
+> a stray tenant-prefixed token ships silently — grep for `--hl-`/`--lg-`
+> by hand when touching token files. (The July 2026 lander handovers already
+> carry this warning; System Docs had not caught up.)
+
+The background-image helpers
 (`.bg-hero-glow`, `.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`)
 and the `--font-*` remaps **remain scoped to `[data-brand="heirloom"]`** in
 that file — the wrapper `<div>` is where next/font defines
