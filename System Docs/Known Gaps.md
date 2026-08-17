@@ -711,6 +711,54 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   usages in `middleware.ts` first and mirror every one, don't just add the
   route file.
 
+- **`x-preview-tenant` forwarded for API paths but not page requests —
+  found and fixed 2026-08-17 (PR #411).** `middleware.ts` set the header
+  only inside a block gated on `isApiPath`, so a preview *page* render had
+  no way to resolve a tenant: `*.vercel.app` never matches `tenants.domain`,
+  so `getTenantFromRequest` fell through to `PREVIEW_TENANT_ID` and returned
+  null when that wasn't set. `app/heirloom/page.tsx` wraps its entire member
+  lookup in `if (tenantId)`, so `isAdmin` and `members.role` silently
+  resolved false/null for **every** visitor on preview, making any
+  owner/admin-gated UI untestable there. Fixed by setting the header in each
+  recognized `?preview=` branch, from the param those branches already hold.
+  **Note the fix that was deliberately not taken:** widening the API block by
+  dropping its `isApiPath` guard. That block ends in an early
+  `return NextResponse.next(...)`, so covering page requests there would
+  short-circuit them ahead of the host-rewrite blocks *and* ahead of
+  `auth.protect()` on `/admin` — leaving the admin surface unauthenticated
+  on preview. `middleware.test.ts` (the first tests this file has had) pins
+  that: the `auth.protect()` case fails if the guard is removed.
+  **Lesson:** a request header set on one path class and not another fails
+  asymmetrically and quietly — the API-driven parts of the page worked
+  perfectly while the server-rendered parts silently degraded, which is
+  precisely why it survived so long. When adding a header for tenant/identity
+  resolution, ask which path classes need it, not just the one in front of
+  you. Consequence to be aware of: `gateEnabled`/`isAuthorized`/`isAdmin` now
+  resolve for real on preview pages, so a tenant with
+  `invite_gate_enabled: true` will genuinely gate there. Remaining caveat
+  (pre-existing, unchanged): the forwarded value is the raw param/cookie
+  string matched against `tenants.slug`, so the alias values `sbl` and
+  `jefflougheed` only resolve if a tenant carries that exact slug.
+
+- **`ChatState.isMember` is not a role, despite the name — live footgun.**
+  `isMember` (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk
+  sign-in state. It is therefore **true for owners and admins too**, so any
+  gate written as `!isMember`/`isMember` to mean "a plain member" is wrong in
+  both directions. This bit the composer caption gate during its first pass
+  (2026-08-17, PR #409) and is the reason `ChatState.memberRole` (the real
+  `members.role`) was plumbed through — see `System Docs/Public Site.md`'s
+  `ChatInput`/`chatStore` rows and `System Docs/Utilities/Members.md`'s
+  `MemberRole` entry. `isAdmin` is a second partial signal (`role === 'admin'
+  || role === 'owner'`) that cannot separate a `member` from a `viewer`. The
+  field has **not** been renamed — the existing feature gates (voice,
+  uploads, sidebar activation) genuinely want "signed in", which is what it
+  means; renaming it touches every consumer and was out of scope. Until then:
+  read `memberRole` for anything role-shaped, and treat `isMember` strictly
+  as sign-in state. Related trap on `memberRole` itself — it is null both for
+  a genuinely anonymous visitor and for a visitor whose role the server
+  couldn't resolve, so pair it with `isMember` rather than reading null as
+  "anonymous".
+
 - **Story invite acceptance not reaching its expected end state for a real
   member — instrumented 2026-08-10 (PR #341), four independent real gaps
   found and fixed 2026-08-10/11 (PRs #343, #344, #346, #348).** Original
