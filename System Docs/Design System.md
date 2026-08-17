@@ -89,8 +89,7 @@ own design tokens, **fully isolated** from the jefflougheed/inkwell and SBL
 palettes. They live in `app/heirloom/globals.css` (imported only by the
 `/heirloom` layout, so they load only on Heirloom routes). As of the landing
 redesign, the file uses the **canonical `--color-*` token names directly**
-(no `--hl-*`-prefixed tokens — `scripts/lint-tokens.ts` fails the build on
-those), promoted to `:root`: `--color-background`, `--color-surface`,
+(no `--hl-*`-prefixed tokens), promoted to `:root`: `--color-background`, `--color-surface`,
 `--color-surface-2`, `--color-accent`, `--color-accent-hover`,
 `--color-text-primary`, `--color-text-muted`, `--color-text-dim`,
 `--color-border`, `--color-border-hover`, plus a parallel set of
@@ -102,7 +101,20 @@ is direct — no per-brand remap table needed. Because the Heirloom token file
 only loads on Heirloom routes, these tokens are inert everywhere else and do
 not conflict with the other palettes — the root layout only sets
 `data-brand="jefflougheed"` when the request is neither SBL, Heirloom, Legacy,
-nor admin (see `System Docs/App Structure and Routing.md`). The background-image helpers
+nor admin (see `System Docs/App Structure and Routing.md`).
+
+> **The no-tenant-prefix rule is convention only — nothing enforces it.**
+> `Backlog/css-token-unification-spec.md` specifies a `scripts/lint-tokens.ts`
+> build gate (`tsx scripts/lint-tokens.ts && next build`) that would fail the
+> build on `--hl-*`/`--lg-*` tokens, and this doc previously described that
+> gate as live. It is not: `scripts/` contains only `sync-branding.ts`, and
+> `package.json`'s build script is `tsx scripts/sync-branding.ts && next
+> build`. The spec is a proposal that was never implemented. Until it is,
+> a stray tenant-prefixed token ships silently — grep for `--hl-`/`--lg-`
+> by hand when touching token files. (The July 2026 lander handovers already
+> carry this warning; System Docs had not caught up.)
+
+The background-image helpers
 (`.bg-hero-glow`, `.bg-contributor-glow`, `.bg-pricing-glow`, `.bg-cta-glow`)
 and the `--font-*` remaps **remain scoped to `[data-brand="heirloom"]`** in
 that file — the wrapper `<div>` is where next/font defines

@@ -1009,7 +1009,9 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (PRs #275–#280).** Follow-up investigation after the #269–#272 saga
   above, scoped to the rest of the media pipeline (upload, processing,
   retry, dedup) rather than just `chatStore.tsx`'s delivery tracking.
-  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`.
+  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`
+  — **note that file is not in the repo** (`Backlog/` exists but has never
+  contained it), so the six fixes below are the surviving record of that sweep.
   Six distinct fixes, all merged:
   1. **#275 — stale delivered-status tracking blocking retry resurfacing.**
      `deliveredTerminalIdsRef` (the #270/#271 fix above) tracked only
