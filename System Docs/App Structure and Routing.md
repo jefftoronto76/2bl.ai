@@ -133,14 +133,39 @@ routing in addition to Clerk auth**:
   sets an `hl-preview` cookie (`path: '/'`, `sameSite: 'lax'`, `maxAge: 3600`)
   to the raw `previewTenant` string so the choice survives subsequent
   navigations. An unrecognized `?preview=` value falls through to normal
-  host-based routing. **API-route forwarding:** because client-side `fetch`
-  calls from a previewed page don't carry `?preview=` themselves, a second,
-  separate block (non-production, `isApiPath` only) reads the `hl-preview`
-  cookie and forwards it as an `x-preview-tenant` request header so
-  `getTenantFromRequest` can resolve the tenant by slug for API calls made
-  from a previewed page. This mechanism is also documented from the consumer
-  side in `System Docs/Utilities/Auth.md` (`getTenantFromRequest`) — keep both
-  in sync if either changes.
+  host-based routing. Every recognized value also sets `x-preview-tenant` on
+  the **page** request itself, straight from the `?preview=` param, so
+  `getTenantFromRequest` can resolve the tenant during server rendering.
+  **API-route forwarding:** because client-side `fetch` calls from a previewed
+  page don't carry `?preview=` themselves, a second, separate block
+  (non-production, `isApiPath` only) reads the `hl-preview` cookie and forwards
+  it as the same `x-preview-tenant` request header for API calls made from a
+  previewed page. This mechanism is also documented from the consumer side in
+  `System Docs/Utilities/Auth.md` (`getTenantFromRequest`) — keep both in sync
+  if either changes.
+
+  **Why the page header is set in the preview block rather than by widening
+  the API block:** that second block ends in an early
+  `return NextResponse.next(...)`. Dropping its `isApiPath` guard to cover page
+  requests would short-circuit them ahead of the SBL/Heirloom/Legacy
+  host-routing rewrites *and* ahead of `auth.protect()` on `/admin`, leaving
+  the admin surface unauthenticated on preview. `middleware.test.ts` pins this:
+  the `auth.protect()` case fails if the guard is removed.
+
+  Until the page header existed, a preview page render resolved **no tenant at
+  all** — `*.vercel.app` never matches `tenants.domain`, so
+  `getTenantFromRequest` fell through to `PREVIEW_TENANT_ID` and returned null
+  when that wasn't set. `app/heirloom/page.tsx` then skipped its member lookup
+  entirely, so `isAdmin` and `members.role` silently resolved false/null for
+  every visitor on preview while the API-driven parts of the same page worked
+  normally. Note the consequence of the fix: `gateEnabled`, `isAuthorized` and
+  `isAdmin` now resolve for real on preview pages, so a tenant with
+  `invite_gate_enabled: true` will actually gate there.
+
+  Caveat: the forwarded value is the raw param/cookie string, matched against
+  `tenants.slug`. The alias values `sbl` and `jefflougheed` only resolve if a
+  tenant carries that exact slug — pre-existing behaviour, unchanged here,
+  and equally true of the API-route forwarding.
 - **Correlation ID generation:** a `crypto.randomUUID()` is generated at the
   top of every request handler and written as `x-correlation-id` onto
   `requestHeaders`. The header propagates through all `NextResponse.next` /
