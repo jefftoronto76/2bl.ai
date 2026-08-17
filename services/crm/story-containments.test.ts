@@ -18,7 +18,7 @@ vi.mock('@/services/audit', () => ({
   logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 
-import { assignMemoryToStory, removeMemoryFromStory, getStoryIdsForMemories, getMemoriesForStory, moveMemoryInStory } from './story-containments'
+import { assignMemoryToStory, removeMemoryFromStory, getStoryIdsForMemories, getMemoriesForStory, getMemoryCountsForStories, moveMemoryInStory } from './story-containments'
 
 type Result = { data: unknown; error: unknown }
 
@@ -482,6 +482,97 @@ describe('getMemoriesForStory', () => {
     const result = await getMemoriesForStory('tenant-1', 'collaborator-user', 'story-1')
 
     expect(result).toEqual({ ok: true, data: [] })
+  })
+})
+
+describe('getMemoryCountsForStories', () => {
+  it('returns an empty map without querying when storyIds is empty', async () => {
+    const { client, calls } = makeClient({})
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', [])
+
+    expect(result).toEqual({ ok: true, data: {} })
+    expect(calls.artifact_containments).toBeUndefined()
+  })
+
+  it('returns an empty map without a second query when no containment rows exist', async () => {
+    const { client, calls } = makeClient({
+      artifact_containments: [{ data: [], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', ['story-1', 'story-2'])
+
+    expect(result).toEqual({ ok: true, data: {} })
+    expect(calls.artifacts).toBeUndefined()
+  })
+
+  it('counts containment rows per parent story, dropping rows whose memory is missing/discarded', async () => {
+    const { client } = makeClient({
+      artifact_containments: [
+        {
+          data: [
+            { parent_artifact_id: 'story-1', child_artifact_id: 'mem-1' },
+            { parent_artifact_id: 'story-1', child_artifact_id: 'mem-2' },
+            { parent_artifact_id: 'story-2', child_artifact_id: 'mem-3' },
+            // mem-4's containment row outlived its memory (discardMemory
+            // never cleans up artifact_containments) — must not count.
+            { parent_artifact_id: 'story-2', child_artifact_id: 'mem-4' },
+          ],
+          error: null,
+        },
+      ],
+      artifacts: [
+        { data: [{ id: 'mem-1' }, { id: 'mem-2' }, { id: 'mem-3' }], error: null },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', ['story-1', 'story-2'])
+
+    expect(result).toEqual({ ok: true, data: { 'story-1': 2, 'story-2': 1 } })
+  })
+
+  it('a story with zero remaining memories is simply absent from the map', async () => {
+    const { client } = makeClient({
+      artifact_containments: [
+        { data: [{ parent_artifact_id: 'story-1', child_artifact_id: 'mem-1' }], error: null },
+      ],
+      artifacts: [{ data: [], error: null }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', ['story-1'])
+
+    expect(result).toEqual({ ok: true, data: {} })
+  })
+
+  it('500s when the containment query errors', async () => {
+    const { client } = makeClient({
+      artifact_containments: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', ['story-1'])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('500s when the memory lookup errors', async () => {
+    const { client } = makeClient({
+      artifact_containments: [
+        { data: [{ parent_artifact_id: 'story-1', child_artifact_id: 'mem-1' }], error: null },
+      ],
+      artifacts: [{ data: null, error: { message: 'db down' } }],
+    })
+    adminHolder.client = client
+
+    const result = await getMemoryCountsForStories('tenant-1', ['story-1'])
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
   })
 })
 

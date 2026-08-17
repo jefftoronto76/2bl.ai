@@ -201,12 +201,14 @@ function SectionLabel({
 }
 
 // ── Memory count mark ───────────────────────────────────────────────────────
-// One mark — accent bookmark + mono numeral — used on both conversation rows
-// and the section header's aggregate, so they read as one system. Rows/totals
-// with no memories render NOTHING — the absence is what makes a marked row a
-// signal. Counts are derived from each session's own memory_count (itself
-// derived server-side from published artifacts rows — see
-// services/crm/sessions.ts) — never stored beyond that.
+// One mark — accent bookmark + mono numeral — used on conversation rows,
+// story rows, and the Sessions section header's aggregate, so they all read
+// as one system. Rows/totals with no memories render NOTHING — the absence
+// is what makes a marked row a signal. Counts are derived server-side: each
+// session's own memory_count (published artifacts rows, services/crm/
+// sessions.ts) and each story's own memoryCount (artifact_containments rows,
+// services/crm/story-containments.ts's getMemoryCountsForStories) — never
+// stored beyond that.
 function SidebarMemoryCount({ count }: { count: number }) {
   if (!count) return null;
   return (
@@ -924,6 +926,7 @@ export function SidebarV2({
                           {story.name}
                         </span>
                       </button>
+                      <SidebarMemoryCount count={story.memoryCount ?? 0} />
                       {onStartStoryChat && !storiesDisabled && (
                         <button
                           type="button"

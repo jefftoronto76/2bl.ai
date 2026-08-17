@@ -76,6 +76,17 @@ function makeClient(opts: {
   subscriberStoryIdsResult?: ListResult
   /** getStoryById's own single-row artifacts lookup (id/title/body/user_id). */
   storyByIdResult?: SelectResult
+  /** getMemoryCountsForStories' containment-rows lookup — artifact_containments
+   *  .in('parent_artifact_id', ...). Defaults to empty (no memories on any
+   *  returned story), matching every listStories test that doesn't care
+   *  about memoryCount. */
+  containmentRowsResult?: ListResult
+  /** getMemoryCountsForStories' second-step "which of those child ids still
+   *  exist as memories" lookup — a SEPARATE artifacts query from the
+   *  story-list one above, so it gets its own table stub rather than
+   *  sharing the generic artifacts chain (whose `then` fallback resolves to
+   *  listResult, the wrong shape for this query). */
+  memoryValidityResult?: ListResult
 }) {
   const insertCalls: Row[] = []
   const updateCalls: Row[] = []
@@ -97,6 +108,9 @@ function makeClient(opts: {
       if (table === 'story_invite_links') {
         return { select: () => makeChain(opts.activeLinkStoryIdsResult ?? { data: [], error: null }) }
       }
+      if (table === 'artifact_containments') {
+        return { select: () => makeChain(opts.containmentRowsResult ?? { data: [], error: null }) }
+      }
       if (table === 'artifacts') {
         return {
           select: () => {
@@ -107,6 +121,12 @@ function makeClient(opts: {
                 orFilterCalls.push(filter)
                 return chain
               },
+              // getMemoryCountsForStories' memory-validity query is the only
+              // artifacts call that reaches .in() (the story-list query's
+              // own .in(...) lives inside its .or() filter string, not a
+              // real .in() call) — a distinct terminal from both order() and
+              // maybeSingle() below.
+              in: () => makeChain(opts.memoryValidityResult ?? { data: [], error: null }),
               order: () => opts.listResult ?? { data: [], error: null },
               // getStoryById's single-row lookup — a distinct terminal from
               // listStories' order()/then(), sharing the same eq/is chain.
@@ -224,6 +244,53 @@ describe('listStories', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('threads each story\'s memoryCount from getMemoryCountsForStories, defaulting to 0 for a story with no counted memories', async () => {
+    const { client } = makeClient({
+      listResult: {
+        data: [
+          { id: 'story-1', title: 'Has memories', body: null, created_at: 'now', updated_at: 'now' },
+          { id: 'story-2', title: 'Empty', body: null, created_at: 'now', updated_at: 'now' },
+        ],
+        error: null,
+      },
+      containmentRowsResult: {
+        data: [
+          { parent_artifact_id: 'story-1', child_artifact_id: 'mem-1' },
+          { parent_artifact_id: 'story-1', child_artifact_id: 'mem-2' },
+        ],
+        error: null,
+      },
+      memoryValidityResult: { data: [{ id: 'mem-1' }, { id: 'mem-2' }], error: null },
+    })
+    adminHolder.client = client
+
+    const result = await listStories('tenant-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data.find(s => s.id === 'story-1')?.memoryCount).toBe(2)
+      expect(result.data.find(s => s.id === 'story-2')?.memoryCount).toBe(0)
+    }
+  })
+
+  it('a memory count lookup failure is non-fatal — the story list still returns, every story defaulting to memoryCount 0', async () => {
+    const { client } = makeClient({
+      listResult: {
+        data: [{ id: 'story-1', title: 'A Story', body: null, created_at: 'now', updated_at: 'now' }],
+        error: null,
+      },
+      containmentRowsResult: { data: null, error: { message: 'db down' } },
+    })
+    adminHolder.client = client
+
+    const result = await listStories('tenant-1', 'user-1')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data[0].memoryCount).toBe(0)
+    }
   })
 })
 
