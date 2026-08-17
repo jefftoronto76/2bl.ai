@@ -62,3 +62,34 @@ export function formatShortDate(input: string | Date | null | undefined): string
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
+
+/**
+ * Absolute per-message timestamp for a chat transcript ("3:14 PM", or
+ * "Jan 5, 3:14 PM" once the message is no longer from today). A chat bubble
+ * is a fixed, one-time event same as the Blocks table's Created column
+ * (see formatShortDate above) — a relative "5m ago" caption would go stale
+ * every render and force interval-ticking every visible bubble, so this
+ * stays absolute like formatShortDate rather than relative like
+ * formatRelativeTime.
+ *
+ * Epoch milliseconds is the primary input — UIMessage.timestamp's own type
+ * (services/chat/ui/v1/types.ts) — but a string/Date is accepted too for
+ * parity with the other formatters in this file.
+ *
+ * Time zone: uses the runtime's local zone, same as formatShortDate — a
+ * message sent near local midnight can render a different day server- vs.
+ * client-side, so callers should suppressHydrationWarning the same way
+ * formatShortDate's own consumers already do.
+ *
+ * Empty / invalid input returns "" — same contract as the other formatters
+ * in this file.
+ */
+export function formatMessageTime(input: number | string | Date | null | undefined): string {
+  if (input === null || input === undefined || input === '') return ''
+  const date = typeof input === 'string' || typeof input === 'number' ? new Date(input) : input
+  if (Number.isNaN(date.getTime())) return ''
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const now = new Date()
+  if (date.toDateString() === now.toDateString()) return time
+  return `${formatShortDate(date)}, ${time}`
+}

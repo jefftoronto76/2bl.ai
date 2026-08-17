@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { formatRelativeTime, formatShortDate } from './time'
+import { formatRelativeTime, formatShortDate, formatMessageTime } from './time'
 
 const NOW = new Date('2026-05-06T12:00:00.000Z')
 
@@ -171,5 +171,57 @@ describe('formatShortDate', () => {
 
   it('garbage string returns ""', () => {
     expect(formatShortDate('not-a-date')).toBe('')
+  })
+})
+
+describe('formatMessageTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW) // 2026-05-06T12:00:00.000Z
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('formats an epoch-ms timestamp from today as time-only', () => {
+    const sameDay = new Date('2026-05-06T15:30:00.000Z').getTime()
+    expect(formatMessageTime(sameDay)).toBe('3:30 PM')
+  })
+
+  it('formats an ISO string from today as time-only', () => {
+    expect(formatMessageTime('2026-05-06T00:05:00.000Z')).toBe('12:05 AM')
+  })
+
+  it('formats a Date instance from today as time-only', () => {
+    expect(formatMessageTime(new Date('2026-05-06T09:00:00.000Z'))).toBe('9:00 AM')
+  })
+
+  it('prefixes the short date once the message is from a prior day', () => {
+    expect(formatMessageTime(new Date('2026-05-05T15:30:00.000Z').getTime())).toBe('May 5, 3:30 PM')
+  })
+
+  it('prefixes the short date for a future-dated message on a different day', () => {
+    expect(formatMessageTime(new Date('2026-05-07T08:00:00.000Z').getTime())).toBe('May 7, 8:00 AM')
+  })
+
+  it('empty string returns ""', () => {
+    expect(formatMessageTime('')).toBe('')
+  })
+
+  it('null returns ""', () => {
+    expect(formatMessageTime(null)).toBe('')
+  })
+
+  it('undefined returns ""', () => {
+    expect(formatMessageTime(undefined)).toBe('')
+  })
+
+  it('garbage string returns ""', () => {
+    expect(formatMessageTime('not-a-date')).toBe('')
+  })
+
+  it('NaN epoch-ms returns ""', () => {
+    expect(formatMessageTime(NaN)).toBe('')
   })
 })
