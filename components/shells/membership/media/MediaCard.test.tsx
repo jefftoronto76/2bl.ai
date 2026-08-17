@@ -192,6 +192,22 @@ describe('MediaCard — lazyload, metadata line, and rename (Aug 2026 Atomic Upd
     expect(screen.getByRole('img', { name: 'letter.pdf' })).toHaveAttribute('loading', 'lazy');
   });
 
+  it('fades the thumbnail in on load instead of popping — starts unloaded, gains hl-thumb-loaded on the img load event', () => {
+    render(
+      <MediaCard
+        item={makeItem({ type: 'image', url: 'https://signed.example/seed.jpg' })}
+        onRetry={() => {}}
+        {...noopHandlers}
+      />,
+    );
+    const img = screen.getByRole('img', { name: 'letter.pdf' });
+    expect(img).toHaveClass('hl-thumb-fade');
+    expect(img).not.toHaveClass('hl-thumb-loaded');
+
+    fireEvent.load(img);
+    expect(img).toHaveClass('hl-thumb-loaded');
+  });
+
   it('metadata line states upload date always, "Processing" appended instead of size while processing', () => {
     const { rerender } = render(
       <MediaCard item={makeItem({ status: 'ready', file_size_bytes: 2048 })} onRetry={() => {}} {...noopHandlers} />,
