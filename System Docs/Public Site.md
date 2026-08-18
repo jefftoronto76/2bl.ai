@@ -381,6 +381,8 @@ The mobile `SidebarV2` wrapper's own `onSelectStory` prop stayed a bare `(storyI
 
 **#433**, same day — closing the sidebar via any path could occasionally leave the transcript stuck horizontally scrolled, text clipped mid-word on the left; traced to `MessageList.tsx`'s transcript scroll container, not this component's push-transform math (`mobileSidebarPushClass`), which was and remains correct on every render — see `System Docs/Known Gaps.md`'s dated entry for the mechanism and fix.
 
+**Mobile sign-in did nothing on tap — found and fixed 2026-08-18.** A second, unrelated bug in the same push mechanism: the `transform` this class applies (even at rest) isolated `chat-header-push-wrapper` into its own stacking context, and `chat-column-push-wrapper` — same class, later in the DOM — silently painted over the Account dropdown wherever it overlapped the chat column, eating every tap on it. `chat-header-push-wrapper` now also carries `relative z-10` (mobile only) to restore it above the chat column while staying under the drawer's `z-30`/scrim's `z-20`. See `System Docs/Known Gaps.md`'s dated entry for the full mechanism and how it was confirmed.
+
 ### `MediaGallery`
 
 **File:** `components/shells/membership/MediaGallery.tsx`
