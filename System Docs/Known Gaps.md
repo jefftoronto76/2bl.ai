@@ -987,6 +987,47 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   convention `SidebarV2.touchTapTargets.test.tsx` uses for a CSS-only fix
   jsdom can't otherwise exercise.
 
+- **Mobile sign-in did nothing on tap — found and fixed 2026-08-18.**
+  Reported as mobile-only (desktop unaffected): tapping "Sign in" in
+  `ChatHeader`'s Account dropdown produced no modal, no error, nothing.
+  First suspected `openSignIn`/Clerk's portal itself — ruled out by reading
+  `@clerk/react`'s source directly: `useClerk().openSignIn()` delegates to
+  `clerkjs.openSignIn()` with no `getContainer` override, so Clerk mounts
+  its modal on `document.body` exactly as `clerkAppearance.ts`'s own header
+  comment already documented, a DOM *sibling* of the whole app tree, never
+  a descendant of anything inside it — no ancestor CSS can reach it. The
+  click was never getting that far anyway. **Real root cause:** the same
+  mobile sidebar push-transform this file's #433 entry above already
+  cleared of one bug (`mobileSidebarPushClass` in `ChatHero.tsx`) had a
+  second, unrelated one. `transform` — present on `chat-header-push-wrapper`
+  on every mobile render, even at rest (`translate-x-0` is still a
+  non-`none` value) — makes the element establish its own stacking context.
+  `chat-column-push-wrapper` gets the same class and does the same. Neither
+  wrapper nor either one's ancestors (`<section>`, the `memory-panel-row`
+  flex container) sets an explicit `position`/`z-index`, so both wrappers'
+  stacking contexts land at the same implicit level and paint in DOM order
+  — the chat column, declared after the header, painted **over** the
+  header's entire stacking context wherever the two visually overlap. The
+  Account dropdown (`absolute top-full`, `z-50`) overlaps exactly there: its
+  `z-50` only wins against siblings *inside* the header's own now-isolated
+  context, not against the chat column outside it, so the column silently
+  absorbed every tap on the dropdown — visually invisible, since the column
+  itself renders nothing there. Confirmed with `elementFromPoint` against a
+  minimal static repro of the same two-wrapper structure, both with and
+  without the transform. **Fixed** by adding `relative z-10` to
+  `chat-header-push-wrapper` only (mobile-only, alongside the existing push
+  class) — `relative` is required even though `transform` alone creates the
+  stacking context, because Chromium leaves the computed `position` at
+  `static`, and `z-index` has no effect on a `static` element regardless of
+  its stacking context, confirmed the same way. `z-10` sits under the
+  mobile sidebar drawer's `z-30` and its `z-20` tap-catcher/scrim (same
+  z-index regression guard `ChatHero.mobileSidebarPushAnimation.test.tsx`
+  already asserted for #433), so both still cover the header while open,
+  exactly as before. `happy-dom` can't run layout/paint, so — same
+  convention as #433's fix above — the new test pins the class contract
+  (`relative z-10` present on the header wrapper, absent from the chat
+  column, at rest and pushed) rather than the hit-testing behavior itself.
+
 ## Sidebar
 
 - **Sidebar has no resize of its own, even in full-screen — found during

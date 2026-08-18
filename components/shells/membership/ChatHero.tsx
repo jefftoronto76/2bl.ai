@@ -969,6 +969,28 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       }`
     : '';
 
+  // Header-only addition on top of the shared push class above (mobile sign-in
+  // bug, 2026-08-18): `transform` — present here even at rest, translate-x-0 is
+  // still a non-none value — makes both push-wrapper divs establish their own
+  // stacking context. With neither wrapper otherwise positioned, they compare
+  // as equal-level (0) stacking contexts and paint in DOM order, so the chat
+  // column wrapper (declared after this one, below) paints OVER this entire
+  // header stacking context wherever they visually overlap — which is exactly
+  // where the Account dropdown extends (`absolute top-full`, z-50): its z-50
+  // only wins inside this wrapper's own now-isolated context, not against the
+  // chat column outside it. The dropdown still looks correct — nothing is
+  // visually wrong — but every tap on it (Sign in included) lands on the
+  // transparent chat column underneath instead, verified with
+  // elementFromPoint against a minimal repro of this exact structure.
+  // `relative z-10` restores the header's whole stacking context above the
+  // chat column's (still z-index:auto/0), while staying under the mobile
+  // sidebar drawer's z-30 and its z-20 tap-catcher/scrim, so both continue to
+  // cover the header while open exactly as before. `relative` is required
+  // here even though `transform` alone establishes the stacking context —
+  // Chromium leaves the computed `position` at `static`, and a `static`
+  // element's `z-index` has no effect on paint order, confirmed the same way.
+  const chatHeaderStackingFixClass = isMobile ? ' relative z-10' : '';
+
   // On mobile, close the overlay when Esc is pressed (capture phase so it runs
   // before any modal Esc handlers that would also stop propagation).
   useEffect(() => {
@@ -996,7 +1018,10 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           push transform lives entirely in ChatHero, next to the chat column's
           matching class below, instead of adding a layout concern to
           ChatHeader's public props. */}
-      <div data-testid="chat-header-push-wrapper" className={mobileSidebarPushClass}>
+      <div
+        data-testid="chat-header-push-wrapper"
+        className={`${mobileSidebarPushClass}${chatHeaderStackingFixClass}`}
+      >
         <ChatHeader
           isFullScreen={isFullScreen}
           onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}

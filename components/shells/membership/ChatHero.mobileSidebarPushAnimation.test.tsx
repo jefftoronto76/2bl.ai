@@ -41,6 +41,13 @@
 //   7. z-index regression guard: the drawer keeps z-30 and the scrim keeps
 //      z-20 — the push is purely a transform on the content side, not a
 //      re-layering, per the task's explicit constraint.
+//   8. Mobile sign-in bug, 2026-08-18: the `transform` this push class applies
+//      isolates the header and chat column wrappers into separate stacking
+//      contexts, and the chat column (later in the DOM) silently painted over
+//      the header's Account dropdown, eating every tap on it. The header
+//      wrapper now also carries `relative z-10`, verified against the
+//      drawer/scrim z-index guard above (stays under both) and pinned as its
+//      own class-contract test — see that test for the full mechanism.
 //
 // Not covered here: that the transition visibly animates smoothly between
 // the two states. happy-dom does not run CSS transitions, so these assert
@@ -173,7 +180,7 @@ describe('Mobile sidebar push animation — content shifts in lockstep with the 
     expect(isPushed(chatColumn())).toBe(false);
   });
 
-  it('opening pushes the header and the chat column by the identical class string', async () => {
+  it('opening pushes the header and the chat column by the identical transform/transition string', async () => {
     await renderReady();
     await openSidebar();
 
@@ -182,9 +189,16 @@ describe('Mobile sidebar push animation — content shifts in lockstep with the 
     // Cohesive-unit requirement: not just "both pushed" but pushed by the
     // exact same transition + transform string appended verbatim, so they
     // cannot drift apart in duration or curve without this failing. The
-    // header wrapper has no other classes, so its className IS that string;
-    // the chat column's className must end with that same string.
-    expect(chatColumn().className.endsWith(headerWrapper().className)).toBe(true);
+    // header wrapper carries `relative z-10` on top of that shared string
+    // (mobile stacking fix, 2026-08-18 — see the z-index test below), so this
+    // now checks that string is a prefix of the header's className and a
+    // suffix of the chat column's, rather than asserting the two full
+    // className strings are identical.
+    const chatColumnClass = chatColumn().className;
+    const headerClass = headerWrapper().className;
+    const sharedPushClass = chatColumnClass.slice(chatColumnClass.indexOf('transition-transform'));
+    expect(headerClass.startsWith(sharedPushClass)).toBe(true);
+    expect(chatColumnClass.endsWith(sharedPushClass)).toBe(true);
   });
 
   it('carries the 240ms duration and an eased (not linear) curve', async () => {
@@ -257,6 +271,32 @@ describe('Mobile sidebar push animation — content shifts in lockstep with the 
 
     expect(screen.getByTestId('mobile-sidebar-drawer').className).toContain('z-30');
     expect(screen.getByTestId('mobile-sidebar-scrim').className).toContain('z-20');
+  });
+
+  // Mobile sign-in bug, 2026-08-18: `transform` on this wrapper (even at rest,
+  // translate-x-0 counts) isolates it into its own stacking context, and the
+  // chat column wrapper below it — also transformed, declared later in the
+  // DOM — painted over that whole context, silently eating every tap on the
+  // Account dropdown (Sign in included) wherever it overlaps the chat column,
+  // confirmed against a minimal repro with elementFromPoint. happy-dom has no
+  // layout/paint engine (same limitation noted for the transcript-overflow
+  // fix — see System Docs/Known Gaps.md), so this is a structural regression
+  // guard on the class contract rather than a hit-testing assertion: it
+  // pins `relative z-10` on the header wrapper, staying under the drawer's
+  // z-30 and the scrim's z-20 (per the test above) while beating the chat
+  // column's untouched z-index:auto.
+  it('carries relative z-10 on the header wrapper only, at rest and pushed', async () => {
+    await renderReady();
+
+    expect(headerWrapper().className).toContain('relative');
+    expect(headerWrapper().className).toContain('z-10');
+    expect(chatColumn().className).not.toContain('z-10');
+
+    await openSidebar();
+
+    expect(headerWrapper().className).toContain('relative');
+    expect(headerWrapper().className).toContain('z-10');
+    expect(chatColumn().className).not.toContain('z-10');
   });
 });
 
