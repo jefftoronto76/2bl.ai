@@ -743,6 +743,25 @@ export function ChatProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
 
+  // Mirrors the mount-time story invite effect immediately above, for the
+  // same reason: an existing Heirloom member opening a fresh admin/member
+  // `?invite=TOKEN` link while already signed in has no `false→true`
+  // isSignedIn transition to hook — the transition effect further below
+  // deliberately skips "already signed in on page load" via its own
+  // wasSignedInRef first-observation guard. Without this, the invite is
+  // never accepted: acceptMemberInviteToken had no second caller. Safe to
+  // add — acceptMemberInviteToken is already idempotent (guarded by
+  // memberInviteAcceptFiredRef, shared with the transition effect below), so
+  // this can never double-fire the accept call for the same visitor.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && inviteTokenRef.current) {
+      console.log('[heirloom/chat] mount-time member invite effect: already signed in with token, calling acceptMemberInviteToken');
+      acceptMemberInviteToken(inviteTokenRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+
   // Stable ref for the pre-auth member id — threaded into every /api/sage
   // request so getMemberContext can look up the primer without user_id.
   const memberIdRef = useRef<string | null>(memberId ?? null);
