@@ -25,7 +25,7 @@ export function CtaSection() {
   }, []);
 
   return (
-    <section ref={sectionRef} id="cta" className="py-24 sm:py-28 md:py-40 px-4 sm:px-6 text-center bg-background">
+    <section ref={sectionRef} id="cta" data-screen-label="Final CTA" className="py-24 sm:py-28 md:py-40 px-4 sm:px-6 text-center bg-background">
       <div className={`max-w-2xl mx-auto transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
         <span className="inline-flex items-center justify-center text-accent mb-6">
           <Feather size={36} strokeWidth={1.5} />

@@ -41,7 +41,7 @@ export function PricingSection() {
     `px-5 py-2 rounded-full font-body text-base font-medium transition-colors ${active ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'}`;
 
   return (
-    <section ref={sectionRef} id="pricing" className="py-20 sm:py-24 md:py-36 bg-surface border-y border-border scroll-mt-16">
+    <section ref={sectionRef} id="pricing" data-screen-label="Pricing" className="py-20 sm:py-24 md:py-36 bg-surface border-y border-border scroll-mt-16">
       <div className="max-w-[620px] mx-auto px-4 sm:px-6">
         <div className={`text-center mb-11 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           <span className="block font-mono text-xs uppercase tracking-[0.3em] text-accent mb-6">Pricing</span>

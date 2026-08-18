@@ -31,7 +31,7 @@ export function WhatIsHeirloomSection() {
   }, []);
 
   return (
-    <section ref={sectionRef} id="what-is-heirloom" className="py-20 sm:py-24 md:py-36 bg-background scroll-mt-16">
+    <section ref={sectionRef} id="what-is-heirloom" data-screen-label="What Is Heirloom" className="py-20 sm:py-24 md:py-36 bg-background scroll-mt-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-12">
         <div className={`text-center mb-16 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
           <span className="block font-mono text-xs uppercase tracking-[0.3em] text-accent mb-6">Create Your Legacy</span>

@@ -16,7 +16,7 @@ const learnLinks = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-accent px-6 pt-14 pb-10 bg-transparent">
+    <footer data-screen-label="Footer" className="border-t border-accent px-6 pt-14 pb-10 bg-transparent">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center gap-4 pb-10 mb-11 border-b border-border">
           <span className="text-accent shrink-0"><Feather size={26} strokeWidth={1.5} /></span>
