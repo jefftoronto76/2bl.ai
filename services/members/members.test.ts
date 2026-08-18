@@ -724,6 +724,64 @@ describe('acceptInvite', () => {
     const [update] = getUpdateCalls() as [Record<string, unknown>]
     expect(update.name).toBeUndefined()
   })
+
+  // ── name parameter (closes the Path 2 race — no orphan to rescue from) ────
+
+  it('falls back to the passed-in name when there is no orphan to rescue from', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-10', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-10', 'user-10', 'Clerk Name')
+
+    expect(result.ok).toBe(true)
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Clerk Name')
+  })
+
+  it('prefers the rescued orphan name over the passed-in name when both are available', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-11', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [{ id: 'orphan-11', name: 'Rescued Name' }],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-11', 'user-11', 'Clerk Name')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Rescued Name')
+  })
+
+  it('does not overwrite an existing invited-row name with the passed-in name', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-12', tenant_id: HEIRLOOM_TENANT_ID, name: 'Already Set' },
+      orphanRows: [],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-12', 'user-12', 'Clerk Name')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBeUndefined()
+  })
+
+  it.each([undefined, null, '', '   '])(
+    'omits name when no orphan and the passed-in name is %p',
+    async (name) => {
+      const { client, getUpdateCalls } = makeAcceptInviteClient({
+        invitedRow: { id: 'member-13', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+        orphanRows: [],
+      })
+      adminHolder.client = client
+
+      await acceptInvite('tok', 'clerk-13', 'user-13', name as string | null | undefined)
+
+      const [update] = getUpdateCalls() as [Record<string, unknown>]
+      expect(update.name).toBeUndefined()
+    },
+  )
 })
 
 // ── hardDeleteMember ─────────────────────────────────────────────────────────

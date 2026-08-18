@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     supabaseUserId,
   })
 
-  const result = await acceptInvite(token, user.providerUserId, supabaseUserId)
+  const result = await acceptInvite(token, user.providerUserId, supabaseUserId, user.name ?? null)
 
   if (!result.ok) {
     console.error('[heirloom/invites/accept] acceptInvite failed', {

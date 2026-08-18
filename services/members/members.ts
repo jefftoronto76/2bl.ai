@@ -423,6 +423,14 @@ export async function acceptInvite(
   token: string,
   clerkUserId: string,
   supabaseUserId: string,
+  /** From Clerk's firstName + lastName (same derivation as
+   *  linkInvitedMember's/acceptStoryInvite's trailing `name` param) —
+   *  null/undefined when Clerk has no name on file. Fallback only: the
+   *  orphan-rescue below (rescuedName) reflects a name the visitor actually
+   *  typed into the OTP form and wins when both are available. Closes the
+   *  race this function used to depend on rescuedName alone to survive —
+   *  see Design Handovers/heirloom-signup-signin-fixes-proposal.md §2. */
+  name?: string | null,
 ): Promise<MembersResult<{ memberId: string }>> {
   console.log('[acceptInvite] entry', {
     clerkUserId,
@@ -548,7 +556,9 @@ export async function acceptInvite(
       source: 'invite',
       used_at: now,
       updated_at: now,
-      ...(rescuedName ? { name: rescuedName } : {}),
+      ...(!row.name && identityValue(rescuedName ?? name)
+        ? { name: identityValue(rescuedName ?? name) }
+        : {}),
     })
     .eq('id', row.id)
 
