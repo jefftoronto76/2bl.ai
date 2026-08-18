@@ -1973,9 +1973,18 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   gone. The only way it could still fire is a signed-out visitor on the
   no-token `WaitlistView` branch signing in through some other UI element
   while `GateView` stays mounted — not a real trigger path today
-  (`WaitlistView` has no sign-in UI of its own). **Left in place pending a
-  decision to remove it** — not deleted without confirming nothing else
-  depends on it.
+  (`WaitlistView` has no sign-in UI of its own).
+
+  **Correction, 2026-08-16 (sign-up/sign-in path audit):** the "orphaned"
+  conclusion above is wrong for a **garbage or mistyped** `?invite=` token —
+  a string that was **never** a real token, distinct from the
+  genuinely-issued-but-now-invalid case this entry was actually describing.
+  `memberTokenExists()` returns `false` for a garbage token, so
+  `bypassGateForExpiredInvite` never applies, `GateView` still mounts, and
+  its `openSignUp()` button remains reachable — confirmed by tracing the gate
+  logic in `Design Handovers/heirloom-signup-signin-paths.md` (Path 7).
+  Low-traffic (it requires a visitor to arrive with a token string that
+  never existed), but a real, live trigger. **Left in place, correctly.**
 
 - **Expired/invalid `?invite=` token now gets the same chat-first
   deterministic signup flow as valid admin/story invites — built
@@ -1992,8 +2001,9 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   stale link still sees GateView's "You're on the list." branch, not an
   unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
   branches just become unreachable for this one case.
-  `/api/heirloom/members/claim` + `claimMembership` are now effectively
-  orphaned (no realistic remaining trigger) but left in place, not deleted.
+  `/api/heirloom/members/claim` + `claimMembership` are **not** orphaned — a
+  garbage `?invite=` token still reaches them via `GateView`'s `openSignUp()`
+  branch; see the correction on the entry immediately above.
   **Not yet done:** the four manual verification cases this fix specifically
   requires (real-expired-token, garbage-token, cross-tenant-token,
   signed-in-with-stale-token) haven't been run against a live preview —
