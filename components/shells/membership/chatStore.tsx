@@ -19,7 +19,7 @@ import type { ChatErrorType } from '@/services/chat/ui/v1/types';
 // (crypto, supabase-admin) is never pulled into this client bundle.
 import type { MemberRole } from '@/services/members';
 import { titleSourceFromContent } from '@/services/chat/ui/v1/mediaMarkerPatterns';
-import { mergeMediaItem } from './mediaItemMerge';
+import { mergeMediaItems } from './mediaItemMerge';
 
 // Client-only extension — localPreviewUrl is never persisted to the DB.
 // `url` (image items only) is server-attached by GET /api/media, not the DB
@@ -1299,12 +1299,11 @@ export function ChatProvider({
     // Computed off mediaItemsRef.current (not React state) and written back
     // to it synchronously, before setMediaItems ever runs — see the ref's
     // declaration comment for why this can't wait for a render.
-    const prev = mediaItemsRef.current;
-    const idx = prev.findIndex(m => m.id === item.id);
-    const next =
-      idx >= 0
-        ? prev.map((m, i) => (i === idx ? mergeMediaItem(m, item) : m))
-        : [...prev, mergeMediaItem(undefined, item)];
+    // mergeMediaItems re-sorts by created_at, same as the catch-up/poll
+    // fetches below — a Realtime UPDATE for an item this client hasn't seen
+    // yet (e.g. catch-up hasn't landed) can arrive out of chronological
+    // order same as a late poll result can; see mediaItemMerge.ts.
+    const next = mergeMediaItems(mediaItemsRef.current, [item]);
     mediaItemsRef.current = next;
     setMediaItems(next);
   }, []);
@@ -1318,15 +1317,7 @@ export function ChatProvider({
       .then(r => r.json())
       .then((data: { items?: ClientMediaItem[] }) => {
         if (!cancelled && Array.isArray(data.items) && data.items.length > 0) {
-          setMediaItems(prev => {
-            const merged = [...prev];
-            for (const item of data.items!) {
-              const idx = merged.findIndex(m => m.id === item.id);
-              if (idx >= 0) merged[idx] = mergeMediaItem(merged[idx], item);
-              else merged.push(mergeMediaItem(undefined, item));
-            }
-            return merged;
-          });
+          setMediaItems(prev => mergeMediaItems(prev, data.items!));
         }
       })
       .catch(err => console.error('[heirloom/chat] media catch-up failed:', err));
@@ -1395,15 +1386,7 @@ export function ChatProvider({
             if (cancelled) return;
             let current = mediaItemsRef.current;
             if (Array.isArray(data.items) && data.items.length > 0) {
-              const merged = [...mediaItemsRef.current];
-              for (const item of data.items!) {
-                const idx = merged.findIndex((m) => m.id === item.id);
-                if (idx >= 0) {
-                  merged[idx] = mergeMediaItem(merged[idx], item);
-                } else {
-                  merged.push(mergeMediaItem(undefined, item));
-                }
-              }
+              const merged = mergeMediaItems(mediaItemsRef.current, data.items!);
               current = merged;
               // Write the ref synchronously (same idiom as addMediaItem
               // above) so the stillPending check below never reads a stale

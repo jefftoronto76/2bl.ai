@@ -2352,6 +2352,42 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     `createMemoryFromAnchor`; this one leaked into a chat session's own
     title.
 
+- **Media items within an open session could visually jump to the wrong
+  chronological position — found and fixed 2026-08-18.** `listByChat`
+  (`services/media/index.ts`) was and remains correct — `created_at`
+  ascending, server-side. The bug was entirely client-side, in
+  `chatStore.tsx`'s merge logic, and existed in all three places a fetched
+  batch or a single Realtime item gets merged into `mediaItems`: the
+  catch-up-on-session-load fetch, the pending-item poll, and `addMediaItem`
+  (shared by the Realtime subscription and the optimistic-upload path in
+  `ChatInput.tsx`). All three independently duplicated the same shape — an
+  item not already present by id was pushed onto the **end** of the array
+  unconditionally, regardless of its actual `created_at` relative to items
+  already there. That's silently correct only when every arrival happens to
+  already be chronologically last, which a fresh optimistic upload usually
+  is (verified: `ChatInput.tsx` stamps it with `new Date().toISOString()` at
+  attach time) but a fetched batch is not guaranteed to be — a Realtime
+  `UPDATE` event missed and only caught by a later poll tick, or a catch-up
+  fetch landing while an upload is still in flight, both produce a fetched
+  item whose `created_at` is earlier than items already in the array, and
+  the old code still appended it last. **Fixed** by extracting one shared
+  `mergeMediaItems(prev, incoming)` (`mediaItemMerge.ts`, alongside the
+  pre-existing single-item `mergeMediaItem`) that merges — update-in-place
+  or append, same as before — then unconditionally re-sorts the whole
+  result by `created_at` ascending before returning it, so the array's
+  order depends on the data, not on merge/fetch order. All three call sites
+  in `chatStore.tsx` now route through it instead of duplicating the
+  merge-and-maybe-append logic inline. `Array.prototype.sort` is stable, so
+  two items sharing a `created_at` keep their prior relative order rather
+  than the sort itself introducing new churn. Verified two ways:
+  `mediaItemMerge.test.ts` unit-tests the sort directly (out-of-order
+  append, an update-in-place that would otherwise leave a stale position,
+  multiple items in one call, stability on a tie, no-mutation, empty-batch
+  no-op); `chatStore.mediaChronologicalOrder.test.tsx` exercises the same
+  bug through the real catch-up/poll effects and `addMediaItem` via a
+  mounted `ChatProvider`, mirroring the existing convention in
+  `chatStore.mediaPolling.test.tsx`/`chatStore.mediaItemsRace.test.tsx`.
+
 ## Services
 
 - **`services/payments/` not created.** Stripe Connect work is deferred; not
