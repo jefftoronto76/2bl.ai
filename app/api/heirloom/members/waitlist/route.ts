@@ -6,9 +6,10 @@
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
+import { setIdentityField } from '@/services/shared/identity'
 
 export async function POST(req: Request) {
-  let body: { email?: string }
+  let body: { email?: string; name?: string }
   try {
     body = await req.json()
   } catch {
@@ -35,13 +36,26 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, already_exists: true })
   }
 
-  const { error } = await supabase.from('members').insert({
+  // Optional — no Clerk account exists yet at this stage, so a name isn't
+  // required the way it is at real signup. When supplied, it's written
+  // straight onto members.name (not invited_name — that column is
+  // admin-invite-creation metadata, a different thing, per D8's decision
+  // in System Docs/Identity System.md). This is a fresh insert, so
+  // fill-only-when-null semantics don't apply here (same as
+  // createMemberInvite/acceptStoryInvite's inserts) — the row this creates
+  // is the same row later promoted to 'invited' by the admin resend route,
+  // so the name carries forward automatically, no separate fill-on-promotion
+  // step needed.
+  const insertPayload: Record<string, unknown> = {
     tenant_id: HEIRLOOM_TENANT_ID,
     email,
     status: 'waitlist',
     role: 'member',
     updated_at: new Date().toISOString(),
-  })
+  }
+  setIdentityField(insertPayload, 'name', body.name)
+
+  const { error } = await supabase.from('members').insert(insertPayload)
 
   if (error) {
     console.error('[api/heirloom/members/waitlist] insert failed:', error.message)
