@@ -57,7 +57,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
   if (url.includes('/heirloom/invites/accept')) return jsonResponse({ ok: true });
   return jsonResponse({ ok: true });
