@@ -114,8 +114,17 @@ export async function acceptInvite(
 ```
 becomes, using the already-imported `identityValue` from `services/shared/identity.ts`:
 ```ts
-...(!row.name && identityValue(rescuedName ?? name) ? { name: identityValue(rescuedName ?? name) } : {}),
+...(!identityValue(row.name) && (identityValue(rescuedName) ?? identityValue(name))
+  ? { name: identityValue(rescuedName) ?? identityValue(name) }
+  : {}),
 ```
+(Revised from the original draft of this proposal, which normalized after
+selecting via `??` — `identityValue(rescuedName ?? name)` treats a
+whitespace-only `rescuedName` as present, since `??` only falls through on
+`null`/`undefined`, silently discarding a real `name` fallback. Caught in
+PR #448 review; each candidate is normalized independently before the
+fallback now, and the guard reads `identityValue(row.name)` for the same
+reason. Shipped as written here.)
 
 **Precedence, and why this order:** `rescuedName` first, `name` (Clerk's own)
 as fallback. `rescuedName` reflects the value the visitor *typed* into the
