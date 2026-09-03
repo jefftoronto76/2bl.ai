@@ -33,7 +33,8 @@
     --hl-on-accent    → rgb(var(--color-background))  (= Tailwind `text-background`
                                                       on the existing CTAs)
     --font-display → Tailwind `font-display`
-  Reference `.reveal` / `.reveal.in` → `.hl-rise` / `.hl-rise.in` (globals.css).
+  Reference `.reveal` / `.reveal.in` → same classes, defined once in globals.css
+  (shared with the other Story Canvas section ports).
 */
 
 import { useChatStore } from '@/components/shells/membership/chatStore';
@@ -56,7 +57,7 @@ export function PricingSection() {
       style={{ padding: 'clamp(80px,12vw,150px) 24px', background: 'rgb(var(--color-surface))', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}
     >
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
-        <div className={'hl-rise' + (seen ? ' in' : '')} style={{ textAlign: 'center' }}>
+        <div className={'reveal' + (seen ? ' in' : '')} style={{ textAlign: 'center' }}>
           <Eyebrow style={{ marginBottom: 24 }}>Public Release Soon</Eyebrow>
           <h2 className="font-display" style={{ fontWeight: 300, fontSize: 'clamp(34px,5vw,60px)', lineHeight: 1.1, letterSpacing: '-.01em', color: 'rgb(var(--color-text-primary))', margin: '0 0 26px' }}>
             We&rsquo;re almost ready.

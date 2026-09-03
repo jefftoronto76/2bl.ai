@@ -184,12 +184,14 @@ transport via the shared `readDataStream` (`services/chat/server/stream-utils.ts
 **Lander section ports (Summer 2026 reference):** sections under `components/landing/`
 are being replaced one or two at a time from `Design Handovers/ Aug 2026 Atomic
 Updates/13_Heirloom_lander_nav_updateV4/Heirloom Lander - Summer 2026 - Story Canvas.html`.
-Ported sections share `useReveal.ts` (scroll-reveal hook) + the `.hl-rise` / `.hl-rise.in`
+Ported sections share `useReveal.ts` (scroll-reveal hook) + the `.reveal` / `.reveal.in`
 rise animation in `globals.css`, `Eyebrow.tsx`, and `LandingCta.tsx`; each maps the
 reference's `var(--hl-*)` colors onto the canonical `--color-*` tokens (mapping table in
 each file's header comment). Every CTA keeps production's `dispatch({ type: 'OPEN_CHAT' })`
 wiring via `useChatStore` — the reference's `legacy-open-chat` window CustomEvent is never
 ported. Ported so far: `HeroSection` + `PageThread` (constellation hero + scroll thread),
+`WhatIsHeirloomSection`, `HowItWorksSection` (book suite), `ContributorModelSection`,
+`FeaturesSection` (best parts),
 `BuyerPersonasSection` ("Every story deserves to be told", `id="personas"`), and
 `PricingSection` (now the "We're almost ready" beta-signup panel — `id="pricing"` is
 `LandingNav`'s scroll target and must stay). Section tests sit beside each component

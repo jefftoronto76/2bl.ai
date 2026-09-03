@@ -25,7 +25,8 @@
     --hl-accent-soft → rgb(var(--color-accent) / 0.13)
     --hl-accent-line → rgb(var(--color-accent) / 0.3)
     --font-display / --font-mono → Tailwind `font-display` / `font-mono`
-  Reference `.reveal` / `.reveal.in` → `.hl-rise` / `.hl-rise.in` (globals.css).
+  Reference `.reveal` / `.reveal.in` → same classes, defined once in globals.css
+  (shared with the other Story Canvas section ports).
   Reference <Icon name=…> → lucide-react (same pattern as HeroSection.tsx).
 
   Presentational only — no chat wiring in this section.
@@ -64,7 +65,7 @@ export function BuyerPersonasSection() {
       style={{ padding: 'clamp(80px,12vw,150px) 24px', background: 'rgb(var(--color-background))' }}
     >
       <div style={{ maxWidth: 1180, margin: '0 auto' }}>
-        <div className={'hl-rise' + (seen ? ' in' : '')} style={{ textAlign: 'center', marginBottom: 60 }}>
+        <div className={'reveal' + (seen ? ' in' : '')} style={{ textAlign: 'center', marginBottom: 60 }}>
           <Eyebrow style={{ marginBottom: 24 }}>Who We&rsquo;re Building For</Eyebrow>
           <h2 className="font-display" style={{ fontWeight: 300, fontSize: 'clamp(34px,5vw,66px)', lineHeight: 1.08, letterSpacing: '-.01em', color: 'rgb(var(--color-text-primary))', margin: 0 }}>
             Every story deserves to be told.
@@ -75,7 +76,7 @@ export function BuyerPersonasSection() {
           {buyers.map((b, i) => (
             <div
               key={b.t}
-              className={['hl-rise', colStart[i], seen ? 'in' : ''].filter(Boolean).join(' ')}
+              className={['reveal', colStart[i], seen ? 'in' : ''].filter(Boolean).join(' ')}
               style={{
                 gridColumn: colStart[i] === 'hl-p-col-2' ? '2 / span 2' : 'span 2',
                 animationDelay: (0.14 + i * 0.1) + 's',

@@ -43,7 +43,7 @@ describe('BuyerPersonasSection', () => {
 
   it('offsets only the 4th card to column 2 of the 6-column grid', () => {
     render(<BuyerPersonasSection />);
-    const cards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.closest('.hl-rise') as HTMLElement);
+    const cards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.closest('.reveal') as HTMLElement);
     expect(cards).toHaveLength(5);
     cards.forEach((card, i) => {
       if (i === 3) {
@@ -58,11 +58,11 @@ describe('BuyerPersonasSection', () => {
 
   it('keeps the common-word "Legacy" tag on The Individual and gives every card three tags', () => {
     render(<BuyerPersonasSection />);
-    const individual = screen.getByRole('heading', { level: 3, name: 'The Individual' }).closest('.hl-rise') as HTMLElement;
+    const individual = screen.getByRole('heading', { level: 3, name: 'The Individual' }).closest('.reveal') as HTMLElement;
     const chips = within(individual).getAllByText(/Memoir|Retirement|Legacy/);
     expect(chips.map((c) => c.textContent)).toEqual(['Memoir', 'Retirement', 'Legacy']);
 
-    const allCards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.closest('.hl-rise') as HTMLElement);
+    const allCards = screen.getAllByRole('heading', { level: 3 }).map((h) => h.closest('.reveal') as HTMLElement);
     allCards.forEach((card) => {
       expect(card.querySelectorAll('span.font-mono')).toHaveLength(3);
       // each chip carries a decorative lucide icon
