@@ -17,6 +17,7 @@ import { useMemories, type MemoryRow } from '@/services/chat/ui/v1/useMemories';
 import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
 import { SaveChatCTA } from './SaveChatCTA';
 import { GateView } from './GateView';
+import { NameCompletionGate } from './NameCompletionGate';
 import { MemoryPanelDivider } from './MemoryPanelDivider';
 import { MemoryCardView } from './memory/MemoryCardView';
 import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
@@ -1309,7 +1310,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             {isGated ? (
               <GateView />
             ) : (
-              <>
+              <NameCompletionGate>
                 {state.hasStarted ? (
                   <MessageList
                     messages={state.messages}
@@ -1331,7 +1332,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                   <ChatInput />
                   <SaveChatCTA />
                 </div>
-              </>
+              </NameCompletionGate>
             )}
           </div>
         </div>

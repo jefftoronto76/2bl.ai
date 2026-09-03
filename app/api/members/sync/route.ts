@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser, syncMember, HEIRLOOM_TENANT_ID, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUser, syncMember, HEIRLOOM_TENANT_ID, getTenantFromRequest, updateClerkUserFirstName } from '@/services/auth'
 import { identityValue } from '@/services/shared/identity'
 
 /**
@@ -53,6 +53,22 @@ export async function POST(req: Request) {
   if (!result.ok) {
     console.error('[api/members/sync] syncMember failed:', result.error)
     return NextResponse.json({ error: result.error }, { status: 500 })
+  }
+
+  // Opt-in only — this route is called far more often than just the
+  // name-completion interstitial (MagicLinkCard, SaveChatCTA's
+  // claimAllSessions, the returning-visitor mount effect), and none of
+  // those should start writing to Clerk. Only a caller that explicitly
+  // sets syncToClerk does. Non-fatal: Supabase is the source of truth and
+  // has already been written above; a failed Clerk write is logged, not
+  // surfaced, same treatment deleteClerkUser's own caller gives its
+  // failures (services/members/members.ts's hardDeleteMember).
+  if (name && body.syncToClerk === true) {
+    try {
+      await updateClerkUserFirstName(user.providerUserId, name)
+    } catch (err) {
+      console.error('[api/members/sync] updateClerkUserFirstName failed (non-fatal):', err)
+    }
   }
 
   return NextResponse.json({ member: result.data })
