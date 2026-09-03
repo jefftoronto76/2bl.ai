@@ -27,12 +27,20 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>
   const suppliedName = typeof body.name === 'string' ? body.name : null
 
-  // The name the visitor typed wins; Clerk's own firstName + lastName (already
-  // joined onto AuthUser.name at the services/auth boundary) is the fallback so
-  // a member Clerk can already name is never left nameless here. Both go
-  // through identityValue, so an empty typed name falls through to Clerk rather
-  // than resolving to "no value".
-  const name = identityValue(suppliedName) ?? identityValue(user.name) ?? null
+  // Deliberately NOT falling back to Clerk's own name when the visitor
+  // supplied none. This route is called far more often than the webhook —
+  // in particular by MagicLinkCard's "already signed in" mount effect,
+  // which re-fires on every mount with an empty name for an EXISTING
+  // member. A name entered during sign-in is written to Supabase only,
+  // never back to Clerk (client.ts's signUp.update only runs on the
+  // sign-up branch) — so falling back to Clerk's name here would silently
+  // overwrite a newer, correct Supabase name with Clerk's stale one on the
+  // next mount. That is exactly the D3 overwrite class, made reachable
+  // through this route instead of the (unsubscribed) webhook. Flagged in
+  // PR #448 review. identityValue still means an empty/whitespace name
+  // leaves the column untouched — the D1 fix — just with no Clerk fallback
+  // behind it.
+  const name = identityValue(suppliedName)
 
   const result = await syncMember({
     clerkUserId: user.providerUserId,
