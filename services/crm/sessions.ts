@@ -8,17 +8,7 @@
 // consumers — tenant resolution, request parsing, and HTTP response mapping
 // only. Logic moved verbatim from those routes — behavior unchanged.
 
-import { createClient } from '@supabase/supabase-js'
-
-// Local service-role client. Kept here (rather than @/services/auth's shared
-// factory) to preserve the routes' env-check logging verbatim; centralizing on
-// services/auth would drop those debug logs, which is a separate change.
-function getAdminClient(label: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  console.log(`${label} env check — url present:`, !!url, '| service key present:', !!key)
-  return createClient(url!, key!)
-}
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 export type SessionResult<T> =
   | { ok: true; data: T }
@@ -34,7 +24,7 @@ export async function createSession(
   tenantId: string,
   userId?: string | null,
 ): Promise<SessionResult<{ id: string }>> {
-  const supabase = getAdminClient('[sessions/route]')
+  const supabase = getAdminClient()
 
   const row: {
     tenant_id: string
@@ -145,7 +135,7 @@ export async function listSessions(
   tenantId: string,
   userId: string,
 ): Promise<SessionResult<ChatSessionSummary[]>> {
-  const supabase = getAdminClient('[sessions/route GET]')
+  const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -206,7 +196,7 @@ export async function updateSession(
   id: string,
   input: SessionUpdateInput,
 ): Promise<SessionResult<null>> {
-  const supabase = getAdminClient('[sessions/[id]/route]')
+  const supabase = getAdminClient()
 
   // Only write visitor_name when the client sends a non-empty string. The
   // server-side name extractor in /api/sage may have already populated it
@@ -289,7 +279,7 @@ export async function getSessionMessages(
   tenantId: string,
   id: string,
 ): Promise<SessionResult<{ messages: unknown }>> {
-  const supabase = getAdminClient('[sessions/[id]/messages]')
+  const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -329,7 +319,7 @@ export async function transferSessions(
   targetUserId: string,
   contactStamp?: { email: string | null; visitorName: string | null },
 ): Promise<SessionResult<{ transferred: number; sessions: TransferSessionRow[] }>> {
-  const supabase = getAdminClient('[sessions/transfer]')
+  const supabase = getAdminClient()
 
   // Capture before-state + enforce tenant scope (cross-tenant IDs simply won't match)
   const { data: before, error: selectError } = await supabase
@@ -399,7 +389,7 @@ export async function claimSession(
   id: string,
   userId: string,
 ): Promise<SessionResult<null>> {
-  const supabase = getAdminClient('[sessions/[id]/claim]')
+  const supabase = getAdminClient()
 
   const { data: existing, error: selectError } = await supabase
     .from('chat_sessions')
@@ -450,7 +440,7 @@ export async function softDeleteSession(
   tenantId: string,
   id: string,
 ): Promise<SessionResult<null>> {
-  const supabase = getAdminClient('[sessions/[id]/route DELETE]')
+  const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('chat_sessions')
