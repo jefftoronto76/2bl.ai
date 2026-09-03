@@ -431,11 +431,25 @@ export async function acceptInvite(
    *  race this function used to depend on rescuedName alone to survive —
    *  see Design Handovers/heirloom-signup-signin-fixes-proposal.md §2. */
   name?: string | null,
+  options?: {
+    /** True when the caller is an already-signed-in visitor (the mount-time
+     *  effect added for the "already signed in with a fresh invite link"
+     *  gap, chatStore.tsx), not the false→true sign-up transition. Skips
+     *  step 3's orphan delete entirely: that delete's premise is "any other
+     *  row sharing this clerk_id is a same-request signup-race artifact
+     *  syncMember created moments ago" — true only for a brand-new sign-up.
+     *  For an already-signed-in visitor, that other row is just as likely
+     *  their real, established membership (with its own primer, role, and
+     *  subscriptions) — deleting it would silently destroy it. Flagged in
+     *  PR #448 review; see the guard below for what runs instead. */
+    skipOrphanCleanup?: boolean
+  },
 ): Promise<MembersResult<{ memberId: string }>> {
   console.log('[acceptInvite] entry', {
     clerkUserId,
     token: token.slice(0, 8) + '…',
     supabaseUserId,
+    skipOrphanCleanup: options?.skipOrphanCleanup === true,
   })
 
   if (!token || !clerkUserId || !supabaseUserId) {
@@ -494,54 +508,79 @@ export async function acceptInvite(
   // can independently write a real `name` onto that orphan row (it races
   // acceptInvite off the same Clerk session-activation event, no ordering
   // guaranteed), and the invited row being stamped in step 4 never has one.
-  const { data: orphanRows, error: orphanErr } = await supabase
-    .from('members')
-    .delete()
-    .eq('clerk_id', clerkUserId)
-    .eq('tenant_id', row.tenant_id)
-    .neq('id', row.id)
-    .select('id, name')
-
-  // Rescued from a single deleted orphan's `name` when the invited row
-  // doesn't already have one — see step 3 comment above. Left undefined
-  // (not included in the step 4 update payload) for every other case:
-  // zero orphans, more than one, or the orphan's name is also null.
+  //
+  // Skipped entirely when skipOrphanCleanup is set — see the param's doc
+  // comment. Instead: if this clerk_id already owns a different row for this
+  // tenant, that row is this visitor's real membership, not an artifact to
+  // clean up. Stamping row.id would violate the unique clerk_id constraint
+  // regardless, so surface that plainly (no accept, nothing deleted) rather
+  // than attempt a destructive delete to make room for it.
   let rescuedName: string | undefined
 
-  if (orphanErr) {
-    console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
-      clerkUserId,
-      error: orphanErr.message,
-    })
-    void logEvent({
-      action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
-      clerk_user_id: clerkUserId,
-      target_type: 'member',
-      target_id: row.id,
-      outcome: 'failure',
-      metadata: { error: orphanErr.message },
-    })
-    // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
-    // on clerk_id will surface a real error if the orphan remains.
+  if (options?.skipOrphanCleanup) {
+    const { data: conflictingRow, error: conflictErr } = await supabase
+      .from('members')
+      .select('id')
+      .eq('clerk_id', clerkUserId)
+      .eq('tenant_id', row.tenant_id)
+      .neq('id', row.id)
+      .maybeSingle()
+
+    if (conflictErr) {
+      console.error('[acceptInvite] step 3 conflict check failed', { clerkUserId, error: conflictErr.message })
+      return { ok: false, status: 500, error: conflictErr.message }
+    }
+    if (conflictingRow) {
+      console.log('[acceptInvite] step 3 skipped: visitor already has a membership for this tenant', {
+        clerkUserId,
+        existingMemberId: (conflictingRow as { id: string }).id,
+      })
+      return { ok: false, status: 409, error: 'Already a member' }
+    }
   } else {
-    const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
-    const deletedCount = deletedRows.length
-    console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
-    if (deletedCount > 0) {
-      // A syncMember-created orphan actually existed — confirms the
-      // linkInvitedMember/syncMember race described in Known Gaps.md fired
-      // and was reconciled here rather than left as a stuck user_id-null row.
+    const { data: orphanRows, error: orphanErr } = await supabase
+      .from('members')
+      .delete()
+      .eq('clerk_id', clerkUserId)
+      .eq('tenant_id', row.tenant_id)
+      .neq('id', row.id)
+      .select('id, name')
+
+    if (orphanErr) {
+      console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
+        clerkUserId,
+        error: orphanErr.message,
+      })
       void logEvent({
-        action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+        action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
         clerk_user_id: clerkUserId,
         target_type: 'member',
         target_id: row.id,
-        metadata: { deleted_count: deletedCount },
+        outcome: 'failure',
+        metadata: { error: orphanErr.message },
       })
-    }
-    if (deletedCount === 1 && deletedRows[0].name && !row.name) {
-      rescuedName = deletedRows[0].name
-      console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
+      // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
+      // on clerk_id will surface a real error if the orphan remains.
+    } else {
+      const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
+      const deletedCount = deletedRows.length
+      console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
+      if (deletedCount > 0) {
+        // A syncMember-created orphan actually existed — confirms the
+        // linkInvitedMember/syncMember race described in Known Gaps.md fired
+        // and was reconciled here rather than left as a stuck user_id-null row.
+        void logEvent({
+          action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+          clerk_user_id: clerkUserId,
+          target_type: 'member',
+          target_id: row.id,
+          metadata: { deleted_count: deletedCount },
+        })
+      }
+      if (deletedCount === 1 && deletedRows[0].name && !row.name) {
+        rescuedName = deletedRows[0].name
+        console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
+      }
     }
   }
 

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  let body: { token?: unknown } = {}
+  let body: { token?: unknown; alreadySignedIn?: unknown } = {}
   try {
     body = await req.json()
   } catch {
@@ -30,6 +30,11 @@ export async function POST(req: Request) {
   const token = typeof body.token === 'string' && body.token.trim().length > 0
     ? body.token.trim()
     : null
+
+  // From chatStore's mount-time effect (an already-signed-in visitor holding
+  // an invite token) vs. its sign-in-transition effect (a brand-new signup) —
+  // see acceptInvite's skipOrphanCleanup doc comment for why this matters.
+  const alreadySignedIn = body.alreadySignedIn === true
 
   if (!token) {
     return Response.json({ error: 'token is required' }, { status: 400 })
@@ -54,7 +59,13 @@ export async function POST(req: Request) {
     supabaseUserId,
   })
 
-  const result = await acceptInvite(token, user.providerUserId, supabaseUserId, user.name ?? null)
+  const result = await acceptInvite(
+    token,
+    user.providerUserId,
+    supabaseUserId,
+    user.name ?? null,
+    { skipOrphanCleanup: alreadySignedIn },
+  )
 
   if (!result.ok) {
     console.error('[heirloom/invites/accept] acceptInvite failed', {

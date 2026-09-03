@@ -520,14 +520,25 @@ function makeAcceptInviteClient({
   orphanRows = [],
   orphanError = null,
   updateError = null,
+  // skipOrphanCleanup path only:
+  conflictingRow = null,
+  conflictError = null,
 }: {
   invitedRow: unknown
   findError?: unknown
   orphanRows?: unknown[]
   orphanError?: unknown
   updateError?: unknown
+  conflictingRow?: unknown
+  conflictError?: unknown
 }) {
   const updateCalls: unknown[] = []
+  const deleteCalls: unknown[] = []
+  // Step 1 (find the invited row) and the skipOrphanCleanup conflict check
+  // are both a `select(...).eq(...)` chain on `members`, but end differently
+  // (`.is().is().maybeSingle()` vs `.eq().neq().maybeSingle()`). Exposing
+  // both continuations on the same returned object handles either without
+  // needing to track call order.
   const client = {
     from(_table: string) {
       return {
@@ -542,11 +553,21 @@ function makeAcceptInviteClient({
                     },
                   }
                 },
+                eq(_col2: string, _val2: unknown) {
+                  return {
+                    neq(_col3: string, _val3: unknown) {
+                      return {
+                        maybeSingle: async () => ({ data: conflictingRow, error: conflictError }),
+                      }
+                    },
+                  }
+                },
               }
             },
           }
         },
         delete() {
+          deleteCalls.push(true)
           return {
             eq(_col: string, _val: unknown) {
               return {
@@ -570,7 +591,7 @@ function makeAcceptInviteClient({
       }
     },
   }
-  return { client, getUpdateCalls: () => updateCalls }
+  return { client, getUpdateCalls: () => updateCalls, getDeleteCalls: () => deleteCalls }
 }
 
 describe('acceptInvite', () => {
@@ -782,6 +803,71 @@ describe('acceptInvite', () => {
       expect(update.name).toBeUndefined()
     },
   )
+
+  // ── skipOrphanCleanup (already-signed-in visitor — PR #448 review) ────────
+  //
+  // Without this guard, an already-signed-in member's real membership row
+  // (same clerk_id, different id) would be deleted by the orphan cleanup
+  // meant for a same-request signup-race artifact. These assert the delete
+  // never runs on this path, and that a real conflicting row is reported
+  // rather than destroyed.
+
+  it('never calls delete when skipOrphanCleanup is set', async () => {
+    const { client, getDeleteCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-14', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      conflictingRow: null,
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-14', 'user-14', null, { skipOrphanCleanup: true })
+
+    expect(result.ok).toBe(true)
+    expect(getDeleteCalls()).toHaveLength(0)
+  })
+
+  it('stamps the invited row normally when skipOrphanCleanup is set and no conflicting row exists', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-15', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      conflictingRow: null,
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-15', 'user-15', null, { skipOrphanCleanup: true })
+
+    expect(result.ok).toBe(true)
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.clerk_id).toBe('clerk-15')
+    expect(update.status).toBe('active')
+  })
+
+  it('returns 409 without deleting or stamping when the visitor already has a membership for this tenant', async () => {
+    const { client, getUpdateCalls, getDeleteCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-16', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      conflictingRow: { id: 'existing-member-16' },
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-16', 'user-16', null, { skipOrphanCleanup: true })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(409)
+    expect(getDeleteCalls()).toHaveLength(0)
+    expect(getUpdateCalls()).toHaveLength(0)
+  })
+
+  it('the false→true signup path (skipOrphanCleanup unset) still deletes the orphan as before', async () => {
+    const { client, getDeleteCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-17', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [{ id: 'orphan-17', name: 'Real Name' }],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-17', 'user-17')
+
+    expect(result.ok).toBe(true)
+    expect(getDeleteCalls()).toHaveLength(1)
+  })
 })
 
 // ── hardDeleteMember ─────────────────────────────────────────────────────────
