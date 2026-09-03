@@ -84,7 +84,7 @@ export function HowItWorksSection() {
           </div>
           <div className="hl-book-photo-cell" style={{ display: 'flex' }}>
             <img
-              src="/heirloom/landerimages/book-keepsake.png"
+              src="/heirloom/landerimages/book-keepsake.webp"
               alt="A shelf of finished Heirloom books — a road-trip memoir, a 30th-birthday keepsake, a kids’ comic, a family recipe book, and an open photo spread — on a linen tabletop."
               width={938}
               height={800}
