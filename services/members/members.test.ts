@@ -775,6 +775,36 @@ describe('acceptInvite', () => {
     expect(update.name).toBe('Rescued Name')
   })
 
+  // PR #448 review: `rescuedName ?? name` treats a whitespace-only
+  // rescuedName as present, blocking a real Clerk name fallback.
+  it('falls through to the passed-in name when the rescued orphan name is whitespace-only', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-11b', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      orphanRows: [{ id: 'orphan-11b', name: '   ' }],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-11b', 'user-11b', 'Clerk Name')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Clerk Name')
+  })
+
+  // PR #448 review: `!row.name` doesn't treat a whitespace-only stored name
+  // as absent, so the fallback is wrongly skipped and no real name is set.
+  it('treats a whitespace-only existing invited-row name as absent, still applying the fallback', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-11c', tenant_id: HEIRLOOM_TENANT_ID, name: '   ' },
+      orphanRows: [],
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-11c', 'user-11c', 'Clerk Name')
+
+    const [update] = getUpdateCalls() as [Record<string, unknown>]
+    expect(update.name).toBe('Clerk Name')
+  })
+
   it('does not overwrite an existing invited-row name with the passed-in name', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
       invitedRow: { id: 'member-12', tenant_id: HEIRLOOM_TENANT_ID, name: 'Already Set' },

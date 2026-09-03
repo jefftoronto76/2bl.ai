@@ -595,8 +595,15 @@ export async function acceptInvite(
       source: 'invite',
       used_at: now,
       updated_at: now,
-      ...(!row.name && identityValue(rescuedName ?? name)
-        ? { name: identityValue(rescuedName ?? name) }
+      // Each candidate is normalized independently before the fallback, not
+      // `identityValue(rescuedName ?? name)` — `??` treats a whitespace-only
+      // rescuedName as present (it's neither null nor undefined) and would
+      // block a real Clerk name from ever being used as the fallback.
+      // `identityValue(row.name)`, not `!row.name`, for the same reason: a
+      // whitespace-only stored name must count as absent here too. Flagged
+      // in PR #448 review.
+      ...(!identityValue(row.name) && (identityValue(rescuedName) ?? identityValue(name))
+        ? { name: identityValue(rescuedName) ?? identityValue(name) }
         : {}),
     })
     .eq('id', row.id)
