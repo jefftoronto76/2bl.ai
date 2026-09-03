@@ -451,6 +451,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   no-owner-control auto-greet path decision flagged in the original entry.
   Not scheduled — still a separate, later task.
 
+- **Account dropdown only ever shows "Sign in," even for a visitor who's
+  never had an account — found during the UI-CTA sign-up audit,
+  2026-09-03, not fixed.** `ChatHeader.tsx:463`'s account dropdown renders
+  exactly one item when signed out — "Sign in" (`openSignIn()`) — with no
+  separate "Sign up" option and no label adaptation based on whether the
+  visitor is known. Clerk's modal likely still lets a brand-new visitor
+  create an account once opened (its own UI may offer a toggle), but the
+  label itself is misleading for a first-time visitor who has no reason to
+  read "Sign in" as "click here to get started." Distinct from the actual
+  sign-up doors on this surface — the separate "Sign Up" nav button
+  (`LandingNav.tsx:79`) and "Start Your Story" (opens the chat panel only,
+  no direct auth call) — see `Design Handovers/heirloom-signup-signin-paths.md`
+  Paths 6a/6b for the full UI-to-mechanism mapping this finding came out of.
+  **Backlog, not urgent — not fixed as part of this pass.**
+
 ## Prompt & AI
 
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
