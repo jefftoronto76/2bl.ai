@@ -7,9 +7,10 @@
   Heirloom Lander - Summer 2026 - Story Canvas.html" (Hero + MemoryConstellation,
   ~lines 365-557).
 
-  Every reference <image-slot> placeholder becomes a plain placeholder div —
-  real photos are wired in as a separate, later step. All var(--hl-*) colors
-  are repointed to this codebase's real --color-* tokens (nothing renamed).
+  Every reference <image-slot> placeholder is wired to a real photo in
+  /public/heirloom/landerimages/, named to match each slot's ph/label
+  (Hero-0..Hero-9, Video). All var(--hl-*) colors are repointed to this
+  codebase's real --color-* tokens (nothing renamed).
 
   ⚠️ production chat activation — unchanged: "Start Your Story" dispatches
   { type: 'OPEN_CHAT' } via useChatStore, same as every other CTA on this page.
@@ -22,20 +23,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Heart, MapPin, Mic } from 'lucide-react';
 import { useChatStore } from '@/components/shells/membership/chatStore';
 import { mcPath } from './constellationPath';
-
-// ─── Placeholder for every reference <image-slot> ───────────────────────────
-
-function PhotoPlaceholder({ label }: { label: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="w-full h-full flex items-center justify-center bg-surface border border-border font-mono uppercase tracking-[0.14em] text-text-muted text-center px-2"
-      style={{ fontSize: 9 }}
-    >
-      {label}
-    </div>
-  );
-}
 
 // ─── Small decorative pieces ─────────────────────────────────────────────────
 
@@ -148,7 +135,7 @@ function MemoryConstellation() {
 
         {MC_PHOTOS.map((p) => (
           <div key={p.id} className="hl-mc-el hl-mc-photo" style={{ left: p.x, top: p.y, width: p.w, height: p.h, transform: `rotate(${p.rot}deg)` }}>
-            <PhotoPlaceholder label={p.ph} />
+            <img src={`/heirloom/landerimages/${p.ph}.webp`} alt="" width={p.w} height={p.h} className="w-full h-full object-cover" />
           </div>
         ))}
 
@@ -208,7 +195,7 @@ function MemoryConstellation() {
 
         {/* Video player */}
         <div className="hl-mc-el hl-mc-photo" style={{ left: 476, top: 546, width: 194, height: 118 }}>
-          <PhotoPlaceholder label="Video" />
+          <img src="/heirloom/landerimages/Video.webp" alt="" width={194} height={118} className="w-full h-full object-cover" />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(0,0,0,0.55))', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 40, height: 40, borderRadius: 999, background: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <PlayTri size={14} color="rgb(var(--color-text-primary))" />

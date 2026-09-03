@@ -10,8 +10,9 @@
   independently, so it needs no props/refs from LandingPage — it's mounted
   once as an absolutely-positioned overlay sibling above all the sections.
 
-  Every reference <image-slot> bead placeholder becomes a plain placeholder
-  div — real photos are wired in as a separate, later step.
+  Every reference <image-slot> bead placeholder is wired to a real photo in
+  /public/heirloom/landerimages/, named to match each bead's caption (Family,
+  Pets, Friendships, A day).
 */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -102,7 +103,9 @@ export function PageThread() {
       {beads.map((b) =>
         b.photo ? (
           <div key={b.key} className={'hl-thread-bead' + (front >= b.y ? ' lit' : '')} style={{ left: b.x, top: b.y }}>
-            <div className="hl-thread-bead-photo bg-surface border border-border" style={{ width: b.w, height: b.h }} />
+            <div className="hl-thread-bead-photo bg-surface border border-border" style={{ width: b.w, height: b.h }}>
+              <img src={`/heirloom/landerimages/${b.cap}.webp`} alt="" width={b.w} height={b.h} className="w-full h-full object-cover" loading="lazy" />
+            </div>
             <div className="hl-thread-bead-cap text-accent">{b.cap}</div>
           </div>
         ) : (
