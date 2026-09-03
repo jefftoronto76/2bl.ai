@@ -1,21 +1,33 @@
 'use client';
 
+/*
+  LandingNav — updated per design review.
+
+  Changes vs. the live file:
+  1. Wordmark "Legacy" → "Heirloom" (+ aria-label). Reverts the earlier
+     branding-only rename — nav now shows the real product name.
+  2. Nav links: "How It Works" / "What You Can Make" / "Pricing". "About" is
+     removed. Note the target-id mapping below — it's not 1:1 with the old
+     labels, see README.
+  3. "Sign Up" ghost button removed. "Start Your Story" stays, wiring
+     unchanged (dispatch OPEN_CHAT).
+
+  ⚠️ DO NOT modify the remaining handler:
+  • Start Your Story → dispatch({ type: 'OPEN_CHAT' })
+*/
+
 import { useState, useEffect } from 'react';
-import { useAuthUser, useAuthActions } from '@/services/auth/client';
-import { useChatStore, setOAuthInProgress } from '@/components/shells/membership/chatStore';
-import { heirloomClerkAppearance } from '@/components/shells/membership/clerkAppearance';
+import { useChatStore } from '@/components/shells/membership/chatStore';
 
 const navLinks: { label: string; targetId: string }[] = [
-  { label: 'How It Works', targetId: 'how-it-works' },
+  { label: 'How It Works', targetId: 'what-is-heirloom' },
+  { label: 'What You Can Make', targetId: 'how-it-works' },
   { label: 'Pricing', targetId: 'pricing' },
-  { label: 'About', targetId: 'what-is-heirloom' },
 ];
 
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const { dispatch } = useChatStore();
-  const { openSignUp } = useAuthActions();
-  const { isLoaded, isSignedIn } = useAuthUser();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -40,7 +52,7 @@ export function LandingNav() {
           type="button"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center gap-2.5 outline-none focus:outline-none"
-          aria-label="Legacy home"
+          aria-label="Heirloom home"
         >
           <div className="w-8 h-8 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center">
             <img
@@ -52,7 +64,7 @@ export function LandingNav() {
               />
           </div>
           <span className="font-display font-semibold text-lg text-text-primary tracking-wide">
-            Legacy
+            Heirloom
           </span>
         </button>
 
@@ -70,15 +82,6 @@ export function LandingNav() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {isLoaded && !isSignedIn && (
-            <button
-              type="button"
-              onClick={() => { setOAuthInProgress(true); openSignUp({ appearance: heirloomClerkAppearance }); }}
-              className="hidden md:inline-flex border border-accent/50 hover:border-accent text-accent hover:text-text-primary hover:bg-accent/10 font-body text-base font-semibold px-4 py-2 rounded-lg transition-colors"
-            >
-              Sign Up
-            </button>
-          )}
           <button
             type="button"
             onClick={() => dispatch({ type: 'OPEN_CHAT' })}
