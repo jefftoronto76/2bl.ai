@@ -266,13 +266,21 @@ and after any identity change. Full SQL in `System Docs/Identity System.md` §6.
 | Invariant | Today | Target |
 |---|---:|---|
 | `members.name` null while `users.name` set (D1) | **4** | 0, and non-increasing |
-| `name` set / `invited_name` null — AI cannot name them (D2) | **11** | 0 after D2 |
-| `name <> invited_name` — AI uses stale name (D2) | **1** | 0 after D2 |
 | `users.name = ''` (D4) | **2** | 0, non-increasing |
 | `users.email = ''` (D5) | 0 | stays 0 |
 | `members.status = 'pending'` (D6) | **1** | non-increasing |
 | `identity.overwrite` from `clerk_webhook` (D3) | 0 | **stays 0** |
 | `identity.*` with `source = 'unattributed'` | n/a | reviewed, not enforced |
+
+**Removed from this table (PR #448 review):** the two D2 rows this list
+originally carried — `name` set with `invited_name` null, and
+`name <> invited_name` — were diagnostic queries for finding pre-fix damage,
+not ongoing invariants. Once D2 shipped (`getMemberContext` reading `name`
+correctly), both are the **expected, healthy** shape: the first is any
+self-service member (never had an `invited_name` to begin with), the second
+is exactly what a legitimate rename produces. A "target: 0" on either would
+flag healthy rows forever and could never be satisfied. Cross-checking D2's
+fix belongs in the read-path tests in §2, not here.
 
 The last row is the review habit agreed in Gate 3 — a non-zero count means a write
 path exists that nobody labelled, which is worth knowing even though it does not
