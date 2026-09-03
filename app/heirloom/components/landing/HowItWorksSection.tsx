@@ -1,97 +1,120 @@
 'use client';
 
 /*
-  HowItWorksSection → repurposed to "It becomes a book." — the book centerpiece
-  (payoff of the capture→publish flow) plus the other output formats.
-  No chat wiring here (presentational only).
+  HowItWorksSection → "It becomes a book" — the book centerpiece (a real photo
+  of finished books) plus the four "other ways to share it" cards. Ported
+  essentially verbatim from the design reference's BookSuite(): "Design
+  Handovers/ Aug 2026 Atomic Updates/13_Heirloom_lander_nav_updateV4/
+  Heirloom Lander - Summer 2026 - Story Canvas.html" (~lines 593-648).
+  The reference's BookCover() is dead code (never rendered) and is not ported.
+
+  Keeps id="how-it-works" — LandingNav ("What You Can Make") scrolls to it.
+  data-screen-label is the reference's exact value; it is the marker
+  PageThread.tsx uses to find this section's boundaries.
+
+  Scroll-in animation is the reference's own: useReveal (ref + seen) toggling
+  the 'reveal' / ' in' classes, with the `.reveal` / hl-rise CSS in
+  app/heirloom/globals.css. Purely presentational — no chat wiring. The Comic
+  card's SoonVote is a local localStorage preference toggle only.
+
+  Token mapping (var(--hl-*) → real tokens, same pattern as HeroSection.tsx):
+    --hl-bg          → rgb(var(--color-background))
+    --hl-surface     → rgb(var(--color-surface))
+    --hl-border      → var(--color-border)
+    --hl-accent      → rgb(var(--color-accent))
+    --hl-accent-soft → rgb(var(--color-accent) / 0.13)
+    --hl-accent-line → rgb(var(--color-accent) / 0.3)
+    --hl-text        → rgb(var(--color-text-primary))
+    --hl-muted       → var(--color-text-muted)
+    --hl-faint       → rgb(var(--color-text-dim))
+    --font-display / --font-mono → Tailwind font-display / font-mono classes
+
+  Icons: the reference's "panels" glyph is four squares in a 2×2 grid, which
+  is lucide's LayoutGrid (PanelsTopLeft exists in lucide-react 0.463 but
+  draws a different top-bar/side-panel glyph).
 */
 
-import { useEffect, useRef, useState } from 'react';
-import { Bookmark, LayoutGrid, Monitor, Headphones, Clock, type LucideIcon } from 'lucide-react';
+import { Monitor, Headphones, Clock, LayoutGrid, type LucideIcon } from 'lucide-react';
+import { useReveal } from './useReveal';
+import { Eyebrow } from './Eyebrow';
+import { SoonVote } from './SoonVote';
 
-const otherFormats: { icon: LucideIcon; name: string; body: string }[] = [
-  { icon: LayoutGrid, name: 'The Comic', body: 'Illustrated panels that bring the moments to life.' },
-  { icon: Monitor, name: 'The Webpage', body: 'A living digital edition with shareable links.' },
-  { icon: Headphones, name: 'The Audiobook', body: 'Narrated and ready for the platforms people already use.' },
-  { icon: Clock, name: 'The Time Capsule', body: 'Sealed today, unlocked on a date you choose.' },
+const others: { icon: LucideIcon; t: string; d: string; soon?: boolean }[] = [
+  { icon: Monitor, t: 'The Webpage', d: 'A living digital edition with shareable links.' },
+  { icon: Headphones, t: 'The Audiobook', d: 'Narrated and ready for the platforms people already use.' },
+  { icon: Clock, t: 'The Time Capsule', d: 'Sealed today, unlocked on a date you choose.' },
+  { icon: LayoutGrid, t: 'The Comic', d: 'Illustrated panels that bring the moments to life.', soon: true },
 ];
 
-function BookCover() {
-  return (
-    <div className="relative" style={{ width: 280, height: 380 }} aria-hidden>
-      <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface border border-accent/25" style={{ borderRadius: 8, padding: 28 }}>
-        <div className="absolute border border-accent/25 pointer-events-none" style={{ inset: 14, borderRadius: 4 }} />
-        <span className="font-mono uppercase text-accent" style={{ fontSize: 10, letterSpacing: '.35em', marginBottom: 18 }}>A Life In</span>
-        <span className="font-display italic text-text-primary text-center" style={{ fontSize: 44, lineHeight: 1 }}>Legacy</span>
-        <div className="bg-accent/25" style={{ width: 40, height: 1, margin: '20px 0' }} />
-        <span className="font-display text-text-muted" style={{ fontSize: 17 }}>Volume One</span>
-        <span className="absolute text-accent" style={{ bottom: 26 }}><Bookmark size={20} strokeWidth={1.5} /></span>
-      </div>
-    </div>
-  );
-}
-
 export function HowItWorksSection() {
-  const [visible, setVisible] = useState(false);
-  const sectionRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
-      { threshold: 0.1 },
-    );
-    if (sectionRef.current) observer.observe(sectionRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const [ref, seen] = useReveal<HTMLElement>();
 
   return (
-    <section ref={sectionRef} id="how-it-works" data-screen-label="How It Works" className="py-20 sm:py-24 md:py-36 bg-surface border-y border-border">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-12">
-        <div className={`text-center mb-5 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <span className="block font-mono text-xs uppercase tracking-[0.3em] text-accent mb-5">The Legacy</span>
-          <h2 className="font-display font-light text-text-primary leading-[1.05]" style={{ fontSize: 'clamp(34px, 5vw, 66px)' }}>It becomes a book.</h2>
+    <section
+      ref={ref}
+      id="how-it-works"
+      data-screen-label="It becomes a book"
+      className="scroll-mt-16"
+      style={{ padding: 'clamp(80px,12vw,150px) 24px', background: 'rgb(var(--color-surface))', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}
+    >
+      <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+        <div className={'reveal' + (seen ? ' in' : '')} style={{ textAlign: 'center', marginBottom: 22 }}>
+          <Eyebrow style={{ marginBottom: 22 }}>Leave your mark</Eyebrow>
+          <h2 className="font-display" style={{ fontWeight: 300, fontSize: 'clamp(34px,5vw,66px)', lineHeight: 1.05, color: 'rgb(var(--color-text-primary))', margin: 0 }}>Something real. Something lasting.</h2>
         </div>
-        <p className={`font-body text-text-muted text-center max-w-[600px] mx-auto mb-14 transition-all duration-700 delay-[120ms] ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`} style={{ fontSize: 18, lineHeight: 1.6 }}>
-          A real one, in your hands. And when you want to, the same story can live on in other forms too.
+        <p className={'reveal' + (seen ? ' in' : '')} style={{ animationDelay: '.08s', textAlign: 'center', maxWidth: 600, margin: '0 auto 56px', fontSize: 18, lineHeight: 1.6, color: 'var(--color-text-muted)' }}>
+          Turn your stories into something you can hold, share, and relive.
         </p>
 
         {/* Book centerpiece */}
-        <div className={`hl-book-grid rounded-[24px] bg-background border border-accent/25 mb-14 transition-all duration-700 delay-200 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`} style={{ padding: 'clamp(30px, 4.5vw, 60px)' }}>
-          <div className="hl-book-copy">
-            <span className="block font-mono text-[10px] uppercase tracking-[0.26em] text-accent mb-3">The centerpiece</span>
-            <h3 className="font-display font-normal text-text-primary mb-4 leading-none" style={{ fontSize: 'clamp(40px, 6vw, 68px)' }}>The Book</h3>
-            <p className="font-body text-text-muted mb-7 max-w-[480px]" style={{ fontSize: 'clamp(17px, 2vw, 20px)', lineHeight: 1.62 }}>
-              Printed, bound, and delivered to your door — the whole story as a hardcover keepsake, made to live on a shelf and be handed down for generations.
+        <div className={'hl-book-feature reveal' + (seen ? ' in' : '')} style={{ animationDelay: '.12s', display: 'grid', gridTemplateColumns: '1fr 1.15fr', alignItems: 'center', background: 'rgb(var(--color-background))', border: '1px solid rgb(var(--color-accent) / 0.3)', borderRadius: 24, overflow: 'hidden', marginBottom: 'clamp(48px,7vw,80px)' }}>
+          <div style={{ padding: 'clamp(30px,4.5vw,60px)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <Eyebrow style={{ display: 'inline-block', fontSize: 12, letterSpacing: '.26em' }}>The centerpiece</Eyebrow>
+            <h3 className="font-display" style={{ fontWeight: 400, fontSize: 'clamp(40px,6vw,68px)', lineHeight: 1, color: 'rgb(var(--color-text-primary))', margin: '16px 0 18px' }}>The Book</h3>
+            <p style={{ fontSize: 'clamp(17px,2vw,20px)', lineHeight: 1.62, color: 'var(--color-text-muted)', margin: '0 0 28px', maxWidth: 480 }}>
+              Hardcover, paperback, photo-heavy or illustrated &mdash; create a book that fits the story you want to tell.
             </p>
-            <div className="flex flex-wrap gap-3.5">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
               {['Hardcover / paperback', 'On-demand'].map((tag) => (
-                <span key={tag} className="inline-flex items-center gap-2 font-mono text-xs text-text-primary border border-accent/25 rounded-full px-3.5 py-2 bg-accent/10" style={{ letterSpacing: '.06em' }}>
-                  <span className="rounded-full bg-accent" style={{ width: 5, height: 5 }} />
-                  {tag}
+                <span key={tag} className="font-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, letterSpacing: '.06em', color: 'rgb(var(--color-text-primary))', background: 'rgb(var(--color-accent) / 0.13)', border: '1px solid rgb(var(--color-accent) / 0.3)', borderRadius: 999, padding: '8px 14px' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: 999, background: 'rgb(var(--color-accent))' }} />{tag}
                 </span>
               ))}
             </div>
           </div>
-          <div className="hl-book-visual flex items-center justify-center">
-            <BookCover />
+          <div className="hl-book-photo-cell" style={{ display: 'flex' }}>
+            <img
+              src="/heirloom/landerimages/book-keepsake.png"
+              alt="A shelf of finished Heirloom books — a road-trip memoir, a 30th-birthday keepsake, a kids’ comic, a family recipe book, and an open photo spread — on a linen tabletop."
+              width={938}
+              height={800}
+              loading="lazy"
+              style={{ width: '100%', height: 'auto', display: 'block' }}
+            />
           </div>
         </div>
 
         {/* Other formats */}
-        <div className={`flex items-center gap-4 mb-6 transition-all duration-700 delay-[280ms] ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-text-dim whitespace-nowrap">Other ways to share it</span>
-          <span className="flex-1 h-px bg-border" />
+        <div className={'reveal' + (seen ? ' in' : '')} style={{ animationDelay: '.2s', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 26 }}>
+          <span className="font-mono" style={{ fontSize: 12, letterSpacing: '.24em', textTransform: 'uppercase', color: 'rgb(var(--color-text-dim))', whiteSpace: 'nowrap' }}>Other ways to share it</span>
+          <span style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
         </div>
-        <div className="hl-format-grid">
-          {otherFormats.map((fmt, i) => {
-            const Icon = fmt.icon;
+        <div className="hl-how-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+          {others.map((s, i) => {
+            const Icon = s.icon;
             return (
-              <div key={fmt.name} className={`rounded-2xl bg-background border border-border transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`} style={{ padding: '24px 22px', transitionDelay: `${340 + i * 80}ms` }}>
-                <div className="flex items-center justify-center bg-accent/10 text-accent" style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 18 }}>
-                  <Icon size={21} strokeWidth={1.5} />
+              <div key={s.t} className={'reveal' + (seen ? ' in' : '')} style={{ animationDelay: (0.24 + i * 0.08) + 's', background: 'rgb(var(--color-background))', border: '1px solid var(--color-border)', borderRadius: 16, padding: '24px 22px', height: '100%' }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgb(var(--color-accent) / 0.13)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(var(--color-accent))', marginBottom: 18 }}>
+                  <Icon size={21} />
                 </div>
-                <p className="font-display font-medium text-text-primary mb-2" style={{ fontSize: 22 }}>{fmt.name}</p>
-                <p className="font-body text-text-muted" style={{ fontSize: 15, lineHeight: 1.55 }}>{fmt.body}</p>
+                <h3 className="font-display" style={{ fontWeight: 500, fontSize: 22, margin: '0 0 8px', color: 'rgb(var(--color-text-primary))', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  {s.t}
+                  {s.soon && (
+                    <span className="font-mono" style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgb(var(--color-text-dim))', border: '1px solid var(--color-border)', borderRadius: 99, padding: '3px 8px', fontWeight: 500 }}>Coming soon</span>
+                  )}
+                </h3>
+                <p style={{ fontSize: 15, lineHeight: 1.55, color: 'var(--color-text-muted)', margin: 0 }}>{s.d}</p>
+                {s.soon && <SoonVote storageKey="hl.comicVote" initial={126} />}
               </div>
             );
           })}
@@ -99,19 +122,12 @@ export function HowItWorksSection() {
       </div>
 
       <style>{`
-        .hl-book-grid { display: grid; grid-template-columns: 1fr; gap: 2.5rem; align-items: center; }
-        .hl-book-copy { order: 2; text-align: center; }
-        .hl-book-visual { order: 1; }
-        .hl-book-copy p { margin-left: auto; margin-right: auto; }
-        @media (min-width: 821px) {
-          .hl-book-grid { grid-template-columns: 1.05fr 0.95fr; gap: clamp(32px, 5vw, 64px); }
-          .hl-book-copy { order: 0; text-align: left; }
-          .hl-book-copy p { margin-left: 0; margin-right: 0; }
-          .hl-book-visual { order: 0; }
+        @media (max-width: 920px) { .hl-how-grid { grid-template-columns: repeat(2,1fr) !important; } }
+        @media (max-width: 820px) {
+          .hl-book-feature { grid-template-columns: 1fr !important; }
+          .hl-book-feature .hl-book-photo-cell { min-height: 320px !important; }
         }
-        .hl-format-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-        @media (min-width: 561px) { .hl-format-grid { grid-template-columns: 1fr 1fr; } }
-        @media (min-width: 921px) { .hl-format-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 560px) { .hl-how-grid { grid-template-columns: 1fr !important; } }
       `}</style>
     </section>
   );
