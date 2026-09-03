@@ -9,11 +9,15 @@
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, updateClerkMock } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  updateClerkMock: vi.fn(async (_clerkId: string, _name: string) => {}),
 }))
 vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => adminHolder.client,
+}))
+vi.mock('@/services/auth', () => ({
+  updateClerkUserFirstName: (clerkId: string, name: string) => updateClerkMock(clerkId, name),
 }))
 
 import { handleSessionFinish } from './session'
@@ -83,6 +87,7 @@ function makeAdminClient(chatSessionRow: Row, memberRow: Row | null) {
 
 beforeEach(() => {
   adminHolder.client = null
+  updateClerkMock.mockClear()
 })
 
 describe('handleSessionFinish — D7, [NAME:] marker also reaches members', () => {
@@ -175,5 +180,84 @@ describe('handleSessionFinish — D7, [NAME:] marker also reaches members', () =
     })
 
     expect(memberUpdates).toEqual([])
+  })
+})
+
+describe('handleSessionFinish — D3, persistMemberName also pushes the name to Clerk', () => {
+  it('calls updateClerkUserFirstName with the row clerk_id after a successful write', async () => {
+    const { client } = makeAdminClient(
+      { visitor_name: null, calendar_offered: true },
+      { name: null, clerk_id: 'clerk-1' },
+    )
+    adminHolder.client = client
+
+    await handleSessionFinish({
+      sessionId: 's1',
+      tenantId: 't1',
+      text: '[NAME: Priya]',
+      usage: null,
+      memberId: 'm1',
+    })
+
+    expect(updateClerkMock).toHaveBeenCalledWith('clerk-1', 'Priya')
+  })
+
+  it('does not call updateClerkUserFirstName when the member row has no clerk_id', async () => {
+    const { client } = makeAdminClient(
+      { visitor_name: null, calendar_offered: true },
+      { name: null, clerk_id: null },
+    )
+    adminHolder.client = client
+
+    await handleSessionFinish({
+      sessionId: 's1',
+      tenantId: 't1',
+      text: '[NAME: Priya]',
+      usage: null,
+      memberId: 'm1',
+    })
+
+    expect(updateClerkMock).not.toHaveBeenCalled()
+  })
+
+  it('does not call updateClerkUserFirstName when the Supabase write itself was skipped (name already set)', async () => {
+    const { client } = makeAdminClient(
+      { visitor_name: null, calendar_offered: true },
+      { name: 'Already Set', clerk_id: 'clerk-1' },
+    )
+    adminHolder.client = client
+
+    await handleSessionFinish({
+      sessionId: 's1',
+      tenantId: 't1',
+      text: '[NAME: Priya]',
+      usage: null,
+      memberId: 'm1',
+    })
+
+    expect(updateClerkMock).not.toHaveBeenCalled()
+  })
+
+  it('does not throw or block when updateClerkUserFirstName rejects — non-fatal', async () => {
+    updateClerkMock.mockRejectedValueOnce(new Error('clerk down'))
+    const { client, memberUpdates } = makeAdminClient(
+      { visitor_name: null, calendar_offered: true },
+      { name: null, clerk_id: 'clerk-1' },
+    )
+    adminHolder.client = client
+
+    await expect(
+      handleSessionFinish({
+        sessionId: 's1',
+        tenantId: 't1',
+        text: '[NAME: Priya]',
+        usage: null,
+        memberId: 'm1',
+      }),
+    ).resolves.not.toThrow()
+
+    // The Supabase write already succeeded before the Clerk call — a
+    // rejected Clerk push must not roll it back or hide it.
+    expect(memberUpdates).toEqual([{ name: 'Priya' }])
   })
 })

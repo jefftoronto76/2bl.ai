@@ -11,6 +11,7 @@
 // separate commits.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { updateClerkUserFirstName } from '@/services/auth'
 import { recordConversionEvents } from './conversion-events'
 import { identityValue, setIdentityField } from '@/services/shared/identity'
 import type { TokenUsage } from '@/services/chat/server/types'
@@ -312,12 +313,18 @@ async function persistVisitorPhone(sessionId: string, tenantId: string, phone: s
 // overwrites an existing members.name, whether it was set here in an
 // earlier session or by any other identity write path. Independent of (does
 // not gate, is not gated by) the chat_sessions write above.
+//
+// D3 fix — also pushes the newly-written name to Clerk (clerk_id read off
+// the same members row, so no call-chain plumbing needed). Closes the same
+// gap as /api/members/sync's syncToClerk flag, for the one capture path
+// that doesn't go through that route at all. Non-fatal, same as every
+// other Clerk-sync call site.
 async function persistMemberName(memberId: string, tenantId: string, name: string): Promise<void> {
   try {
-    const supabase = getAdminClient()
+    const supabase = getAdminClient('chat_marker_capture')
     const { data, error: selectError } = await supabase
       .from('members')
-      .select('name')
+      .select('name, clerk_id')
       .eq('id', memberId)
       .eq('tenant_id', tenantId)
       .maybeSingle()
@@ -332,7 +339,9 @@ async function persistMemberName(memberId: string, tenantId: string, name: strin
       return
     }
 
-    if (identityValue((data as { name: string | null }).name) !== undefined) {
+    const row = data as { name: string | null; clerk_id: string | null }
+
+    if (identityValue(row.name) !== undefined) {
       console.log('[chat/session] member name already set, skipping write:', { member_id: memberId })
       return
     }
@@ -353,6 +362,14 @@ async function persistMemberName(memberId: string, tenantId: string, name: strin
     }
 
     console.log('[chat/session] member name written:', { member_id: memberId })
+
+    if (row.clerk_id) {
+      try {
+        await updateClerkUserFirstName(row.clerk_id, name)
+      } catch (err) {
+        console.error('[chat/session] updateClerkUserFirstName failed (non-fatal):', err)
+      }
+    }
   } catch (err) {
     console.error('[chat/session] persistMemberName threw:', err instanceof Error ? err.message : err)
   }
