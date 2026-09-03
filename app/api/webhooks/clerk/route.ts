@@ -124,7 +124,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     (eventType === 'user.created' || eventType === 'user.updated') &&
     clerkUserId
   ) {
-    const supabase = getAdminClient()
+    const supabase = getAdminClient('clerk_webhook', { correlationId: svixId })
 
     // Upsert users row — creates on user.created, updates on user.updated
     // Same identity rule as every other write path. setIdentityEmail also
@@ -229,6 +229,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           name: name ?? undefined,
           email: email ?? undefined,
           phone: phone ?? undefined,
+          source: 'clerk_webhook',
+          correlationId: svixId,
         })
 
         if (!membersResult.ok) {

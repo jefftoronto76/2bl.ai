@@ -501,7 +501,7 @@ export async function acceptStoryInvite(
     return { ok: false, status: 400, error: 'Missing required parameters' }
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('accept_story_invite')
 
   const { data: linkRow, error: linkErr } = await supabase
     .from('story_invite_links')

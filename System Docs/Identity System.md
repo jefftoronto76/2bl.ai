@@ -208,7 +208,7 @@ Established by the Gate 1 audit, 2026-08-16. Reachability verified against live 
 | **D5** | `linkInvitedMember` writes `users.email = ''` on phone-only signups | `services/members/members.ts:259` | Confirmed code defect — 0 rows today, unguarded |
 | **D6** | `claimMembership` writes undocumented `status='pending'`; never updates an existing row | `services/auth/claim-membership.ts:45-53` | Confirmed — **1 row, created 2026-06-10, none since**. Route effectively orphaned |
 | **D7** | Chat-captured `[NAME:]`/`[EMAIL:]`/`[PHONE:]` never propagate to `members` | `services/crm/session.ts:155-201+` | Confirmed, by design-gap |
-| **D8** | A Clerk-side rename never reaches `invited_name`, so the AI keeps the old name | same root cause as D2 | Confirmed, live |
+| **D8** | A Clerk-side rename never reaches `invited_name`, so the AI keeps the old name | same root cause as D2 | **Closed by decision, 2026-09-03** — see below |
 | **D9** | Raw PII in `console.log` | `member-context.ts:143-151`, `session.ts:176-180,195`, `members.ts:243-246,264-268,285,328-332,347-351`, `webhooks/clerk/route.ts:156-159` | Confirmed — violates CLAUDE.md logging convention |
 | **D10** | No `AuditAction` for a successful identity write | `services/audit/types.ts:92-107` | Confirmed |
 
@@ -216,6 +216,33 @@ Established by the Gate 1 audit, 2026-08-16. Reachability verified against live 
 low-volume. D9/D10 are the reason D1–D8 went undiagnosed and are addressed by the
 Gate 3 tracking proposal. D3, D5, D6 are latent — real code defects with no
 current trigger; fix them when touching the surrounding code, not as standalone work.
+
+### D8 — decision: `invited_name` stays frozen at invite time, by design
+
+**Decided 2026-09-03.** `invited_name` (`members`) has exactly one writer —
+`createMemberInvite` (`services/members/members.ts:107-138`), insert-only —
+and no code path anywhere in the codebase ever updates an existing row's
+value, enforced structurally by `services/shared/identity.ts`'s
+`resolveMemberName`, whose own doc comment already states this plainly:
+*"`members.invited_name` is invite-creation metadata, written once by
+`createMemberInvite` and never updated by anything, so it is only ever a
+fallback."* D8 as originally registered was about a *consequence* of that
+immutability — before the D2 fix, `member-context.ts` read `invited_name`
+alone, so a stale invite-time name kept reaching the AI after a real Clerk
+rename. That consumer-side bug is what D2 fixed: `resolveMemberName` now
+resolves `name` first, `invited_name` only as a fallback for a member who
+was never renamed. With that fixed, `invited_name` going stale is no longer
+user-visible anywhere — it's inert metadata once a real `name` exists.
+
+**No refresh mechanism will be built.** Adding one would mean either (a) a
+new write path into `invited_name` after invite creation — undermining its
+value as a fixed record of "what the admin named this person at invite
+time," which other surfaces (`MembersList.tsx`, `TransferModal.tsx`) still
+read directly for that historical meaning, not as a live display name; or
+(b) deleting the column's write-once guarantee entirely, which is larger,
+unscoped work with no live symptom driving it. Freezing it is the accepted
+tradeoff, not an oversight — this entry exists so a future audit doesn't
+re-open D8 as a live defect.
 
 ### Verified-correct paths
 
@@ -273,3 +300,5 @@ from auth_events where metadata->>'clerk_event_type' is not null group by 1;
 
 - **2026-08-16** — Created. Gate 1 defect inventory (D1–D10) and Gate 2 current/
   target state. D3 closed as not-reachable after Clerk dashboard verification.
+- **2026-09-03** — D8 closed by decision: `invited_name` stays frozen at
+  invite time, no refresh mechanism planned. See §5's D8 decision note.

@@ -37,7 +37,7 @@ export async function ensureClerkUser(): Promise<string | null> {
     )
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('ensure_clerk_user')
   const { data, error } = await supabase
     .from('users')
     .upsert(row, { onConflict: 'clerk_id' })

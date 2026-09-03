@@ -25,13 +25,14 @@ vi.mock('@/services/audit', () => ({
   logAuthEvent: (...args: unknown[]) => mockLogAuthEvent(...args),
 }))
 
-vi.mock('@/services/auth/supabase-admin', () => ({
-  getAdminClient: () => ({
-    from: () => ({
-      upsert: () => Promise.resolve({ error: null }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
+const mockGetAdminClient = vi.fn((..._args: unknown[]) => ({
+  from: () => ({
+    upsert: () => Promise.resolve({ error: null }),
+    update: () => ({ eq: () => Promise.resolve({ error: null }) }),
   }),
+}))
+vi.mock('@/services/auth/supabase-admin', () => ({
+  getAdminClient: (...args: unknown[]) => mockGetAdminClient(...args),
 }))
 
 const mockFindUserByClerkId = vi.fn()
@@ -133,6 +134,18 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
     expect(mockAcceptStoryInvite).toHaveBeenCalledWith('stale-tok', 'clerk-1', 'user-1', 'heirloom-tenant', null)
     expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, null)
     expect(mockSyncMember).toHaveBeenCalledTimes(1)
+  })
+
+  it("passes source: 'clerk_webhook' and the svix-id as correlationId to both the direct users upsert and syncMember (Gate 3 attribution)", async () => {
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    // The direct `users` upsert getAdminClient() call, made before the
+    // linkInvitedMember/syncMember cascade.
+    expect(mockGetAdminClient).toHaveBeenCalledWith('clerk_webhook', { correlationId: 'id-1' })
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.source).toBe('clerk_webhook')
+    expect(syncCall.correlationId).toBe('id-1')
   })
 
   it('a payload with no story-invite metadata at all is completely unaffected — existing cascade runs unchanged', async () => {

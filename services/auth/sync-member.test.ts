@@ -1,11 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, getAdminClientCalls } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  getAdminClientCalls: [] as unknown[][],
 }))
 
 vi.mock('./supabase-admin', () => ({
-  getAdminClient: () => adminHolder.client,
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return adminHolder.client
+  },
 }))
 
 const logEventMock = vi.fn()
@@ -70,6 +74,31 @@ function makeSyncClient({
 describe('syncMember', () => {
   beforeEach(() => {
     logEventMock.mockReset()
+    getAdminClientCalls.length = 0
+  })
+
+  it('defaults getAdminClient source to "sync_member" when the caller does not specify one (Gate 3 attribution)', async () => {
+    const { client } = makeSyncClient({
+      userRow: { id: 'user-uuid-src1' },
+      memberRow: { id: 'member-uuid-src1' },
+    })
+    adminHolder.client = client
+
+    await syncMember({ clerkUserId: 'clerk-src1' })
+
+    expect(getAdminClientCalls[0]).toEqual(['sync_member', { correlationId: undefined }])
+  })
+
+  it('passes through an explicit source and correlationId from the caller', async () => {
+    const { client } = makeSyncClient({
+      userRow: { id: 'user-uuid-src2' },
+      memberRow: { id: 'member-uuid-src2' },
+    })
+    adminHolder.client = client
+
+    await syncMember({ clerkUserId: 'clerk-src2', source: 'clerk_webhook', correlationId: 'corr-abc' })
+
+    expect(getAdminClientCalls[0]).toEqual(['clerk_webhook', { correlationId: 'corr-abc' }])
   })
 
   it('includes the resolved users.id as user_id in the members upsert payload', async () => {

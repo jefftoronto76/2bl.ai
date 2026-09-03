@@ -10,15 +10,8 @@
 // handler is a thin consumer: tenant + member resolution, request parsing, and
 // HTTP response mapping only.
 
-import { createClient } from '@supabase/supabase-js'
 import { getCurrentUserId } from '@/services/auth'
-
-function getAdminClient(label: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  console.log(`${label} env check — url present:`, !!url, '| service key present:', !!key)
-  return createClient(url!, key!)
-}
+import { getAdminClient } from '@/services/auth/supabase-admin'
 
 export type FeedbackResult<T> =
   | { ok: true; data: T }
@@ -74,7 +67,7 @@ export async function resolveMemberId(
   }
   if (!userId) return clientMemberId
 
-  const supabase = getAdminClient('[sessions/feedback resolveMemberId]')
+  const supabase = getAdminClient()
   const { data, error } = await supabase
     .from('members')
     .select('id')
@@ -99,7 +92,7 @@ export async function upsertFeedback(
   sessionId: string,
   input: UpsertFeedbackInput,
 ): Promise<FeedbackResult<null>> {
-  const supabase = getAdminClient('[sessions/feedback]')
+  const supabase = getAdminClient()
 
   // The session must belong to this tenant — same cross-tenant guard as
   // updateSession (services/crm/sessions.ts): a cross-tenant id simply
@@ -161,7 +154,7 @@ export async function deleteFeedbackFrom(
   sessionId: string,
   fromIndex: number,
 ): Promise<FeedbackResult<null>> {
-  const supabase = getAdminClient('[sessions/feedback DELETE]')
+  const supabase = getAdminClient()
 
   const { error } = await supabase
     .from('message_feedback')
@@ -188,7 +181,7 @@ export async function listFeedback(
   tenantId: string,
   sessionId: string,
 ): Promise<FeedbackResult<MessageFeedbackRow[]>> {
-  const supabase = getAdminClient('[sessions/feedback GET]')
+  const supabase = getAdminClient()
 
   const { data, error } = await supabase
     .from('message_feedback')

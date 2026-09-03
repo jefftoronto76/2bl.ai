@@ -3,7 +3,7 @@
 // syncing their contact info (email or phone) from Clerk into the members table.
 // Called once post-authentication — idempotent on re-auth.
 
-import { getAdminClient } from './supabase-admin'
+import { getAdminClient, type IdentitySource } from './supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
@@ -20,6 +20,14 @@ export interface SyncMemberInput {
   email?: string | null
   /** From Clerk's phoneNumbers[0].phoneNumber. Same no-value semantics as `name`. */
   phone?: string | null
+  /** Gate 3 attribution — which caller triggered this sync. Defaults to
+   *  'sync_member' (this function's own identity) when the caller doesn't
+   *  distinguish itself, e.g. /api/members/sync passes 'api_members_sync',
+   *  the Clerk webhook passes 'clerk_webhook'. */
+  source?: IdentitySource
+  /** Gate 3 attribution — threaded through when the caller has one (e.g. an
+   *  incoming request's own x-correlation-id header). */
+  correlationId?: string | null
 }
 
 export interface MemberRow {
@@ -51,8 +59,8 @@ export type SyncMemberResult =
  * created the row. See System Docs/Known Gaps.md.
  */
 export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResult> {
-  const { clerkUserId, tenantId = HEIRLOOM_TENANT_ID, name, email, phone } = input
-  const supabase = getAdminClient()
+  const { clerkUserId, tenantId = HEIRLOOM_TENANT_ID, name, email, phone, source = 'sync_member', correlationId } = input
+  const supabase = getAdminClient(source, { correlationId })
 
   const usersPayload: Record<string, unknown> = { clerk_id: clerkUserId }
   setIdentityField(usersPayload, 'name', name)
