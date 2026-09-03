@@ -2304,6 +2304,115 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `Public Site.md`'s `MediaPage` section, which still only covers the
   2026-08-14 pagination work above.
 
+- **`/api/heirloom/members/claim` (`claimMembership`) is effectively
+  orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
+  invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
+  static "Claim a free membership" button → `openSignUp()`) was replaced
+  with the same deterministic chat-first `[ACCOUNT_CREATE: expired invite]`
+  pattern already used for admin/story invites — signup now happens via
+  `MagicLinkCard` → `/api/members/sync` (`syncMember`, `status: 'active'`),
+  not this route. The route's only caller, `GateView.tsx`'s own top-level
+  `useEffect` watching the Clerk false→true sign-in transition, is shared
+  plumbing across all three `GateView` branches and was left in place (not
+  deleted) — but `GateView` no longer mounts at all for the
+  invalid/expired-token population (`isGated` bypasses it), so the one
+  realistic path that used to trigger this effect's sign-up transition is
+  gone. The only way it could still fire is a signed-out visitor on the
+  no-token `WaitlistView` branch signing in through some other UI element
+  while `GateView` stays mounted — not a real trigger path today
+  (`WaitlistView` has no sign-in UI of its own).
+
+  **Correction, 2026-08-16 (sign-up/sign-in path audit):** the "orphaned"
+  conclusion above is wrong for a **garbage or mistyped** `?invite=` token —
+  a string that was **never** a real token, distinct from the
+  genuinely-issued-but-now-invalid case this entry was actually describing.
+  `memberTokenExists()` returns `false` for a garbage token, so
+  `bypassGateForExpiredInvite` never applies, `GateView` still mounts, and
+  its `openSignUp()` button remains reachable — confirmed by tracing the gate
+  logic in `Design Handovers/heirloom-signup-signin-paths.md` (Path 7).
+  Low-traffic (it requires a visitor to arrive with a token string that
+  never existed), but a real, live trigger. **Left in place, correctly.**
+
+- **Expired/invalid `?invite=` token now gets the same chat-first
+  deterministic signup flow as valid admin/story invites — built
+  2026-08-13, NOT YET LIVE-VERIFIED.** GateView's old path
+  (`openSignUp()`'s Clerk-prebuilt modal, only reachable when a visitor's
+  invite token fails validation) never guaranteed name capture and
+  violated the marker-fallback principle. Replaced with the same pattern
+  already proven for admin/story invites tonight: a new
+  `memberTokenExists(token, tenantId)` check (services/members/members.ts)
+  distinguishes a genuinely-issued-but-now-invalid token from a garbage
+  `?invite=` string; only the former bypasses the gate. The bypass also
+  requires `isLoaded && !isSignedIn` client-side (and `!session`
+  server-side for `autoOpenChat`), so a signed-in-but-pending member with a
+  stale link still sees GateView's "You're on the list." branch, not an
+  unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
+  branches just become unreachable for this one case.
+  `/api/heirloom/members/claim` + `claimMembership` are **not** orphaned — a
+  garbage `?invite=` token still reaches them via `GateView`'s `openSignUp()`
+  branch; see the correction on the entry immediately above.
+  **Not yet done:** the four manual verification cases this fix specifically
+  requires (real-expired-token, garbage-token, cross-tenant-token,
+  signed-in-with-stale-token) haven't been run against a live preview —
+  `tsc`/`next build` are clean but that doesn't substitute for the actual
+  behavior check. Do this before trusting the fix in production.
+
+- **`primer` (`members`/`story_invite_links`) still has zero delineation in
+  the system prompt — flagged 2026-08-13, still not fixed as of
+  session-context-service (2026-08-13).** See the entry above this one
+  (same date) for the full gap. Explicitly NOT touched by
+  session-context-service — that change built the reusable delineation
+  mechanism (XML tags + `escapeForTag`, `services/chat/server/session-
+  context.ts`, see `System Docs/Utilities/Chat Server.md`) for a *new*
+  block (`<session_context>`), scoped deliberately to leave `member-
+  context.ts`'s existing `primer` concatenation untouched rather than
+  bundle an unrelated retrofit into that change ("One Change at a Time,"
+  `CLAUDE.md`). **The fix is now more clearly scoped than it was on
+  2026-08-13:** wrap `primer` the same way — `<member_context>` (or a
+  `<primer>` sub-tag) plus `escapeForTag()` on the interpolated value —
+  reusing the exact pattern that now has a second, real precedent in this
+  codebase (`services/prompt/composer.ts`'s `<document_context>` was the
+  only one before this). Still needs: the `autoOpenChat`-forced,
+  no-owner-control auto-greet path decision flagged in the original entry.
+  Not scheduled — still a separate, later task.
+
+- **RESOLVED 2026-08-14 (real-story-view-1d-entry-point) — Session-
+  context-service built (2026-08-13); the "click an empty story to start a
+  chat in it" UI flow that exercises it is now wired too.**
+  `services/chat/server/session-context.ts`
+  (`getSessionContext`/`attachSessionContext`, `chat_session_context`
+  table — schema DDL reported to Jeff, now live in Studio, see `System
+  Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time wiring
+  (`app/api/sessions/route.ts`), and the client accessor plumbing
+  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) landed
+  2026-08-13, already built and tested. The missing piece — the actual
+  `SidebarV2` story-row click handler — is now real: `ChatHero.tsx`'s
+  `handleSelectStory` calls `newChat()` then `setSessionContextToAttach({
+  contextType: 'story', contextRefId: storyId, contextFrequency:
+  'every_turn' })` on the empty-story branch (see the real-story-view entry
+  above for the full branching logic). `onStartStoryChat` (a separate,
+  always-visible per-row icon distinct from the row's own click) remains
+  unwired — out of scope for this pass, which only wired `onSelectStory`.
+  **A related-looking WIP existed on origin (`2026-08-13-story-click-
+  routing`, commit `4b3aa9f9`, checkpointed mid-task, never merged) — it
+  was NOT resumed, deliberately:** it wired `onSelectStory` via a
+  completely different, discarded approach — a client-only
+  `storyContextIdRef` used solely to auto-assign a Kept memory back to the
+  story, plus a one-time deterministic *chat message* (rendered directly in
+  the transcript via plain ReactMarkdown, explicitly NOT XML-delineated by
+  that WIP's own doc comment, since raw tags would render as literal broken
+  text there) naming the story/owner. It had no `chat_session_context` row,
+  no `attachSessionContext` call, and nothing re-injected on later turns —
+  a one-shot greeting, not persistent every-turn system-prompt context. It
+  also predated and partially overlapped with the real, later, merged
+  memory↔story linking (`assign-memory-to-story`, PR #377, the actual
+  `StoryPicker` UI) — its own auto-assign-on-Keep half was already
+  superseded by that. Its `contentCount`-branching idea for the click
+  handler was NOT reused either — that field was never rebuilt anywhere
+  (confirmed absent from `services/crm/stories.ts`'s `listStories`); the
+  real click handler checks emptiness for real via `GET /api/stories/[id]/
+  memories` instead (see the real-story-view entry above).
+
 - **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
   the last two open items (PR #380).**
   - **Step 5, client/server message mismatch — verified already closed,

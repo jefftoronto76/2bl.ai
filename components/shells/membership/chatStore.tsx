@@ -681,7 +681,7 @@ export function ChatProvider({
   // token). Same standard as acceptStoryInviteToken above: fire-once guard,
   // res.ok check, and a user-facing failure message via
   // injectAssistantMessage instead of pure fire-and-forget.
-  const acceptMemberInviteToken = useCallback((token: string) => {
+  const acceptMemberInviteToken = useCallback((token: string, alreadySignedIn?: boolean) => {
     if (memberInviteAcceptFiredRef.current) {
       console.log(
         '[heirloom/chat] acceptMemberInviteToken: guard already fired, skipping second attempt for token:',
@@ -690,15 +690,23 @@ export function ChatProvider({
       return;
     }
     memberInviteAcceptFiredRef.current = true;
-    console.log('[heirloom/chat] firing member invite accept for token:', token.slice(0, 8) + '…');
+    console.log('[heirloom/chat] firing member invite accept for token:', token.slice(0, 8) + '…', { alreadySignedIn: !!alreadySignedIn });
     fetch('/api/heirloom/invites/accept', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, alreadySignedIn: !!alreadySignedIn }),
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          // 409 = the visitor already has a membership for this tenant —
+          // the server deliberately did nothing (see acceptInvite's
+          // skipOrphanCleanup guard) rather than fail. Not an error to the
+          // visitor: nothing needed to happen, so nothing is shown.
+          if (res.status === 409) {
+            console.log('[heirloom/chat] member invite accept: visitor already a member, no-op');
+            return;
+          }
           console.error('[heirloom/chat] member invite accept failed:', res.status, data?.error);
           injectAssistantMessage(MEMBER_INVITE_ACCEPT_FALLBACK_MESSAGE);
           return;
@@ -739,6 +747,25 @@ export function ChatProvider({
       console.log('[heirloom/chat] mount-time story invite effect: no token present, skipping');
     } else {
       console.log('[heirloom/chat] mount-time story invite effect: not signed in, skipping');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+
+  // Mirrors the mount-time story invite effect immediately above, for the
+  // same reason: an existing Heirloom member opening a fresh admin/member
+  // `?invite=TOKEN` link while already signed in has no `false→true`
+  // isSignedIn transition to hook — the transition effect further below
+  // deliberately skips "already signed in on page load" via its own
+  // wasSignedInRef first-observation guard. Without this, the invite is
+  // never accepted: acceptMemberInviteToken had no second caller. Safe to
+  // add — acceptMemberInviteToken is already idempotent (guarded by
+  // memberInviteAcceptFiredRef, shared with the transition effect below), so
+  // this can never double-fire the accept call for the same visitor.
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && inviteTokenRef.current) {
+      console.log('[heirloom/chat] mount-time member invite effect: already signed in with token, calling acceptMemberInviteToken');
+      acceptMemberInviteToken(inviteTokenRef.current, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);

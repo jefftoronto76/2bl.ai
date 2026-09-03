@@ -8,6 +8,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { deleteClerkUser } from '@/services/auth'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
+import { identityValue, setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 export const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
 
@@ -115,15 +116,12 @@ export async function createMemberInvite(
   if (actorId != null) {
     payload.invited_by = actorId
   }
-  if (invitedName != null && invitedName.trim().length > 0) {
-    payload.invited_name = invitedName.trim()
-  }
-  if (email != null && email.trim().length > 0) {
-    payload.email = email.trim().toLowerCase()
-  }
-  if (phone != null && phone.trim().length > 0) {
-    payload.phone = phone.trim()
-  }
+  // Behaviourally unchanged — these guards were already correct. Routed through
+  // the shared helper so there is one implementation of the rule rather than a
+  // hand-rolled copy per call site, which is how D1/D4/D5 diverged.
+  setIdentityField(payload, 'invited_name', invitedName)
+  setIdentityEmail(payload, 'email', email)
+  setIdentityField(payload, 'phone', phone)
   if (autoOpen === true) {
     payload.auto_open = true
   }
@@ -254,9 +252,19 @@ export async function linkInvitedMember(
 
   // Resolve users.id for this Clerk user (may not exist yet if webhook fires
   // before the first sign-in write — create it if missing).
+  // D5: this previously wrote `email: email?.toLowerCase() ?? null`
+  // unconditionally. The webhook calls this function as
+  // `linkInvitedMember(clerkUserId, email ?? '', …)`, and '' is not nullish, so
+  // `''.toLowerCase()` wrote an empty string over a good users.email on every
+  // phone-only signup. Same identity rule as everywhere else now, which also
+  // makes the lowercase normalisation consistent with the webhook's own users
+  // upsert (which wrote raw case moments earlier in the same request).
+  const usersPayload: Record<string, unknown> = { clerk_id: clerkId }
+  setIdentityEmail(usersPayload, 'email', email)
+
   const { data: userRow, error: userErr } = await supabase
     .from('users')
-    .upsert({ clerk_id: clerkId, email: email?.toLowerCase() ?? null }, { onConflict: 'clerk_id' })
+    .upsert(usersPayload, { onConflict: 'clerk_id' })
     .select('id')
     .single()
 
@@ -366,7 +374,10 @@ export async function linkInvitedMember(
       source: 'invite',
       used_at: now,
       updated_at: now,
-      ...(name && !invitedRow.name ? { name } : {}),
+      // Fill-only-when-null is deliberate (PRs #368/#371) and stricter than the
+      // shared invariant requires — it never overwrites, so it can never delete.
+      // identityValue here just stops a whitespace-only Clerk name being written.
+      ...(identityValue(name) && !invitedRow.name ? { name: identityValue(name) } : {}),
     })
     .eq('id', memberId)
 
@@ -412,11 +423,33 @@ export async function acceptInvite(
   token: string,
   clerkUserId: string,
   supabaseUserId: string,
+  /** From Clerk's firstName + lastName (same derivation as
+   *  linkInvitedMember's/acceptStoryInvite's trailing `name` param) —
+   *  null/undefined when Clerk has no name on file. Fallback only: the
+   *  orphan-rescue below (rescuedName) reflects a name the visitor actually
+   *  typed into the OTP form and wins when both are available. Closes the
+   *  race this function used to depend on rescuedName alone to survive —
+   *  see Design Handovers/heirloom-signup-signin-fixes-proposal.md §2. */
+  name?: string | null,
+  options?: {
+    /** True when the caller is an already-signed-in visitor (the mount-time
+     *  effect added for the "already signed in with a fresh invite link"
+     *  gap, chatStore.tsx), not the false→true sign-up transition. Skips
+     *  step 3's orphan delete entirely: that delete's premise is "any other
+     *  row sharing this clerk_id is a same-request signup-race artifact
+     *  syncMember created moments ago" — true only for a brand-new sign-up.
+     *  For an already-signed-in visitor, that other row is just as likely
+     *  their real, established membership (with its own primer, role, and
+     *  subscriptions) — deleting it would silently destroy it. Flagged in
+     *  PR #448 review; see the guard below for what runs instead. */
+    skipOrphanCleanup?: boolean
+  },
 ): Promise<MembersResult<{ memberId: string }>> {
   console.log('[acceptInvite] entry', {
     clerkUserId,
     token: token.slice(0, 8) + '…',
     supabaseUserId,
+    skipOrphanCleanup: options?.skipOrphanCleanup === true,
   })
 
   if (!token || !clerkUserId || !supabaseUserId) {
@@ -475,54 +508,79 @@ export async function acceptInvite(
   // can independently write a real `name` onto that orphan row (it races
   // acceptInvite off the same Clerk session-activation event, no ordering
   // guaranteed), and the invited row being stamped in step 4 never has one.
-  const { data: orphanRows, error: orphanErr } = await supabase
-    .from('members')
-    .delete()
-    .eq('clerk_id', clerkUserId)
-    .eq('tenant_id', row.tenant_id)
-    .neq('id', row.id)
-    .select('id, name')
-
-  // Rescued from a single deleted orphan's `name` when the invited row
-  // doesn't already have one — see step 3 comment above. Left undefined
-  // (not included in the step 4 update payload) for every other case:
-  // zero orphans, more than one, or the orphan's name is also null.
+  //
+  // Skipped entirely when skipOrphanCleanup is set — see the param's doc
+  // comment. Instead: if this clerk_id already owns a different row for this
+  // tenant, that row is this visitor's real membership, not an artifact to
+  // clean up. Stamping row.id would violate the unique clerk_id constraint
+  // regardless, so surface that plainly (no accept, nothing deleted) rather
+  // than attempt a destructive delete to make room for it.
   let rescuedName: string | undefined
 
-  if (orphanErr) {
-    console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
-      clerkUserId,
-      error: orphanErr.message,
-    })
-    void logEvent({
-      action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
-      clerk_user_id: clerkUserId,
-      target_type: 'member',
-      target_id: row.id,
-      outcome: 'failure',
-      metadata: { error: orphanErr.message },
-    })
-    // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
-    // on clerk_id will surface a real error if the orphan remains.
+  if (options?.skipOrphanCleanup) {
+    const { data: conflictingRow, error: conflictErr } = await supabase
+      .from('members')
+      .select('id')
+      .eq('clerk_id', clerkUserId)
+      .eq('tenant_id', row.tenant_id)
+      .neq('id', row.id)
+      .maybeSingle()
+
+    if (conflictErr) {
+      console.error('[acceptInvite] step 3 conflict check failed', { clerkUserId, error: conflictErr.message })
+      return { ok: false, status: 500, error: conflictErr.message }
+    }
+    if (conflictingRow) {
+      console.log('[acceptInvite] step 3 skipped: visitor already has a membership for this tenant', {
+        clerkUserId,
+        existingMemberId: (conflictingRow as { id: string }).id,
+      })
+      return { ok: false, status: 409, error: 'Already a member' }
+    }
   } else {
-    const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
-    const deletedCount = deletedRows.length
-    console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
-    if (deletedCount > 0) {
-      // A syncMember-created orphan actually existed — confirms the
-      // linkInvitedMember/syncMember race described in Known Gaps.md fired
-      // and was reconciled here rather than left as a stuck user_id-null row.
+    const { data: orphanRows, error: orphanErr } = await supabase
+      .from('members')
+      .delete()
+      .eq('clerk_id', clerkUserId)
+      .eq('tenant_id', row.tenant_id)
+      .neq('id', row.id)
+      .select('id, name')
+
+    if (orphanErr) {
+      console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
+        clerkUserId,
+        error: orphanErr.message,
+      })
       void logEvent({
-        action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+        action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
         clerk_user_id: clerkUserId,
         target_type: 'member',
         target_id: row.id,
-        metadata: { deleted_count: deletedCount },
+        outcome: 'failure',
+        metadata: { error: orphanErr.message },
       })
-    }
-    if (deletedCount === 1 && deletedRows[0].name && !row.name) {
-      rescuedName = deletedRows[0].name
-      console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
+      // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
+      // on clerk_id will surface a real error if the orphan remains.
+    } else {
+      const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
+      const deletedCount = deletedRows.length
+      console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
+      if (deletedCount > 0) {
+        // A syncMember-created orphan actually existed — confirms the
+        // linkInvitedMember/syncMember race described in Known Gaps.md fired
+        // and was reconciled here rather than left as a stuck user_id-null row.
+        void logEvent({
+          action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+          clerk_user_id: clerkUserId,
+          target_type: 'member',
+          target_id: row.id,
+          metadata: { deleted_count: deletedCount },
+        })
+      }
+      if (deletedCount === 1 && deletedRows[0].name && !row.name) {
+        rescuedName = deletedRows[0].name
+        console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
+      }
     }
   }
 
@@ -537,7 +595,16 @@ export async function acceptInvite(
       source: 'invite',
       used_at: now,
       updated_at: now,
-      ...(rescuedName ? { name: rescuedName } : {}),
+      // Each candidate is normalized independently before the fallback, not
+      // `identityValue(rescuedName ?? name)` — `??` treats a whitespace-only
+      // rescuedName as present (it's neither null nor undefined) and would
+      // block a real Clerk name from ever being used as the fallback.
+      // `identityValue(row.name)`, not `!row.name`, for the same reason: a
+      // whitespace-only stored name must count as absent here too. Flagged
+      // in PR #448 review.
+      ...(!identityValue(row.name) && (identityValue(rescuedName) ?? identityValue(name))
+        ? { name: identityValue(rescuedName) ?? identityValue(name) }
+        : {}),
     })
     .eq('id', row.id)
 

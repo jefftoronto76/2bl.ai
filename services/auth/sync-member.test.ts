@@ -141,4 +141,95 @@ describe('syncMember', () => {
     if (result.ok) return
     expect(result.error).toBe('members upsert failed')
   })
+
+  // ── D1: a no-value name must never reach a column ────────────────────────
+  //
+  // The upsert conflicts on clerk_id, so a `name` key present with a null
+  // value overwrites an existing members.name. Absence is what leaves it
+  // alone. These assert on key presence for that reason, not on the value.
+  describe('identity-write invariant (D1)', () => {
+    async function upsertPayloadsFor(input: Parameters<typeof syncMember>[0]) {
+      const { client, getUsersUpsertCalls, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-d1' },
+        memberRow: { id: 'member-uuid-d1' },
+      })
+      adminHolder.client = client
+      await syncMember(input)
+      return {
+        users: getUsersUpsertCalls()[0] as Record<string, unknown>,
+        members: getMembersUpsertCalls()[0] as Record<string, unknown>,
+      }
+    }
+
+    // Fails before the fix: `if (name !== undefined)` let null through and
+    // members.name was written as NULL. This is the defect, in one case.
+    it('omits name from both payloads when name is explicitly null', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: null })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is an empty string', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is whitespace only', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '   ' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is undefined', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('writes a real name, trimmed, to both payloads', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '  Sarah Chen  ' })
+      expect(members.name).toBe('Sarah Chen')
+      expect(users.name).toBe('Sarah Chen')
+    })
+
+    it('applies the same rule to email and phone', async () => {
+      const { users, members } = await upsertPayloadsFor({
+        clerkUserId: 'c',
+        email: null,
+        phone: '',
+      })
+      expect('email' in members).toBe(false)
+      expect('phone' in members).toBe(false)
+      expect('email' in users).toBe(false)
+      expect('phone' in users).toBe(false)
+    })
+
+    it('normalises email case on both payloads', async () => {
+      const { users, members } = await upsertPayloadsFor({
+        clerkUserId: 'c',
+        email: ' Sarah@Example.COM ',
+      })
+      expect(members.email).toBe('sarah@example.com')
+      expect(users.email).toBe('sarah@example.com')
+    })
+
+    // Belt-and-braces: whatever the input, no identity column may ever carry a
+    // null into an upsert payload. Guards against a future field being added
+    // without routing through setIdentityField.
+    it('never puts a null identity value on either payload, for any input', async () => {
+      for (const v of [null, '', '   ', undefined]) {
+        const { users, members } = await upsertPayloadsFor({
+          clerkUserId: 'c',
+          name: v as string | null | undefined,
+          email: v as string | null | undefined,
+          phone: v as string | null | undefined,
+        })
+        for (const key of ['name', 'email', 'phone']) {
+          expect(members[key]).toBeUndefined()
+          expect(users[key]).toBeUndefined()
+        }
+      }
+    })
+  })
 })
