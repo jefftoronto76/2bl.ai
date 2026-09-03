@@ -1,105 +1,82 @@
 'use client';
 
 /*
-  PricingSection → "Easy to get started." — Purchase Price / Annual toggle,
-  feature list, and the primary conversion CTA.
+  PricingSection → "We're almost ready." — the beta-signup panel that replaces
+  the former price card / billing toggle. Ported from the design reference's
+  Pricing(): "Design Handovers/ Aug 2026 Atomic Updates/
+  13_Heirloom_lander_nav_updateV4/Heirloom Lander - Summer 2026 - Story
+  Canvas.html" (~lines 817-833).
 
-  ⚠️ Chat activation (fresh wiring): "Start Your Story" → dispatch({ type: 'OPEN_CHAT' }).
+  id="pricing" is load-bearing — it is LandingNav's "Pricing" scroll target
+  (document.getElementById('pricing')). Do not rename or remove. scroll-mt-16
+  is kept from production so the fixed nav doesn't cover the heading.
+
+  ⚠️ DELIBERATE DEVIATION FROM THE REFERENCE — behaviour is NOT ported.
+  The reference button called `dropMessage`, which fired its own internal
+  window event (CustomEvent 'legacy-open-chat' with a "Joining the beta"
+  context). Production has never used that event system. "Drop us a message"
+  is wired exactly like every other CTA on this page — HeroSection's "Start
+  Your Story" included: dispatch({ type: 'OPEN_CHAT' }) via useChatStore.
+  OPEN_CHAT carries no payload, so the reference's context string is simply
+  dropped; that is expected.
+
+  Copy note: the reference body says "...make sure Legacy is ready..." — that
+  is the old brand name, changed to "Heirloom" here.
+
+  Token mapping from the reference (var(--hl-*) → real tokens):
+    --hl-surface      → rgb(var(--color-surface))
+    --hl-border       → var(--color-border)
+    --hl-text         → rgb(var(--color-text-primary))
+    --hl-muted        → var(--color-text-muted)
+    --hl-accent       → rgb(var(--color-accent))
+    --hl-accent-hover → var(--color-accent-hover)
+    --hl-on-accent    → rgb(var(--color-background))  (= Tailwind `text-background`
+                                                      on the existing CTAs)
+    --font-display → Tailwind `font-display`
+  Reference `.reveal` / `.reveal.in` → same classes, defined once in globals.css
+  (shared with the other Story Canvas section ports).
 */
 
-import { useEffect, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
 import { useChatStore } from '@/components/shells/membership/chatStore';
+import { useReveal } from './useReveal';
+import { Eyebrow } from './Eyebrow';
 
-type Billing = 'purchase' | 'annual';
-type Feature = { label: string; children?: string[] };
-
-const features: Feature[] = [
-  { label: '1 published story' },
-  { label: '50GB storage' },
-  { label: 'Unlimited:', children: ['Drafts', 'AI-guided conversations', 'Contributors per story'] },
-  { label: 'Cancel anytime' },
-];
+const ACCENT = 'rgb(var(--color-accent))';
+const ACCENT_HOVER = 'var(--color-accent-hover)';
 
 export function PricingSection() {
-  const [visible, setVisible] = useState(false);
-  const [billing, setBilling] = useState<Billing>('purchase');
-  const sectionRef = useRef<HTMLDivElement>(null);
+  const [ref, seen] = useReveal<HTMLElement>();
   const { dispatch } = useChatStore();
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
-      { threshold: 0.1 },
-    );
-    if (sectionRef.current) observer.observe(sectionRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const price = billing === 'purchase' ? '99.99' : '74.99';
-  const tab = (active: boolean) =>
-    `px-5 py-2 rounded-full font-body text-base font-medium transition-colors ${active ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'}`;
-
   return (
-    <section ref={sectionRef} id="pricing" data-screen-label="Pricing" className="py-20 sm:py-24 md:py-36 bg-surface border-y border-border scroll-mt-16">
-      <div className="max-w-[620px] mx-auto px-4 sm:px-6">
-        <div className={`text-center mb-11 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <span className="block font-mono text-xs uppercase tracking-[0.3em] text-accent mb-6">Pricing</span>
-          <h2 className="font-display font-light text-text-primary leading-[1.08] tracking-tight" style={{ fontSize: 'clamp(34px, 5vw, 66px)' }}>Easy to get started.</h2>
-        </div>
-
-        <div className={`flex justify-center mb-9 transition-all duration-700 delay-[120ms] ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <div role="tablist" aria-label="Billing cycle" className="inline-flex items-center gap-1 rounded-full bg-background border border-border p-1">
-            <button type="button" role="tab" aria-selected={billing === 'purchase'} onClick={() => setBilling('purchase')} className={tab(billing === 'purchase')}>Purchase Price</button>
-            <button type="button" role="tab" aria-selected={billing === 'annual'} onClick={() => setBilling('annual')} className={tab(billing === 'annual')}>Annual</button>
-          </div>
-        </div>
-
-        <div className={`relative rounded-2xl bg-background border border-accent/25 border-t-[3px] border-t-accent transition-all duration-700 delay-200 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`} style={{ padding: 'clamp(28px, 5vw, 48px)' }}>
-          {billing === 'annual' && (
-            <span className="absolute -top-3 right-7 inline-flex items-center px-3 py-1 rounded-full font-mono text-xs font-semibold bg-accent text-background">Save 25%</span>
-          )}
-
-          <div className="text-center mb-7">
-            <h3 className="font-display font-medium text-text-primary mb-2.5" style={{ fontSize: 'clamp(28px, 4vw, 38px)' }}>Legacy</h3>
-            <p className="font-body text-text-muted max-w-md mx-auto" style={{ fontSize: 16.5, lineHeight: 1.55 }}>Everything you need to capture, shape, and publish your story.</p>
-          </div>
-
-          <div className="text-center mb-8">
-            <div className="flex items-baseline justify-center gap-2">
-              <span className="font-display italic text-accent leading-none" style={{ fontSize: 'clamp(48px, 8vw, 64px)' }}>${price}</span>
-              <span className="font-body text-text-muted" style={{ fontSize: 17 }}>/ month</span>
-            </div>
-            {billing === 'annual' && <p className="font-body text-text-muted mt-2" style={{ fontSize: 14 }}>billed $899/year</p>}
-          </div>
-
-          <ul className="flex flex-col gap-3 mb-8 max-w-md mx-auto list-none p-0">
-            {features.map((feature) => (
-              <li key={feature.label} className="font-body text-text-primary" style={{ fontSize: 16.5, lineHeight: 1.5 }}>
-                <span className="flex items-start gap-3">
-                  <Check size={19} className="text-accent flex-shrink-0 mt-0.5" strokeWidth={2.5} />
-                  <span>{feature.label}</span>
-                </span>
-                {feature.children && (
-                  <ul className="flex flex-col gap-2 mt-2 pl-8 text-text-muted list-none">
-                    {feature.children.map((child) => (
-                      <li key={child} className="flex items-start gap-3" style={{ fontSize: 15.5 }}>
-                        <Check size={18} className="text-accent/60 flex-shrink-0 mt-0.5" strokeWidth={2.5} />
-                        <span>{child}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ul>
-
+    <section
+      ref={ref}
+      id="pricing"
+      data-screen-label="Public Release Soon"
+      className="scroll-mt-16"
+      style={{ padding: 'clamp(80px,12vw,150px) 24px', background: 'rgb(var(--color-surface))', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}
+    >
+      <div style={{ maxWidth: 620, margin: '0 auto' }}>
+        <div className={'reveal' + (seen ? ' in' : '')} style={{ textAlign: 'center' }}>
+          <Eyebrow style={{ marginBottom: 24 }}>Public Release Soon</Eyebrow>
+          <h2 className="font-display" style={{ fontWeight: 300, fontSize: 'clamp(34px,5vw,60px)', lineHeight: 1.1, letterSpacing: '-.01em', color: 'rgb(var(--color-text-primary))', margin: '0 0 26px' }}>
+            We&rsquo;re almost ready.
+          </h2>
+          <p style={{ fontSize: 18, lineHeight: 1.7, color: 'var(--color-text-muted)', margin: '0 auto 40px', maxWidth: 480 }}>
+            We&rsquo;re currently in the final phase of testing, working closely with around 100 members to make sure Heirloom is ready before we open it up more broadly.
+          </p>
+          <p className="font-display" style={{ fontStyle: 'italic', fontSize: 22, color: 'rgb(var(--color-text-primary))', margin: '0 0 20px' }}>
+            Want to join the beta?
+          </p>
+          {/* ⚠️ production chat activation — same OPEN_CHAT dispatch as every other CTA */}
           <button
             type="button"
             onClick={() => dispatch({ type: 'OPEN_CHAT' })}
-            className="block w-full text-center py-4 rounded-[13px] bg-accent hover:bg-accent-hover text-background font-body font-semibold text-base transition-colors"
+            style={{ padding: '15px 30px', borderRadius: 13, background: ACCENT, color: 'rgb(var(--color-background))', fontWeight: 600, fontSize: 16, border: 'none', transition: 'background .2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT_HOVER; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ACCENT; }}
           >
-            Start Your Story
+            Drop us a message
           </button>
         </div>
       </div>
