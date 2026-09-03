@@ -7,13 +7,17 @@
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { adminHolder, clerkHolder } = vi.hoisted(() => ({
+const { adminHolder, clerkHolder, getAdminClientCalls } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
   clerkHolder: { user: null as unknown },
+  getAdminClientCalls: [] as unknown[][],
 }))
 
 vi.mock('./supabase-admin', () => ({
-  getAdminClient: () => adminHolder.client,
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return adminHolder.client
+  },
 }))
 
 vi.mock('./providers/clerk/server', () => ({
@@ -53,6 +57,7 @@ function clerkUser(firstName: string | null, lastName: string | null) {
 beforeEach(() => {
   adminHolder.client = null
   clerkHolder.user = null
+  getAdminClientCalls.length = 0
 })
 
 describe('syncUser — identity-write invariant (D4)', () => {
@@ -108,5 +113,14 @@ describe('syncUser — identity-write invariant (D4)', () => {
 
     expect(await syncUser()).toBeNull()
     expect(payload()).toBeUndefined()
+  })
+
+  it('calls getAdminClient with source "sync_user" (Gate 3 attribution)', async () => {
+    makeClient()
+    clerkHolder.user = clerkUser('Sarah', 'Chen')
+
+    await syncUser()
+
+    expect(getAdminClientCalls[0]).toEqual(['sync_user'])
   })
 })

@@ -48,6 +48,8 @@ export async function POST(req: Request) {
     name,
     email: user.email ?? null,
     phone: user.phone ?? null,
+    source: 'api_members_sync',
+    correlationId: req.headers.get('x-correlation-id'),
   })
 
   if (!result.ok) {

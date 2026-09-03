@@ -26,7 +26,7 @@ export async function claimMembership(
   tenantId: string = HEIRLOOM_TENANT_ID,
   contact: ClaimMembershipContact = {},
 ): Promise<ClaimMembershipResult> {
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('claim_membership')
 
   // Check for an existing row first so we never downgrade an active member.
   const { data: existing, error: fetchErr } = await supabase

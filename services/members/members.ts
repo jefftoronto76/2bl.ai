@@ -100,7 +100,7 @@ export async function createMemberInvite(
   primer?: string | null,
   storyId?: string | null,
 ): Promise<MembersResult<{ token: string; memberId: string }>> {
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('members_admin')
   const token = generateToken()
   const now = new Date()
   const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
@@ -248,7 +248,7 @@ export async function linkInvitedMember(
     return false
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('link_invited_member')
 
   // Resolve users.id for this Clerk user (may not exist yet if webhook fires
   // before the first sign-in write — create it if missing).
@@ -461,7 +461,7 @@ export async function acceptInvite(
     return { ok: false, status: 400, error: 'Missing required parameters' }
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('accept_invite')
 
   // Step 1: find the invited row. Excludes revoked invites — a revoked token
   // is dead everywhere, not just at the /invite/[token] redirect.

@@ -1,12 +1,16 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 // Hoist the holder so the mock factory captures it before any import runs.
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, getAdminClientCalls } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  getAdminClientCalls: [] as unknown[][],
 }))
 
 vi.mock('@/services/auth/supabase-admin', () => ({
-  getAdminClient: () => adminHolder.client,
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return adminHolder.client
+  },
 }))
 
 const logEventMock = vi.fn()
@@ -27,6 +31,10 @@ import {
   hardDeleteMember,
   HEIRLOOM_TENANT_ID,
 } from './members'
+
+beforeEach(() => {
+  getAdminClientCalls.length = 0
+})
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -220,6 +228,15 @@ describe('createMemberInvite', () => {
     expect(payload.invited_name).toBe('Alice') // trimmed
   })
 
+  it('calls getAdminClient with source "members_admin" (Gate 3 attribution)', async () => {
+    const { client } = makeInsertClient({ id: 'member-3', token: '__tok3__' })
+    adminHolder.client = client
+
+    await createMemberInvite('tenant-1', 'actor-1')
+
+    expect(getAdminClientCalls[0]).toEqual(['members_admin'])
+  })
+
   it('omits invited_name when value is whitespace-only', async () => {
     const { client, getCaptured } = makeInsertClient({ id: 'member-3', token: 'tok3' })
     adminHolder.client = client
@@ -361,6 +378,18 @@ describe('linkInvitedMember', () => {
     expect(update.user_id).toBe('user-uuid-1')
     expect(update.status).toBe('active')
     expect(typeof update.used_at).toBe('string')
+  })
+
+  it('calls getAdminClient with source "link_invited_member" (Gate 3 attribution)', async () => {
+    const { client } = makeLinkClient({
+      userRow: { id: 'user-uuid-2' },
+      inviteRow: { id: 'member-uuid-2', tenant_id: 'tenant-1' },
+    })
+    adminHolder.client = client
+
+    await linkInvitedMember('clerk-xyz', 'alice@example.com')
+
+    expect(getAdminClientCalls[0]).toEqual(['link_invited_member'])
   })
 
   // ── D5: the users-leg upsert must not write an empty email ───────────────
@@ -621,6 +650,17 @@ describe('acceptInvite', () => {
     expect(update.clerk_id).toBe('clerk-1')
     expect(update.user_id).toBe('user-1')
     expect(update.status).toBe('active')
+  })
+
+  it('calls getAdminClient with source "accept_invite" (Gate 3 attribution)', async () => {
+    const { client } = makeAcceptInviteClient({
+      invitedRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
+    })
+    adminHolder.client = client
+
+    await acceptInvite('tok', 'clerk-1', 'user-1')
+
+    expect(getAdminClientCalls[0]).toEqual(['accept_invite'])
   })
 
   it('logs only MEMBER_INVITE_ACCEPTED (no orphan event) when no orphan row existed', async () => {

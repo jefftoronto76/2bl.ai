@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'A valid email is required' }, { status: 400 })
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('waitlist_request')
 
   // Idempotent: if this email already has any member row for Heirloom, don't
   // create a duplicate. Return 200 (the visitor is already on the list or a member).

@@ -28,10 +28,10 @@ vi.mock('@/services/auth', () => ({
 
 import { POST } from './route'
 
-function req(body: unknown): Request {
+function req(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request('http://test/api/members/sync', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   })
 }
@@ -115,5 +115,28 @@ describe('POST /api/members/sync — syncToClerk (item 3b correction)', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toEqual({ member: { id: 'member-1' } })
+  })
+})
+
+describe('POST /api/members/sync — Gate 3 attribution', () => {
+  it("passes source: 'api_members_sync' to syncMember", async () => {
+    await POST(req({ name: 'Jane' }))
+
+    const [call] = syncMemberMock.mock.calls[0] as [Record<string, unknown>]
+    expect(call.source).toBe('api_members_sync')
+  })
+
+  it('passes the x-correlation-id request header through as correlationId', async () => {
+    await POST(req({ name: 'Jane' }, { 'x-correlation-id': 'corr-123' }))
+
+    const [call] = syncMemberMock.mock.calls[0] as [Record<string, unknown>]
+    expect(call.correlationId).toBe('corr-123')
+  })
+
+  it('passes null correlationId when the header is absent', async () => {
+    await POST(req({ name: 'Jane' }))
+
+    const [call] = syncMemberMock.mock.calls[0] as [Record<string, unknown>]
+    expect(call.correlationId).toBeNull()
   })
 })

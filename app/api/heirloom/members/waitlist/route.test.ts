@@ -7,9 +7,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { insertMock, existingRowResult } = vi.hoisted(() => ({
+const { insertMock, existingRowResult, getAdminClientCalls } = vi.hoisted(() => ({
   insertMock: vi.fn(async (_payload: Record<string, unknown>) => ({ error: null })),
   existingRowResult: { data: null as { id: string; status: string } | null },
+  getAdminClientCalls: [] as unknown[][],
 }))
 
 const mockFrom = vi.fn((table: string) => {
@@ -27,7 +28,10 @@ const mockFrom = vi.fn((table: string) => {
 })
 
 vi.mock('@/services/auth/supabase-admin', () => ({
-  getAdminClient: () => ({ from: mockFrom }),
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return { from: mockFrom }
+  },
 }))
 
 vi.mock('@/services/members', () => ({
@@ -48,6 +52,15 @@ beforeEach(() => {
   insertMock.mockClear()
   mockFrom.mockClear()
   existingRowResult.data = null
+  getAdminClientCalls.length = 0
+})
+
+describe('POST /api/heirloom/members/waitlist — Gate 3 attribution', () => {
+  it('calls getAdminClient with source "waitlist_request"', async () => {
+    await POST(req({ email: 'e@x.com' }))
+
+    expect(getAdminClientCalls[0]).toEqual(['waitlist_request'])
+  })
 })
 
 describe('POST /api/heirloom/members/waitlist — optional name', () => {

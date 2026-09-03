@@ -26,7 +26,7 @@ export async function syncUser(): Promise<string | null> {
   setIdentityEmail(payload, 'email', email)
   setIdentityField(payload, 'name', name)
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('sync_user')
 
   const { data, error } = await supabase
     .from('users')

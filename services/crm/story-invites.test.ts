@@ -6,11 +6,15 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { AuditAction } from '@/services/audit/types'
 
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, getAdminClientCalls } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  getAdminClientCalls: [] as unknown[][],
 }))
 vi.mock('@/services/auth/supabase-admin', () => ({
-  getAdminClient: () => adminHolder.client,
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return adminHolder.client
+  },
 }))
 
 const logEventMock = vi.fn()
@@ -112,6 +116,7 @@ const LINK_COLUMNS_ROW = {
 
 beforeEach(() => {
   logEventMock.mockClear()
+  getAdminClientCalls.length = 0
 })
 
 describe('createOrGetActiveStoryInviteLink', () => {
@@ -437,6 +442,15 @@ describe('listStoryCollaborators', () => {
 
 describe('acceptStoryInvite', () => {
   const STORY_ROW = { data: { id: 'story-1', title: 'A Life in Full' }, error: null }
+
+  it('calls getAdminClient with source "accept_story_invite" (Gate 3 attribution)', async () => {
+    const { client } = makeClient({ story_invite_links: [{ data: null, error: null }] })
+    adminHolder.client = client
+
+    await acceptStoryInvite('nope', 'clerk-1', 'user-1', 'tenant-1')
+
+    expect(getAdminClientCalls[0]).toEqual(['accept_story_invite'])
+  })
 
   it('404s when the token does not exist', async () => {
     const { client } = makeClient({ story_invite_links: [{ data: null, error: null }] })
