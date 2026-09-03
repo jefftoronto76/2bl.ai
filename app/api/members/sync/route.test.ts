@@ -12,9 +12,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { authHolder, syncMemberMock } = vi.hoisted(() => ({
+const { authHolder, syncMemberMock, updateClerkUserFirstNameMock } = vi.hoisted(() => ({
   authHolder: { user: null as { providerUserId: string; email?: string; phone?: string; name?: string } | null },
   syncMemberMock: vi.fn(async (_input: Record<string, unknown>) => ({ ok: true as const, data: { id: 'member-1' } })),
+  updateClerkUserFirstNameMock: vi.fn(async (_id: string, _firstName: string) => {}),
 }))
 
 vi.mock('@/services/auth', () => ({
@@ -22,6 +23,7 @@ vi.mock('@/services/auth', () => ({
   syncMember: (input: Record<string, unknown>) => syncMemberMock(input),
   HEIRLOOM_TENANT_ID: 'tenant-heirloom',
   getTenantFromRequest: async () => 'tenant-heirloom',
+  updateClerkUserFirstName: (id: string, firstName: string) => updateClerkUserFirstNameMock(id, firstName),
 }))
 
 import { POST } from './route'
@@ -36,6 +38,7 @@ function req(body: unknown): Request {
 
 beforeEach(() => {
   syncMemberMock.mockClear()
+  updateClerkUserFirstNameMock.mockClear()
   authHolder.user = { providerUserId: 'clerk-1', email: 'e@x.com', name: 'Clerk Stale Name' }
 })
 
@@ -76,5 +79,41 @@ describe('POST /api/members/sync — no Clerk-name fallback', () => {
     const [call] = syncMemberMock.mock.calls[0] as [Record<string, unknown>]
     expect(call.name).not.toBe('Should Never Appear')
     expect(call.name).toBeUndefined()
+  })
+})
+
+describe('POST /api/members/sync — syncToClerk (item 3b correction)', () => {
+  it('calls updateClerkUserFirstName when syncToClerk is true and a name is supplied', async () => {
+    await POST(req({ name: 'Jane', syncToClerk: true }))
+
+    expect(updateClerkUserFirstNameMock).toHaveBeenCalledWith('clerk-1', 'Jane')
+  })
+
+  it('does not call updateClerkUserFirstName when syncToClerk is absent — the default for every other caller of this route', async () => {
+    await POST(req({ name: 'Jane' }))
+
+    expect(updateClerkUserFirstNameMock).not.toHaveBeenCalled()
+  })
+
+  it('does not call updateClerkUserFirstName when syncToClerk is false', async () => {
+    await POST(req({ name: 'Jane', syncToClerk: false }))
+
+    expect(updateClerkUserFirstNameMock).not.toHaveBeenCalled()
+  })
+
+  it('does not call updateClerkUserFirstName when syncToClerk is true but no real name was supplied', async () => {
+    await POST(req({ name: '   ', syncToClerk: true }))
+
+    expect(updateClerkUserFirstNameMock).not.toHaveBeenCalled()
+  })
+
+  it('still returns 200 with the member when updateClerkUserFirstName rejects — non-fatal', async () => {
+    updateClerkUserFirstNameMock.mockRejectedValueOnce(new Error('clerk down'))
+
+    const res = await POST(req({ name: 'Jane', syncToClerk: true }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ member: { id: 'member-1' } })
   })
 })

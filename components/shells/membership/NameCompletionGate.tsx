@@ -67,7 +67,12 @@ export function NameCompletionGate({ children }: { children: React.ReactNode }) 
       const res = await fetch('/api/members/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        // syncToClerk: true — this is the one path that also writes the
+        // name to Clerk's own profile (firstName), keeping Clerk and
+        // Supabase in sync for a name captured post-authentication.
+        // Deliberately opt-in on the route side (see route.ts) so this
+        // doesn't change behavior for any of the route's other callers.
+        body: JSON.stringify({ name: trimmed, syncToClerk: true }),
       });
       if (!res.ok) throw new Error('Something went wrong.');
       setStatus('clear'); // optimistic clear — res.ok confirms the write, no refetch needed

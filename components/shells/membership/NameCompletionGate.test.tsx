@@ -151,7 +151,7 @@ describe('NameCompletionGate', () => {
       expect(button).toBeDisabled();
     });
 
-    it('submits to POST /api/members/sync with { name } only, never a session-claim endpoint', async () => {
+    it('submits to POST /api/members/sync with { name, syncToClerk: true }, never a session-claim endpoint', async () => {
       render(<NameCompletionGate><p>chat surface</p></NameCompletionGate>);
       await waitFor(() => expect(screen.getByPlaceholderText('First name')).toBeInTheDocument());
 
@@ -166,7 +166,7 @@ describe('NameCompletionGate', () => {
       const syncCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/api/members/sync'))!;
       const [, init] = syncCall as [RequestInfo | URL, RequestInit];
       expect(init.method).toBe('POST');
-      expect(JSON.parse(init.body as string)).toEqual({ name: 'Jane' });
+      expect(JSON.parse(init.body as string)).toEqual({ name: 'Jane', syncToClerk: true });
 
       const claimCall = fetchMock.mock.calls.find(([input]) => String(input).includes('/claim'));
       expect(claimCall).toBeUndefined();
