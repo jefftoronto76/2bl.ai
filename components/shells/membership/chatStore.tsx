@@ -1169,12 +1169,14 @@ export function ChatProvider({
   // user — not just the current session. Fire-and-forget per session; a failed
   // claim on one session does not abort the others.
   const claimAllSessions = useCallback(async (name?: string) => {
-    // 1. Create/refresh the members row (email + phone from Clerk).
-    // name goes to users.name — members table has no name column.
+    // 1. Create/refresh the users + members rows (email + phone from Clerk).
+    // syncToClerk: true — closes D3's sign-in gap for SaveChatCTA the same
+    // way handleAuthSuccess (MessageList.tsx) does: a name typed while
+    // signing in to an EXISTING account never reaches Clerk any other way.
     await fetch('/api/members/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name ?? null }),
+      body: JSON.stringify({ name: name ?? null, syncToClerk: true }),
     }).catch(err =>
       console.error('[heirloom/chat] members sync failed:', err)
     );
