@@ -184,3 +184,23 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
     expect(mockSyncMember).not.toHaveBeenCalled()
   })
 })
+
+// D9 fix: the "heirloom_invite_token absent from unsafeMetadata" log line
+// (the non-invite / GateView-modal-sign-up path — no story-invite token, no
+// heirloom_invite_token, so linkInvitedMember runs its email fallback) used
+// to log the raw email value.
+describe('POST /api/webhooks/clerk — D9, no raw email in console output', () => {
+  it('never logs the raw email when no invite token is present in unsafeMetadata', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    const output = logSpy.mock.calls.map((args) => JSON.stringify(args)).join('\n')
+    logSpy.mockRestore()
+
+    expect(res.status).toBe(200)
+    expect(output).not.toContain('a@example.com')
+    expect(output).toContain('heirloom_invite_token absent from unsafeMetadata')
+  })
+})

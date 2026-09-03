@@ -22,7 +22,7 @@ export async function PATCH(
   }
 
   const { messages, visitorName, phone, email, title, starred, ttft_ms, last_error_type, stop_requested } = await req.json()
-  console.log('[sessions/[id]/route] message count:', messages?.length, '| visitorName:', visitorName, '| has_phone:', !!phone, '| has_email:', !!email, '| title present:', !!title, '| starred:', starred, '| ttft_ms:', ttft_ms, '| last_error_type:', last_error_type, '| stop_requested:', stop_requested)
+  console.log('[sessions/[id]/route] message count:', messages?.length, '| has_visitor_name:', !!visitorName, '| has_phone:', !!phone, '| has_email:', !!email, '| title present:', !!title, '| starred:', starred, '| ttft_ms:', ttft_ms, '| last_error_type:', last_error_type, '| stop_requested:', stop_requested)
 
   const result = await updateSession(tenantId, id, { messages, visitorName, phone, email, title, starred, ttftMs: ttft_ms, lastErrorType: last_error_type, stopRequested: stop_requested })
   if (!result.ok) {

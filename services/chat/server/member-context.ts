@@ -153,7 +153,7 @@ export async function getMemberContext(
     hasPhone: !!phone,
     isFirstTurn,
     emittingMarkerInstruction: markerInstruction.length > 0,
-    resultPreview: result.slice(0, 200),
+    resultLength: result.length,
   })
   return result
 }
