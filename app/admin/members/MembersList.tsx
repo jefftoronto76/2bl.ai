@@ -522,6 +522,7 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                   <Table.Th>Role</Table.Th>
                   <Table.Th>Plan</Table.Th>
                   <Table.Th>Status</Table.Th>
+                  <Table.Th>Memories</Table.Th>
                   <Table.Th>Invited by</Table.Th>
                   <Table.Th>Last active</Table.Th>
                   <Table.Th w={52} />
@@ -597,6 +598,11 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                             </Badge>
                           )}
                         </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c={u.memoryCount ? undefined : 'dimmed'}>
+                          {u.memoryCount == null ? '—' : u.memoryCount}
+                        </Text>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" c={p?.invitedByName ? undefined : 'dimmed'}>
@@ -690,6 +696,15 @@ export function MembersList({ users, tenants, currentTenantId, inviteApiBase = '
                   <Box mt="xs">
                     <TenantPills memberships={u.memberships} />
                   </Box>
+
+                  <Group justify="space-between" mt="xs">
+                    <Text size="xs" c="dimmed">
+                      Memories
+                    </Text>
+                    <Text size="xs" c={u.memoryCount ? undefined : 'dimmed'}>
+                      {u.memoryCount == null ? '—' : u.memoryCount}
+                    </Text>
+                  </Group>
 
                   <Group justify="space-between" mt="xs">
                     <Text size="xs" c="dimmed">

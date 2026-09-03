@@ -6,6 +6,14 @@ Every tenant on the 2BL platform must define exactly this set of CSS custom prop
 
 A lint script (`scripts/lint-tokens.ts`) validates compliance at build time. Any missing or renamed token fails the build.
 
+> ⚠️ **That lint script does not exist.** It was specified here and never
+> implemented — `scripts/` contains only `sync-branding.ts`, and the build
+> script is `tsx scripts/sync-branding.ts && next build`. Every reference to
+> the gate in this document (including the build-time claim above and step 4
+> of "Adding a New Tenant") describes intent, not current behavior: the rules
+> below are real, but nothing enforces them, so verify by hand. See
+> `Backlog/lint-tokens-gate-not-implemented.md`.
+
 ---
 
 ## Token Set

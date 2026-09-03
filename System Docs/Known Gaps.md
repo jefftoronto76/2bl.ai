@@ -5,38 +5,7 @@
 Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 `Backlog/SERVICEMIGRATION.md` for the full picture.
 
-- **Memory panel width doesn't reseed if the whole chat drawer closes while
-  a memory is still open — found during Stage C live-preview review,
-  2026-08-08.** `panelWidth` only reseeds on the effect in `ChatHero.tsx`
-  that watches `openMemory` transition `null` → non-`null`. Closing and
-  reopening the memory panel itself (its own Close button) goes through
-  exactly that transition and reseeds correctly, confirmed live. But
-  `ChatDrawerV2` closing (e.g. `ChatHeader`'s Close button) doesn't unmount
-  `ChatHero` or touch `openMemory` — the drawer just slides off-screen — so
-  if the memory panel was open when the drawer closed, `openMemory` is still
-  non-`null` when the drawer reopens, the effect's dependency never
-  re-fires, and `panelWidth` is left exactly wherever it was, rather than
-  reseeding to the usual ~55%-of-remaining-space default. Low visible
-  impact — a stale-but-still-valid width, not a broken one — and not
-  member-facing per Jeff. **Fix if ever done:** also reseed on the drawer's
-  own close → open transition, not just the panel's.
-
-- **Sidebar has no resize of its own, even in full-screen — found during
-  Stage C live-preview review, 2026-08-08.** `SidebarV2` force-collapses to
-  its 48px rail whenever the memory panel is open (Stage B,
-  `forceCollapsed` prop), with no way to widen it back — including in
-  `isFullScreen` mode, where `ChatDrawerV2` is `w-screen` and there's
-  genuinely spare width the rail-collapse doesn't need to reclaim. This is
-  new scope, not part of the memory-panel-layout Stage A–F plan (that plan
-  is the chat/panel divider only — sidebar resize was explicitly ruled out
-  of scope for it, repeatedly, during planning). Would need its own plan,
-  likely gated on `isFullScreen` rather than applying everywhere.
-
-- **No visual distinction between closing the chat drawer and closing the
-  memory panel — found during Stage C live-preview review, 2026-08-08.**
-  Both close actions look and feel similar enough that which one just
-  happened isn't immediately obvious. Cosmetic, not functional — revisit
-  only if real usage shows it's actually confusing, not preemptively.
+## Auth, Members & Security
 
 - **RLS security posture — application-layer enforcement only, not yet
   database-layer (moved here from CLAUDE.md's "Highest Data Security"
@@ -59,18 +28,431 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   almost all traffic. Closing that larger gap (routing routine tenant-scoped
   reads through a client that respects RLS) is a separate, unscheduled
   architectural project, not a quick fix.
-- **Next.js route.ts stray-export incident (2026, moved here from CLAUDE.md's
-  "Dependency & API Rules," 2026-08-04 split).** `bbb66e7` exported a helper,
-  `withDisplayUrl`, directly from `app/api/media/route.ts` — Next's
-  route-type validator rejects any named export from a `route.ts` file that
-  isn't an HTTP method handler or a reserved config export, which fails
-  `next build` outright (not just a lint warning) but is invisible to
-  `tsc --noEmit` alone. This broke `next build` for every commit on `main`
-  from PR #244 through PR #245, ~24 hours, before being caught. Fixed by
-  extracting the helper to `services/media/display-url.ts`. The standing
-  rule this incident backs — route.ts files export only HTTP method handlers,
-  verify with a real `next build`, not just `tsc` — stays in CLAUDE.md's
-  "Dependency & API Rules."
+
+- **`/join/[token]` missing its middleware host-rewrite exclusion — found
+  and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
+  `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)
+  ANDed into the SBL/Heirloom/Legacy host-rewrite blocks and the preview-
+  routing guard, specifically so `heirloom.2bl.ai/invite/x` falls through
+  to the root `/invite/[token]/route.ts` handler instead of being rewritten
+  to `/heirloom/invite/x` (no such route). `/join/[token]` — this feature's
+  own public redirect, structurally identical to `/invite/[token]` — shipped
+  without the equivalent `isJoinPath` guard: on `heirloom.2bl.ai/join/x`,
+  the Heirloom rewrite block would have fired and rewritten it to
+  `/heirloom/join/x`, a 404, on exactly the host this feature is for.
+  Caught by deliberately checking whether the new sibling route had every
+  treatment its precedent did, not by an observed failure — actual
+  production exposure before the fix was not independently verified either
+  way. Fixed by adding `isJoinPath` and ANDing it into the same four places
+  `isInvitePath` already was. See `System Docs/App Structure and Routing.md`
+  for the mechanism and `System Docs/API Routes.md`'s `/join/[token]` row.
+  **Lesson for the next new top-level public route:** grep `isInvitePath`'s
+  usages in `middleware.ts` first and mirror every one, don't just add the
+  route file.
+
+- **`x-preview-tenant` forwarded for API paths but not page requests —
+  found and fixed 2026-08-17 (PR #411).** `middleware.ts` set the header
+  only inside a block gated on `isApiPath`, so a preview *page* render had
+  no way to resolve a tenant: `*.vercel.app` never matches `tenants.domain`,
+  so `getTenantFromRequest` fell through to `PREVIEW_TENANT_ID` and returned
+  null when that wasn't set. `app/heirloom/page.tsx` wraps its entire member
+  lookup in `if (tenantId)`, so `isAdmin` and `members.role` silently
+  resolved false/null for **every** visitor on preview, making any
+  owner/admin-gated UI untestable there. Fixed by setting the header in each
+  recognized `?preview=` branch, from the param those branches already hold.
+  **Note the fix that was deliberately not taken:** widening the API block by
+  dropping its `isApiPath` guard. That block ends in an early
+  `return NextResponse.next(...)`, so covering page requests there would
+  short-circuit them ahead of the host-rewrite blocks *and* ahead of
+  `auth.protect()` on `/admin` — leaving the admin surface unauthenticated
+  on preview. `middleware.test.ts` (the first tests this file has had) pins
+  that: the `auth.protect()` case fails if the guard is removed.
+  **Lesson:** a request header set on one path class and not another fails
+  asymmetrically and quietly — the API-driven parts of the page worked
+  perfectly while the server-rendered parts silently degraded, which is
+  precisely why it survived so long. When adding a header for tenant/identity
+  resolution, ask which path classes need it, not just the one in front of
+  you. Consequence to be aware of: `gateEnabled`/`isAuthorized`/`isAdmin` now
+  resolve for real on preview pages, so a tenant with
+  `invite_gate_enabled: true` will genuinely gate there. Remaining caveat
+  (pre-existing, unchanged): the forwarded value is the raw param/cookie
+  string matched against `tenants.slug`, so the alias values `sbl` and
+  `jefflougheed` only resolve if a tenant carries that exact slug.
+
+- **`ChatState.isMember` means signed-in, not role.** `isMember`
+  (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk sign-in state,
+  so it is true for **every** signed-in role (`owner`, `admin`, `member`,
+  `viewer`). That is correct behaviour, not a defect: every consumer — voice
+  access, uploads, `SaveChatCTA`, the sidebar sign-in nudge — wants exactly
+  that boundary, and an owner or admin genuinely is a member, so they should
+  get member features. The name matches how it is used; no rename is called
+  for. The one rule it carries: **don't use `isMember` to tell roles apart.**
+  It cannot distinguish a `member` from an `admin`, `owner` or `viewer` — use
+  `ChatState.memberRole` (the real `members.role`) for anything role-shaped.
+  `isAdmin` is a second, partial signal (`role === 'admin' || role ===
+  'owner'`) that likewise cannot separate a `member` from a `viewer`. See
+  `System Docs/Public Site.md`'s `ChatInput`/`chatStore` rows and
+  `System Docs/Utilities/Members.md`'s `MemberRole` entry. Worth documenting
+  only because of one historical near-miss: the composer caption gate's first
+  draft (2026-08-17, PR #409) assumed `isMember` specifically excluded
+  admin/owner/viewer. That assumption was wrong, not the variable; it was
+  corrected within the same PR, and prompted plumbing `memberRole` through.
+  **Open question (raised 2026-08-17, not yet investigated):** `isMember` is
+  true for the `viewer` role too, so a viewer currently gets the same voice
+  and upload access as a full member. Nobody has decided whether that is
+  intentional or whether viewers should be scoped out of those features —
+  flagged for a decision, not filed as a bug. Separate trap on `memberRole`
+  itself: it is null both for a genuinely anonymous visitor and for one whose
+  role the server couldn't resolve, so pair it with `isMember` rather than
+  reading null as "anonymous".
+
+- **Story invite acceptance not reaching its expected end state for a real
+  member — instrumented 2026-08-10 (PR #341), four independent real gaps
+  found and fixed 2026-08-10/11 (PRs #343, #344, #346, #348).** Original
+  reported live symptom: a story invite is accepted, but the story does not
+  appear in the new member's account afterward — the expected end state
+  never materializes. PR #341 (see prior revision of this entry, or its own
+  section in `System Docs/Public Site.md`'s `chatStore` row) added
+  diagnostic-only `console.log` checkpoints with no behavior change. Code
+  review of the full flow — not the suggested browser-console reproduction —
+  surfaced four distinct, independent bugs rather than one root cause,
+  covering different ways the flow could silently fail to reach its expected
+  end state:
+  1. **#343 — `autoOpenChat` never set for the `?join=` path.** `page.tsx`
+     only ever set `autoOpenChat` from `members.auto_open` on the `?invite=`
+     path; a story-invite visitor's chat panel simply never opened, so
+     nothing in the flow — including the accept call's own trigger effects —
+     was visibly happening to them.
+  2. **#344 — no visitor-facing prompt to actually create an account.** A
+     not-signed-in story-invite visitor got a bare "Hi" greeting with no
+     mention of the story, and no CTA telling them they needed to sign up
+     for the invite to take effect — `acceptStoryInviteToken` only ever
+     fires post-sign-in, so a visitor who never saw a reason to sign up
+     never triggered it at all. Fixed with a contextual greet (story title +
+     inviter name, deterministic/no-LLM via `injectAssistantMessage`)
+     immediately followed by an injected `[ACCOUNT_CREATE: story invite]`
+     message when not signed in. See the `chatStore` row in
+     `System Docs/Public Site.md` and the `[ACCOUNT_CREATE: reason]` entry in
+     `System Docs/Marker Syntax.md`.
+  3. **#346 — sidebar `stories` list never refetched.** Even when the accept
+     call genuinely succeeded server-side, `ChatHero.tsx`'s `stories` state
+     was fetched exactly once, on mount — this alone is very likely the
+     literal original report ("story does not appear... afterward"): the
+     grant existed in the DB, but the sidebar showing it required a manual
+     page reload. Fixed by extracting the mount fetch into a reusable
+     `refreshStories` callback, now also called when `joinedStoryConfirmation`
+     fires.
+  4. **#348 — failure paths were silent to the visitor.** Both
+     `acceptStoryInviteToken` failure branches (non-ok response, rejected
+     fetch) only ever `console.error`'d — a genuine server-side failure
+     (e.g. an expired/revoked link) left the visitor signed in with no story
+     and no explanation, indistinguishable from success from their side.
+     Fixed with a generic, no-LLM fallback message via the same
+     `injectAssistantMessage` mechanism.
+
+  Each fix shipped with its own committed test; `services/crm/story-invites.ts`'s
+  server-side `acceptStoryInvite` itself was re-read during this pass and
+  still appears correct — no server-side fix was needed. This closes out the
+  client-side investigation PR #341 opened; if the original live report
+  persists after this, the next step is re-verifying the server-side grant
+  path (`artifact_subscribers` upsert) against production data, not the
+  client flow this entry now covers end-to-end.
+
+  **Superseded, same day — the server-side half flagged above as "no fix
+  needed" did in fact need one, 2026-08-11 (PR #351).** Not a bug in
+  `acceptStoryInvite`'s own logic (that re-read was correct as far as it
+  went) but a reliability gap in *when* it got called: every accept
+  ultimately depended on the client's browser successfully firing `POST
+  /api/heirloom/story-invites/accept` (the two `chatStore.tsx` trigger
+  points this entry already covers) — a single point of failure with no
+  server-side fallback, the exact shape CLAUDE.md's Marker fallback
+  principle exists to prevent. Confirmed separately, via live Studio data,
+  as also producing a second, quieter symptom: when Clerk's `user.created`
+  webhook happened to process a story-invite signup before the client's own
+  accept call did, the webhook had no concept of story invites at all and
+  fell through to the generic `syncMember` upsert — the `artifact_subscribers`
+  grant still landed correctly (via the client call arriving after), but the
+  resulting `members` row got `source: null` and no `primer` instead of
+  `source: 'story_invite'`, silently losing personalization/attribution
+  without ever locking the person out. **Fixed** by threading a new
+  `storyInviteToken` field through `chatStore.tsx` → `MessageList.tsx` →
+  `MagicLinkCard.tsx` → `useAuthFlow.ts` into the Clerk adapter
+  (`services/auth/providers/clerk/client.ts`), which now writes it into
+  Clerk `unsafeMetadata` as `heirloom_story_invite_token` — combined into
+  the SAME `signUp.update()` call the pre-existing `heirloom_invite_token`
+  write already made, since `unsafeMetadata` is a full-object replace, not a
+  merge, and writing them separately would let one silently wipe the other.
+  `app/api/webhooks/clerk/route.ts`'s `user.created`/`user.updated` handler
+  now reads that key and calls `acceptStoryInvite()` directly — the exact
+  same function the client calls — so whichever of {webhook, client} runs
+  first performs the real insert and the other is a safe no-op; a missing or
+  failed token still falls through to the pre-existing
+  `linkInvitedMember`/`syncMember` cascade as a safety net. Since this makes
+  `acceptStoryInvite` reachable from two racing callers instead of one, its
+  new-member insert (`services/crm/story-invites.ts`) is now also hardened
+  against a concurrent `23505` unique-violation on `members.clerk_id` —
+  re-fetches and continues as the existing-member branch rather than
+  surfacing a 500, mirroring `createOrGetActiveStoryInviteLink`'s own
+  precedent for the identical race shape. Shipped as commit `fbd3807d` +
+  test coverage in `1bf8c55e`, merged as PR #351. See
+  `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
+  `System Docs/Utilities/Auth.md` for the mechanism.
+
+- **Admin/member invite acceptance had the same reliability gaps already
+  fixed for story invites on 2026-08-10/11 (see the entry above) — found
+  and fixed 2026-08-13 (PR #367).** Unlike the story-invite path,
+  `?invite=TOKEN` acceptance relied entirely on the model organically
+  noticing a pre-auth invite holder and deciding, conversationally, to
+  prompt account creation — no deterministic trigger existed. Three fixes:
+  1. **`autoOpenChat` was opt-in, not guaranteed.** `page.tsx` read
+     `members.auto_open` (admin-set per invite, defaulting `false`) instead
+     of forcing the chat panel open for any valid pre-auth token, so most
+     admin invites never opened the chat automatically at all. Fixed:
+     `autoOpenChat = true` unconditionally when a valid admin/member token
+     authorizes the visitor. The `auto_open` column and its
+     `InviteMemberModal.tsx` toggle are left in place for other consumers;
+     this path just stops reading it.
+  2. **No deterministic account-creation prompt.** Even when the chat did
+     open, nothing told the visitor they needed to sign up — same shape as
+     story-invite gap #344 above. Fixed with a new branch in `chatStore.tsx`'s
+     auto-greet effect: a personalized (`invitedName`, when the admin set
+     one) or generic greeting, immediately followed by an injected
+     `[ACCOUNT_CREATE: admin invite]` message when not signed in. Mutually
+     exclusive with the story-invite branch both structurally and via an
+     explicit `!storyInviteTokenRef.current` guard.
+  3. **Accept-call failures were silent.** The `/api/heirloom/invites/accept`
+     fetch on the sign-in transition was pure fire-and-forget — no
+     `res.ok` check, no fire-once guard, no user-facing message on failure.
+     Same shape as story-invite gap #348 above. Extracted into
+     `acceptMemberInviteToken`, matching `acceptStoryInviteToken`'s pattern
+     exactly.
+
+  **Separately found during the same pass: `AuditAction.MEMBER_INVITE_ACCEPTED`
+  was being logged, but invisibly.** `app/api/heirloom/invites/accept/route.ts`
+  called it with `tenant_id: null` (the route doesn't have the real value in
+  scope) — every acceptance was logged, but any query scoped by `tenant_id`
+  (the standard pattern everywhere else in this codebase) silently missed
+  every row. Confirmed live: a real member's acceptance (active status,
+  `used_at` stamped) produced zero matching rows under a tenant-scoped
+  query. Fixed by moving the `logEvent` call inside `acceptInvite()`
+  (`services/members/members.ts`), which already has `row.tenant_id` in
+  scope for its cross-tenant guard, and removing the now-duplicate call
+  from `route.ts`.
+
+- **`members.name` was not guaranteed to be set on most signup paths —
+  found 2026-08-13, closed 2026-08-14.** Of the paths that create/activate
+  a `members` row, originally only two (the OTP card itself, and
+  `SaveChatCTA`, both of which require a name field to submit) reliably
+  set `name`. Confirmed via live query: 7 rows with `name IS NULL`,
+  including one real member (not a test account) who activated via
+  `GateView`'s Clerk-prebuilt-modal path — that path calls
+  `/api/heirloom/members/claim`, which only sets `name` conditionally (if
+  Clerk's own signup UI happened to collect first/last name).
+
+  **A second, worse bug compounded this:** `acceptInvite`'s orphan-cleanup
+  (step 3) actively discarded a captured `name` on every occurrence it
+  triggered. The setup: an invited `members` row starts with `clerk_id =
+  null`. On real signup, two independent effects fire off the same
+  Clerk-session-activation event with no ordering between them —
+  `MagicLinkCard`'s `onSuccess` (calls `/api/members/sync`, which upserts
+  *by `clerk_id`* and, finding no match yet, inserts a fresh row with the
+  real name) and `chatStore.tsx`'s sign-in-transition effect (calls
+  `acceptInvite`, which finds the original invited row *by token* and
+  deletes any other row sharing that `clerk_id` as an "orphan" before
+  stamping the invited row active). Whichever order those two calls
+  resolved in, the orphan-cleanup path deleted the freshly-named row and
+  stamped a nameless one — active data loss, not just a missing field, on
+  every occurrence, independent of which invite mechanism triggered it.
+
+  **Fixed 2026-08-13 (PR #368):** `acceptInvite` now rescues the orphan's
+  `name` before deleting it — selects `name` alongside `id` in the orphan
+  query, and if exactly one orphan is deleted with a non-null `name` and
+  the invited row's own `name` is still null, includes it in the same
+  update that stamps the row active. Never overwrites an existing name.
+  Verified via 4 new unit tests covering the rescue case and its edge
+  cases (existing name not overwritten, null orphan name, multiple
+  orphans).
+
+  **Closed 2026-08-14 (PR #371):** `acceptStoryInvite`
+  (`services/crm/story-invites.ts`) and `linkInvitedMember`
+  (`services/members/members.ts`, the Clerk webhook path) previously never
+  set `name` at all, regardless of signup path — this entry originally
+  flagged both as still open. Both now take an optional trailing `name`
+  param, derived from Clerk's `firstName + lastName` the same way
+  `syncMember`'s webhook-fallback caller already does. Neither needed
+  rescue logic like `acceptInvite`'s above — neither has a delete step, so
+  a losing race against `/api/members/sync` just leaves whatever that
+  other write already set alone (`acceptStoryInvite` falls through to its
+  existing-member branch on a 23505; `linkInvitedMember`'s UPDATE surfaces
+  a unique-constraint failure already handled by the existing
+  `MEMBER_LINK_UPDATE_FAILED` path). `GateView`'s Clerk-modal bypass
+  itself is unrelated to this fix and untouched.
+
+- **Admin invite email/phone/name only ever reached the greeting text, not
+  the sign-up form itself — found and fixed 2026-08-14 (PR #372).**
+  `createMemberInvite` already accepted all three, and `invited_name`
+  reached `chatStore.tsx`'s deterministic greeting (see the PR #367 entry
+  above), but none of it pre-filled `MagicLinkCard`'s actual form fields —
+  `initialName`/`initialEmail`/`initialPhone` were only ever populated by
+  scanning the model's own `[NAME:]`/`[EMAIL:]`/`[PHONE:]` markers in
+  `MessageList.tsx`, a completely separate mechanism from the invite data.
+  Separately, `validateMemberToken()`'s select string and the
+  `MemberInviteRow` interface were missing `phone` entirely, even though
+  `createMemberInvite` already wrote it — the invited row's phone number
+  was unreachable to any caller. Fixed by threading `phone` through
+  `validateMemberToken`, then `invitedEmail`/`invitedPhone` down through
+  `page.tsx` → `HeirloomApp.tsx` → `chatStore.tsx`'s `ChatProvider` →
+  `MessageList.tsx`, where the `visitorName`/`visitorEmail`/`visitorPhone`
+  marker-scan derivations now fall back to the invite's own value when no
+  marker has fired yet — a marker emitted mid-conversation still wins,
+  since it's checked first. Story invites are unaffected by design: a
+  story invite link is durable and multi-use, with no specific invitee's
+  contact info to fall back to.
+
+- **No identity dedup across signup methods — found 2026-08-13, not
+  addressed.** `members` rows are matched only by `clerk_id`; nothing
+  cross-checks name/phone/email against existing rows. A person who signs
+  up once via email and again via phone (two separate Clerk identities)
+  gets two fully separate, both-`active` `members` rows with no merge path
+  and no product-level way to detect or reconcile it. Confirmed live: one
+  real member has two active rows six weeks apart, one per contact method.
+  This is a product/design gap (no shared identity key exists to dedupe
+  on), not a code defect — no fix scoped yet.
+
+- **`primer` (free-text field on both `members` and `story_invite_links`)
+  is injected into the chat system prompt with zero delineation from real
+  instructions — found 2026-08-13, not addressed.**
+  `services/chat/server/member-context.ts` concatenates `primer` directly
+  into the `MEMBER CONTEXT` block with no wrapper distinguishing
+  user-supplied text from instructions, immediately adjacent to the
+  marker-emission instruction that tells the model to silently append
+  `[NAME:]`/`[EMAIL:]`/`[PHONE:]` tags. Admin-set `primer` (on `members`)
+  is lower risk — only tenant admins can set it. **Story-invite `primer`
+  is member-wide risk**, not admin-only: any Heirloom member who owns a
+  story can set it via `POST /api/heirloom/story-invites`, up to 500
+  chars, no sanitization beyond trim/length. Compounded by `autoOpenChat`
+  behavior: story invites force the chat open unconditionally, and fall
+  through to an automatic `sendHidden('Hi')` LLM call (not the deterministic
+  greeting) whenever the story-title or inviter-name lookup fails — a path
+  not controlled by the story owner, meaning a hostile primer could reach
+  the model automatically without the visitor typing anything. **Fix not
+  yet scoped:** wrap `primer` with explicit delineation before it reaches
+  the system prompt; separately, decide whether story invites should keep
+  forcing `autoOpenChat=true` with no opt-out (product decision, not just
+  security).
+
+- **`members.user_id` left null on some active, Clerk-linked members —
+  root-caused and fixed in code 2026-08-06; historical rows need a Studio
+  backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
+  real `clerk_id`, `user_id: NULL`) — the same state as a correctly-linked
+  member, except the pointer to `users.id` was never written. Root cause:
+  `services/auth/sync-member.ts`'s `syncMember()` — the fallback the Clerk
+  webhook (`app/api/webhooks/clerk/route.ts`) and `POST /api/members/sync`
+  both call when `linkInvitedMember` doesn't match a pending invite — built
+  its `members` upsert payload without `user_id` at all (the field was
+  structurally absent from `SyncMemberInput`, not conditionally skipped).
+  Reachable two ways, both silent before this fix (console-only, no durable
+  log): (1) a plain email/token mismatch against an invited row routes
+  straight to `syncMember` on the first webhook delivery; (2) a race where
+  `syncMember` inserts an orphan row for a `clerk_id` before a later webhook
+  delivery lets `linkInvitedMember` find the real invited row — that
+  `UPDATE` then fails on `members.clerk_id`'s unique constraint, so the
+  webhook falls back to `syncMember` again. `acceptInvite()`
+  (`services/members/members.ts`, client-triggered from
+  `/api/heirloom/invites/accept`) was the only code reconciling case (2), and
+  only if that client call actually completed. **Fixed:** `syncMember` now
+  resolves/creates the `users` row first (mirroring `linkInvitedMember`) and
+  always includes the resulting `user_id` — see `System Docs/Utilities/Auth.md`.
+  **Also added:** durable `audit_events` logging for every failure branch in
+  `linkInvitedMember`/`acceptInvite`/`syncMember` that could previously skip
+  or fail the `user_id` write silently — `MEMBER_USER_RESOLVE_FAILED`,
+  `MEMBER_LINK_UPDATE_FAILED`, `MEMBER_ORPHAN_CLEANUP_FAILED`,
+  `MEMBER_ORPHAN_RECONCILED` (see `System Docs/Utilities/Members.md`) — plus
+  an admin-side safety fix (`app/api/admin/members/invite/[memberId]/route.ts`
+  DELETE now gates on `clerk_id`, not `user_id`, so a broken row can't be
+  hard-deleted through the "revoke stale invite" path without cleaning up
+  its Clerk identity) and a visibility fix (`app/admin/members/page.tsx` and
+  `app/(platform)/platform/members/page.tsx` previously excluded these rows
+  from both of their queries entirely — `user_id IS NOT NULL` and
+  `user_id IS NULL AND status IN ('invited','waitlist')` both miss
+  `status='active' AND user_id IS NULL` — so they rendered nowhere in the
+  admin UI; a third query now surfaces them with a "Needs attention" badge,
+  read-only until backfilled). **Not yet done:** backfilling the 2 known
+  rows (and any others created before this fix shipped) — Jeff's call, in
+  Studio, per the division-of-labor convention. Re-run
+  `select id, created_at, email, name, status, clerk_id, user_id from members
+  where user_id is null and status not in ('invited', 'waitlist');` first
+  (some rows may self-heal on next login, since `syncMember`/`/api/members/sync`
+  fire on every re-auth), confirm a `users` row exists for each remaining
+  `clerk_id` before backfilling (no `users` row = a deeper failure, not a
+  simple pointer fix), then
+  `update members m set user_id = u.id from users u where m.clerk_id = u.clerk_id
+  and m.user_id is null and m.status not in ('invited', 'waitlist');`.
+
+- **`/api/heirloom/members/claim` (`claimMembership`) is effectively
+  orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
+  invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
+  static "Claim a free membership" button → `openSignUp()`) was replaced
+  with the same deterministic chat-first `[ACCOUNT_CREATE: expired invite]`
+  pattern already used for admin/story invites — signup now happens via
+  `MagicLinkCard` → `/api/members/sync` (`syncMember`, `status: 'active'`),
+  not this route. The route's only caller, `GateView.tsx`'s own top-level
+  `useEffect` watching the Clerk false→true sign-in transition, is shared
+  plumbing across all three `GateView` branches and was left in place (not
+  deleted) — but `GateView` no longer mounts at all for the
+  invalid/expired-token population (`isGated` bypasses it), so the one
+  realistic path that used to trigger this effect's sign-up transition is
+  gone. The only way it could still fire is a signed-out visitor on the
+  no-token `WaitlistView` branch signing in through some other UI element
+  while `GateView` stays mounted — not a real trigger path today
+  (`WaitlistView` has no sign-in UI of its own). **Left in place pending a
+  decision to remove it** — not deleted without confirming nothing else
+  depends on it.
+
+- **Expired/invalid `?invite=` token now gets the same chat-first
+  deterministic signup flow as valid admin/story invites — built
+  2026-08-13, NOT YET LIVE-VERIFIED.** GateView's old path
+  (`openSignUp()`'s Clerk-prebuilt modal, only reachable when a visitor's
+  invite token fails validation) never guaranteed name capture and
+  violated the marker-fallback principle. Replaced with the same pattern
+  already proven for admin/story invites tonight: a new
+  `memberTokenExists(token, tenantId)` check (services/members/members.ts)
+  distinguishes a genuinely-issued-but-now-invalid token from a garbage
+  `?invite=` string; only the former bypasses the gate. The bypass also
+  requires `isLoaded && !isSignedIn` client-side (and `!session`
+  server-side for `autoOpenChat`), so a signed-in-but-pending member with a
+  stale link still sees GateView's "You're on the list." branch, not an
+  unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
+  branches just become unreachable for this one case.
+  `/api/heirloom/members/claim` + `claimMembership` are now effectively
+  orphaned (no realistic remaining trigger) but left in place, not deleted.
+  **Not yet done:** the four manual verification cases this fix specifically
+  requires (real-expired-token, garbage-token, cross-tenant-token,
+  signed-in-with-stale-token) haven't been run against a live preview —
+  `tsc`/`next build` are clean but that doesn't substitute for the actual
+  behavior check. Do this before trusting the fix in production.
+
+- **`primer` (`members`/`story_invite_links`) still has zero delineation in
+  the system prompt — flagged 2026-08-13, still not fixed as of
+  session-context-service (2026-08-13).** See the entry above this one
+  (same date) for the full gap. Explicitly NOT touched by
+  session-context-service — that change built the reusable delineation
+  mechanism (XML tags + `escapeForTag`, `services/chat/server/session-
+  context.ts`, see `System Docs/Utilities/Chat Server.md`) for a *new*
+  block (`<session_context>`), scoped deliberately to leave `member-
+  context.ts`'s existing `primer` concatenation untouched rather than
+  bundle an unrelated retrofit into that change ("One Change at a Time,"
+  `CLAUDE.md`). **The fix is now more clearly scoped than it was on
+  2026-08-13:** wrap `primer` the same way — `<member_context>` (or a
+  `<primer>` sub-tag) plus `escapeForTag()` on the interpolated value —
+  reusing the exact pattern that now has a second, real precedent in this
+  codebase (`services/prompt/composer.ts`'s `<document_context>` was the
+  only one before this). Still needs: the `autoOpenChat`-forced,
+  no-owner-control auto-greet path decision flagged in the original entry.
+  Not scheduled — still a separate, later task.
+
+## Prompt & AI
+
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
   type-aware — single-live-per-type (2026-07-27) constrains Publish but not
   fully the runtime read.** `services/prompt/compiler.ts`'s `getSystemPrompt`
@@ -88,6 +470,7 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   one compiled row. Making `getSystemPrompt` filter by the runtime-relevant type
   (Base, or whatever a session's `mode`/context calls for) is separate,
   still-open work — do not treat the `status='live'` fix as having closed this.
+
 - **`/admin/prompt` ("Prompt" in nav) is a redundant legacy screen — Save
   removed 2026-07-27, full disposition still undecided.** This screen
   predates the Blocks/Compile & Publish flow and duplicated what that flow
@@ -156,6 +539,16 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   "Version" row entirely and keep "Compiled version." Not urgent — cosmetic
   duplication only, no functional bug.
 
+*Cross-reference: the `primer` (member/story-invite free text injected into the system prompt with no delineation) gap is tracked in the `Auth, Members & Security` section, since the data source is member/invite-supplied text, not prompt-compiler internals.*
+
+## Chat UI
+
+- **No visual distinction between closing the chat drawer and closing the
+  memory panel — found during Stage C live-preview review, 2026-08-08.**
+  Both close actions look and feel similar enough that which one just
+  happened isn't immediately obvious. Cosmetic, not functional — revisit
+  only if real usage shows it's actually confusing, not preemptively.
+
 - **Heirloom chat-widget V2 is UI-first; most of its backends do not exist
   yet.** The V2 pass (branch `06-11-26_mvp-ui-update`, 2026-06-12) shipped
   the presentation layer only. Story creation/read/delete are real now
@@ -165,7 +558,11 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   comment says "Writing Prompts have no backend yet"). **Share Heirloom —
   resolved 2026-08-15** (wire-share-heirloom-modal): `ShareHeirloomModal`
   is mounted by `ChatHero.tsx` and both entry points are live — the
-  `SidebarV2` nav row and the `ChatHeader` icon are no longer inert. The
+  `SidebarV2` nav row and the `ChatHeader` icon are no longer inert.
+  (**Narrowed 2026-08-16** by the mobile chat header redesign: the header
+  icon is desktop-only now, so on mobile the sidebar nav row is the sole
+  entry point and a phone shows no Share affordance until the drawer is
+  opened. Both entry points remain live on desktop.) The
   sidebar row needed a real fix, not just the prop it had never been fed:
   its `onShareHeirloom?.()` call was already wired but sat behind a
   hardcoded `opacity-40 pointer-events-none` (the same leftover-inert-
@@ -191,13 +588,35 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   the way that handover proposed: an invisible `absolute inset-0 z-20`
   tap-catcher in `ChatHero.tsx`'s mobile branch, carrying no background
   and no fade, so the deliberate no-dimming decision stands untouched.
-  See the `ChatHero` row in `System Docs/Public Site.md`. **Still open,
+  See the `ChatHero` row in `System Docs/Public Site.md`.
+  **The catcher now depends on the drawer NOT being full-bleed —
+  2026-08-16 (`mobile-sidebar-drawer-width`), same day.** That change
+  widened the mobile drawer from `w-64` to `w-[86%]`, so the catcher is
+  `inset-0` but only its uncovered ~14% strip is actually reachable (it
+  sits at `z-20`, under the drawer's `z-30`). The remaining strip is
+  therefore load-bearing, not slack: taking the drawer to 100% would
+  leave the catcher fully covered and silently re-open this same
+  regression, with no test failing on width alone — which is why
+  `ChatHero.mobileSidebarWidth.test.tsx` asserts the `z-30`/`z-20`
+  ordering and tap-outside dismissal alongside the width. **Still open,
   and deliberately not decided by that fix:** the same handover's
   broader question of whether the app standardizes on scrim-everywhere
   (matching Media's bottom sheets) or scrim-nowhere (matching this
-  drawer and the full-screen mobile overlays) — it also blocks
-  `handover_mobile_memory_panel_scrim`, which was written assuming the
-  sidebar's since-deleted scrim was the reference to copy. **Per-story collaborator invites — resolved
+  drawer and the full-screen mobile overlays). Note the scope of that
+  open question is narrower than the `sidebar_uploads_scrim_stories_2006`
+  handover implies. It warns the change also affects
+  `handover_mobile_memory_panel_scrim` — an earlier handover that asked
+  the mobile memory panel to copy the sidebar's (now-deleted) scrim.
+  **That handover is not in this repo** — grep finds the name only inside
+  the sidebar handover's own prose, with no matching file or directory
+  under `Design Handovers/`, so it is unreachable as a reference and may
+  never have been checked in. It is also moot in practice: the mobile
+  memory panel shipped as a fully opaque `inset-0`/`h-[100dvh]` overlay,
+  which settles its own scrim question on independent grounds (nothing is
+  left visible behind it to dim or catch a dismiss-tap on — see the
+  comment above that block in `ChatHero.tsx`). So the standardization
+  question is live only for surfaces that leave a visible strip behind
+  them, which today means this drawer and Media's `85vh` sheets. **Per-story collaborator invites — resolved
   2026-08-10**, see "Invite — real as of 2026-08-10" and
   "Superseded, same day — reusable-story-invite-links" below for the full
   mechanics (`story_invite_links`, `InviteCollaboratorsModal`). **Conversation
@@ -336,6 +755,419 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   stuck-collapsed sidebar either. The only confirmed recovery found is a
   hard reload/remount, which resets `expanded` back to its
   `useState(true)` default.
+
+- **Save CTA message threshold should be tenant-configurable.** Currently
+  hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
+  Should be a per-tenant setting stored in `tenants.settings` JSONB with a
+  default of 4. Same pattern as `chat_in_progress_idle_seconds` /
+  `chat_active_idle_seconds` — admin UI in Settings, fetched via
+  `GET /api/admin/tenant-settings`, written via `PATCH /api/admin/tenant-settings`.
+  Schema change (add key to `tenants.settings` JSONB) is Jeff's Studio work;
+  code work proceeds once the column convention is confirmed.
+
+- **Server-side Stop-abort's reliable mechanism (poll-based) hasn't been
+  live-tested yet.** (2026-07-28, see `System Docs/Utilities/Chat UI.md`'s
+  "Stop / interrupted-turn protocol" for the full history.) The first attempt
+  (threading `Request.signal` into `streamText()`'s `abortSignal`) was
+  live-tested and confirmed **not working** on this deployment — the client
+  correctly recorded every Stop, but the server kept generating regardless,
+  most likely because Next.js middleware reconstructs the request via
+  header-forwarding at the edge→function boundary rather than passing a live
+  signal object through (see `System Docs/Utilities/Chat UI.md`'s "Stop /
+  interrupted-turn protocol" for the full trace). The
+  current mechanism no longer depends on that connection-level signal at
+  all: the client explicitly PATCHes `chat_sessions.stop_requested_at` the
+  instant Stop is clicked, and `streamChat()` polls it every 500ms, comparing
+  against the current turn's own start time. This is designed specifically
+  to route around the confirmed failure mode, but it has not itself been
+  retested live yet. Same DB check as before: click Stop mid-reply, query
+  `server_abort_confirmed_at` for that session afterward — populated is
+  proof it fired; null means it's still broken and needs another pass.
+
+- **Share links carry UTM params that nothing reads — 2026-08-15
+  (wire-share-heirloom-modal).** `ShareHeirloomModal`'s default `shareUrl`
+  is `https://heirloom.2bl.ai/?utm_source=share&utm_medium=social&utm_campaign=withlove`.
+  Those params were added deliberately ahead of any consumer, so links
+  shared now stay attributable once something can read them — but **there
+  is no analytics tool in this codebase at all**: no GA/Plausible/PostHog
+  dependency in `package.json`, no tag in any layout, and no server-side
+  landing handler that reads `utm_*` off the query string. A visit from a
+  shared link is currently indistinguishable from any other visit. Two
+  things follow. **First, whoever wires analytics up should know these
+  already exist** — grep `utm_` before inventing a second, differently-named
+  scheme; this file and the `ShareHeirloomModal` row in
+  `System Docs/Public Site.md` are the only records that they do.
+  **Second, the params are unvalidated by anything downstream**, so a typo
+  in them would be silent — the component's own test
+  (`ChatHero.shareHeirloom.test.tsx`) asserts each param by name against a
+  literal spelled out in the test file, deliberately not imported from the
+  component, precisely because nothing else would catch a drift.
+  Related: one `utm_medium=social` covers every channel including Email and
+  the plain copied link, neither of which is social. That is a consequence
+  of one default URL shared by all four channels — per-channel mediums would
+  require the `ShareChannel` contract to build URLs rather than receive one
+  already built. Worth revisiting if per-network attribution ever matters;
+  today the campaign is "someone passed this on", which one medium covers.
+
+- **The conversation-switcher dropdown still has the blur-only dismissal
+  bug the Account dropdown was just fixed for — 2026-08-16.** `ChatHeader`'s
+  Account menu closed only on an explicit in-menu action, because its sole
+  outside-close mechanism was an `onBlur` on its wrapper `div` — which fires
+  only if the trigger actually held focus, and Safari (desktop and iOS)
+  doesn't focus a `<button>` on click/tap. That one is fixed (document
+  `pointerdown` + `Escape`; see the `ChatHeader` row in
+  `System Docs/Public Site.md`). The story-switcher dropdown a few lines
+  above it in the same file — `storyDropdownOpen` / `handleStoryBlur` —
+  still has the identical `onBlur`-only pattern and was deliberately left
+  untouched, because `SHOW_STORY_SWITCHER` is `false` and the whole block is
+  unreachable, so the fix could not have been verified against anything.
+  **If that flag is ever flipped back to `true`, this must be fixed in the
+  same change** — copy the `dropdownOpen`-gated effect the Account menu now
+  uses; it is a dozen lines directly below. A grep confirmed these two were
+  the only `onBlur`-based *dismissal* handlers in the app (every other
+  `onBlur=` in `components/` is commit-a-rename-on-blur on a text input,
+  which is a different and legitimate pattern), so there is no third
+  instance of this to hunt down.
+
+- **`ChatHeader`'s Account trigger duplicates `IconButton` instead of using
+  it — 2026-08-16.** Every other button in that header's icon cluster is an
+  `IconButton`. **Which buttons are in that cluster is breakpoint-dependent
+  as of the mobile chat header redesign, same day:** desktop still renders
+  all five (Media, Memories, Share, Fullscreen, Close), mobile renders Close
+  plus whichever of Media/Memories this session's own content earns — Share
+  and Fullscreen are not passed at all there. The Account trigger is the
+  constant in both — a raw `<button>` whose className today still reads
+  `flex items-center justify-center w-10 h-10 rounded-lg transition-all
+  duration-200 focus:outline-none focus-visible:ring-2
+  focus-visible:ring-accent text-text-muted hover:bg-text-primary/10
+  hover:text-text-primary` (plus its own `relative` + `before:` hit-area) —
+  **that string used to be a byte-for-byte copy of `IconButton`'s
+  inactive-branch classes; it no longer is**, and quoting `IconButton`'s
+  current classes here would only go stale again the next time either file
+  changes, so see `ui/IconButton.tsx` directly for the live comparison.
+  **This drift is no longer hypothetical — it happened on 2026-08-16**,
+  the same day the entry was written: the
+  mobile single-tap fix below guarded `IconButton`'s hover behind
+  `[@media(hover:hover)]:` and, being scoped to the sidebar, did not touch
+  either copy in `ChatHeader.tsx` — the Account trigger (line ~341) or the
+  `md:hidden` nav toggle (line ~209), which is mobile-only and so is the
+  copy that actually pays for it. Both still arm hover on a first tap where
+  their `IconButton` siblings no longer do. (Line numbers refreshed
+  2026-08-16 after the mobile chat header redesign shifted them; the
+  sibling count is no longer a fixed five either — see the note above.) Folding them in is a
+  two-token edit per line; it was left out only to keep that fix inside the
+  sidebar. The original cost still stands too: a future restyle of
+  `IconButton` would silently skip these buttons, and the drift would show
+  up as odd-looking controls in an otherwise-updated cluster. Not folded into the
+  dismissal fix above deliberately (one change at a time, and that change
+  needed a `ref` on this button, which would have made the swap a
+  behavioral change rather than a cosmetic one). `IconButton` spreads
+  `...props`, so `aria-haspopup`/`aria-expanded` already pass through; under
+  React 19 `ref` is an ordinary prop, so the swap is likely a small typing
+  change to `IconButtonProps` rather than a rewrite.
+
+- **Re-opening the mobile drawer mid-close snaps back before sliding in —
+  2026-08-17 (mobile sidebar exit animation).** The drawer's exit is a
+  keyframe (`hl-animate-sheet-left-out`), and `useAnimatedPresence` cancels
+  the pending unmount when the user re-opens before it finishes, so the node
+  is continuously mounted and the state always settles correctly — the
+  element ends open, `isExiting` false, no timer pending. What it does *not*
+  do is interpolate: swapping back to `hl-animate-sheet-left` restarts from
+  that keyframe's own `from` (`translateX(-100%)`), so a re-open caught
+  mid-flight jumps back to fully-off-screen and slides in from there instead
+  of reversing smoothly out of wherever it had reached. Purely cosmetic, and
+  only visible inside the 240ms window. **The fix, if it ever reads badly, is
+  to swap both keyframes for a `transition` on `transform`** — transitions
+  interpolate from the current computed value, so an interrupted exit
+  reverses in place. That was not done here because the entrance animation is
+  shared, working, and untouched by this change, and converting it would mean
+  the mount-then-next-frame dance a transition needs to animate on first
+  paint. Covered (as a state guarantee, not a visual one) by
+  `useAnimatedPresence.test.tsx` and
+  `ChatHero.mobileSidebarExitAnimation.test.tsx`.
+
+- **Only the mobile sidebar drawer got an exit animation — the other
+  conditionally-rendered overlays still vanish — 2026-08-17.** The same
+  bug the drawer had applies to every `{open && <Overlay/>}` in this shell:
+  the mobile Media bottom sheet, the mobile memory overlay, and the session
+  memories sheet all mount with `hl-animate-sheet`/`hl-animate-fade` and
+  unmount instantly. `useAnimatedPresence` is deliberately general enough to
+  serve them (it takes only `isOpen` + a duration and knows nothing about the
+  animation), but they were left alone to keep this change to the one surface
+  that was reported. Each would additionally need its own `-out` keyframe
+  added to `app/heirloom/globals.css` and to the `prefers-reduced-motion`
+  block there.
+
+- **The mobile breakpoint is defined two ways, and they disagree at exactly
+  768px — pre-existing, surfaced 2026-08-16.** Two mechanisms decide "is
+  this mobile" in the chat drawer and they are off by one pixel:
+  Tailwind's `md:` prefix applies at `min-width: 768px` (so `md:hidden`
+  hides *at* 768), while `ChatHero.tsx`'s `useMediaQuery('(max-width:
+  768px)')` is true *at* 768. At exactly 768px CSS says desktop and JS says
+  mobile. The consequence predates the mobile chat header redesign and is
+  worse than cosmetic: `isMobile` renders the sidebar as an overlay instead
+  of the docked `SidebarV2`, but the hamburger that opens that overlay is
+  `md:hidden` and therefore *not rendered* at 768 — so a viewport exactly
+  768px wide has no way to open navigation at all. (`onMenuOpen` is
+  additionally `isMobile`-gated, so the two agree everywhere except this one
+  pixel.) The redesign added one more consequence at the same width: the
+  "Legacy" wordmark is `hidden md:inline`, so it shows, while Share and
+  Fullscreen — gated on `isMobile` — do not. **The fix is to pick one
+  source of truth**, most cheaply by changing the query to `(max-width:
+  767.98px)` so JS matches Tailwind's boundary rather than straddling it;
+  but it moves behaviour at a real width, so it wants its own change and its
+  own verification rather than riding along with unrelated work. **There are
+  two callers, not one** — `ChatHero.tsx` (line ~843) and `ChatInput.tsx`
+  (line ~218) each construct the query independently, so a fix has to touch
+  both or they will disagree with each other on top of disagreeing with
+  Tailwind. That duplication is itself the underlying gap: the breakpoint is
+  a magic string in two components rather than one shared constant. Verified
+  2026-08-16 by grep; the only other `max-width: 768px` hits are the
+  jefflougheed CSS blocks (`Nav`/`Problem`/`Session`), which are a separate
+  isolated surface, and test-file comments.
+
+- **The mobile chat header's brand mark has no accessible name —
+  2026-08-16, deliberate.** In the `SHOW_STORY_SWITCHER`-false branch the
+  feather `<img>` is `alt="" aria-hidden="true"` (decorative, because the
+  visible "Legacy" wordmark beside it carried the name), and the mobile
+  redesign hid that wordmark with `hidden md:inline` — `display:none`
+  removes it from the accessibility tree, not just from view. So on mobile
+  a screen reader gets nothing at all from the brand slot. This is
+  acceptable and was chosen knowingly: the mark is neither a link nor a
+  control, so no interactive element lost its name, and an icon-only logo
+  announcing nothing is ordinary. Recorded because the *reason* it is
+  acceptable is not visible from the markup — someone auditing the header
+  later will see an `aria-hidden` image next to a `display:none` label and
+  reasonably read it as an oversight. **If the mark ever becomes
+  interactive** (a link home, a menu trigger), it needs a real accessible
+  name at that point. The tempting fix today — `sr-only md:not-sr-only` to
+  keep the wordmark in the a11y tree while hiding it visually — was
+  rejected because `not-sr-only` resets `overflow`/`white-space` and would
+  fight the span's existing `truncate` on desktop, i.e. it risks a desktop
+  regression to solve a non-problem on mobile.
+
+- **Mobile transcript could get stuck horizontally scrolled after closing
+  the sidebar — found and fixed 2026-08-17 (#433).** Reported as "content
+  shifted right, text clipped mid-word on the left" after closing the
+  mobile sidebar drawer. Investigated as a possible regression in the
+  mobile sidebar push-transform animation (`mobileSidebarPushClass` in
+  `ChatHero.tsx`) first — ruled out with confidence: that value is a plain
+  inline `const` re-derived from `state.isSidebarExpanded` on every
+  render, with no memoization and no stale-closure path to go wrong
+  against, and a diff across both of that day's earlier sidebar fixes
+  (#431, #432) showed neither touched the mechanism at all. The reported
+  symptom also doesn't match a stuck rightward push in the first place — a
+  `translate-x-[30%]` stuck open would show a blank gap on the *left* edge
+  and clip the *right*, not truncate text at the start of lines.
+  **Real root cause:** `MessageList.tsx`'s transcript scroll container had
+  `overflow-y-auto` with no explicit `overflow-x`. Per the CSS Overflow
+  spec, a non-`visible` overflow-y with overflow-x unset computes
+  overflow-x to `auto` too — the exact mechanic `SidebarV2.tsx`'s
+  `<aside>` already pairs `overflow-x-hidden overflow-y-auto` to avoid,
+  and `MemoryCard.tsx` documents directly elsewhere in this codebase (see
+  that row in `System Docs/Public Site.md`). That implicit `auto` gave the
+  transcript a real, if unintended, ability to develop a horizontal
+  scroll offset — most plausibly from `ChatThread.tsx`'s
+  `scrollAnchorRef.scrollIntoView()` (default `inline: 'nearest'`) firing
+  while its ancestor content column was mid-transform from the sidebar's
+  own 240ms push-back transition, misjudging horizontal visibility
+  against the live painted (transform-shifted) bounding rect and
+  "correcting" by scrolling the transcript sideways. Nothing ever reset
+  that `scrollLeft` afterward, so it stuck the whole transcript
+  off-center. **Fixed** by pairing `overflow-x-hidden` with the
+  transcript's `overflow-y-auto`, same as `SidebarV2.tsx`'s `<aside>` —
+  the container never legitimately needs horizontal scroll (messages wrap
+  via `whitespace-pre-wrap`, nothing renders wide unwrapped content), so
+  this removes the mechanism outright with no loss of capability.
+  `happy-dom` has no layout engine and doesn't implement `scrollIntoView`'s
+  viewport-visibility math, so the dynamic mechanism itself can't be
+  reproduced in a test — `MessageList.transcriptOverflowX.test.tsx` is a
+  structural regression guard instead, asserting the container carries
+  `overflow-x-hidden`, the same "assert the durable class contract"
+  convention `SidebarV2.touchTapTargets.test.tsx` uses for a CSS-only fix
+  jsdom can't otherwise exercise.
+
+- **Mobile sign-in did nothing on tap — found and fixed 2026-08-18.**
+  Reported as mobile-only (desktop unaffected): tapping "Sign in" in
+  `ChatHeader`'s Account dropdown produced no modal, no error, nothing.
+  First suspected `openSignIn`/Clerk's portal itself — ruled out by reading
+  `@clerk/react`'s source directly: `useClerk().openSignIn()` delegates to
+  `clerkjs.openSignIn()` with no `getContainer` override, so Clerk mounts
+  its modal on `document.body` exactly as `clerkAppearance.ts`'s own header
+  comment already documented, a DOM *sibling* of the whole app tree, never
+  a descendant of anything inside it — no ancestor CSS can reach it. The
+  click was never getting that far anyway. **Real root cause:** the same
+  mobile sidebar push-transform this file's #433 entry above already
+  cleared of one bug (`mobileSidebarPushClass` in `ChatHero.tsx`) had a
+  second, unrelated one. `transform` — present on `chat-header-push-wrapper`
+  on every mobile render, even at rest (`translate-x-0` is still a
+  non-`none` value) — makes the element establish its own stacking context.
+  `chat-column-push-wrapper` gets the same class and does the same. Neither
+  wrapper nor either one's ancestors (`<section>`, the `memory-panel-row`
+  flex container) sets an explicit `position`/`z-index`, so both wrappers'
+  stacking contexts land at the same implicit level and paint in DOM order
+  — the chat column, declared after the header, painted **over** the
+  header's entire stacking context wherever the two visually overlap. The
+  Account dropdown (`absolute top-full`, `z-50`) overlaps exactly there: its
+  `z-50` only wins against siblings *inside* the header's own now-isolated
+  context, not against the chat column outside it, so the column silently
+  absorbed every tap on the dropdown — visually invisible, since the column
+  itself renders nothing there. Confirmed with `elementFromPoint` against a
+  minimal static repro of the same two-wrapper structure, both with and
+  without the transform. **Fixed** by adding `relative z-10` to
+  `chat-header-push-wrapper` only (mobile-only, alongside the existing push
+  class) — `relative` is required even though `transform` alone creates the
+  stacking context, because Chromium leaves the computed `position` at
+  `static`, and `z-index` has no effect on a `static` element regardless of
+  its stacking context, confirmed the same way. `z-10` sits under the
+  mobile sidebar drawer's `z-30` and its `z-20` tap-catcher/scrim (same
+  z-index regression guard `ChatHero.mobileSidebarPushAnimation.test.tsx`
+  already asserted for #433), so both still cover the header while open,
+  exactly as before. `happy-dom` can't run layout/paint, so — same
+  convention as #433's fix above — the new test pins the class contract
+  (`relative z-10` present on the header wrapper, absent from the chat
+  column, at rest and pushed) rather than the hit-testing behavior itself.
+
+## Sidebar
+
+- **Sidebar has no resize of its own, even in full-screen — found during
+  Stage C live-preview review, 2026-08-08.** `SidebarV2` force-collapses to
+  its 48px rail whenever the memory panel is open (Stage B,
+  `forceCollapsed` prop), with no way to widen it back — including in
+  `isFullScreen` mode, where `ChatDrawerV2` is `w-screen` and there's
+  genuinely spare width the rail-collapse doesn't need to reclaim. This is
+  new scope, not part of the memory-panel-layout Stage A–F plan (that plan
+  is the chat/panel divider only — sidebar resize was explicitly ruled out
+  of scope for it, repeatedly, during planning). Would need its own plan,
+  likely gated on `isFullScreen` rather than applying everywhere.
+
+- **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
+  (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
+  `SidebarV2`'s Create button was built inert in the original V2 UI-first
+  pass (2026-06-12), alongside the then-inert Uploads/Share Heirloom nav
+  buttons and Writing Prompts section, via two unconditional
+  `opacity-40 pointer-events-none` classes. (**The Share Heirloom row had
+  the identical bug and it survived until 2026-08-15** — see the
+  chat-widget-V2 entry above. Same shape: real handler wired, inert
+  classes left hardcoded rather than made conditional on the handler's
+  presence, so the button looked disabled and swallowed every click.
+  Worth grepping `pointer-events-none` for unconditional occurrences
+  before assuming any V2-era control is actually live.) When real
+  `disabled={storiesDisabled || !onCreateStory}` logic was wired in later
+  (real story creation, 2026-08-09), the leftover inert classes were never
+  removed — the button was functionally enabled (`onCreateStory` genuinely
+  supplied by `ChatHero.tsx`; `storiesDisabled` defaults `false`) but
+  rendered greyed out and, via `pointer-events-none`, unclickable
+  regardless of state. Fixed by removing the two unconditional classes; the
+  `disabled:opacity-40 disabled:cursor-not-allowed
+  disabled:hover:bg-transparent` variants are untouched and still apply
+  correctly for the genuine `storiesDisabled=true` case. Added
+  `SidebarV2.createButton.test.tsx`, asserting on the rendered class list
+  rather than just the `disabled` prop/attribute — the prior test gap that
+  let this ship unnoticed.
+
+- **Sidebar row hover feedback is background-tint-only since the row-copy
+  darkening — 2026-08-15 (PR #397).** Before that change, all three row
+  groups in `SidebarV2.tsx` (the shared `navBtn` base, conversation titles,
+  story rows) signalled hover two ways at once: a colour shift
+  (`text-text-muted` → `hover:text-text-primary`) **and** a background wash
+  (`bg-text-primary/10`, `/[0.05]` on story rows). Moving the rest state to
+  `text-text-primary` made the colour half a no-op, so it was dropped and
+  only the wash remains. This is not a contrast regression — the rest state
+  got darker, not lighter — and focus-visible rings are untouched, so
+  keyboard affordance is unchanged. But it is strictly less hover signal
+  than these rows carried before, on a tint that is only 10% (5% on story
+  rows) against `--color-background` (`#FAF6EE` on Heirloom). **If the rows
+  read as unresponsive in use, the fix is a hover treatment that still works
+  from a full-ink base** — a deeper wash, or an accent-tinted underline —
+  **not** restoring the muted rest state, which is the thing the change
+  deliberately removed. Untested against the mobile drawer, where there is
+  no hover state at all and the wash never fires either way.
+
+- **Sidebar row controls are unreachable on touch until long-press lands —
+  2026-08-16 (mobile single-tap fix), closed 2026-08-17 (long-press).**
+  Sidebar rows used to need two taps
+  on iOS Safari: the first only armed the hover state (row background
+  highlight plus the kebab/invite/start-chat reveal), the second fired the
+  real `loadSession`/`onSelectStory`. Cause was unguarded `hover:`/
+  `group-hover:` utilities — this repo is on Tailwind v3, where
+  `hoverOnlyWhenSupported` is opt-in and `tailwind.config.js` does not
+  enable it, so they compile to bare `:hover` pseudo-classes, and WebKit
+  suppresses a tap's click when the synthesized hover repaints what is under
+  the finger. A row did that twice over. The fix prefixes every hover
+  utility in `SidebarV2.tsx` (and in `ui/IconButton.tsx`, which renders the
+  drawer's own Close-X) with `[@media(hover:hover)]:`.
+  **The deliberate consequence:** the three hover-revealed row controls —
+  kebab, invite, start-chat — no longer appear on touch at all, so they are
+  unreachable there until the follow-up long-press gesture ships. That
+  sequencing was the explicit intent, not an oversight, and the follow-up is
+  the thing that closes it. They keep their DOM slot at `opacity-0`, so they
+  also carry `[@media(hover:none)]:pointer-events-none` — without it they
+  would be invisible but still tappable, and a tap near a row's right edge
+  would hit an unseeable control instead of selecting the row (28px of dead
+  zone per control: 28px on conversation rows, 84px on story rows). Desktop
+  hover behaviour is unchanged.
+  **Scoped deliberately, not global.** Enabling `hoverOnlyWhenSupported` in
+  `tailwind.config.js` is the one-line version and remains the better
+  long-term answer, but it is sitewide: **282 hover utilities across 57
+  files as of 2026-08-16** (re-grep before acting on this — that count only
+  ever moves in one direction as the app grows, so treat it as a floor, not
+  a current figure), of which 10 files drive *visibility* (not just colour)
+  off hover. One is `SidebarV2.tsx` itself, already handled by this fix; the
+  nine still unguarded are `Nav.tsx`, `SaveChatCTA.tsx`, `BlockCanvas.tsx`,
+  `StoryPicker.tsx`, `MemoryCard.tsx`, `PhotoUploadActions.tsx`,
+  `BookingCard.tsx`, `UserMessageActions.tsx`, `MessageActions.tsx`.
+  Two of those
+  (`MemoryCard`, `PhotoUploadActions`) already carry explicit
+  `[@media(hover:none)]:opacity-100` overrides and would be fine; the rest
+  were not audited control-by-control and some would go unreachable on
+  touch. **If that flag is ever flipped on, those nine files are the audit
+  list**, and the per-class guards in `SidebarV2.tsx`/`IconButton.tsx`
+  become redundant and should be stripped in the same change.
+  Regression coverage is `SidebarV2.touchTapTargets.test.tsx`, which walks
+  every class token the sidebar renders (RowMenu's `document.body` portal
+  included) and fails on any unguarded hover utility — jsdom cannot
+  reproduce WebKit's tap heuristic, so the class contract is the guard.
+  **Closed 2026-08-17.** A 450ms hold on a row now sets the same
+  `menuId`/`menuRect` state the desktop kebab's `onClick` already drove —
+  no new reveal mechanism, since kebab/invite/start-chat all already keyed
+  their opacity off `isMenuOpen` (not just hover), so setting `menuId` from
+  a long-press reveals all three at once and opens `RowMenu` in one gesture,
+  mirroring desktop hover+click. isMobile-gated (`useMediaQuery('(max-width:
+  768px)')`, same breakpoint `ChatHero.tsx` already uses) — desktop hover is
+  untouched. Cancelled if the touch drifts past 10px before the timer fires,
+  so a scroll doesn't also open a menu. A completed long-press calls
+  `touchend.preventDefault()` to suppress the trailing synthetic click,
+  which would otherwise either re-fire the row's own tap-to-select (#25a)
+  or hit `RowMenu`'s outside-click listener and instantly close the menu
+  that just opened; the row's `onClick` also carries a ref-based check as a
+  fallback in case that suppression doesn't hold on some browser. Story rows
+  with `storiesDisabled` are excluded — no kebab renders there either, so a
+  long-press must not open one. Coverage is
+  `SidebarV2.longPress.test.tsx`. First long-press implementation in this
+  codebase.
+
+*Cross-reference: the Heirloom chat-widget V2 UI-first entry in the `Chat UI` section documents several Sidebar-hosted features from that pass (Uploads removal, Share Heirloom nav row, tap-outside-to-close, drawer width) — see that section if a Sidebar-nav-row gap doesn't have its own entry here.*
+
+*Cross-reference: the mobile sidebar drawer's exit animation (this section) and the follow-up gap generalizing it to every other conditionally-rendered overlay are tracked in the `Chat UI` section.*
+
+## Memory Panel & Stories
+
+- **Memory panel width doesn't reseed if the whole chat drawer closes while
+  a memory is still open — found during Stage C live-preview review,
+  2026-08-08.** `panelWidth` only reseeds on the effect in `ChatHero.tsx`
+  that watches `openMemory` transition `null` → non-`null`. Closing and
+  reopening the memory panel itself (its own Close button) goes through
+  exactly that transition and reseeds correctly, confirmed live. But
+  `ChatDrawerV2` closing (e.g. `ChatHeader`'s Close button) doesn't unmount
+  `ChatHero` or touch `openMemory` — the drawer just slides off-screen — so
+  if the memory panel was open when the drawer closed, `openMemory` is still
+  non-`null` when the drawer reopens, the effect's dependency never
+  re-fires, and `panelWidth` is left exactly wherever it was, rather than
+  reseeding to the usual ~55%-of-remaining-space default. Low visible
+  impact — a stale-but-still-valid width, not a broken one — and not
+  member-facing per Jeff. **Fix if ever done:** also reseed on the drawer's
+  own close → open transition, not just the panel's.
 
 - **Real story creation and persistence (2026-08-09).** A story is an
   `artifacts` row with `type='story'` — a sibling to memories'
@@ -664,286 +1496,337 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `StoryAdminPanel`'s roster Remove button is the first (and, as of this
   pass, only) caller.
 
-- **`/join/[token]` missing its middleware host-rewrite exclusion — found
-  and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
-  `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)
-  ANDed into the SBL/Heirloom/Legacy host-rewrite blocks and the preview-
-  routing guard, specifically so `heirloom.2bl.ai/invite/x` falls through
-  to the root `/invite/[token]/route.ts` handler instead of being rewritten
-  to `/heirloom/invite/x` (no such route). `/join/[token]` — this feature's
-  own public redirect, structurally identical to `/invite/[token]` — shipped
-  without the equivalent `isJoinPath` guard: on `heirloom.2bl.ai/join/x`,
-  the Heirloom rewrite block would have fired and rewritten it to
-  `/heirloom/join/x`, a 404, on exactly the host this feature is for.
-  Caught by deliberately checking whether the new sibling route had every
-  treatment its precedent did, not by an observed failure — actual
-  production exposure before the fix was not independently verified either
-  way. Fixed by adding `isJoinPath` and ANDing it into the same four places
-  `isInvitePath` already was. See `System Docs/App Structure and Routing.md`
-  for the mechanism and `System Docs/API Routes.md`'s `/join/[token]` row.
-  **Lesson for the next new top-level public route:** grep `isInvitePath`'s
-  usages in `middleware.ts` first and mirror every one, don't just add the
-  route file.
+- **Memories (Heirloom) — Manual path shipped 2026-07-29; Auto shipped
+  2026-07-31 via marker, not a real tool call; Offered still not built.** The
+  memory bookmark, card (running/draft/saved/error states), and
+  Keep/Rewrite/Discard all ship in the manual pass — see
+  `services/chat/ui/v1/useMemories.ts`, `components/shells/membership/memory/`,
+  and the bookmark on `components/chat/MessageActions.tsx` /
+  `UserMessageActions.tsx` (behind `onKeep`, which the jefflougheed widget
+  shell doesn't pass — memories are Heirloom-only).
+  - **Auto** (PR #242, "07-31-26_save-memory-marker") is live: a bare
+    `[SAVE_MEMORY]` marker (`services/chat/ui/v1/registry.ts`) lets the guide
+    auto-save a memory mid-conversation, dispatched client-side to the same
+    `memories.create()` the manual bookmark calls — functionally the "guide
+    invokes a save mid-conversation" behavior the original design called
+    Auto, just implemented as a marker rather than a real tool call.
+    `services/chat/server/stream.ts`'s `streamText()` still passes no `tools`
+    param — there is still no generic tool-use wiring in this codebase — but
+    that no longer means auto-save doesn't exist; the marker path covers it.
+  - **Offered** (the guide asks inline via "Write it up" / "Not yet" chips)
+    is still **not built** — no chip-based confirmation flow exists yet. The
+    blocker cited previously (Heirloom has no compiled prompt of its own) no
+    longer applies: Heirloom's tenant now has its own live `compiled_prompts`
+    row (see `System Docs/Public Site.md`'s Heirloom storefront chat section
+    "Tenant note," resolved 2026-08-04), which is also what makes the
+    `[SAVE_MEMORY]` marker possible
+    without touching jefflougheed's shared `DEFAULT_SYSTEM_PROMPT`. Building
+    Offered is now a prompt-instructions + chip-UI task on Heirloom's own
+    compiled prompt, not a blocked one.
+  Also not in this pass: the story-linking concept entirely — a memory does
+  not require a story to be saved. (Stories themselves are real
+  now, as of 2026-08-09 — see "Real story creation and persistence" above
+  — but still via `artifacts.type='story'`, not a dedicated `stories`
+  table. Story-linking itself is real now too, as of 2026-08-13 — see
+  "Story ↔ memory linking, real as of 2026-08-13" above — genuinely
+  many-to-many at the schema level via `artifact_containments`'s
+  `(parent_artifact_id, child_artifact_id)` pair constraint, with
+  single-story-per-memory enforced only at the application layer, exactly
+  as this paragraph anticipated.)
+  - **Anonymous visitors get a dead-end "account required" failure on
+    bookmark — no path forward to actually create one.** Fixed in PR #288
+    (2026-08-06): `createDraftMemory` now cleanly rejects an anonymous or
+    not-yet-linked member's save attempt (401, `ACCOUNT_REQUIRED_ERROR`,
+    `services/crm/memories.ts`) instead of erroring on the `artifacts.user_id`
+    `NOT NULL` constraint, and the bookmark shows accurate `account_required`
+    copy with a working "Try again" (`services/chat/ui/v1/useMemories.ts`,
+    `components/shells/membership/memory/MemoryCard.tsx`). But "Try again"
+    just re-attempts the same call, which will keep failing the same way for
+    an anonymous visitor — there is still no account-creation flow wired to
+    that moment. The instant someone tries to save something is the
+    highest-intent point to convert them into a signed-up member, and today
+    that moment is still a dead end, just a legible one. A real fix would
+    surface a sign-up/account-creation prompt directly from the bookmark's
+    error state (e.g. reusing the existing `MagicLinkCard` auth flow already
+    used elsewhere in Heirloom) rather than leaving the visitor stuck.
+    Flagged as a real, wanted improvement — explicitly out of scope for PR
+    #288, which only made the failure clean and legible, not actionable.
+  - **`MemorySavedReceipt` icon + inline rename (fixed 2026-08-08, PR
+    #301).** The saved-state receipt showed a fixed checkmark instead of the
+    memory's own kind-specific icon, and had a hover-revealed pencil/input
+    rename affordance that didn't belong on a read-only collapsed state. Now
+    the kind icon (matching the running pill and draft card) sits in the
+    circle, a plain `Check` sits next to "Kept" (a distinct job — confirms
+    saved, doesn't repeat the kind), and the rename UI is gone entirely. See
+    `System Docs/Public Site.md`'s memory bookmark row.
+  - **Memory panel — Stages A–E shipped 2026-08-08 (PRs #302, #306, #307,
+    #308); F (mobile) shipped 2026-08-09 (PR #325).** Clicking a saved memory (the row is now a button,
+    `onOpen` prop) opens it in a side panel: `SidebarV2` force-collapses to
+    its existing 48px rail (`forceCollapsed` prop), the chat column narrows,
+    and a third pane renders — **`MemoryCardView`, the real chrome, as of
+    PR #312 (2026-08-08)** — the Stage A throwaway `MemoryPanelStub` this
+    entry used to describe no longer exists. The panel now has a live
+    header (editable title, eyebrow/date, stubbed "add to story", close), a
+    scrollable body (per-kind media placeholder + passage), and a
+    persistent icon-only footer (Talk about this / Use as a base stubbed;
+    Remove wired to a real discard, routed through the same
+    delete-confirmation dialog session/story deletes already use). **Title
+    editing is real; passage editing is not** —
+    `renameMemory()` (`services/crm/memories.ts`) only ever updates title,
+    nothing updates body — and this is the ONLY place in the app either
+    kind of editing exists at all: the
+    transcript's own `MemoryCard`/`MemorySavedReceipt` (see the entry
+    above) stay exactly as read-only as they were before this panel shipped,
+    untouched by any of it. See `System Docs/Public Site.md`'s
+    `MemoryCardView` row for the full mechanics.
+    **C, D, E all shipped:** the chat/panel divider is drag-resizable (mouse
+    and keyboard — arrow-key nudge, Home/double-click reset), with the
+    hover/drag visual treatment (accent line, pill, background wash) from
+    `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx` —
+    see the sprint-close pointer below for the short version. **F (mobile) —
+    shipped 2026-08-09, PR #325 — diverged from the original spec on
+    purpose.** `onOpenMemory` is no longer gated on `isMobile`, so the
+    receipt is clickable on mobile too, and tapping it opens `MemoryCardView`
+    as a full-screen overlay (`inset-0`/`h-[100dvh]`, no rounding, no scrim)
+    — not the "slide up from the bottom" partial sheet the original design
+    handoff spec'd. That partial-sheet framing was superseded once Media's
+    own mobile bottom sheet shipped the same week (PR #324) and needed a
+    visually distinct treatment for the memory panel to avoid the two
+    looking like the same affordance; see `System Docs/Public Site.md`'s
+    `ChatHero` row for the full mechanics and the reasoning for no scrim /
+    reusing the existing `hl-animate-sheet` timing. Original spec still at
+    `Design Handovers/design_handoff_memory_panel_layout_2026/README.md` for
+    historical reference only — it does not describe what shipped. The
+    `ChatDrawerV2` architectural constraint this section used to flag
+    (`clamp(680px,50vw,1120px)` cap, no `overflow-hidden` in its ancestry)
+    is still real and still worth knowing — see `System Docs/Public Site.md`'s
+    `ChatDrawerV2` row.
+  - **Sprint-close pointer, 2026-08-08 — memory panel resize (Stages A–E) +
+    scroll-to-latest nudge.** PRs #301–#303, #305–#308, and #310 (confirmed
+    via `git log --merges`; #304 falls inside that number range but is an
+    unrelated schema-docs PR, not part of this work; #309 is this pointer's
+    own docs PR). Chat/panel divider is now drag-resizable (mouse + keyboard),
+    with hover/focus visual treatment and a Home/double-click reset that
+    reflects the current window size — see the Memory panel entry above for
+    per-stage detail. Chat transcript also gained a scroll-to-latest button
+    that appears when scrolled away from the bottom
+    (`components/shells/membership/ScrollToLatestButton.tsx`, PR #310,
+    merged) — see `System Docs/Public Site.md`'s row for the mechanics; the
+    threshold-mismatch gap it introduced has its own bullet below.
+    **Stage F (mobile memory panel) — resolved 2026-08-09.** Tapping a saved
+    memory on mobile now opens the panel as a full-screen overlay
+    (`inset-0`/`h-[100dvh]`, no rounding, no scrim — distinct from the
+    Media pane's partial `85vh` sheet added the same week); see
+    `System Docs/Public Site.md`'s `ChatHero` row for the mechanics.
+  - **Session memories panel — shipped 2026-08-14, PR #385.** Closes a real
+    gap an investigation found (`Design Handovers/ Aug 2026 Atomic
+    Updates/11_session_memory_icon_gap/README.md`): main had the single-memory
+    `MemoryCardView` above and the sidebar's decorative `SidebarMemoryCount`
+    badge, but no way to browse every memory kept during the active session
+    and open one — only the prototype's own `SessionMemoriesPanel`
+    (`chat-widget-canvas.jsx`) had that flow. Entry point is a new
+    `ChatHeader` icon ("Memories from this chat," `Bookmark` glyph, same
+    optional-prop-gated pattern as `onOpenMedia`) — the sidebar badge stays a
+    plain non-interactive `<span>`, a locked decision, not an oversight.
+    **Made conditional on mobile 2026-08-16** (mobile chat header redesign):
+    `ChatHero` passes `onOpenSessionMemories` on mobile only when the active
+    session actually has a memory, so the icon can't open an empty panel on a
+    phone — desktop still passes it unconditionally, and `onOpenMedia` got
+    the same treatment. Both gates read state `ChatHero` already holds
+    (`currentSessionMemories`, `useChatStore().mediaItems`), so this added no
+    fetch. Note this interacts with the stale-session-rows bug below: the
+    icon's mobile visibility and the panel's contents are now driven by the
+    *same* filtered array, so they cannot disagree. The
+    new `SessionMemoriesPanel` component (`components/shells/membership/memory/SessionMemoriesPanel.tsx`)
+    lists every memory for the session, **any status** — draft rows get a
+    small "Draft" label, and the subtitle reads "N memories this session,"
+    not "kept," since a draft isn't kept yet. Tapping a row opens it into the
+    existing `MemoryCardView` editor, same as a transcript receipt click —
+    not a separate read-only view. Joins `ChatHero.tsx`'s third-pane
+    mutual-exclusion group as a fifth state (`sessionMemoriesOpen`, alongside
+    `openMemory`/`mediaOpen`/`adminStoryId` and `storyViewId` — the latter
+    landed the same day via a separate branch,
+    `Design Handovers/ Aug 2026 Atomic Updates/01_real_story_view`/PR #384,
+    merged into this one mid-flight; every shared condition and
+    reciprocal-close handler was updated to account for all five states, not
+    four) — same desktop resizable third-pane / mobile `85vh` bottom-sheet
+    treatment Media already has, not the full-screen no-scrim treatment
+    single-item editors (`MemoryCardView`/`StoryAdminPanel`/`StoryView`) use.
+    See `System Docs/Public Site.md`'s `ChatHero`, `ChatHeader`, and new
+    `SessionMemoriesPanel` rows for the mechanics.
+    **Stale-session-rows bug — found by automated PR review, fixed same PR
+    before merge.** `useMemories.ts`'s `memories` array is **not** cleared
+    when `sessionId` changes — only `loadedForSessionId` (and therefore
+    `isLoaded`) resets, see that hook's own doc comment — and nothing closes
+    `sessionMemoriesOpen` on a session switch (New Chat, or picking a
+    different conversation). Passing `memories.memories` straight through
+    left the *previous* session's rows on screen under "this session" until
+    the next fetch resolved, or indefinitely for a brand-new chat with no
+    `sessionId` to ever fetch for. Fixed with a `currentSessionMemories`
+    derivation in `ChatHero.tsx` (`memories.memories.filter(m => m.session_id
+    === state.sessionId)`) — no extra fetch, just the guard every
+    `MemoryRow`'s own `session_id` field already made possible — covered by
+    a regression test in `ChatHero.sessionMemoriesPanel.test.tsx` (opens the
+    panel, clicks New Chat, asserts the stale rows are gone and the empty
+    state shows). Worth remembering for any other consumer that might read
+    `memories.memories` directly in the future — this same gap is latent
+    wherever that happens without the same filter or an `isLoaded`/session
+    check.
+  - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
+    2026-08-08, revised same day per the Text+Image Scope Handover
+    (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
+    passage is now editable: `artifacts.body_blocks` (jsonb, nullable,
+    additive), the `revise_blocks` mutation (`reviseMemoryBlocks`,
+    `services/crm/memories.ts`, `Utilities/CRM.md`'s `memories.ts` row),
+    `useMemories.reviseBlocks` (`Utilities/Chat UI.md`), and
+    `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
+    rows for both) — see those files for the mechanics. Deliberately
+    narrower than the fuller canvas the design handover proposed: exactly
+    two block types (text, image — no video/quote/divider/gallery), no
+    drag-to-reorder, no mobile change. **The block canvas renders
+    immediately on open** — no pencil, no separate "Edit mode": a memory
+    with `body_blocks: null` gets a default single text block derived from
+    `memory.body` (`buildDefaultBlocks()`, matching the reference
+    prototype), and text content commits on **every keystroke** (not
+    blur-gated — a deliberate, confirmed reversal of the first same-day
+    attempt at this, which used blur-gating and a pencil-gated lazy seed;
+    both were corrected once the handover confirmed the reference's actual
+    behavior). Insert control: a "+" ("BlockInserter") sits before the first
+    block and after every block (N blocks → N+1 slots) — independent of
+    reordering, which stays out of scope — expanding to exactly 2 icon
+    options (text, image) rather than the reference's 6-type picker; picking
+    "image" opens a picker of the session's own ready photos rather than
+    inserting an unattached block. Every keystroke round-trips through
+    `reviseMemoryBlocks`'s full validation and a DB write (the media-item
+    ownership check in particular) — an accepted, explicit cost, not an
+    oversight; a short debounce was flagged as a possible future
+    optimization, not implemented. Image blocks reference an existing
+    `media_item_id` only (attach from the session's own already-uploaded
+    photos) — no new upload/storage path. A default image-block-first
+    ordering for a "linked photo" is implemented structurally
+    (`getLinkedMediaItemId()`) but has no live trigger — no field on
+    `MemoryRow` represents a linked photo yet (that's the still-unbuilt
+    photo-bookmark work below), and none was invented to force it.
+    **The per-upload "photo bookmark" gap this left is now fixed — see the
+    Photo Bookmark entry directly below, shipped later the same day.** Image
+    blocks in this panel remain a separate, manual workaround for
+    viewing/attaching an already-known photo — unaffected by, and not a
+    duplicate of, the photo bookmark's own creation path. Still unaffected
+    by: add-to-memory (`PhotoUploadActions.tsx`'s own "+" is still a stub —
+    no `photo_artifacts` write path exists) and memory canvas sorting/
+    filtering — both still unbuilt. (`MemorySavedReceipt`'s own, unrelated
+    "+" — add to a *story*, not add-to-memory — is real now; see the
+    Photo Bookmark entry below and the assign-memory-to-story entry above.)
+    Stage F (mobile slide-up panel) is no longer blocked on this
+    note; it shipped 2026-08-09, see the sprint-close pointer entry above.
+    **GPS
+    indicator — no longer a gap, closed same night via GPS Extraction (PR
+    #316):** the badge's structural support referenced here is no longer
+    just structural — `media_items.latitude`/`longitude` are now live-written
+    on every photo upload (`services/media/processor.ts`'s
+    `extractGpsCoordinates`, see `System Docs/Database Schema.md`'s
+    `media_items` row) and the badge genuinely renders whenever a photo's own
+    EXIF carried GPS data (`MessageList.tsx`'s `gpsFound` prop into
+    `PhotoUploadActions.tsx`) — absent only for the common case of a photo
+    with no GPS EXIF (screenshots, downloads, location services off), not
+    because the pipeline is missing.
+  - **Photo Bookmark shipped 2026-08-08 (same day as Memory Canvas V1
+    above, later in the day).** `PhotoUploadActions.tsx` renders a Bookmark +
+    "+" action row below every ready photo thumbnail in the transcript
+    (`MessageList.tsx`'s upload map) — placement corrected mid-build from an
+    overlay-on-the-photo spec (`Design Handovers/design_handoff_memory_canvas_08_2026/PhotoUploadActions.tsx`)
+    to a separate row below it, per a second, more recent reference
+    (`chat-widget-canvas.jsx`'s `UploadThumb`). Bookmark calls a new
+    creation path, `createPhotoMemoryFromMedia` (`services/crm/memories.ts`,
+    `Utilities/CRM.md`'s `memories.ts` row) — sibling to
+    `createMemoryFromAnchor`, not a branch inside it — which titles/bodies
+    the memory from the photo's own AI-generated caption
+    (`media_items.derived_content`, never trusted from the client) rather
+    than the anchor message's text, fixing the standing gap where a
+    caption-less photo message had no bookmark control anywhere (the old
+    whole-message bookmark only rendered alongside caption text). This also
+    fixes the **anchor-collision bug** the "still not built" note above
+    flagged: `artifacts.media_item_id` (see `Database Schema.md`'s
+    `artifacts` row — corrected the same day from a wrong "likely leftover"
+    guess once this wired it up for real) is now populated alongside
+    `anchor_message_id`, and `useMemories.ts` composes both into a lookup
+    key, so two photos on the same chat message resolve to two independent
+    memories instead of colliding. "+" (add to a memory) on the photo row
+    still fires the existing "coming soon" toast — not real;
+    `photo_artifacts` (the many-to-many write path it would need) is still
+    unbuilt. `MemorySavedReceipt` also gained a "+" the same night (add to a
+    story, same pattern as `MemoryCardView`'s own header "+") — stubbed at
+    first ship, then wired for real (memory-receipt-story-picker,
+    2026-08-14; see the assign-memory-to-story entry above).
+    **Found and fixed same day, live-preview testing:** the pre-existing
+    whole-message bookmark was never gated off for a message that also has
+    a photo — it still renders right alongside the new per-photo Bookmark
+    on any photo message with caption text, by design (confirmed with
+    Jeff — both stay). Clicking it (rather than the per-photo one) routes
+    to `createMemoryFromAnchor`, which used to leave the raw
+    `[MEDIA_UPLOAD: ...]` marker sitting in that memory's title and body,
+    since the shared marker registry had never learned that marker type —
+    fixed by registering it (`MEDIA_UPLOAD_MARKER`/
+    `MEDIA_UPLOAD_FAILED_MARKER`, `services/chat/ui/v1/registry.ts`; see
+    `System Docs/Marker Syntax.md`'s own entry). `getLinkedMediaItemId`,
+    `buildDefaultBlocks`, `BlockCanvas`, `PhotoUploadActions`, and
+    `createPhotoMemoryFromMedia` were all confirmed correct in isolation —
+    the bug was entirely upstream, in what a message's raw content still
+    contained by the time the OLD path read it.
+  - **`ScrollToLatestButton`'s 48px visibility threshold and
+    `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
+    2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
+    and `ChatThread.tsx`'s own near-bottom auto-scroll tracking (a separate,
+    pre-existing `NEAR_BOTTOM_PX = 100` constant, unrelated to this feature)
+    are two independent measures of "has the visitor left the bottom." In
+    the 48–100px window, new content still auto-scrolls the visitor back
+    down even though the button has already appeared — a brief flash, not a
+    stuck state, since the button then correctly hides again once the
+    auto-scroll lands. Low impact, not fixed — previously only documented in
+    PR #310's own description; pulled in here so it doesn't require digging
+    through PR history to find. **Fix if ever done:** either widen the
+    button's threshold to match `ChatThread.tsx`'s 100px, or thread
+    `ChatThread.tsx`'s own near-bottom state out to drive the button instead
+    of a second, independent measurement.
 
-- **Story invite acceptance not reaching its expected end state for a real
-  member — instrumented 2026-08-10 (PR #341), four independent real gaps
-  found and fixed 2026-08-10/11 (PRs #343, #344, #346, #348).** Original
-  reported live symptom: a story invite is accepted, but the story does not
-  appear in the new member's account afterward — the expected end state
-  never materializes. PR #341 (see prior revision of this entry, or its own
-  section in `System Docs/Public Site.md`'s `chatStore` row) added
-  diagnostic-only `console.log` checkpoints with no behavior change. Code
-  review of the full flow — not the suggested browser-console reproduction —
-  surfaced four distinct, independent bugs rather than one root cause,
-  covering different ways the flow could silently fail to reach its expected
-  end state:
-  1. **#343 — `autoOpenChat` never set for the `?join=` path.** `page.tsx`
-     only ever set `autoOpenChat` from `members.auto_open` on the `?invite=`
-     path; a story-invite visitor's chat panel simply never opened, so
-     nothing in the flow — including the accept call's own trigger effects —
-     was visibly happening to them.
-  2. **#344 — no visitor-facing prompt to actually create an account.** A
-     not-signed-in story-invite visitor got a bare "Hi" greeting with no
-     mention of the story, and no CTA telling them they needed to sign up
-     for the invite to take effect — `acceptStoryInviteToken` only ever
-     fires post-sign-in, so a visitor who never saw a reason to sign up
-     never triggered it at all. Fixed with a contextual greet (story title +
-     inviter name, deterministic/no-LLM via `injectAssistantMessage`)
-     immediately followed by an injected `[ACCOUNT_CREATE: story invite]`
-     message when not signed in. See the `chatStore` row in
-     `System Docs/Public Site.md` and the `[ACCOUNT_CREATE: reason]` entry in
-     `System Docs/Marker Syntax.md`.
-  3. **#346 — sidebar `stories` list never refetched.** Even when the accept
-     call genuinely succeeded server-side, `ChatHero.tsx`'s `stories` state
-     was fetched exactly once, on mount — this alone is very likely the
-     literal original report ("story does not appear... afterward"): the
-     grant existed in the DB, but the sidebar showing it required a manual
-     page reload. Fixed by extracting the mount fetch into a reusable
-     `refreshStories` callback, now also called when `joinedStoryConfirmation`
-     fires.
-  4. **#348 — failure paths were silent to the visitor.** Both
-     `acceptStoryInviteToken` failure branches (non-ok response, rejected
-     fetch) only ever `console.error`'d — a genuine server-side failure
-     (e.g. an expired/revoked link) left the visitor signed in with no story
-     and no explanation, indistinguishable from success from their side.
-     Fixed with a generic, no-LLM fallback message via the same
-     `injectAssistantMessage` mechanism.
+- **RESOLVED 2026-08-14 (real-story-view-1d-entry-point) — Session-
+  context-service built (2026-08-13); the "click an empty story to start a
+  chat in it" UI flow that exercises it is now wired too.**
+  `services/chat/server/session-context.ts`
+  (`getSessionContext`/`attachSessionContext`, `chat_session_context`
+  table — schema DDL reported to Jeff, now live in Studio, see `System
+  Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time wiring
+  (`app/api/sessions/route.ts`), and the client accessor plumbing
+  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) landed
+  2026-08-13, already built and tested. The missing piece — the actual
+  `SidebarV2` story-row click handler — is now real: `ChatHero.tsx`'s
+  `handleSelectStory` calls `newChat()` then `setSessionContextToAttach({
+  contextType: 'story', contextRefId: storyId, contextFrequency:
+  'every_turn' })` on the empty-story branch (see the real-story-view entry
+  above for the full branching logic). `onStartStoryChat` (a separate,
+  always-visible per-row icon distinct from the row's own click) remains
+  unwired — out of scope for this pass, which only wired `onSelectStory`.
+  **A related-looking WIP existed on origin (`2026-08-13-story-click-
+  routing`, commit `4b3aa9f9`, checkpointed mid-task, never merged) — it
+  was NOT resumed, deliberately:** it wired `onSelectStory` via a
+  completely different, discarded approach — a client-only
+  `storyContextIdRef` used solely to auto-assign a Kept memory back to the
+  story, plus a one-time deterministic *chat message* (rendered directly in
+  the transcript via plain ReactMarkdown, explicitly NOT XML-delineated by
+  that WIP's own doc comment, since raw tags would render as literal broken
+  text there) naming the story/owner. It had no `chat_session_context` row,
+  no `attachSessionContext` call, and nothing re-injected on later turns —
+  a one-shot greeting, not persistent every-turn system-prompt context. It
+  also predated and partially overlapped with the real, later, merged
+  memory↔story linking (`assign-memory-to-story`, PR #377, the actual
+  `StoryPicker` UI) — its own auto-assign-on-Keep half was already
+  superseded by that. Its `contentCount`-branching idea for the click
+  handler was NOT reused either — that field was never rebuilt anywhere
+  (confirmed absent from `services/crm/stories.ts`'s `listStories`); the
+  real click handler checks emptiness for real via `GET /api/stories/[id]/
+  memories` instead (see the real-story-view entry above).
 
-  Each fix shipped with its own committed test; `services/crm/story-invites.ts`'s
-  server-side `acceptStoryInvite` itself was re-read during this pass and
-  still appears correct — no server-side fix was needed. This closes out the
-  client-side investigation PR #341 opened; if the original live report
-  persists after this, the next step is re-verifying the server-side grant
-  path (`artifact_subscribers` upsert) against production data, not the
-  client flow this entry now covers end-to-end.
-
-  **Superseded, same day — the server-side half flagged above as "no fix
-  needed" did in fact need one, 2026-08-11 (PR #351).** Not a bug in
-  `acceptStoryInvite`'s own logic (that re-read was correct as far as it
-  went) but a reliability gap in *when* it got called: every accept
-  ultimately depended on the client's browser successfully firing `POST
-  /api/heirloom/story-invites/accept` (the two `chatStore.tsx` trigger
-  points this entry already covers) — a single point of failure with no
-  server-side fallback, the exact shape CLAUDE.md's Marker fallback
-  principle exists to prevent. Confirmed separately, via live Studio data,
-  as also producing a second, quieter symptom: when Clerk's `user.created`
-  webhook happened to process a story-invite signup before the client's own
-  accept call did, the webhook had no concept of story invites at all and
-  fell through to the generic `syncMember` upsert — the `artifact_subscribers`
-  grant still landed correctly (via the client call arriving after), but the
-  resulting `members` row got `source: null` and no `primer` instead of
-  `source: 'story_invite'`, silently losing personalization/attribution
-  without ever locking the person out. **Fixed** by threading a new
-  `storyInviteToken` field through `chatStore.tsx` → `MessageList.tsx` →
-  `MagicLinkCard.tsx` → `useAuthFlow.ts` into the Clerk adapter
-  (`services/auth/providers/clerk/client.ts`), which now writes it into
-  Clerk `unsafeMetadata` as `heirloom_story_invite_token` — combined into
-  the SAME `signUp.update()` call the pre-existing `heirloom_invite_token`
-  write already made, since `unsafeMetadata` is a full-object replace, not a
-  merge, and writing them separately would let one silently wipe the other.
-  `app/api/webhooks/clerk/route.ts`'s `user.created`/`user.updated` handler
-  now reads that key and calls `acceptStoryInvite()` directly — the exact
-  same function the client calls — so whichever of {webhook, client} runs
-  first performs the real insert and the other is a safe no-op; a missing or
-  failed token still falls through to the pre-existing
-  `linkInvitedMember`/`syncMember` cascade as a safety net. Since this makes
-  `acceptStoryInvite` reachable from two racing callers instead of one, its
-  new-member insert (`services/crm/story-invites.ts`) is now also hardened
-  against a concurrent `23505` unique-violation on `members.clerk_id` —
-  re-fetches and continues as the existing-member branch rather than
-  surfacing a 500, mirroring `createOrGetActiveStoryInviteLink`'s own
-  precedent for the identical race shape. Shipped as commit `fbd3807d` +
-  test coverage in `1bf8c55e`, merged as PR #351. See
-  `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
-  `System Docs/Utilities/Auth.md` for the mechanism.
-
-- **Admin/member invite acceptance had the same reliability gaps already
-  fixed for story invites on 2026-08-10/11 (see the entry above) — found
-  and fixed 2026-08-13 (PR #367).** Unlike the story-invite path,
-  `?invite=TOKEN` acceptance relied entirely on the model organically
-  noticing a pre-auth invite holder and deciding, conversationally, to
-  prompt account creation — no deterministic trigger existed. Three fixes:
-  1. **`autoOpenChat` was opt-in, not guaranteed.** `page.tsx` read
-     `members.auto_open` (admin-set per invite, defaulting `false`) instead
-     of forcing the chat panel open for any valid pre-auth token, so most
-     admin invites never opened the chat automatically at all. Fixed:
-     `autoOpenChat = true` unconditionally when a valid admin/member token
-     authorizes the visitor. The `auto_open` column and its
-     `InviteMemberModal.tsx` toggle are left in place for other consumers;
-     this path just stops reading it.
-  2. **No deterministic account-creation prompt.** Even when the chat did
-     open, nothing told the visitor they needed to sign up — same shape as
-     story-invite gap #344 above. Fixed with a new branch in `chatStore.tsx`'s
-     auto-greet effect: a personalized (`invitedName`, when the admin set
-     one) or generic greeting, immediately followed by an injected
-     `[ACCOUNT_CREATE: admin invite]` message when not signed in. Mutually
-     exclusive with the story-invite branch both structurally and via an
-     explicit `!storyInviteTokenRef.current` guard.
-  3. **Accept-call failures were silent.** The `/api/heirloom/invites/accept`
-     fetch on the sign-in transition was pure fire-and-forget — no
-     `res.ok` check, no fire-once guard, no user-facing message on failure.
-     Same shape as story-invite gap #348 above. Extracted into
-     `acceptMemberInviteToken`, matching `acceptStoryInviteToken`'s pattern
-     exactly.
-
-  **Separately found during the same pass: `AuditAction.MEMBER_INVITE_ACCEPTED`
-  was being logged, but invisibly.** `app/api/heirloom/invites/accept/route.ts`
-  called it with `tenant_id: null` (the route doesn't have the real value in
-  scope) — every acceptance was logged, but any query scoped by `tenant_id`
-  (the standard pattern everywhere else in this codebase) silently missed
-  every row. Confirmed live: a real member's acceptance (active status,
-  `used_at` stamped) produced zero matching rows under a tenant-scoped
-  query. Fixed by moving the `logEvent` call inside `acceptInvite()`
-  (`services/members/members.ts`), which already has `row.tenant_id` in
-  scope for its cross-tenant guard, and removing the now-duplicate call
-  from `route.ts`.
-
-- **`members.name` was not guaranteed to be set on most signup paths —
-  found 2026-08-13, closed 2026-08-14.** Of the paths that create/activate
-  a `members` row, originally only two (the OTP card itself, and
-  `SaveChatCTA`, both of which require a name field to submit) reliably
-  set `name`. Confirmed via live query: 7 rows with `name IS NULL`,
-  including one real member (not a test account) who activated via
-  `GateView`'s Clerk-prebuilt-modal path — that path calls
-  `/api/heirloom/members/claim`, which only sets `name` conditionally (if
-  Clerk's own signup UI happened to collect first/last name).
-
-  **A second, worse bug compounded this:** `acceptInvite`'s orphan-cleanup
-  (step 3) actively discarded a captured `name` on every occurrence it
-  triggered. The setup: an invited `members` row starts with `clerk_id =
-  null`. On real signup, two independent effects fire off the same
-  Clerk-session-activation event with no ordering between them —
-  `MagicLinkCard`'s `onSuccess` (calls `/api/members/sync`, which upserts
-  *by `clerk_id`* and, finding no match yet, inserts a fresh row with the
-  real name) and `chatStore.tsx`'s sign-in-transition effect (calls
-  `acceptInvite`, which finds the original invited row *by token* and
-  deletes any other row sharing that `clerk_id` as an "orphan" before
-  stamping the invited row active). Whichever order those two calls
-  resolved in, the orphan-cleanup path deleted the freshly-named row and
-  stamped a nameless one — active data loss, not just a missing field, on
-  every occurrence, independent of which invite mechanism triggered it.
-
-  **Fixed 2026-08-13 (PR #368):** `acceptInvite` now rescues the orphan's
-  `name` before deleting it — selects `name` alongside `id` in the orphan
-  query, and if exactly one orphan is deleted with a non-null `name` and
-  the invited row's own `name` is still null, includes it in the same
-  update that stamps the row active. Never overwrites an existing name.
-  Verified via 4 new unit tests covering the rescue case and its edge
-  cases (existing name not overwritten, null orphan name, multiple
-  orphans).
-
-  **Closed 2026-08-14 (PR #371):** `acceptStoryInvite`
-  (`services/crm/story-invites.ts`) and `linkInvitedMember`
-  (`services/members/members.ts`, the Clerk webhook path) previously never
-  set `name` at all, regardless of signup path — this entry originally
-  flagged both as still open. Both now take an optional trailing `name`
-  param, derived from Clerk's `firstName + lastName` the same way
-  `syncMember`'s webhook-fallback caller already does. Neither needed
-  rescue logic like `acceptInvite`'s above — neither has a delete step, so
-  a losing race against `/api/members/sync` just leaves whatever that
-  other write already set alone (`acceptStoryInvite` falls through to its
-  existing-member branch on a 23505; `linkInvitedMember`'s UPDATE surfaces
-  a unique-constraint failure already handled by the existing
-  `MEMBER_LINK_UPDATE_FAILED` path). `GateView`'s Clerk-modal bypass
-  itself is unrelated to this fix and untouched.
-
-- **Admin invite email/phone/name only ever reached the greeting text, not
-  the sign-up form itself — found and fixed 2026-08-14 (PR #372).**
-  `createMemberInvite` already accepted all three, and `invited_name`
-  reached `chatStore.tsx`'s deterministic greeting (see the PR #367 entry
-  above), but none of it pre-filled `MagicLinkCard`'s actual form fields —
-  `initialName`/`initialEmail`/`initialPhone` were only ever populated by
-  scanning the model's own `[NAME:]`/`[EMAIL:]`/`[PHONE:]` markers in
-  `MessageList.tsx`, a completely separate mechanism from the invite data.
-  Separately, `validateMemberToken()`'s select string and the
-  `MemberInviteRow` interface were missing `phone` entirely, even though
-  `createMemberInvite` already wrote it — the invited row's phone number
-  was unreachable to any caller. Fixed by threading `phone` through
-  `validateMemberToken`, then `invitedEmail`/`invitedPhone` down through
-  `page.tsx` → `HeirloomApp.tsx` → `chatStore.tsx`'s `ChatProvider` →
-  `MessageList.tsx`, where the `visitorName`/`visitorEmail`/`visitorPhone`
-  marker-scan derivations now fall back to the invite's own value when no
-  marker has fired yet — a marker emitted mid-conversation still wins,
-  since it's checked first. Story invites are unaffected by design: a
-  story invite link is durable and multi-use, with no specific invitee's
-  contact info to fall back to.
-
-- **No identity dedup across signup methods — found 2026-08-13, not
-  addressed.** `members` rows are matched only by `clerk_id`; nothing
-  cross-checks name/phone/email against existing rows. A person who signs
-  up once via email and again via phone (two separate Clerk identities)
-  gets two fully separate, both-`active` `members` rows with no merge path
-  and no product-level way to detect or reconcile it. Confirmed live: one
-  real member has two active rows six weeks apart, one per contact method.
-  This is a product/design gap (no shared identity key exists to dedupe
-  on), not a code defect — no fix scoped yet.
-
-- **`primer` (free-text field on both `members` and `story_invite_links`)
-  is injected into the chat system prompt with zero delineation from real
-  instructions — found 2026-08-13, not addressed.**
-  `services/chat/server/member-context.ts` concatenates `primer` directly
-  into the `MEMBER CONTEXT` block with no wrapper distinguishing
-  user-supplied text from instructions, immediately adjacent to the
-  marker-emission instruction that tells the model to silently append
-  `[NAME:]`/`[EMAIL:]`/`[PHONE:]` tags. Admin-set `primer` (on `members`)
-  is lower risk — only tenant admins can set it. **Story-invite `primer`
-  is member-wide risk**, not admin-only: any Heirloom member who owns a
-  story can set it via `POST /api/heirloom/story-invites`, up to 500
-  chars, no sanitization beyond trim/length. Compounded by `autoOpenChat`
-  behavior: story invites force the chat open unconditionally, and fall
-  through to an automatic `sendHidden('Hi')` LLM call (not the deterministic
-  greeting) whenever the story-title or inviter-name lookup fails — a path
-  not controlled by the story owner, meaning a hostile primer could reach
-  the model automatically without the visitor typing anything. **Fix not
-  yet scoped:** wrap `primer` with explicit delineation before it reaches
-  the system prompt; separately, decide whether story invites should keep
-  forcing `autoOpenChat=true` with no opt-out (product decision, not just
-  security).
-
-- **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
-  (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
-  `SidebarV2`'s Create button was built inert in the original V2 UI-first
-  pass (2026-06-12), alongside the then-inert Uploads/Share Heirloom nav
-  buttons and Writing Prompts section, via two unconditional
-  `opacity-40 pointer-events-none` classes. (**The Share Heirloom row had
-  the identical bug and it survived until 2026-08-15** — see the
-  chat-widget-V2 entry above. Same shape: real handler wired, inert
-  classes left hardcoded rather than made conditional on the handler's
-  presence, so the button looked disabled and swallowed every click.
-  Worth grepping `pointer-events-none` for unconditional occurrences
-  before assuming any V2-era control is actually live.) When real
-  `disabled={storiesDisabled || !onCreateStory}` logic was wired in later
-  (real story creation, 2026-08-09), the leftover inert classes were never
-  removed — the button was functionally enabled (`onCreateStory` genuinely
-  supplied by `ChatHero.tsx`; `storiesDisabled` defaults `false`) but
-  rendered greyed out and, via `pointer-events-none`, unclickable
-  regardless of state. Fixed by removing the two unconditional classes; the
-  `disabled:opacity-40 disabled:cursor-not-allowed
-  disabled:hover:bg-transparent` variants are untouched and still apply
-  correctly for the genuine `storiesDisabled=true` case. Added
-  `SidebarV2.createButton.test.tsx`, asserting on the rendered class list
-  rather than just the `disabled` prop/attribute — the prior test gap that
-  let this ship unnoticed.
+## Media Pipeline
 
 - **Media-item state machine (`chatStore.tsx`) — four real bugs found and
   fixed 2026-08-04/05 (PRs #269–#272).** Original symptom: the Heirloom guide
@@ -987,7 +1870,9 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (PRs #275–#280).** Follow-up investigation after the #269–#272 saga
   above, scoped to the rest of the media pipeline (upload, processing,
   retry, dedup) rather than just `chatStore.tsx`'s delivery tracking.
-  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`.
+  Originating investigation: `Backlog/media-pipeline-broader-sweep_2026-08-05.md`
+  — **note that file is not in the repo** (`Backlog/` exists but has never
+  contained it), so the six fixes below are the surviving record of that sweep.
   Six distinct fixes, all merged:
   1. **#275 — stale delivered-status tracking blocking retry resurfacing.**
      `deliveredTerminalIdsRef` (the #270/#271 fix above) tracked only
@@ -1226,559 +2111,6 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   was never affected by the 60s expiry. See `System Docs/Public Site.md`'s
   `UploadThumbnail` row for the mechanics.
 
-- **Save CTA message threshold should be tenant-configurable.** Currently
-  hardcoded at 4 messages in `SaveChatCTA.tsx` (`if (messages.length < 4 …)`).
-  Should be a per-tenant setting stored in `tenants.settings` JSONB with a
-  default of 4. Same pattern as `chat_in_progress_idle_seconds` /
-  `chat_active_idle_seconds` — admin UI in Settings, fetched via
-  `GET /api/admin/tenant-settings`, written via `PATCH /api/admin/tenant-settings`.
-  Schema change (add key to `tenants.settings` JSONB) is Jeff's Studio work;
-  code work proceeds once the column convention is confirmed.
-
-- **Server-side Stop-abort's reliable mechanism (poll-based) hasn't been
-  live-tested yet.** (2026-07-28, see `System Docs/Utilities/Chat UI.md`'s
-  "Stop / interrupted-turn protocol" for the full history.) The first attempt
-  (threading `Request.signal` into `streamText()`'s `abortSignal`) was
-  live-tested and confirmed **not working** on this deployment — the client
-  correctly recorded every Stop, but the server kept generating regardless,
-  most likely because Next.js middleware reconstructs the request via
-  header-forwarding at the edge→function boundary rather than passing a live
-  signal object through (see `System Docs/Utilities/Chat UI.md`'s "Stop /
-  interrupted-turn protocol" for the full trace). The
-  current mechanism no longer depends on that connection-level signal at
-  all: the client explicitly PATCHes `chat_sessions.stop_requested_at` the
-  instant Stop is clicked, and `streamChat()` polls it every 500ms, comparing
-  against the current turn's own start time. This is designed specifically
-  to route around the confirmed failure mode, but it has not itself been
-  retested live yet. Same DB check as before: click Stop mid-reply, query
-  `server_abort_confirmed_at` for that session afterward — populated is
-  proof it fired; null means it's still broken and needs another pass.
-- **`services/payments/` not created.** Stripe Connect work is deferred; not
-  even a scaffold exists yet.
-- **Chat-UI strangle — widget shell extracted (centralization Step E).** The
-  engine, marker registry, `useChatTurn` hook, and type contracts moved to
-  `services/chat/ui/v1/` (PRs #42–46); `src/lib/sage.ts` and `src/lib/store.ts`
-  were deleted. The widget-shell visual components (`Hero`, `Chat`, `sage/*`)
-  now live in `components/shells/widget/`, with the headless `useWidgetShell` +
-  `useSageParameters` in `services/chat/ui/v1/`. `Nav.tsx` was relocated into
-  `app/(jefflougheed)/components/` (importing `ShareModal` via relative
-  `./ShareModal`), which clears the last `src→app` boundary warning and empties
-  `src/components/` (directory removed; `src/` holds only `calendly.d.ts`).
-  `boundaries/element-types` is now at **0 warnings**; the rule has since been
-  flipped to `error` (Step G, confirmed in `.eslintrc.json`) — no longer pending.
-- **eslint `components` element-type registered (centralization Step D).** Root
-  `components/**` (the Mantine admin UI) is now a first-class boundary element:
-  `app → components` and `components → services` are legal; `components` may not
-  reach into `app` or `src` internals. This is the same allowance the
-  `components/shells/` widget + membership shells will consume in Steps E/F. The
-  rule has since been flipped to `error` (Step G, confirmed in `.eslintrc.json`)
-  — no longer pending.
-- **Memories (Heirloom) — Manual path shipped 2026-07-29; Auto shipped
-  2026-07-31 via marker, not a real tool call; Offered still not built.** The
-  memory bookmark, card (running/draft/saved/error states), and
-  Keep/Rewrite/Discard all ship in the manual pass — see
-  `services/chat/ui/v1/useMemories.ts`, `components/shells/membership/memory/`,
-  and the bookmark on `components/chat/MessageActions.tsx` /
-  `UserMessageActions.tsx` (behind `onKeep`, which the jefflougheed widget
-  shell doesn't pass — memories are Heirloom-only).
-  - **Auto** (PR #242, "07-31-26_save-memory-marker") is live: a bare
-    `[SAVE_MEMORY]` marker (`services/chat/ui/v1/registry.ts`) lets the guide
-    auto-save a memory mid-conversation, dispatched client-side to the same
-    `memories.create()` the manual bookmark calls — functionally the "guide
-    invokes a save mid-conversation" behavior the original design called
-    Auto, just implemented as a marker rather than a real tool call.
-    `services/chat/server/stream.ts`'s `streamText()` still passes no `tools`
-    param — there is still no generic tool-use wiring in this codebase — but
-    that no longer means auto-save doesn't exist; the marker path covers it.
-  - **Offered** (the guide asks inline via "Write it up" / "Not yet" chips)
-    is still **not built** — no chip-based confirmation flow exists yet. The
-    blocker cited previously (Heirloom has no compiled prompt of its own) no
-    longer applies: Heirloom's tenant now has its own live `compiled_prompts`
-    row (see `System Docs/Public Site.md`'s Heirloom storefront chat section
-    "Tenant note," resolved 2026-08-04), which is also what makes the
-    `[SAVE_MEMORY]` marker possible
-    without touching jefflougheed's shared `DEFAULT_SYSTEM_PROMPT`. Building
-    Offered is now a prompt-instructions + chip-UI task on Heirloom's own
-    compiled prompt, not a blocked one.
-  Also not in this pass: the story-linking concept entirely — a memory does
-  not require a story to be saved. (Stories themselves are real
-  now, as of 2026-08-09 — see "Real story creation and persistence" above
-  — but still via `artifacts.type='story'`, not a dedicated `stories`
-  table. Story-linking itself is real now too, as of 2026-08-13 — see
-  "Story ↔ memory linking, real as of 2026-08-13" above — genuinely
-  many-to-many at the schema level via `artifact_containments`'s
-  `(parent_artifact_id, child_artifact_id)` pair constraint, with
-  single-story-per-memory enforced only at the application layer, exactly
-  as this paragraph anticipated.)
-  - **Anonymous visitors get a dead-end "account required" failure on
-    bookmark — no path forward to actually create one.** Fixed in PR #288
-    (2026-08-06): `createDraftMemory` now cleanly rejects an anonymous or
-    not-yet-linked member's save attempt (401, `ACCOUNT_REQUIRED_ERROR`,
-    `services/crm/memories.ts`) instead of erroring on the `artifacts.user_id`
-    `NOT NULL` constraint, and the bookmark shows accurate `account_required`
-    copy with a working "Try again" (`services/chat/ui/v1/useMemories.ts`,
-    `components/shells/membership/memory/MemoryCard.tsx`). But "Try again"
-    just re-attempts the same call, which will keep failing the same way for
-    an anonymous visitor — there is still no account-creation flow wired to
-    that moment. The instant someone tries to save something is the
-    highest-intent point to convert them into a signed-up member, and today
-    that moment is still a dead end, just a legible one. A real fix would
-    surface a sign-up/account-creation prompt directly from the bookmark's
-    error state (e.g. reusing the existing `MagicLinkCard` auth flow already
-    used elsewhere in Heirloom) rather than leaving the visitor stuck.
-    Flagged as a real, wanted improvement — explicitly out of scope for PR
-    #288, which only made the failure clean and legible, not actionable.
-  - **`MemorySavedReceipt` icon + inline rename (fixed 2026-08-08, PR
-    #301).** The saved-state receipt showed a fixed checkmark instead of the
-    memory's own kind-specific icon, and had a hover-revealed pencil/input
-    rename affordance that didn't belong on a read-only collapsed state. Now
-    the kind icon (matching the running pill and draft card) sits in the
-    circle, a plain `Check` sits next to "Kept" (a distinct job — confirms
-    saved, doesn't repeat the kind), and the rename UI is gone entirely. See
-    `System Docs/Public Site.md`'s memory bookmark row.
-  - **Memory panel — Stages A–E shipped 2026-08-08 (PRs #302, #306, #307,
-    #308); F (mobile) shipped 2026-08-09 (PR #325).** Clicking a saved memory (the row is now a button,
-    `onOpen` prop) opens it in a side panel: `SidebarV2` force-collapses to
-    its existing 48px rail (`forceCollapsed` prop), the chat column narrows,
-    and a third pane renders — **`MemoryCardView`, the real chrome, as of
-    PR #312 (2026-08-08)** — the Stage A throwaway `MemoryPanelStub` this
-    entry used to describe no longer exists. The panel now has a live
-    header (editable title, eyebrow/date, stubbed "add to story", close), a
-    scrollable body (per-kind media placeholder + passage), and a
-    persistent icon-only footer (Talk about this / Use as a base stubbed;
-    Remove wired to a real discard, routed through the same
-    delete-confirmation dialog session/story deletes already use). **Title
-    editing is real; passage editing is not** —
-    `renameMemory()` (`services/crm/memories.ts`) only ever updates title,
-    nothing updates body — and this is the ONLY place in the app either
-    kind of editing exists at all: the
-    transcript's own `MemoryCard`/`MemorySavedReceipt` (see the entry
-    above) stay exactly as read-only as they were before this panel shipped,
-    untouched by any of it. See `System Docs/Public Site.md`'s
-    `MemoryCardView` row for the full mechanics.
-    **C, D, E all shipped:** the chat/panel divider is drag-resizable (mouse
-    and keyboard — arrow-key nudge, Home/double-click reset), with the
-    hover/drag visual treatment (accent line, pill, background wash) from
-    `Design Handovers/design_handoff_memory_panel_layout_2026/Curtain.tsx` —
-    see the sprint-close pointer below for the short version. **F (mobile) —
-    shipped 2026-08-09, PR #325 — diverged from the original spec on
-    purpose.** `onOpenMemory` is no longer gated on `isMobile`, so the
-    receipt is clickable on mobile too, and tapping it opens `MemoryCardView`
-    as a full-screen overlay (`inset-0`/`h-[100dvh]`, no rounding, no scrim)
-    — not the "slide up from the bottom" partial sheet the original design
-    handoff spec'd. That partial-sheet framing was superseded once Media's
-    own mobile bottom sheet shipped the same week (PR #324) and needed a
-    visually distinct treatment for the memory panel to avoid the two
-    looking like the same affordance; see `System Docs/Public Site.md`'s
-    `ChatHero` row for the full mechanics and the reasoning for no scrim /
-    reusing the existing `hl-animate-sheet` timing. Original spec still at
-    `Design Handovers/design_handoff_memory_panel_layout_2026/README.md` for
-    historical reference only — it does not describe what shipped. The
-    `ChatDrawerV2` architectural constraint this section used to flag
-    (`clamp(680px,50vw,1120px)` cap, no `overflow-hidden` in its ancestry)
-    is still real and still worth knowing — see `System Docs/Public Site.md`'s
-    `ChatDrawerV2` row.
-  - **Sprint-close pointer, 2026-08-08 — memory panel resize (Stages A–E) +
-    scroll-to-latest nudge.** PRs #301–#303, #305–#308, and #310 (confirmed
-    via `git log --merges`; #304 falls inside that number range but is an
-    unrelated schema-docs PR, not part of this work; #309 is this pointer's
-    own docs PR). Chat/panel divider is now drag-resizable (mouse + keyboard),
-    with hover/focus visual treatment and a Home/double-click reset that
-    reflects the current window size — see the Memory panel entry above for
-    per-stage detail. Chat transcript also gained a scroll-to-latest button
-    that appears when scrolled away from the bottom
-    (`components/shells/membership/ScrollToLatestButton.tsx`, PR #310,
-    merged) — see `System Docs/Public Site.md`'s row for the mechanics; the
-    threshold-mismatch gap it introduced has its own bullet below.
-    **Stage F (mobile memory panel) — resolved 2026-08-09.** Tapping a saved
-    memory on mobile now opens the panel as a full-screen overlay
-    (`inset-0`/`h-[100dvh]`, no rounding, no scrim — distinct from the
-    Media pane's partial `85vh` sheet added the same week); see
-    `System Docs/Public Site.md`'s `ChatHero` row for the mechanics.
-  - **Session memories panel — shipped 2026-08-14, PR #385.** Closes a real
-    gap an investigation found (`Design Handovers/ Aug 2026 Atomic
-    Updates/11_session_memory_icon_gap/README.md`): main had the single-memory
-    `MemoryCardView` above and the sidebar's decorative `SidebarMemoryCount`
-    badge, but no way to browse every memory kept during the active session
-    and open one — only the prototype's own `SessionMemoriesPanel`
-    (`chat-widget-canvas.jsx`) had that flow. Entry point is a new
-    `ChatHeader` icon ("Memories from this chat," `Bookmark` glyph, same
-    optional-prop-gated pattern as `onOpenMedia`) — the sidebar badge stays a
-    plain non-interactive `<span>`, a locked decision, not an oversight. The
-    new `SessionMemoriesPanel` component (`components/shells/membership/memory/SessionMemoriesPanel.tsx`)
-    lists every memory for the session, **any status** — draft rows get a
-    small "Draft" label, and the subtitle reads "N memories this session,"
-    not "kept," since a draft isn't kept yet. Tapping a row opens it into the
-    existing `MemoryCardView` editor, same as a transcript receipt click —
-    not a separate read-only view. Joins `ChatHero.tsx`'s third-pane
-    mutual-exclusion group as a fifth state (`sessionMemoriesOpen`, alongside
-    `openMemory`/`mediaOpen`/`adminStoryId` and `storyViewId` — the latter
-    landed the same day via a separate branch,
-    `Design Handovers/ Aug 2026 Atomic Updates/01_real_story_view`/PR #384,
-    merged into this one mid-flight; every shared condition and
-    reciprocal-close handler was updated to account for all five states, not
-    four) — same desktop resizable third-pane / mobile `85vh` bottom-sheet
-    treatment Media already has, not the full-screen no-scrim treatment
-    single-item editors (`MemoryCardView`/`StoryAdminPanel`/`StoryView`) use.
-    See `System Docs/Public Site.md`'s `ChatHero`, `ChatHeader`, and new
-    `SessionMemoriesPanel` rows for the mechanics.
-    **Stale-session-rows bug — found by automated PR review, fixed same PR
-    before merge.** `useMemories.ts`'s `memories` array is **not** cleared
-    when `sessionId` changes — only `loadedForSessionId` (and therefore
-    `isLoaded`) resets, see that hook's own doc comment — and nothing closes
-    `sessionMemoriesOpen` on a session switch (New Chat, or picking a
-    different conversation). Passing `memories.memories` straight through
-    left the *previous* session's rows on screen under "this session" until
-    the next fetch resolved, or indefinitely for a brand-new chat with no
-    `sessionId` to ever fetch for. Fixed with a `currentSessionMemories`
-    derivation in `ChatHero.tsx` (`memories.memories.filter(m => m.session_id
-    === state.sessionId)`) — no extra fetch, just the guard every
-    `MemoryRow`'s own `session_id` field already made possible — covered by
-    a regression test in `ChatHero.sessionMemoriesPanel.test.tsx` (opens the
-    panel, clicks New Chat, asserts the stale rows are gone and the empty
-    state shows). Worth remembering for any other consumer that might read
-    `memories.memories` directly in the future — this same gap is latent
-    wherever that happens without the same filter or an `isLoaded`/session
-    check.
-  - **Memory Canvas V1 — block canvas (text + image blocks only) shipped
-    2026-08-08, revised same day per the Text+Image Scope Handover
-    (`Design Handovers/handover_memory edit panel_08_2026/`).** The panel's
-    passage is now editable: `artifacts.body_blocks` (jsonb, nullable,
-    additive), the `revise_blocks` mutation (`reviseMemoryBlocks`,
-    `services/crm/memories.ts`, `Utilities/CRM.md`'s `memories.ts` row),
-    `useMemories.reviseBlocks` (`Utilities/Chat UI.md`), and
-    `MemoryCardView`'s block canvas (`BlockCanvas.tsx`, `Public Site.md`'s
-    rows for both) — see those files for the mechanics. Deliberately
-    narrower than the fuller canvas the design handover proposed: exactly
-    two block types (text, image — no video/quote/divider/gallery), no
-    drag-to-reorder, no mobile change. **The block canvas renders
-    immediately on open** — no pencil, no separate "Edit mode": a memory
-    with `body_blocks: null` gets a default single text block derived from
-    `memory.body` (`buildDefaultBlocks()`, matching the reference
-    prototype), and text content commits on **every keystroke** (not
-    blur-gated — a deliberate, confirmed reversal of the first same-day
-    attempt at this, which used blur-gating and a pencil-gated lazy seed;
-    both were corrected once the handover confirmed the reference's actual
-    behavior). Insert control: a "+" ("BlockInserter") sits before the first
-    block and after every block (N blocks → N+1 slots) — independent of
-    reordering, which stays out of scope — expanding to exactly 2 icon
-    options (text, image) rather than the reference's 6-type picker; picking
-    "image" opens a picker of the session's own ready photos rather than
-    inserting an unattached block. Every keystroke round-trips through
-    `reviseMemoryBlocks`'s full validation and a DB write (the media-item
-    ownership check in particular) — an accepted, explicit cost, not an
-    oversight; a short debounce was flagged as a possible future
-    optimization, not implemented. Image blocks reference an existing
-    `media_item_id` only (attach from the session's own already-uploaded
-    photos) — no new upload/storage path. A default image-block-first
-    ordering for a "linked photo" is implemented structurally
-    (`getLinkedMediaItemId()`) but has no live trigger — no field on
-    `MemoryRow` represents a linked photo yet (that's the still-unbuilt
-    photo-bookmark work below), and none was invented to force it.
-    **The per-upload "photo bookmark" gap this left is now fixed — see the
-    Photo Bookmark entry directly below, shipped later the same day.** Image
-    blocks in this panel remain a separate, manual workaround for
-    viewing/attaching an already-known photo — unaffected by, and not a
-    duplicate of, the photo bookmark's own creation path. Still unaffected
-    by: add-to-memory (`PhotoUploadActions.tsx`'s own "+" is still a stub —
-    no `photo_artifacts` write path exists) and memory canvas sorting/
-    filtering — both still unbuilt. (`MemorySavedReceipt`'s own, unrelated
-    "+" — add to a *story*, not add-to-memory — is real now; see the
-    Photo Bookmark entry below and the assign-memory-to-story entry above.)
-    Stage F (mobile slide-up panel) is no longer blocked on this
-    note; it shipped 2026-08-09, see the sprint-close pointer entry above.
-    **GPS
-    indicator — no longer a gap, closed same night via GPS Extraction (PR
-    #316):** the badge's structural support referenced here is no longer
-    just structural — `media_items.latitude`/`longitude` are now live-written
-    on every photo upload (`services/media/processor.ts`'s
-    `extractGpsCoordinates`, see `System Docs/Database Schema.md`'s
-    `media_items` row) and the badge genuinely renders whenever a photo's own
-    EXIF carried GPS data (`MessageList.tsx`'s `gpsFound` prop into
-    `PhotoUploadActions.tsx`) — absent only for the common case of a photo
-    with no GPS EXIF (screenshots, downloads, location services off), not
-    because the pipeline is missing.
-  - **Photo Bookmark shipped 2026-08-08 (same day as Memory Canvas V1
-    above, later in the day).** `PhotoUploadActions.tsx` renders a Bookmark +
-    "+" action row below every ready photo thumbnail in the transcript
-    (`MessageList.tsx`'s upload map) — placement corrected mid-build from an
-    overlay-on-the-photo spec (`Design Handovers/design_handoff_memory_canvas_08_2026/PhotoUploadActions.tsx`)
-    to a separate row below it, per a second, more recent reference
-    (`chat-widget-canvas.jsx`'s `UploadThumb`). Bookmark calls a new
-    creation path, `createPhotoMemoryFromMedia` (`services/crm/memories.ts`,
-    `Utilities/CRM.md`'s `memories.ts` row) — sibling to
-    `createMemoryFromAnchor`, not a branch inside it — which titles/bodies
-    the memory from the photo's own AI-generated caption
-    (`media_items.derived_content`, never trusted from the client) rather
-    than the anchor message's text, fixing the standing gap where a
-    caption-less photo message had no bookmark control anywhere (the old
-    whole-message bookmark only rendered alongside caption text). This also
-    fixes the **anchor-collision bug** the "still not built" note above
-    flagged: `artifacts.media_item_id` (see `Database Schema.md`'s
-    `artifacts` row — corrected the same day from a wrong "likely leftover"
-    guess once this wired it up for real) is now populated alongside
-    `anchor_message_id`, and `useMemories.ts` composes both into a lookup
-    key, so two photos on the same chat message resolve to two independent
-    memories instead of colliding. "+" (add to a memory) on the photo row
-    still fires the existing "coming soon" toast — not real;
-    `photo_artifacts` (the many-to-many write path it would need) is still
-    unbuilt. `MemorySavedReceipt` also gained a "+" the same night (add to a
-    story, same pattern as `MemoryCardView`'s own header "+") — stubbed at
-    first ship, then wired for real (memory-receipt-story-picker,
-    2026-08-14; see the assign-memory-to-story entry above).
-    **Found and fixed same day, live-preview testing:** the pre-existing
-    whole-message bookmark was never gated off for a message that also has
-    a photo — it still renders right alongside the new per-photo Bookmark
-    on any photo message with caption text, by design (confirmed with
-    Jeff — both stay). Clicking it (rather than the per-photo one) routes
-    to `createMemoryFromAnchor`, which used to leave the raw
-    `[MEDIA_UPLOAD: ...]` marker sitting in that memory's title and body,
-    since the shared marker registry had never learned that marker type —
-    fixed by registering it (`MEDIA_UPLOAD_MARKER`/
-    `MEDIA_UPLOAD_FAILED_MARKER`, `services/chat/ui/v1/registry.ts`; see
-    `System Docs/Marker Syntax.md`'s own entry). `getLinkedMediaItemId`,
-    `buildDefaultBlocks`, `BlockCanvas`, `PhotoUploadActions`, and
-    `createPhotoMemoryFromMedia` were all confirmed correct in isolation —
-    the bug was entirely upstream, in what a message's raw content still
-    contained by the time the OLD path read it.
-  - **`ScrollToLatestButton`'s 48px visibility threshold and
-    `ChatThread.tsx`'s pre-existing 100px auto-follow band can disagree,
-    2026-08-08 (PR #310).** The button (own threshold, 48px from bottom)
-    and `ChatThread.tsx`'s own near-bottom auto-scroll tracking (a separate,
-    pre-existing `NEAR_BOTTOM_PX = 100` constant, unrelated to this feature)
-    are two independent measures of "has the visitor left the bottom." In
-    the 48–100px window, new content still auto-scrolls the visitor back
-    down even though the button has already appeared — a brief flash, not a
-    stuck state, since the button then correctly hides again once the
-    auto-scroll lands. Low impact, not fixed — previously only documented in
-    PR #310's own description; pulled in here so it doesn't require digging
-    through PR history to find. **Fix if ever done:** either widen the
-    button's threshold to match `ChatThread.tsx`'s 100px, or thread
-    `ChatThread.tsx`'s own near-bottom state out to drive the button instead
-    of a second, independent measurement.
-- **`members.user_id` left null on some active, Clerk-linked members —
-  root-caused and fixed in code 2026-08-06; historical rows need a Studio
-  backfill.** A live query surfaced 2 `members` rows (`status: 'active'`,
-  real `clerk_id`, `user_id: NULL`) — the same state as a correctly-linked
-  member, except the pointer to `users.id` was never written. Root cause:
-  `services/auth/sync-member.ts`'s `syncMember()` — the fallback the Clerk
-  webhook (`app/api/webhooks/clerk/route.ts`) and `POST /api/members/sync`
-  both call when `linkInvitedMember` doesn't match a pending invite — built
-  its `members` upsert payload without `user_id` at all (the field was
-  structurally absent from `SyncMemberInput`, not conditionally skipped).
-  Reachable two ways, both silent before this fix (console-only, no durable
-  log): (1) a plain email/token mismatch against an invited row routes
-  straight to `syncMember` on the first webhook delivery; (2) a race where
-  `syncMember` inserts an orphan row for a `clerk_id` before a later webhook
-  delivery lets `linkInvitedMember` find the real invited row — that
-  `UPDATE` then fails on `members.clerk_id`'s unique constraint, so the
-  webhook falls back to `syncMember` again. `acceptInvite()`
-  (`services/members/members.ts`, client-triggered from
-  `/api/heirloom/invites/accept`) was the only code reconciling case (2), and
-  only if that client call actually completed. **Fixed:** `syncMember` now
-  resolves/creates the `users` row first (mirroring `linkInvitedMember`) and
-  always includes the resulting `user_id` — see `System Docs/Utilities/Auth.md`.
-  **Also added:** durable `audit_events` logging for every failure branch in
-  `linkInvitedMember`/`acceptInvite`/`syncMember` that could previously skip
-  or fail the `user_id` write silently — `MEMBER_USER_RESOLVE_FAILED`,
-  `MEMBER_LINK_UPDATE_FAILED`, `MEMBER_ORPHAN_CLEANUP_FAILED`,
-  `MEMBER_ORPHAN_RECONCILED` (see `System Docs/Utilities/Members.md`) — plus
-  an admin-side safety fix (`app/api/admin/members/invite/[memberId]/route.ts`
-  DELETE now gates on `clerk_id`, not `user_id`, so a broken row can't be
-  hard-deleted through the "revoke stale invite" path without cleaning up
-  its Clerk identity) and a visibility fix (`app/admin/members/page.tsx` and
-  `app/(platform)/platform/members/page.tsx` previously excluded these rows
-  from both of their queries entirely — `user_id IS NOT NULL` and
-  `user_id IS NULL AND status IN ('invited','waitlist')` both miss
-  `status='active' AND user_id IS NULL` — so they rendered nowhere in the
-  admin UI; a third query now surfaces them with a "Needs attention" badge,
-  read-only until backfilled). **Not yet done:** backfilling the 2 known
-  rows (and any others created before this fix shipped) — Jeff's call, in
-  Studio, per the division-of-labor convention. Re-run
-  `select id, created_at, email, name, status, clerk_id, user_id from members
-  where user_id is null and status not in ('invited', 'waitlist');` first
-  (some rows may self-heal on next login, since `syncMember`/`/api/members/sync`
-  fire on every re-auth), confirm a `users` row exists for each remaining
-  `clerk_id` before backfilling (no `users` row = a deeper failure, not a
-  simple pointer fix), then
-  `update members m set user_id = u.id from users u where m.clerk_id = u.clerk_id
-  and m.user_id is null and m.status not in ('invited', 'waitlist');`.
-
-- **`.stage.engaged .composer-wrap`'s `margin-top` resolves by CSS
-  cascade-order accident, not deliberate breakpoint design — found during
-  the jefflougheed chat widget documentation pass, 2026-08-07.** Four rules
-  across `app/(jefflougheed)/globals.css` set this property, all at the same
-  `.stage.engaged .composer-wrap` selector specificity and all `!important`,
-  so the winner is whichever appears last in the file among the rules
-  matching a given viewport width: `globals.css:294` (base `.composer-wrap`
-  only, lower specificity, `8px`), `globals.css:465` (inside
-  `@media (max-width: 768px)`, `0px` — the original mobile value),
-  `globals.css:499` (**unscoped** — applies at every width including
-  desktop, from a later "Ported from Design Handovers" section, `12px`), and
-  `globals.css:507` (inside `@media (max-width: 640px)`, same ported
-  section, `10px`). Live-verified via Playwright/`getComputedStyle` at a
-  390px mobile viewport (engaged via the `?mode=question` programmatic-focus
-  path — the only way to reach genuine mobile inline-engaged state, see
-  `System Docs/jefflougheed Chat Widget.md`'s §2): computed value is
-  **10px**. Confirmed current values per breakpoint: desktop non-engaged
-  `8px`; 641–768px engaged `12px` (the unscoped rule wins over the original
-  mobile block's `0px`, which is therefore fully shadowed and never actually
-  applies at any width); ≤640px engaged `10px`. **Suggested fix:**
-  consolidate to one rule per intended breakpoint tier, make a deliberate
-  call on whether `0px` should be restored for the original mobile band or
-  the later port's values are the real intent, and comment the tiers
-  explicitly so a future edit can't silently reorder-break the cascade
-  again. **Priority: cosmetic, not urgent** — an 8–12px spacing delta, no
-  functional impact (unlike the three real bugs fixed the same night). Full
-  writeup with the per-rule table: `System Docs/jefflougheed Chat Widget.md`'s §6.
-
-- **Full System Docs audit found doc-vs-code drift across six files —
-  2026-08-09, recorded here but not fixed (only the one gap directly caused
-  by that day's earlier marker-pattern-unification work was fixed in the
-  same pass — see `System Docs/Utilities/Chat UI.md`'s `registry.ts` row).**
-  Three parallel research passes compared `Database Schema.md`,
-  `API Routes.md`, `Pages.md`, `Shared Primitives.md`, `Design System.md`,
-  and `Marker Syntax.md` against the actual code. None of these are
-  functional bugs — every item below is a documentation-accuracy gap, not a
-  runtime one — but each is detailed enough here that picking one up later
-  doesn't require re-running the audit.
-  1. **`Database Schema.md`:**
-     - `prompt_conversations` has no documented table row despite active use
-       (`services/prompt/conversations.ts`'s list/create/get/update/delete,
-       all `.from('prompt_conversations')`) — only mentioned in passing as an
-       FK target on the `blocks` and `prompt_sets` rows.
-     - `chat_sessions.title`/`starred` are documented (line 23) as *"no
-       application code reads or writes this column yet"* — false. Both are
-       actively read/written (`services/crm/sessions.ts`,
-       `app/api/sessions/[id]/route.ts`, and
-       `app/api/sessions/[id]/title/route.ts`'s AI session-title generator).
-       **`API Routes.md` already documents this correctly** (its
-       `/api/sessions/[id]` PATCH row explicitly says "Also accepts `title`
-       and `starred`, written straight to their like-named `chat_sessions`
-       columns") — the two docs directly contradict each other;
-       `Database Schema.md` is the stale side.
-     - `do_not_engage` has zero code references anywhere (confirmed via
-       repo-wide search) but isn't flagged as orphaned the way
-       `tenant_features`/`session_tokens` are on the same page.
-  2. **`API Routes.md`:** roughly 20 real `route.ts` files are undocumented,
-     including the entire member-chat media API (`app/api/media/**` —
-     `upload-url`, `[id]/url`, `[id]/retry`, the base GET), `.../feedback`,
-     `.../conversion-events`, `.../title`, `.../memories/[memoryId]`,
-     `app/api/webhooks/media-process`, `app/api/events/media`,
-     `app/api/transcribe`, `app/api/members/sync`, `app/api/auth/magic-link`,
-     the appearance/branding admin API (`app/api/admin/appearance` +
-     `.../history`), `app/api/admin/prompt-chat`,
-     `app/api/admin/members/search`, `app/api/admin/sessions/[id]/transfer`,
-     `app/api/admin/prompt/preview`, both `.../prompt-sets/[id]/compiled`
-     routes (admin + platform), `app/api/platform/prompt-types`, and the
-     entire platform tenant-management API (`app/api/platform/tenants` +
-     `[id]`). No documented route was found missing its file.
-  3. **`Pages.md`:** only 3 of the 10 real `app/admin/**/page.tsx` files are
-     listed (Settings, Members, Blocks). Undocumented: `app/admin/page.tsx`
-     (the Inbound Chats dashboard), `app/admin/prompt-builder/page.tsx` (the
-     Composer editor), `app/admin/prompt/page.tsx` (the legacy editor), and
-     all three `app/admin/prompt-studio/{assets,history,prompt}/page.tsx`
-     files, plus `app/admin/sessions/[id]/page.tsx`.
-  4. **`Shared Primitives.md`:**
-     - States `app/admin/members/page.tsx` lacks the sticky header/scroll-body
-       split that `app/admin/page.tsx`/platform members has — it's since
-       been added (`HEADER_FRAME_STYLE`/`SCROLL_AREA_STYLE`, `pt={0}` scroll
-       `Box`; the code's own comment says it mirrors the other two pages).
-     - `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell.tsx`) —
-       the component actually wrapping every admin/platform page
-       (`app/admin/layout.tsx`, `app/(platform)/layout.tsx`) — isn't
-       documented under any name; the doc's companion (`Admin Overview.md`)
-       still references a deleted `components/admin/layout/AdminShell`
-       (confirmed gone from the filesystem).
-  5. **`Design System.md`:**
-     - The text-muted token is documented as `rgba(26,25,23,0.55)`; the
-       actual value in `app/(jefflougheed)/globals.css` is `0.70`.
-     - The documented selector `html[data-palette="inkwell"]` doesn't exist
-       anywhere in code (confirmed: zero `.tsx` matches repo-wide) — the real
-       selector actually used throughout `app/(jefflougheed)/globals.css` is
-       `html[data-brand="jefflougheed"]`.
-     - A fourth brand, "Legacy" (the `app/legacy/` storefront, with its own
-       `--lg-*` token set in `tailwind.config.js`/`app/legacy/globals.css`),
-       isn't mentioned at all — the doc covers only jefflougheed/inkwell,
-       SBL, and Heirloom.
-  6. **`Marker Syntax.md`:**
-     - The EMAIL section (line 59) attributes marker emission to
-       `DEFAULT_SYSTEM_PROMPT` (`services/prompt/sage-prompt.ts`) — that
-       constant is now just a one-line generic fallback string ("You are a
-       helpful assistant... experiencing a brief technical issue...") with no
-       marker instructions at all. The real mechanism is
-       `member-context.ts`'s `markerInstruction` (`getMemberContext`, gated
-       on `isFirstTurn`) — which this same doc describes correctly two
-       sections later under MEMBER CONTEXT, so this is a
-       **self-contradiction within the file**, not just staleness against
-       code.
-     - The retired-CONTACT section (line 169) claims the claim-session
-       infrastructure (`POST /api/sessions/[id]/claim`, `claimSession`,
-       `ensureClerkUser`) is "client-orphaned — no surface calls it." False:
-       `MessageList.tsx`'s `handleAuthSuccess` (wired as `MagicLinkCard`'s
-       `onSuccess`) calls `claimCurrentSession()` (`chatStore.tsx`), which
-       hits that exact route — it's the live path behind `[ACCOUNT_CREATE:]`
-       → `MagicLinkCard`. **The identical stale "client-orphaned" claim also
-       appears in `API Routes.md`'s own `/api/sessions/[id]/claim` row** —
-       so fixing this needs both docs touched, not just `Marker Syntax.md`.
-
-- **Hardcoded hex color values found in shipped code — 2026-08-09, found
-  during the same docs audit, NOT fixed. A real code violation, not
-  documentation drift — tracked as its own entry, distinct from the
-  doc-drift entry above.** CLAUDE.md's design-quality principle and
-  `System Docs/Admin Overview.md`'s explicit rule ("No hardcoded hex
-  values — all visual values flow through Mantine's theme system") are both
-  violated in shipped files:
-  - **Admin/Mantine side** (should flow through
-    `components/admin/theme/mantine-theme.ts`): `app/admin/page.tsx:17`,
-    `app/admin/members/page.tsx:28`,
-    `app/(platform)/platform/members/page.tsx:26`,
-    `app/admin/prompt-studio/blocks/page.tsx:18`,
-    `app/admin/prompt-builder/page.tsx:1030-1031` (all `background: '#fff'`);
-    `app/admin/settings/ThemePreview.tsx:132`,
-    `app/admin/settings/AdminPreview.tsx:67,82,99,114` (`color: '#fff'`);
-    `components/admin/lib/badges.tsx` (confirmed 40 raw hex occurrences
-    across the file, e.g. `#2d6a4f`/`#1c7ed6`/`#fa5252` as Mantine badge
-    colors).
-  - **Public/Tailwind side** (should reference the jefflougheed CSS vars,
-    e.g. `var(--color-accent)`): `components/shells/widget/sage/BookingCard.tsx:92,97,99,117`
-    (`bg-[#2d6a4f]`, `text-[#1a1917]` ×3) and
-    `components/shells/widget/WidgetShell.tsx:366` (`background: '#2d6a4f'`)
-    — both hardcode the literal value that happens to match the documented
-    jefflougheed accent/text tokens instead of referencing them, defeating
-    the token indirection `Design System.md` describes.
-  Not fixed in this pass — recorded as backlog per explicit scope
-  instruction. The fix itself is mechanical (swap each literal for its
-  Mantine theme color / CSS var) but touches ~10 files across both design
-  systems, so it's its own task, not a drive-by.
-
-- **Nine dead `.chat-overlay-*` CSS selectors sit interleaved with two live
-  ones in `app/(jefflougheed)/globals.css:552-593` — found during the same
-  documentation pass, 2026-08-07 (miscounted as "eight ... of ten" originally;
-  corrected here to "nine ... of eleven" during the 2026-08-14 audit, matching
-  the already-corrected count in `System Docs/jefflougheed Chat Widget.md`).**
-  Of the eleven class selectors under the
-  "Full-screen chat overlay" comment header — `.chat-overlay`,
-  `.chat-overlay-inner`, `.chat-overlay-header`, `.chat-overlay-title`,
-  `.chat-overlay-dot`, `.chat-overlay-actions`, `.chat-overlay-close`,
-  `.chat-overlay-scroll`, `.chat-overlay-greeting`, `.chat-overlay-log`,
-  `.chat-overlay-composer` — only the last two are referenced anywhere in
-  `components/shells/widget/WidgetShell.tsx` (confirmed via grep: one match
-  each; zero for the other nine). The other nine are an earlier,
-  hand-rolled-class implementation of the overlay's chrome (header, close
-  button, greeting text, etc.), superseded when that markup moved to inline
-  Tailwind utilities directly in the JSX — the old CSS was never removed.
-  They're visually indistinguishable from `.chat-overlay-log`/
-  `.chat-overlay-composer`, the two selectors Bug 3's `--color-surface` fix
-  actually touched (2026-08-06/07), which is exactly the kind of place this
-  becomes a real hazard: a future edit restyling "the overlay" via one of
-  the nine dead selectors would silently do nothing. **Suggested fix:**
-  delete the nine dead selectors; keep `.chat-overlay-log`/
-  `.chat-overlay-composer`. **Priority: minor cleanup debt**, not urgent —
-  no functional impact today, purely a maintenance hazard for future edits.
-  Full selector-by-selector accounting: `System Docs/jefflougheed Chat
-  Widget.md`'s §6.
-
 - **RESOLVED 2026-08-09 — `processDocument`'s classification pass was
   vulnerable to the same class of risk as the image-vision fence-wrapping
   bug, identified and fixed the same day.** `services/media/processor.ts`
@@ -1957,6 +2289,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   unpaginated would be a real, easy-to-reintroduce inconsistency. See
   `Utilities/Media.md`'s `index.ts`/route rows for the mechanism.
 
+  **Follow-up bug, found and fixed 2026-08-17 (PR #442):** the cursor-based
+  pagination this entry describes shipped 2026-08-14 with a real defect in
+  `GET /api/media`'s account-wide (no `chat_id`) paginated branch — it
+  parsed `cursor` from the query string but never actually passed it into
+  the `listByMember(memberId, tenantId, { limit })` call, so every "load
+  more" scroll on `MediaPage.tsx` silently re-fetched the exact same first
+  page forever instead of advancing. `listByChat` (the chat-scoped branch,
+  `MediaGallery.tsx`) was unaffected — it already forwarded `cursor`
+  correctly. Found while investigating the sort-toggle feature that shipped
+  in the same PR (a working sort control depends on cursor pagination
+  actually working) and fixed alongside it. See the `API Routes.md`
+  `GET /api/media` row for the sort toggle itself — not yet reflected in
+  `Public Site.md`'s `MediaPage` section, which still only covers the
+  2026-08-14 pagination work above.
+
 - **`/api/heirloom/members/claim` (`claimMembership`) is effectively
   orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
   invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
@@ -2114,84 +2461,296 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
     `createMemoryFromAnchor`; this one leaked into a chat session's own
     title.
 
-- **Sidebar row hover feedback is background-tint-only since the row-copy
-  darkening — 2026-08-15 (PR #397).** Before that change, all three row
-  groups in `SidebarV2.tsx` (the shared `navBtn` base, conversation titles,
-  story rows) signalled hover two ways at once: a colour shift
-  (`text-text-muted` → `hover:text-text-primary`) **and** a background wash
-  (`bg-text-primary/10`, `/[0.05]` on story rows). Moving the rest state to
-  `text-text-primary` made the colour half a no-op, so it was dropped and
-  only the wash remains. This is not a contrast regression — the rest state
-  got darker, not lighter — and focus-visible rings are untouched, so
-  keyboard affordance is unchanged. But it is strictly less hover signal
-  than these rows carried before, on a tint that is only 10% (5% on story
-  rows) against `--color-background` (`#FAF6EE` on Heirloom). **If the rows
-  read as unresponsive in use, the fix is a hover treatment that still works
-  from a full-ink base** — a deeper wash, or an accent-tinted underline —
-  **not** restoring the muted rest state, which is the thing the change
-  deliberately removed. Untested against the mobile drawer, where there is
-  no hover state at all and the wash never fires either way.
+- **Media items within an open session could visually jump to the wrong
+  chronological position — found and fixed 2026-08-18.** `listByChat`
+  (`services/media/index.ts`) was and remains correct — `created_at`
+  ascending, server-side. The bug was entirely client-side, in
+  `chatStore.tsx`'s merge logic, and existed in all three places a fetched
+  batch or a single Realtime item gets merged into `mediaItems`: the
+  catch-up-on-session-load fetch, the pending-item poll, and `addMediaItem`
+  (shared by the Realtime subscription and the optimistic-upload path in
+  `ChatInput.tsx`). All three independently duplicated the same shape — an
+  item not already present by id was pushed onto the **end** of the array
+  unconditionally, regardless of its actual `created_at` relative to items
+  already there. That's silently correct only when every arrival happens to
+  already be chronologically last, which a fresh optimistic upload usually
+  is (verified: `ChatInput.tsx` stamps it with `new Date().toISOString()` at
+  attach time) but a fetched batch is not guaranteed to be — a Realtime
+  `UPDATE` event missed and only caught by a later poll tick, or a catch-up
+  fetch landing while an upload is still in flight, both produce a fetched
+  item whose `created_at` is earlier than items already in the array, and
+  the old code still appended it last. **Fixed** by extracting one shared
+  `mergeMediaItems(prev, incoming)` (`mediaItemMerge.ts`, alongside the
+  pre-existing single-item `mergeMediaItem`) that merges — update-in-place
+  or append, same as before — then unconditionally re-sorts the whole
+  result by `created_at` ascending before returning it, so the array's
+  order depends on the data, not on merge/fetch order. All three call sites
+  in `chatStore.tsx` now route through it instead of duplicating the
+  merge-and-maybe-append logic inline. `Array.prototype.sort` is stable, so
+  two items sharing a `created_at` keep their prior relative order rather
+  than the sort itself introducing new churn. Verified two ways:
+  `mediaItemMerge.test.ts` unit-tests the sort directly (out-of-order
+  append, an update-in-place that would otherwise leave a stale position,
+  multiple items in one call, stability on a tie, no-mutation, empty-batch
+  no-op); `chatStore.mediaChronologicalOrder.test.tsx` exercises the same
+  bug through the real catch-up/poll effects and `addMediaItem` via a
+  mounted `ChatProvider`, mirroring the existing convention in
+  `chatStore.mediaPolling.test.tsx`/`chatStore.mediaItemsRace.test.tsx`.
 
-- **Share links carry UTM params that nothing reads — 2026-08-15
-  (wire-share-heirloom-modal).** `ShareHeirloomModal`'s default `shareUrl`
-  is `https://heirloom.2bl.ai/?utm_source=share&utm_medium=social&utm_campaign=withlove`.
-  Those params were added deliberately ahead of any consumer, so links
-  shared now stay attributable once something can read them — but **there
-  is no analytics tool in this codebase at all**: no GA/Plausible/PostHog
-  dependency in `package.json`, no tag in any layout, and no server-side
-  landing handler that reads `utm_*` off the query string. A visit from a
-  shared link is currently indistinguishable from any other visit. Two
-  things follow. **First, whoever wires analytics up should know these
-  already exist** — grep `utm_` before inventing a second, differently-named
-  scheme; this file and the `ShareHeirloomModal` row in
-  `System Docs/Public Site.md` are the only records that they do.
-  **Second, the params are unvalidated by anything downstream**, so a typo
-  in them would be silent — the component's own test
-  (`ChatHero.shareHeirloom.test.tsx`) asserts each param by name against a
-  literal spelled out in the test file, deliberately not imported from the
-  component, precisely because nothing else would catch a drift.
-  Related: one `utm_medium=social` covers every channel including Email and
-  the plain copied link, neither of which is social. That is a consequence
-  of one default URL shared by all four channels — per-channel mediums would
-  require the `ShareChannel` contract to build URLs rather than receive one
-  already built. Worth revisiting if per-network attribution ever matters;
-  today the campaign is "someone passed this on", which one medium covers.
+## Services
 
-- **The conversation-switcher dropdown still has the blur-only dismissal
-  bug the Account dropdown was just fixed for — 2026-08-16.** `ChatHeader`'s
-  Account menu closed only on an explicit in-menu action, because its sole
-  outside-close mechanism was an `onBlur` on its wrapper `div` — which fires
-  only if the trigger actually held focus, and Safari (desktop and iOS)
-  doesn't focus a `<button>` on click/tap. That one is fixed (document
-  `pointerdown` + `Escape`; see the `ChatHeader` row in
-  `System Docs/Public Site.md`). The story-switcher dropdown a few lines
-  above it in the same file — `storyDropdownOpen` / `handleStoryBlur` —
-  still has the identical `onBlur`-only pattern and was deliberately left
-  untouched, because `SHOW_STORY_SWITCHER` is `false` and the whole block is
-  unreachable, so the fix could not have been verified against anything.
-  **If that flag is ever flipped back to `true`, this must be fixed in the
-  same change** — copy the `dropdownOpen`-gated effect the Account menu now
-  uses; it is a dozen lines directly below. A grep confirmed these two were
-  the only `onBlur`-based *dismissal* handlers in the app (every other
-  `onBlur=` in `components/` is commit-a-rename-on-blur on a text input,
-  which is a different and legitimate pattern), so there is no third
-  instance of this to hunt down.
+- **`services/payments/` not created.** Stripe Connect work is deferred; not
+  even a scaffold exists yet.
 
-- **`ChatHeader`'s Account trigger duplicates `IconButton` instead of using
-  it — 2026-08-16.** Every other button in that header's icon cluster
-  (Media, Memories, Share, Fullscreen, Close) is an `IconButton`; the
-  Account trigger is a raw `<button>` whose className is a verbatim copy of
-  `IconButton`'s inactive-branch classes (`flex items-center justify-center
-  w-10 h-10 rounded-lg transition-all duration-200 focus:outline-none
-  focus-visible:ring-2 focus-visible:ring-accent text-text-muted
-  hover:bg-text-primary/10 hover:text-text-primary`), plus its own
-  `relative` + `before:` hit-area. Identical today, so there is no visual
-  inconsistency to see — the cost is that a future restyle of `IconButton`
-  would silently skip this one button, and the drift would show up as one
-  odd-looking control in an otherwise-updated cluster. Not folded into the
-  dismissal fix above deliberately (one change at a time, and that change
-  needed a `ref` on this button, which would have made the swap a
-  behavioral change rather than a cosmetic one). `IconButton` spreads
-  `...props`, so `aria-haspopup`/`aria-expanded` already pass through; under
-  React 19 `ref` is an ordinary prop, so the swap is likely a small typing
-  change to `IconButtonProps` rather than a rewrite.
+- **`services/transcription/`'s failure paths lose their diagnostics before
+  they reach `audit_events` — documented 2026-08-16, corrected 2026-08-17.**
+  **The original entry claimed there was no transcription `AuditAction` at
+  all. That was already wrong when it was written:**
+  `services/audit/types.ts` has carried `TRANSCRIPTION_REQUESTED` /
+  `_SUCCEEDED` / `_EMPTY` / `_FAILED` (`transcription.requested` /
+  `.succeeded` / `.empty` / `.failed`) since 2026-08-13, and
+  `app/api/transcribe/route.ts` emits all four. **Do not add a
+  `transcription.completed`** — the original entry suggested that name, and
+  it collides with the real `transcription.succeeded`.
+  **The real gap is narrower: the failure paths, and only those.** On
+  success and on an empty transcript the provider *returns*
+  `{ text, requestId, attempts }`, and the route puts `requestId`,
+  `attempts` and `durationMs` straight into the audit row (plus `charCount`
+  on the success event) — so the provider's own `console.log` on those two
+  branches duplicates a durable record rather than being the only copy of
+  it. On failure the provider *throws*, and a thrown `Error` carries only a
+  message: the non-OK branch's `console.error` holds the HTTP status,
+  Deepgram's `request_id`, the response body and the attempt count, but the
+  only part of that reaching `TRANSCRIPTION_FAILED` is the status, carried
+  incidentally inside the message string `Deepgram returned <status>`. The two
+  fetch-level branches are worse — the rethrown error doesn't record whether
+  the first attempt or the retry failed. Net effect: `request_id` and
+  `attempts`, the two fields that make a Deepgram support ticket
+  answerable, are durably recorded exactly when nothing went wrong.
+  **Closing it needs a channel, not a new action.** Either attach the fields
+  to the thrown error (a typed error carrying `status` / `requestId` /
+  `attempts`) and widen the route's existing `TRANSCRIPTION_FAILED`
+  metadata, or have the provider emit its own audit events. Either way this
+  is a metadata change against an `AuditAction` that already exists. Two
+  things to preserve: the retry path is what makes `attempts` the
+  interesting field, and no existing log carries audio bytes or transcript
+  text beyond a length (`chars` in the provider, `charCount` in the route),
+  matching the media pipeline's counts-and-presence-only rule. The one field
+  that would need sanitizing on the way in is the non-OK branch's raw
+  `body` — Deepgram's own response text, unbounded and not currently
+  truncated.
+
+## jefflougheed Legacy Widget
+
+- **`.stage.engaged .composer-wrap`'s `margin-top` resolves by CSS
+  cascade-order accident, not deliberate breakpoint design — found during
+  the jefflougheed chat widget documentation pass, 2026-08-07.** Four rules
+  across `app/(jefflougheed)/globals.css` set this property, all at the same
+  `.stage.engaged .composer-wrap` selector specificity and all `!important`,
+  so the winner is whichever appears last in the file among the rules
+  matching a given viewport width: `globals.css:294` (base `.composer-wrap`
+  only, lower specificity, `8px`), `globals.css:465` (inside
+  `@media (max-width: 768px)`, `0px` — the original mobile value),
+  `globals.css:499` (**unscoped** — applies at every width including
+  desktop, from a later "Ported from Design Handovers" section, `12px`), and
+  `globals.css:507` (inside `@media (max-width: 640px)`, same ported
+  section, `10px`). Live-verified via Playwright/`getComputedStyle` at a
+  390px mobile viewport (engaged via the `?mode=question` programmatic-focus
+  path — the only way to reach genuine mobile inline-engaged state, see
+  `System Docs/jefflougheed Chat Widget.md`'s §2): computed value is
+  **10px**. Confirmed current values per breakpoint: desktop non-engaged
+  `8px`; 641–768px engaged `12px` (the unscoped rule wins over the original
+  mobile block's `0px`, which is therefore fully shadowed and never actually
+  applies at any width); ≤640px engaged `10px`. **Suggested fix:**
+  consolidate to one rule per intended breakpoint tier, make a deliberate
+  call on whether `0px` should be restored for the original mobile band or
+  the later port's values are the real intent, and comment the tiers
+  explicitly so a future edit can't silently reorder-break the cascade
+  again. **Priority: cosmetic, not urgent** — an 8–12px spacing delta, no
+  functional impact (unlike the three real bugs fixed the same night). Full
+  writeup with the per-rule table: `System Docs/jefflougheed Chat Widget.md`'s §6.
+
+- **Nine dead `.chat-overlay-*` CSS selectors sit interleaved with two live
+  ones in `app/(jefflougheed)/globals.css:552-593` — found during the same
+  documentation pass, 2026-08-07 (miscounted as "eight ... of ten" originally;
+  corrected here to "nine ... of eleven" during the 2026-08-14 audit, matching
+  the already-corrected count in `System Docs/jefflougheed Chat Widget.md`).**
+  Of the eleven class selectors under the
+  "Full-screen chat overlay" comment header — `.chat-overlay`,
+  `.chat-overlay-inner`, `.chat-overlay-header`, `.chat-overlay-title`,
+  `.chat-overlay-dot`, `.chat-overlay-actions`, `.chat-overlay-close`,
+  `.chat-overlay-scroll`, `.chat-overlay-greeting`, `.chat-overlay-log`,
+  `.chat-overlay-composer` — only the last two are referenced anywhere in
+  `components/shells/widget/WidgetShell.tsx` (confirmed via grep: one match
+  each; zero for the other nine). The other nine are an earlier,
+  hand-rolled-class implementation of the overlay's chrome (header, close
+  button, greeting text, etc.), superseded when that markup moved to inline
+  Tailwind utilities directly in the JSX — the old CSS was never removed.
+  They're visually indistinguishable from `.chat-overlay-log`/
+  `.chat-overlay-composer`, the two selectors Bug 3's `--color-surface` fix
+  actually touched (2026-08-06/07), which is exactly the kind of place this
+  becomes a real hazard: a future edit restyling "the overlay" via one of
+  the nine dead selectors would silently do nothing. **Suggested fix:**
+  delete the nine dead selectors; keep `.chat-overlay-log`/
+  `.chat-overlay-composer`. **Priority: minor cleanup debt**, not urgent —
+  no functional impact today, purely a maintenance hazard for future edits.
+  Full selector-by-selector accounting: `System Docs/jefflougheed Chat
+  Widget.md`'s §6.
+
+## Build & Tooling
+
+- **Next.js route.ts stray-export incident (2026, moved here from CLAUDE.md's
+  "Dependency & API Rules," 2026-08-04 split).** `bbb66e7` exported a helper,
+  `withDisplayUrl`, directly from `app/api/media/route.ts` — Next's
+  route-type validator rejects any named export from a `route.ts` file that
+  isn't an HTTP method handler or a reserved config export, which fails
+  `next build` outright (not just a lint warning) but is invisible to
+  `tsc --noEmit` alone. This broke `next build` for every commit on `main`
+  from PR #244 through PR #245, ~24 hours, before being caught. Fixed by
+  extracting the helper to `services/media/display-url.ts`. The standing
+  rule this incident backs — route.ts files export only HTTP method handlers,
+  verify with a real `next build`, not just `tsc` — stays in CLAUDE.md's
+  "Dependency & API Rules."
+
+- **Chat-UI strangle — widget shell extracted (centralization Step E).** The
+  engine, marker registry, `useChatTurn` hook, and type contracts moved to
+  `services/chat/ui/v1/` (PRs #42–46); `src/lib/sage.ts` and `src/lib/store.ts`
+  were deleted. The widget-shell visual components (`Hero`, `Chat`, `sage/*`)
+  now live in `components/shells/widget/`, with the headless `useWidgetShell` +
+  `useSageParameters` in `services/chat/ui/v1/`. `Nav.tsx` was relocated into
+  `app/(jefflougheed)/components/` (importing `ShareModal` via relative
+  `./ShareModal`), which clears the last `src→app` boundary warning and empties
+  `src/components/` (directory removed; `src/` holds only `calendly.d.ts`).
+  `boundaries/element-types` is now at **0 warnings**; the rule has since been
+  flipped to `error` (Step G, confirmed in `.eslintrc.json`) — no longer pending.
+
+- **eslint `components` element-type registered (centralization Step D).** Root
+  `components/**` (the Mantine admin UI) is now a first-class boundary element:
+  `app → components` and `components → services` are legal; `components` may not
+  reach into `app` or `src` internals. This is the same allowance the
+  `components/shells/` widget + membership shells will consume in Steps E/F. The
+  rule has since been flipped to `error` (Step G, confirmed in `.eslintrc.json`)
+  — no longer pending.
+
+## Documentation & Code Quality
+
+- **Full System Docs audit found doc-vs-code drift across six files —
+  2026-08-09, recorded here but not fixed (only the one gap directly caused
+  by that day's earlier marker-pattern-unification work was fixed in the
+  same pass — see `System Docs/Utilities/Chat UI.md`'s `registry.ts` row).**
+  Three parallel research passes compared `Database Schema.md`,
+  `API Routes.md`, `Pages.md`, `Shared Primitives.md`, `Design System.md`,
+  and `Marker Syntax.md` against the actual code. None of these are
+  functional bugs — every item below is a documentation-accuracy gap, not a
+  runtime one — but each is detailed enough here that picking one up later
+  doesn't require re-running the audit.
+  1. **`Database Schema.md`:**
+     - `prompt_conversations` has no documented table row despite active use
+       (`services/prompt/conversations.ts`'s list/create/get/update/delete,
+       all `.from('prompt_conversations')`) — only mentioned in passing as an
+       FK target on the `blocks` and `prompt_sets` rows.
+     - `chat_sessions.title`/`starred` are documented (line 23) as *"no
+       application code reads or writes this column yet"* — false. Both are
+       actively read/written (`services/crm/sessions.ts`,
+       `app/api/sessions/[id]/route.ts`, and
+       `app/api/sessions/[id]/title/route.ts`'s AI session-title generator).
+       **`API Routes.md` already documents this correctly** (its
+       `/api/sessions/[id]` PATCH row explicitly says "Also accepts `title`
+       and `starred`, written straight to their like-named `chat_sessions`
+       columns") — the two docs directly contradict each other;
+       `Database Schema.md` is the stale side.
+     - `do_not_engage` has zero code references anywhere (confirmed via
+       repo-wide search) but isn't flagged as orphaned the way
+       `tenant_features`/`session_tokens` are on the same page.
+  2. **`API Routes.md`:** roughly 20 real `route.ts` files are undocumented,
+     including the entire member-chat media API (`app/api/media/**` —
+     `upload-url`, `[id]/url`, `[id]/retry`, the base GET), `.../feedback`,
+     `.../conversion-events`, `.../title`, `.../memories/[memoryId]`,
+     `app/api/webhooks/media-process`, `app/api/events/media`,
+     `app/api/transcribe`, `app/api/members/sync`, `app/api/auth/magic-link`,
+     the appearance/branding admin API (`app/api/admin/appearance` +
+     `.../history`), `app/api/admin/prompt-chat`,
+     `app/api/admin/members/search`, `app/api/admin/sessions/[id]/transfer`,
+     `app/api/admin/prompt/preview`, both `.../prompt-sets/[id]/compiled`
+     routes (admin + platform), `app/api/platform/prompt-types`, and the
+     entire platform tenant-management API (`app/api/platform/tenants` +
+     `[id]`). No documented route was found missing its file.
+  3. **`Pages.md`:** only 3 of the 10 real `app/admin/**/page.tsx` files are
+     listed (Settings, Members, Blocks). Undocumented: `app/admin/page.tsx`
+     (the Inbound Chats dashboard), `app/admin/prompt-builder/page.tsx` (the
+     Composer editor), `app/admin/prompt/page.tsx` (the legacy editor), and
+     all three `app/admin/prompt-studio/{assets,history,prompt}/page.tsx`
+     files, plus `app/admin/sessions/[id]/page.tsx`.
+  4. **`Shared Primitives.md`:**
+     - States `app/admin/members/page.tsx` lacks the sticky header/scroll-body
+       split that `app/admin/page.tsx`/platform members has — it's since
+       been added (`HEADER_FRAME_STYLE`/`SCROLL_AREA_STYLE`, `pt={0}` scroll
+       `Box`; the code's own comment says it mirrors the other two pages).
+     - `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell.tsx`) —
+       the component actually wrapping every admin/platform page
+       (`app/admin/layout.tsx`, `app/(platform)/layout.tsx`) — isn't
+       documented under any name; the doc's companion (`Admin Overview.md`)
+       still references a deleted `components/admin/layout/AdminShell`
+       (confirmed gone from the filesystem).
+  5. **`Design System.md`:**
+     - The text-muted token is documented as `rgba(26,25,23,0.55)`; the
+       actual value in `app/(jefflougheed)/globals.css` is `0.70`.
+     - The documented selector `html[data-palette="inkwell"]` doesn't exist
+       anywhere in code (confirmed: zero `.tsx` matches repo-wide) — the real
+       selector actually used throughout `app/(jefflougheed)/globals.css` is
+       `html[data-brand="jefflougheed"]`.
+     - A fourth brand, "Legacy" (the `app/legacy/` storefront, with its own
+       `--lg-*` token set in `tailwind.config.js`/`app/legacy/globals.css`),
+       isn't mentioned at all — the doc covers only jefflougheed/inkwell,
+       SBL, and Heirloom.
+  6. **`Marker Syntax.md`:**
+     - The EMAIL section (line 59) attributes marker emission to
+       `DEFAULT_SYSTEM_PROMPT` (`services/prompt/sage-prompt.ts`) — that
+       constant is now just a one-line generic fallback string ("You are a
+       helpful assistant... experiencing a brief technical issue...") with no
+       marker instructions at all. The real mechanism is
+       `member-context.ts`'s `markerInstruction` (`getMemberContext`, gated
+       on `isFirstTurn`) — which this same doc describes correctly two
+       sections later under MEMBER CONTEXT, so this is a
+       **self-contradiction within the file**, not just staleness against
+       code.
+     - The retired-CONTACT section (line 169) claims the claim-session
+       infrastructure (`POST /api/sessions/[id]/claim`, `claimSession`,
+       `ensureClerkUser`) is "client-orphaned — no surface calls it." False:
+       `MessageList.tsx`'s `handleAuthSuccess` (wired as `MagicLinkCard`'s
+       `onSuccess`) calls `claimCurrentSession()` (`chatStore.tsx`), which
+       hits that exact route — it's the live path behind `[ACCOUNT_CREATE:]`
+       → `MagicLinkCard`. **The identical stale "client-orphaned" claim also
+       appears in `API Routes.md`'s own `/api/sessions/[id]/claim` row** —
+       so fixing this needs both docs touched, not just `Marker Syntax.md`.
+
+- **Hardcoded hex color values found in shipped code — 2026-08-09, found
+  during the same docs audit, NOT fixed. A real code violation, not
+  documentation drift — tracked as its own entry, distinct from the
+  doc-drift entry above.** CLAUDE.md's design-quality principle and
+  `System Docs/Admin Overview.md`'s explicit rule ("No hardcoded hex
+  values — all visual values flow through Mantine's theme system") are both
+  violated in shipped files:
+  - **Admin/Mantine side** (should flow through
+    `components/admin/theme/mantine-theme.ts`): `app/admin/page.tsx:17`,
+    `app/admin/members/page.tsx:28`,
+    `app/(platform)/platform/members/page.tsx:26`,
+    `app/admin/prompt-studio/blocks/page.tsx:18`,
+    `app/admin/prompt-builder/page.tsx:1030-1031` (all `background: '#fff'`);
+    `app/admin/settings/ThemePreview.tsx:132`,
+    `app/admin/settings/AdminPreview.tsx:67,82,99,114` (`color: '#fff'`);
+    `components/admin/lib/badges.tsx` (confirmed 40 raw hex occurrences
+    across the file, e.g. `#2d6a4f`/`#1c7ed6`/`#fa5252` as Mantine badge
+    colors).
+  - **Public/Tailwind side** (should reference the jefflougheed CSS vars,
+    e.g. `var(--color-accent)`): `components/shells/widget/sage/BookingCard.tsx:92,97,99,117`
+    (`bg-[#2d6a4f]`, `text-[#1a1917]` ×3) and
+    `components/shells/widget/WidgetShell.tsx:366` (`background: '#2d6a4f'`)
+    — both hardcode the literal value that happens to match the documented
+    jefflougheed accent/text tokens instead of referencing them, defeating
+    the token indirection `Design System.md` describes.
+  Not fixed in this pass — recorded as backlog per explicit scope
+  instruction. The fix itself is mechanical (swap each literal for its
+  Mantine theme color / CSS var) but touches ~10 files across both design
+  systems, so it's its own task, not a drive-by.
+

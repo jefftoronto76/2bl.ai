@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { MediaPage } from './MediaPage';
 import type { MediaItem } from '@/services/media/types';
 
@@ -68,5 +68,42 @@ describe('MediaPage — loading skeleton', () => {
 
     await waitFor(() => expect(screen.queryByLabelText('Loading media')).toBeNull());
     expect(screen.getByText('letter.pdf')).toBeInTheDocument();
+  });
+});
+
+describe('MediaPage — sort toggle', () => {
+  it('defaults to Newest (no sort param); switching to Oldest resets the list and refetches with sort=oldest', async () => {
+    const requestedUrls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        requestedUrls.push(url);
+        const items = url.includes('sort=oldest')
+          ? [makeItem({ id: 'old-1', original_filename: 'oldest.pdf' })]
+          : [makeItem({ id: 'new-1', original_filename: 'newest.pdf' })];
+        return Promise.resolve(jsonResponse({ items }));
+      }),
+    );
+
+    render(<MediaPage open onClose={() => {}} onFlash={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('newest.pdf')).toBeInTheDocument());
+    expect(requestedUrls[0]).not.toContain('sort=');
+
+    const newestTab = screen.getByRole('tab', { name: /newest/i });
+    const oldestTab = screen.getByRole('tab', { name: /oldest/i });
+    expect(newestTab).toHaveAttribute('aria-selected', 'true');
+    expect(oldestTab).toHaveAttribute('aria-selected', 'false');
+
+    fireEvent.click(oldestTab);
+
+    // Reset, not appended: the newest-sorted item is gone, not just joined
+    // by the oldest-sorted one — proves pagination state was cleared rather
+    // than the two sorts' pages getting mixed together.
+    await waitFor(() => expect(screen.getByText('oldest.pdf')).toBeInTheDocument());
+    expect(screen.queryByText('newest.pdf')).toBeNull();
+    expect(oldestTab).toHaveAttribute('aria-selected', 'true');
+    expect(newestTab).toHaveAttribute('aria-selected', 'false');
+    expect(requestedUrls.some((u) => u.includes('sort=oldest'))).toBe(true);
   });
 });

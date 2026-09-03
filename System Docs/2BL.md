@@ -149,8 +149,8 @@ app/
 
 Chat is the central service. It is the interface between the user and
 everything else in the platform. All user interactions flow through
-chat — it orchestrates prompt, crm, auth, and payments on behalf of
-the user.
+chat — it orchestrates prompt, crm, auth, and payments *(not built)* on
+behalf of the user.
 
 Responsibilities:
 - Streaming AI responses
@@ -167,7 +167,12 @@ Responsibilities:
 | auth | Tenant resolution, RBAC, rate limiting, user sync | Chat + all services |
 | prompt | Compile blocks, safety check, version history | Chat |
 | crm | Persist sessions, state machine, inbound triage | Chat |
-| payments | Stripe checkout, webhooks, entitlements | Chat |
+| payments *(not built)* | Stripe checkout, webhooks, entitlements | Chat |
+
+*`payments` is the one row above that does not exist yet — `services/payments/`
+is NOT STARTED (planned as the Step 5 scaffold in `System Docs/ARCHITECTURE_OVERVIEW.md`);
+`auth`, `prompt` and `crm` are all live. Its row describes the target boundary, not
+current state.*
 
 No circular dependencies. No shared mutable state between services.
 Cross-service calls go through published interfaces only.

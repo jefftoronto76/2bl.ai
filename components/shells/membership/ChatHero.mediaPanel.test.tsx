@@ -81,12 +81,27 @@ const SAVED_MEMORY = {
   updated_at: '2026-08-09T00:00:00.000Z',
 };
 
+// chatStore's session-media catch-up (`status=ready,failed`) is what backs
+// ChatHeader's now count-gated mobile Media icon (mobile chat header
+// redesign, 2026-08-16), so this session needs one item for the mobile tests
+// below to reach the icon at all. Kept OFF MediaGallery's own unfiltered
+// `/api/media?chat_id=&limit=` list so the panel's rendering — and every
+// desktop assertion here — stays exactly as it was.
+const READY_MEDIA_ITEM = {
+  id: 'media-1',
+  chat_id: 'sess-media',
+  type: 'image',
+  status: 'ready',
+  original_filename: 'lake-house.jpg',
+};
+
 const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === 'string' ? input : input.toString();
   const method = init?.method ?? 'GET';
   if (url === '/api/sessions' && method === 'GET') return jsonResponse({ sessions: [SESSION] });
   if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
   if (url.includes('/memories') && method === 'GET') return jsonResponse({ memories: [SAVED_MEMORY] });
+  if (url.startsWith('/api/media') && url.includes('status=ready')) return jsonResponse({ items: [READY_MEDIA_ITEM] });
   if (url.startsWith('/api/media')) return jsonResponse({ items: [] });
   return jsonResponse({ ok: true });
 });
@@ -319,8 +334,12 @@ describe('Media — mobile (390px)', () => {
     const dialog = screen.getByRole('dialog', { name: 'Media' });
     fireEvent.click(screen.getByRole('button', { name: 'Media' }));
     await waitFor(() => expect(dialog).not.toHaveAttribute('inert'));
-    // The drawer overlay itself unmounts once Media takes over the screen.
-    expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull();
+    // The drawer overlay itself unmounts once Media takes over the screen —
+    // but no longer on the same tick: closing now plays an exit animation and
+    // the unmount trails it (useAnimatedPresence, 2026-08-17). The dismissal
+    // is unchanged, only its timing, so this waits the way the scrim/width
+    // suites already do.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'New Chat' })).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: 'Close media page' }));
     await waitFor(() => expect(dialog).toHaveAttribute('inert'));
@@ -334,7 +353,10 @@ describe('Media — mobile (390px)', () => {
     );
     await waitFor(() => expect(screen.getAllByText('The Lake House').length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Media from this chat' }));
+    // findBy, not getBy: on mobile the icon only appears once the store's
+    // media catch-up has landed at least one item for this session (see
+    // READY_MEDIA_ITEM above) — it is no longer present from first paint.
+    fireEvent.click(await screen.findByRole('button', { name: 'Media from this chat' }));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Media from this chat' })).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: 'Media' })).toBeInTheDocument();
 

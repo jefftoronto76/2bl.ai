@@ -12,15 +12,48 @@
 //                    to a collapse toggle (desktop) or Close-X (mobile, when
 //                    onClose is provided)
 //   • New Chat · Share Heirloom
-//   • Conversations — collapsible; lists store recentSessions (kebab per row)
+//   • Sessions      — collapsible; lists store recentSessions (kebab per row)
 //   • sign-in nudge — anonymous visitors only (ported from the v1 Sidebar)
 //   • Stories       — Create action, then the story list, each row carrying
 //                     its own invite icon (onInviteStory);
 //                     `storiesDisabled` renders the section inert ("soon" tag)
 //   • Writing Prompts (bottom)
+//
+// Hover is desktop-only here — every `hover:`/`group-hover:` utility in this
+// file is prefixed `[@media(hover:hover)]:`. Unguarded, they compile to bare
+// `:hover` pseudo-classes (this repo is on Tailwind v3, where
+// `hoverOnlyWhenSupported` is opt-in and is NOT enabled in
+// tailwind.config.js), and WebKit suppresses a tap's click when the
+// synthesized hover changes what is rendered under the finger. A row does
+// exactly that twice over — background highlight plus the opacity-0 →
+// opacity-100 kebab/invite/start-chat reveal — so on iOS Safari the first tap
+// only armed hover and a second was needed to actually fire
+// loadSession/onSelectStory. The guard is scoped to this file rather than
+// flipping the global flag: 10 other components drive visibility (not just
+// colour) off hover, and several would become unreachable on touch.
+// Consequence, by design and sequenced: the hover-revealed row controls were
+// unreachable on touch until the long-press gesture landed (2026-08-17,
+// companion to the single-tap fix above — #25a). They keep their DOM slot at
+// opacity-0, so they also take `[@media(hover:none)]:pointer-events-none` —
+// an invisible-but-tappable control at the row's edge would swallow the very
+// tap this fix exists to deliver.
+//
+// Long-press (mobile only, isMobile-gated — desktop hover is untouched): a
+// 450ms hold on a row sets the same `menuId`/`menuRect` state the desktop
+// kebab's onClick already drives. No new reveal mechanism was needed —
+// kebab, invite, and start-chat all already key their opacity off
+// `isMenuOpen` (see each button's className below), not just hover, so
+// setting menuId from a long-press reveals all three at once and opens
+// RowMenu, exactly mirroring hover+click on desktop in a single gesture.
+// Cancelled if the touch moves past LONG_PRESS_MOVE_PX before the timer
+// fires (a scroll must not also open a menu). A fired long-press calls
+// touchend.preventDefault() to suppress the trailing synthetic click, so it
+// doesn't also fire the row's own tap-to-select (#25a) or get closed by
+// RowMenu's own outside-click listener the instant it opens.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   BookOpen,
   Bookmark,
@@ -77,7 +110,7 @@ export interface SidebarV2Props {
   onMedia?: () => void;
   onShareHeirloom?: () => void;
   /** Fires on every keystroke in the search field. SidebarV2 already uses the
-   *  query itself to filter the Memories/Stories lists below (title/name,
+   *  query itself to filter the Sessions/Stories lists below (title/name,
    *  case-insensitive) — this is only for a parent that wants to observe it
    *  too; no-op if omitted. */
   onSearch?: (query: string) => void;
@@ -116,6 +149,23 @@ export interface SidebarV2Props {
    * Default false.
    */
   forceCollapsed?: boolean;
+
+  /**
+   * Tailwind width class applied to the <aside> in its EXPANDED state, in
+   * place of the default `w-64`. The collapsed icon rail (`w-12`) is never
+   * affected — it is a fixed rail by definition.
+   *
+   * Exists because the same component serves two different jobs: the desktop
+   * DOCKED sidebar (a persistent column beside the chat, where 256px is the
+   * intended size) and the MOBILE OVERLAY drawer (which sits ON the chat and
+   * should cover most of the screen, per standard mobile drawer convention).
+   * The mobile caller (ChatHero) sizes its own absolutely-positioned wrapper
+   * and passes `w-full` here so the aside fills it — a percentage passed
+   * directly to the aside would resolve against a shrink-to-fit parent and
+   * be undefined, so the definite width belongs on the wrapper.
+   * Default 'w-64'.
+   */
+  expandedWidthClassName?: string;
 }
 
 // ── Section label ───────────────────────────────────────────────────────────
@@ -127,7 +177,7 @@ function SectionLabel({
   children,
 }: {
   icon: typeof Clock;
-  /** When true, renders a slightly larger icon (14px) and text-sm label. */
+  /** When true, renders a slightly larger icon (14px) and text-base label. */
   large?: boolean;
   /** Optional right-aligned adornment (e.g. the "soon" tag). */
   trailing?: React.ReactNode;
@@ -139,7 +189,7 @@ function SectionLabel({
       <span
         className={
           large
-            ? 'font-mono text-sm tracking-[0.2em] uppercase text-text-muted'
+            ? 'font-mono text-base tracking-[0.2em] uppercase text-text-muted'
             : 'font-mono text-[11px] tracking-[0.2em] uppercase text-text-muted'
         }
       >
@@ -151,12 +201,14 @@ function SectionLabel({
 }
 
 // ── Memory count mark ───────────────────────────────────────────────────────
-// One mark — accent bookmark + mono numeral — used on both conversation rows
-// and the section header's aggregate, so they read as one system. Rows/totals
-// with no memories render NOTHING — the absence is what makes a marked row a
-// signal. Counts are derived from each session's own memory_count (itself
-// derived server-side from published artifacts rows — see
-// services/crm/sessions.ts) — never stored beyond that.
+// One mark — accent bookmark + mono numeral — used on conversation rows,
+// story rows, and the Sessions section header's aggregate, so they all read
+// as one system. Rows/totals with no memories render NOTHING — the absence
+// is what makes a marked row a signal. Counts are derived server-side: each
+// session's own memory_count (published artifacts rows, services/crm/
+// sessions.ts) and each story's own memoryCount (artifact_containments rows,
+// services/crm/story-containments.ts's getMemoryCountsForStories) — never
+// stored beyond that.
 function SidebarMemoryCount({ count }: { count: number }) {
   if (!count) return null;
   return (
@@ -274,10 +326,10 @@ function RowMenu({
               onAction(it.key);
               onClose();
             }}
-            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+            className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg font-body text-base transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
               it.danger
-                ? 'text-[#E58D80] hover:bg-[#E58D80]/10'
-                : 'text-text-primary hover:bg-text-primary/[0.08]'
+                ? 'text-[#E58D80] [@media(hover:hover)]:hover:bg-[#E58D80]/10'
+                : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.08]'
             }`}
           >
             <it.icon
@@ -323,7 +375,7 @@ function SearchField({
         aria-label="Search"
         className={`w-9 h-8 flex items-center justify-center rounded-lg text-text-muted transition-opacity ${
           revealed ? 'opacity-80' : 'opacity-40'
-        } hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+        } [@media(hover:hover)]:hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
       >
         <Search size={16} />
       </button>
@@ -351,7 +403,7 @@ function SearchField({
           onBlur={() => setFocused(false)}
           placeholder="Search your story"
           aria-label="Search your story"
-          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-base text-text-primary placeholder-text-muted"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none font-body text-lg text-text-primary placeholder-text-muted"
         />
       </div>
     </div>
@@ -381,9 +433,15 @@ export function SidebarV2({
   onRenameCommit,
   forceCollapsed = false,
   activeStoryId,
+  expandedWidthClassName = 'w-64',
 }: SidebarV2Props) {
   const { state, recentSessions, loadSession, newChat } = useChatStore();
   const { isMember } = state;
+
+  // Same breakpoint/hook ChatHero.tsx already uses for its isMobile-gated
+  // branches — long-press only attaches on touch-sized viewports; desktop
+  // keeps pure hover.
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
   // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
   // by updated_at DESC (services/crm/sessions.ts) and just switching to an
@@ -418,8 +476,9 @@ export function SidebarV2({
     return [active, ...stories.slice(0, activeIndex), ...stories.slice(activeIndex + 1)];
   }, [stories, activeStoryId]);
 
-  // Whether this docked/overlay instance shows full labels + lists (w-64) or
-  // just the icon rail (w-12). Deliberately NOT state.isSidebarExpanded —
+  // Whether this docked/overlay instance shows full labels + lists
+  // (expandedWidthClassName, w-64 by default) or just the icon rail (w-12).
+  // Deliberately NOT state.isSidebarExpanded —
   // that flag means "is the mobile overlay open at all" (owned by ChatHero /
   // the shell reducer). Conflating the two meant the desktop sidebar — which
   // always renders — started in the collapsed icon rail (isSidebarExpanded's
@@ -485,6 +544,93 @@ export function SidebarV2({
     }
   };
 
+  // ── Long-press → row action menu (mobile only) ────────────────────────────
+  // First long-press implementation in this codebase — see the file-header
+  // comment above for the design (why 450ms, why it reuses menuId instead of
+  // a separate reveal state, why touchend.preventDefault() matters).
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_PX = 10; // touch drift past this cancels — a scroll, not a press
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Set true the instant the timer fires, read (and cleared) by the row's own
+  // onClick so a completed long-press never also fires loadSession/onSelectStory.
+  const longPressFiredRef = useRef(false);
+  // Drives the subtle build-up highlight while a press is held — silent
+  // until fired felt unresponsive on a 450ms hold; a slow tint ramp (CSS
+  // transition, not JS-driven) gives feedback without being a distracting
+  // animation, and doubles as a progress cue for how close the hold is to
+  // firing.
+  const [pressingId, setPressingId] = useState<string | null>(null);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // Returns the touch handlers for a given row id, or {} on desktop — spread
+  // onto the row wrapper div. Not memoized per-id (cheap object literal); the
+  // outer useCallback only changes with isMobile/clearLongPress.
+  const longPressHandlers = useCallback(
+    (id: string) => {
+      if (!isMobile) return {};
+      return {
+        onTouchStart: (e: React.TouchEvent<HTMLDivElement>) => {
+          const touch = e.touches[0];
+          touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          longPressFiredRef.current = false;
+          setPressingId(id);
+          const rowEl = e.currentTarget;
+          clearLongPress();
+          longPressTimerRef.current = setTimeout(() => {
+            longPressFiredRef.current = true;
+            setPressingId(null);
+            // Best-effort haptic tick — no-op where unsupported (iOS Safari
+            // has no Vibration API), so this is safe to call unconditionally.
+            navigator.vibrate?.(10);
+            setMenuRect(rowEl.getBoundingClientRect());
+            setMenuId(id);
+          }, LONG_PRESS_MS);
+        },
+        onTouchMove: (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!touchStartRef.current) return;
+          const touch = e.touches[0];
+          const dx = touch.clientX - touchStartRef.current.x;
+          const dy = touch.clientY - touchStartRef.current.y;
+          if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) {
+            clearLongPress();
+            setPressingId(null);
+          }
+        },
+        onTouchEnd: (e: React.TouchEvent<HTMLDivElement>) => {
+          clearLongPress();
+          setPressingId(null);
+          touchStartRef.current = null;
+          // Suppresses the browser's trailing synthetic click for this touch
+          // sequence — without it, the click that follows a completed
+          // long-press would either re-trigger the row's tap-to-select or hit
+          // RowMenu's outside-click listener and instantly close the menu
+          // that just opened.
+          if (longPressFiredRef.current) {
+            e.preventDefault();
+          }
+        },
+        onTouchCancel: () => {
+          clearLongPress();
+          setPressingId(null);
+          touchStartRef.current = null;
+        },
+        // Some Android browsers fire a native contextmenu on long-press —
+        // suppress it so it doesn't fight the menu we're opening ourselves.
+        onContextMenu: (e: React.MouseEvent<HTMLDivElement>) => {
+          e.preventDefault();
+        },
+      };
+    },
+    [isMobile, clearLongPress],
+  );
+
   // gap-0.5 (2px) stacks these buttons vertically — half-gap (1px) top/bottom
   // is as far as an invisible hit-area can safely grow without adjacent rows'
   // zones overlapping. Horizontal is deliberately untouched: in the
@@ -492,14 +638,14 @@ export function SidebarV2({
   // overflow-x-hidden, so there's no room to expand into without either
   // clipping or widening the collapsed column itself (a visible change).
   const navBtn =
-    'relative flex items-center gap-3 rounded-lg text-text-primary hover:bg-text-primary/10 ' +
+    'relative flex items-center gap-3 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/10 ' +
     'transition-all duration-200 focus:outline-none ' +
     "focus-visible:ring-2 focus-visible:ring-accent before:absolute before:content-[''] before:-inset-y-[1px]";
 
   return (
     <aside
       className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
-        isExpanded ? 'w-64' : 'w-12'
+        isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
       {/* Header row — search + collapse (desktop) or Close-X (mobile, when
@@ -545,8 +691,8 @@ export function SidebarV2({
           onClick={() => { newChat(); onClose?.(); }}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
-          <SquarePen size={16} className="flex-shrink-0" />
-          {isExpanded && <span className="font-body text-sm font-normal truncate">New Chat</span>}
+          <SquarePen size={18} className="flex-shrink-0" />
+          {isExpanded && <span className="font-body text-base font-normal truncate">New Chat</span>}
         </button>
         <button
           type="button"
@@ -554,8 +700,8 @@ export function SidebarV2({
           onClick={onMedia}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onMedia ? '' : 'opacity-40 pointer-events-none'}`}
         >
-          <Images size={16} className="flex-shrink-0" />
-          {isExpanded && <span className="font-body text-sm font-normal truncate">Media</span>}
+          <Images size={18} className="flex-shrink-0" />
+          {isExpanded && <span className="font-body text-base font-normal truncate">Media</span>}
         </button>
         <button
           type="button"
@@ -563,13 +709,13 @@ export function SidebarV2({
           onClick={onShareHeirloom}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'} ${onShareHeirloom ? '' : 'opacity-40 pointer-events-none'}`}
         >
-          <Share2 size={16} className="flex-shrink-0" />
+          <Share2 size={18} className="flex-shrink-0" />
           {isExpanded && (
-            <span className="font-body text-sm font-normal truncate">Share Heirloom</span>
+            <span className="font-body text-base font-normal truncate">Share Heirloom</span>
           )}
         </button>
 
-        {/* Conversations — collapsible, last in the primary nav */}
+        {/* Sessions — collapsible, last in the primary nav */}
         <div>
           <button
             type="button"
@@ -578,10 +724,10 @@ export function SidebarV2({
             onClick={() => setConvosOpen((o) => !o)}
             className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
           >
-            <MessageSquare size={16} className="flex-shrink-0" />
+            <MessageSquare size={18} className="flex-shrink-0" />
             {isExpanded && (
               <>
-                <span className="font-body text-sm font-normal truncate flex-1 text-left">
+                <span className="font-body text-base font-normal truncate flex-1 text-left">
                   Sessions
                 </span>
                 <SidebarMemoryCount count={totalMemoryCount} />
@@ -596,7 +742,7 @@ export function SidebarV2({
           {isExpanded && convosOpen && (
             <div className="ml-[18px] pl-2 border-l border-border flex flex-col gap-0.5 mt-0.5 max-h-48 overflow-y-auto">
               {filteredSessions.length === 0 ? (
-                <span className="px-2 py-1.5 font-body text-sm italic text-text-muted">
+                <span className="px-2 py-1.5 font-body text-base italic text-text-muted">
                   {trimmedQuery ? 'No matches' : 'No memories yet'}
                 </span>
               ) : (
@@ -604,7 +750,13 @@ export function SidebarV2({
                   const id = `conversation:${session.id}`;
                   const isMenuOpen = menuId === id;
                   return (
-                    <div key={session.id} className="relative group flex items-center">
+                    <div
+                      key={session.id}
+                      className={`relative group flex items-center rounded-lg select-none [-webkit-touch-callout:none] transition-colors duration-[450ms] ease-out ${
+                        pressingId === id ? 'bg-text-primary/5' : ''
+                      }`}
+                      {...longPressHandlers(id)}
+                    >
                       {renamingId === session.id ? (
                         <input
                           autoFocus
@@ -614,17 +766,26 @@ export function SidebarV2({
                             if (e.key === 'Escape') { onRenameCommit?.(session.id, ''); }
                           }}
                           onBlur={(e) => onRenameCommit?.(session.id, e.currentTarget.value)}
-                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-base bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
+                          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg font-body text-lg bg-surface border border-accent/30 text-text-primary outline-none focus:ring-2 focus:ring-accent"
                         />
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { loadSession(session.id); onClose?.(); }}
+                          onClick={() => {
+                            // A completed long-press already opened the menu
+                            // for this row (see longPressHandlers) — the
+                            // trailing click must not also select it.
+                            if (longPressFiredRef.current) {
+                              longPressFiredRef.current = false;
+                              return;
+                            }
+                            loadSession(session.id);
+                          }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
-                          className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-sm truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-base truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                             state.sessionId === session.id
                               ? 'bg-text-primary/10 text-text-primary'
-                              : 'text-text-primary hover:bg-text-primary/10'
+                              : 'text-text-primary [@media(hover:hover)]:hover:bg-text-primary/10'
                           }`}
                         >
                           {session.title}
@@ -638,7 +799,7 @@ export function SidebarV2({
                           {starredConversationIds.includes(session.id) && (
                             <span
                               className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
-                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                                isMenuOpen ? 'opacity-0' : 'opacity-100 [@media(hover:hover)]:group-hover:opacity-0'
                               }`}
                             >
                               <Star size={13} fill="currentColor" />
@@ -649,8 +810,10 @@ export function SidebarV2({
                             aria-label="Conversation options"
                             aria-expanded={isMenuOpen}
                             onClick={(e) => toggleMenu(id, e)}
-                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                              isMenuOpen
+                                ? 'opacity-100'
+                                : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                             }`}
                           >
                             <MoreVertical size={15} />
@@ -694,7 +857,7 @@ export function SidebarV2({
           <div>
             <div className="flex items-center gap-2 mb-3">
               <BookOpen size={14} className="text-text-muted" />
-              <span className="font-mono text-sm tracking-[0.2em] uppercase text-text-muted">
+              <span className="font-mono text-base tracking-[0.2em] uppercase text-text-muted">
                 Stories
               </span>
               <div className="ml-auto flex items-center gap-1">
@@ -709,7 +872,7 @@ export function SidebarV2({
                   title="Create a new story"
                   onClick={() => { onCreateStory?.(); setStoriesOpen(true); }}
                   disabled={storiesDisabled || !onCreateStory}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-accent hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-accent [@media(hover:hover)]:hover:bg-accent/15 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                 >
                   <Plus size={14} />
                 </button>
@@ -718,7 +881,7 @@ export function SidebarV2({
                   aria-label={storiesOpen ? 'Collapse stories' : 'Expand stories'}
                   aria-expanded={storiesOpen}
                   onClick={() => setStoriesOpen((o) => !o)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-text-muted hover:bg-text-primary/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <ChevronRight
                     size={14}
@@ -735,27 +898,45 @@ export function SidebarV2({
                   const id = `story:${story.id}`;
                   const isMenuOpen = menuId === id;
                   return (
-                    <div key={story.id} className="relative group flex items-center gap-0.5">
+                    <div
+                      key={story.id}
+                      className={`relative group flex items-center gap-0.5 rounded-lg select-none [-webkit-touch-callout:none] transition-colors duration-[450ms] ease-out ${
+                        pressingId === id ? 'bg-text-primary/5' : ''
+                      }`}
+                      // storiesDisabled: the "soon" section is inert — no
+                      // kebab is rendered for it (see below), so long-press
+                      // must not open one either.
+                      {...(!storiesDisabled ? longPressHandlers(id) : {})}
+                    >
                       <button
                         type="button"
                         title={story.description ?? story.name}
-                        onClick={() => onSelectStory?.(story.id)}
+                        onClick={() => {
+                          if (longPressFiredRef.current) {
+                            longPressFiredRef.current = false;
+                            return;
+                          }
+                          onSelectStory?.(story.id);
+                        }}
                         disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
-                        <span className="flex-1 min-w-0 font-display text-base truncate">
+                        <span className="flex-1 min-w-0 font-display text-lg truncate">
                           {story.name}
                         </span>
                       </button>
+                      <SidebarMemoryCount count={story.memoryCount ?? 0} />
                       {onStartStoryChat && !storiesDisabled && (
                         <button
                           type="button"
                           aria-label={`Start a chat in ${story.name}`}
                           title="Start a new chat"
                           onClick={() => onStartStoryChat(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen
+                              ? 'opacity-100'
+                              : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                           }`}
                         >
                           <MessageCircle size={14} />
@@ -769,8 +950,10 @@ export function SidebarV2({
                           aria-label={`Invite collaborators to ${story.name}`}
                           title="Invite collaborators"
                           onClick={() => onInviteStory(story.id)}
-                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted hover:bg-accent/15 hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:text-accent transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                            isMenuOpen
+                              ? 'opacity-100'
+                              : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                           }`}
                         >
                           <UserPlus size={14} />
@@ -791,7 +974,7 @@ export function SidebarV2({
                           {starredStoryIds.includes(story.id) && (
                             <span
                               className={`absolute inset-0 grid place-items-center text-accent pointer-events-none transition-opacity ${
-                                isMenuOpen ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                                isMenuOpen ? 'opacity-0' : 'opacity-100 [@media(hover:hover)]:group-hover:opacity-0'
                               }`}
                             >
                               <Star size={13} fill="currentColor" />
@@ -802,8 +985,10 @@ export function SidebarV2({
                             aria-label="Story options"
                             aria-expanded={isMenuOpen}
                             onClick={(e) => toggleMenu(id, e)}
-                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                              isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            className={`absolute inset-0 flex items-center justify-center rounded-lg text-text-muted [@media(hover:hover)]:hover:bg-text-primary/10 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                              isMenuOpen
+                                ? 'opacity-100'
+                                : 'opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:pointer-events-none'
                             }`}
                           >
                             <MoreVertical size={15} />
@@ -836,10 +1021,10 @@ export function SidebarV2({
                   key={prompt.id}
                   type="button"
                   onClick={() => onSelectPrompt?.(prompt)}
-                  className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted hover:bg-accent/15 hover:border-accent/30 hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="flex gap-2.5 items-start text-left px-3 py-2.5 rounded-xl bg-transparent border border-border text-text-muted [@media(hover:hover)]:hover:bg-accent/15 [@media(hover:hover)]:hover:border-accent/30 [@media(hover:hover)]:hover:text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Quote size={13} className="flex-shrink-0 text-accent/80 mt-0.5" />
-                  <span className="font-display italic text-base leading-snug">{prompt.text}</span>
+                  <span className="font-display italic text-lg leading-snug">{prompt.text}</span>
                 </button>
               ))}
             </div>

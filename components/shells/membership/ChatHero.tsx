@@ -1,7 +1,7 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMediaQuery } from '@mantine/hooks';
+import { useMediaQuery, useReducedMotion } from '@mantine/hooks';
 import { Check } from 'lucide-react';
 import { SidebarV2 } from './v2/SidebarV2';
 import { BeginStoryModal } from './v2/BeginStoryModal';
@@ -27,6 +27,13 @@ import { StoryView } from './v2/StoryView';
 import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
+import { useAnimatedPresence } from './useAnimatedPresence';
+
+// How long the mobile drawer stays mounted after it is closed, so its exit
+// animation can play. Must match .hl-animate-sheet-left-out's 0.24s in
+// app/heirloom/globals.css — the class and this constant are two halves of
+// one timing and drift silently if changed apart.
+const SIDEBAR_EXIT_MS = 240;
 
 // Static client-side prompt set — Writing Prompts have no backend yet (the
 // sidebar's other story affordances are stubbed for the same reason). Copy is
@@ -384,6 +391,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // asked for. Also closes every other pane on the empty branch, matching
   // every other handleOpenX function in this file — a fresh chat becomes
   // the primary view, not something layered under a stale pane.
+  //
+  // Non-empty branch also dispatches SET_SIDEBAR:false (what closeMobileSidebar
+  // below does — inlined rather than referencing that callback, which is
+  // declared later in this component and would be a forward reference).
+  // StoryView renders as a focus-trapped full-screen dialog, the same
+  // pattern as Media/Share, both of which close the mobile sidebar first for
+  // exactly this reason: a nav drawer mounted under a focus-trapped dialog
+  // is dead weight. The empty branch is a plain content swap behind the
+  // still-open sidebar (same as selecting a session row) and must NOT close
+  // it — which is why this dispatches only on the branch that actually opens
+  // StoryView, not unconditionally for every story tap. On desktop this
+  // dispatch is inert: nothing here reads state.isSidebarExpanded.
   const handleSelectStory = useCallback(async (storyId: string) => {
     let hasMemories = true;
     try {
@@ -397,6 +416,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
 
     if (hasMemories) {
+      dispatch({ type: 'SET_SIDEBAR', payload: false });
       handleOpenStoryView(storyId);
       return;
     }
@@ -410,7 +430,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     setStoryMemory(null);
     newChat();
     setSessionContextToAttach({ contextType: 'story', contextRefId: storyId, contextFrequency: 'every_turn' });
-  }, [handleOpenStoryView, newChat, setSessionContextToAttach]);
+  }, [dispatch, handleOpenStoryView, newChat, setSessionContextToAttach]);
 
   // Media/admin pane width (fix for close-button-clipped-offscreen bug):
   // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
@@ -842,16 +862,145 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
+  // Mobile chat header (2026-08-16 redesign). Desktop is untouched — it keeps
+  // Media, Memories, Share and Fullscreen exactly as they were. On mobile the
+  // header narrows to hamburger, brand icon, whatever this session actually
+  // holds, profile, and Close: Share and Fullscreen come off entirely (Share
+  // still has SidebarV2's own nav row as its entry point; Fullscreen has no
+  // meaning at drawer-is-the-viewport widths), and Media/Memories become
+  // count-gated so neither can open an empty pane on a phone.
+  //
+  // Both counts reuse state this component ALREADY holds — no new fetch, no
+  // new endpoint, no count column:
+  //   - `mediaItems` is the store's session-scoped list (chatStore.tsx: catch-
+  //     up GET /api/media?chat_id= on session load, Realtime UPDATEs, the
+  //     pending-item poll, and an optimistic addMediaItem the moment an upload
+  //     starts). It's already destructured above for sessionImages, and the
+  //     store clears it on every session switch / New Chat, so it can't carry
+  //     a previous conversation's count forward.
+  //   - `currentSessionMemories` is the exact array SessionMemoriesPanel
+  //     renders, already filtered to state.sessionId above — so "the icon is
+  //     there" and "the panel has rows" are the same fact by construction,
+  //     not two sources that can drift.
+  //
+  // The same two lengths back ChatHeader's mediaCount/memoriesCount corner
+  // badges below (chat-header-count-badges, 2026-08-17) — booleans here for
+  // mobile's show/hide gate, raw counts passed through separately for the
+  // badge, both derived from the same arrays so they can't disagree.
+  const hasSessionMedia = mediaItems.length > 0;
+  const hasSessionMemories = currentSessionMemories.length > 0;
+
+  // ── Mobile sidebar open/close ─────────────────────────────────────────────
+  // ONE mechanism for closing, not a delay taught to each trigger. Every
+  // deliberate close path — scrim tap, Close-X, Escape, hamburger toggle,
+  // Media, Share, and (see handleSelectStory above) a story selection that
+  // opens StoryView — calls closeMobileSidebar (or dispatches the same
+  // SET_SIDEBAR:false action directly), and useAnimatedPresence below is the
+  // only thing that knows an animation is involved at all. The rule: opening
+  // a focus-trapped full-screen surface closes the sidebar first, since a nav
+  // drawer mounted underneath one is dead weight. A plain content swap behind
+  // the still-open sidebar does not — session row selection, and story
+  // selection on the empty-story/fresh-chat branch, are both that case, and
+  // must not close it: closing must be a deliberate user action or a
+  // consequence of a full-screen surface opening, never a side effect of a
+  // plain selection.
+  //
+  // SET_SIDEBAR rather than the TOGGLE_SIDEBAR these all used before: closing
+  // is now idempotent. That matters more than it looks — a second close while
+  // one is already in flight used to flip the drawer back OPEN mid-exit, and
+  // Media/Share/story-select fire it alongside other work (opening their own
+  // surface).
+  const openMobileSidebar = useCallback(() => {
+    dispatch({ type: 'SET_SIDEBAR', payload: true });
+  }, [dispatch]);
+  const closeMobileSidebar = useCallback(() => {
+    dispatch({ type: 'SET_SIDEBAR', payload: false });
+  }, [dispatch]);
+
+  // Under reduced motion that stylesheet already forces `animation: none`, so
+  // holding the node for 240ms would just be a delay with nothing to show for
+  // it — 0 unmounts on the next macrotask instead.
+  const prefersReducedMotion = useReducedMotion() ?? false;
+  const { isPresent: isMobileSidebarPresent, isExiting: isMobileSidebarExiting } =
+    useAnimatedPresence(state.isSidebarExpanded, prefersReducedMotion ? 0 : SIDEBAR_EXIT_MS);
+
+  // "Push" — the content column visibly shifts right as the drawer slides in,
+  // instead of the drawer merely sliding over a static background. Applied to
+  // ChatHeader and the chat column (MessageList + ChatInput) as two separately
+  // transformed elements rather than one shared wrapper, since ChatHeader sits
+  // outside panelRowRef (it spans the full drawer width, above sidebar|chat|
+  // panel — see the comment where it renders). Both use this same class
+  // string, computed once, so they move in exact lockstep — same trigger, same
+  // duration, same curve, same target — which reads as one cohesive unit even
+  // though they're not physically nested together.
+  //
+  // Driven directly by state.isSidebarExpanded (not isMobileSidebarPresent/
+  // isMobileSidebarExiting): unlike the drawer, neither ChatHeader nor the
+  // chat column ever unmounts, so a plain CSS transition on transform — not a
+  // keyframe pair — is enough. A transition also handles rapid re-open mid-
+  // close for free: the browser interpolates from wherever the transform
+  // currently sits toward the new target, rather than needing the drawer's
+  // useAnimatedPresence machinery (built specifically to cover a conditionally
+  // -mounted element, which this isn't).
+  //
+  // 240ms matches SIDEBAR_EXIT_MS so the push and the drawer's own slide run
+  // for the same duration. translate-x-[30%] (of the pushed element's own
+  // width, so it scales with viewport rather than a fixed px): dramatic enough
+  // to read clearly as a push, but the sidebar already overlays on top (z-30)
+  // regardless of how far content shifts, so the push doesn't need to match
+  // its 86% width to look connected — 30% keeps the message list mostly on
+  // screen and legible instead of shoving it out of view.
+  //
+  // ease-in-out, not the drawer's own exit curve (cubic-bezier(0.64,0,0.78,0)):
+  // that curve stays nearly flat then accelerates hard all the way to the
+  // boundary with no deceleration at the end — right for a sheet leaving the
+  // screen (nothing is there to see it stop), wrong for content that stays on
+  // screen and has to visibly settle into its new position. Tailwind's
+  // ease-in-out (cubic-bezier(0.4,0,0.2,1)) eases into the motion and back out
+  // of it symmetrically at both ends, which is what "gentle" means here.
+  //
+  // duration-0 under reduced motion (mirroring prefersReducedMotion above):
+  // the push still reaches its final position, just without an animated
+  // transition — collapses to instant per the existing prefers-reduced-motion
+  // contract (app/heirloom/globals.css) rather than adding a second contract.
+  const mobileSidebarPushClass = isMobile
+    ? `transition-transform ${prefersReducedMotion ? 'duration-0' : 'duration-[240ms]'} ease-in-out ${
+        state.isSidebarExpanded ? 'translate-x-[30%]' : 'translate-x-0'
+      }`
+    : '';
+
+  // Header-only addition on top of the shared push class above (mobile sign-in
+  // bug, 2026-08-18): `transform` — present here even at rest, translate-x-0 is
+  // still a non-none value — makes both push-wrapper divs establish their own
+  // stacking context. With neither wrapper otherwise positioned, they compare
+  // as equal-level (0) stacking contexts and paint in DOM order, so the chat
+  // column wrapper (declared after this one, below) paints OVER this entire
+  // header stacking context wherever they visually overlap — which is exactly
+  // where the Account dropdown extends (`absolute top-full`, z-50): its z-50
+  // only wins inside this wrapper's own now-isolated context, not against the
+  // chat column outside it. The dropdown still looks correct — nothing is
+  // visually wrong — but every tap on it (Sign in included) lands on the
+  // transparent chat column underneath instead, verified with
+  // elementFromPoint against a minimal repro of this exact structure.
+  // `relative z-10` restores the header's whole stacking context above the
+  // chat column's (still z-index:auto/0), while staying under the mobile
+  // sidebar drawer's z-30 and its z-20 tap-catcher/scrim, so both continue to
+  // cover the header while open exactly as before. `relative` is required
+  // here even though `transform` alone establishes the stacking context —
+  // Chromium leaves the computed `position` at `static`, and a `static`
+  // element's `z-index` has no effect on paint order, confirmed the same way.
+  const chatHeaderStackingFixClass = isMobile ? ' relative z-10' : '';
+
   // On mobile, close the overlay when Esc is pressed (capture phase so it runs
   // before any modal Esc handlers that would also stop propagation).
   useEffect(() => {
     if (!isMobile || !state.isSidebarExpanded) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') dispatch({ type: 'TOGGLE_SIDEBAR' });
+      if (e.key === 'Escape') closeMobileSidebar();
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [isMobile, state.isSidebarExpanded, dispatch]);
+  }, [isMobile, state.isSidebarExpanded, closeMobileSidebar]);
 
   return (
     <section
@@ -865,14 +1014,33 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           panel became a sibling pane: this bar has to sit above the whole
           row, matching the Story Canvas reference the panel-layout handoff
           cites as source of truth, not scoped to one pane. */}
-      <ChatHeader
-        isFullScreen={isFullScreen}
-        onToggleFullScreen={onToggleFullScreen}
-        onMenuOpen={isMobile ? () => dispatch({ type: 'TOGGLE_SIDEBAR' }) : undefined}
-        onOpenMedia={handleOpenMedia}
-        onOpenSessionMemories={handleOpenSessionMemories}
-        onShareHeirloom={() => setShareHeirloomOpen(true)}
-      />
+      {/* Wrapped (rather than a className prop on ChatHeader itself) so the
+          push transform lives entirely in ChatHero, next to the chat column's
+          matching class below, instead of adding a layout concern to
+          ChatHeader's public props. */}
+      <div
+        data-testid="chat-header-push-wrapper"
+        className={`${mobileSidebarPushClass}${chatHeaderStackingFixClass}`}
+      >
+        <ChatHeader
+          isFullScreen={isFullScreen}
+          onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
+          // The header sits above the drawer, so this button stays reachable
+          // while the drawer is open and has always doubled as a close. It keeps
+          // that, but the closing half now routes through the same animated path
+          // as every other trigger instead of dropping the node instantly.
+          onMenuOpen={
+            isMobile
+              ? (state.isSidebarExpanded ? closeMobileSidebar : openMobileSidebar)
+              : undefined
+          }
+          onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+          mediaCount={mediaItems.length}
+          onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+          memoriesCount={currentSessionMemories.length}
+          onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
+        />
+      </div>
 
       {/* min-w-0 here (not just on the outer <section>) is load-bearing:
           ChatHero mounts inside ChatDrawerV2, a drawer capped at
@@ -914,7 +1082,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
         )}
 
         {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
-        {isMobile && state.isSidebarExpanded && (
+        {/* isMobileSidebarPresent, not state.isSidebarExpanded: the store flips
+            to closed immediately, and presence lags it by the exit animation's
+            length so the drawer can play hl-animate-sheet-left-out on the way
+            out. Still gated on isMobile as well — a resize to desktop hands
+            over to the docked sidebar, and animating this overlay out on a
+            viewport it no longer belongs to would be noise. */}
+        {isMobile && isMobileSidebarPresent && (
           <>
             {/* Tap-outside-to-close catcher — deliberately INVISIBLE (no
                 bg, no fade). sidebar_uploads_scrim_stories_2006 removed this
@@ -936,30 +1110,67 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 handler above, which already closes this same overlay. */}
             <div
               data-testid="mobile-sidebar-scrim"
-              className="absolute inset-0 z-20"
+              className={`absolute inset-0 z-20 ${isMobileSidebarExiting ? 'pointer-events-none' : ''}`}
               aria-hidden="true"
-              onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+              onClick={closeMobileSidebar}
             />
-            <div className="hl-animate-sheet-left absolute inset-y-0 left-0 z-30">
+            {/* Mobile drawer width lives HERE, not on SidebarV2's own base
+                class: the docked desktop sidebar's w-64 is correct — it's a
+                persistent column beside the chat — while this overlay sits ON
+                the chat and should cover most of the screen like any standard
+                mobile drawer. Before this, both shared w-64, so the drawer
+                covered a 256px sliver of a ~390px viewport.
+
+                86% (not a fixed px width) keeps the uncovered strip
+                proportional across phone widths, and the strip is the whole
+                reason it isn't 100%: the invisible tap-catcher above sits at
+                z-20 UNDER this z-30 drawer, so tap-outside-to-close only works
+                if a real strip of it stays reachable. 14% is ≥44px (the
+                minimum touch target) at any viewport ≥315px — 54.6px at
+                390px, 94px at the 672px drawer cap — so the catcher always
+                has room to receive a tap.
+
+                The width is on this wrapper rather than passed straight to the
+                aside because the wrapper is absolutely positioned with `left-0`
+                and no `right`: a percentage on its child would resolve against
+                a shrink-to-fit parent. A definite width here also gives the
+                hl-animate-sheet-left translateX(-100%) slide something exact to
+                animate from. SidebarV2 then fills it via w-full. */}
+            {/* pointer-events-none for the duration of the exit: the drawer is
+                still on screen and still hit-testable while it slides away, so
+                without it a tap aimed at the closing drawer could load a
+                session the user is in the middle of dismissing. */}
+            <div
+              data-testid="mobile-sidebar-drawer"
+              className={`${
+                isMobileSidebarExiting
+                  ? 'hl-animate-sheet-left-out pointer-events-none'
+                  : 'hl-animate-sheet-left'
+              } absolute inset-y-0 left-0 z-30 w-[86%]`}
+            >
               <SidebarV2
+                expandedWidthClassName="w-full"
                 stories={stories}
                 writingPrompts={WRITING_PROMPTS}
                 onCreateStory={() => setBeginStoryOpen(true)}
                 onInviteStory={handleInviteStory}
-                onSelectStory={(storyId) => { dispatch({ type: 'TOGGLE_SIDEBAR' }); void handleSelectStory(storyId); }}
+                onSelectStory={(storyId) => { void handleSelectStory(storyId); }}
                 onSelectPrompt={handleSelectPrompt}
                 onRowAction={handleRowAction}
                 starredConversationIds={starredIds}
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
-                onClose={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-                onMedia={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); handleOpenMediaPage(); }}
-                // Closes the drawer on the way, same as onMedia/onSelectStory
-                // above: the modal outranks the drawer (z-[80] vs z-30) so it
-                // would render fine either way, but leaving a full-height nav
-                // drawer mounted under a focus-trapped dialog is exactly what
-                // every other mobile sidebar action already avoids.
-                onShareHeirloom={() => { dispatch({ type: 'TOGGLE_SIDEBAR' }); setShareHeirloomOpen(true); }}
+                onClose={closeMobileSidebar}
+                onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
+                // Closes the drawer on the way, same as onMedia above and as
+                // handleSelectStory's own non-empty-story branch: unlike a
+                // plain content-swap selection (a session row, or an
+                // empty-story fresh chat), this opens a focus-trapped dialog
+                // (z-[80] vs the drawer's z-30) that would render fine either
+                // way, but leaving a full-height nav drawer mounted under a
+                // focus-trapped dialog is exactly what every other mobile
+                // sidebar action already avoids.
+                onShareHeirloom={() => { closeMobileSidebar(); setShareHeirloomOpen(true); }}
                 activeStoryId={storyViewId ?? undefined}
               />
             </div>
@@ -1091,7 +1302,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
             mobile — chat is always flex-1 there, unaffected by any of this. */}
         <div
-          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'}`}
+          data-testid="chat-column-push-wrapper"
+          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'} ${mobileSidebarPushClass}`}
         >
           <div className="flex flex-col flex-1 min-h-0">
             {isGated ? (

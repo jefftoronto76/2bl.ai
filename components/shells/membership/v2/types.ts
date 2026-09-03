@@ -47,6 +47,15 @@ export interface Story {
    *  items (2026-08-13, supersedes the old "deliberately unrestricted in
    *  V1" note this field used to carry). */
   isOwner?: boolean;
+  /** Count of this story's memories — artifact_containments rows linking
+   *  memories to this story (services/crm/story-containments.ts's
+   *  getMemoryCountsForStories), from GET/POST /api/stories
+   *  (services/crm/stories.ts's listStories/createStory). Drives
+   *  SidebarV2's per-story-row SidebarMemoryCount badge, same mark used for
+   *  session rows (RecentSession.memoryCount, chatStore.tsx) and the
+   *  Sessions header total. Undefined only for a story object built outside
+   *  that fetch path — SidebarV2 treats it the same as 0 (no badge). */
+  memoryCount?: number;
 }
 
 export interface WritingPrompt {

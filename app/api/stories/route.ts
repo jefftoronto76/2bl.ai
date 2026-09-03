@@ -30,6 +30,7 @@ export async function GET(req: Request) {
       description: s.body || undefined,
       hasActiveInviteOrSubscribers: s.hasActiveInviteOrSubscribers,
       isOwner: s.isOwner,
+      memoryCount: s.memoryCount,
     })),
   })
 }
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
       description: result.data.body || undefined,
       hasActiveInviteOrSubscribers: result.data.hasActiveInviteOrSubscribers,
       isOwner: result.data.isOwner,
+      memoryCount: result.data.memoryCount,
     },
   })
 }

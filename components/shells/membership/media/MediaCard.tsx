@@ -131,6 +131,7 @@ export function MediaCard({
   const [expanded, setExpanded] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(item.original_filename);
+  const [thumbLoaded, setThumbLoaded] = useState(false);
   // Confirmed by THIS session's own retry response, checked alongside the
   // DB-persisted signal (isNeedsReupload(item.error_message) — set by a
   // prior attempt, this session or another one) since this card does a
@@ -229,7 +230,8 @@ export function MediaCard({
             src={freshUrl}
             alt={item.original_filename}
             loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover"
+            onLoad={() => setThumbLoaded(true)}
+            className={`absolute inset-0 w-full h-full object-cover hl-thumb-fade ${thumbLoaded ? 'hl-thumb-loaded' : ''}`}
           />
         ) : (
           <div className="absolute inset-0 bg-surface-2">

@@ -34,6 +34,26 @@ function getInitials(fullName: string | null | undefined): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
+// ── Icon count badge ────────────────────────────────────────────────────────
+// Corner overlay on Media/Memories — same "renders nothing at 0" convention
+// as SidebarV2's SidebarMemoryCount (accent-colored mono numeral; absence is
+// the signal, not a "0" badge). Not that component directly, since it
+// pairs its own Bookmark glyph with the numeral for a text row's trailing
+// slot, which would duplicate the icon these icon-only buttons already show.
+// Same numeral convention, rendered as a solid corner badge instead, matching
+// the accent-fill treatment used elsewhere (e.g. SaveChatCTA's active pill).
+function HeaderIconCount({ count }: { count: number }) {
+  if (!count) return null;
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[15px] h-[15px] px-[3px] rounded-full bg-accent text-background ring-2 ring-background font-mono text-[9px] font-semibold leading-none"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 export interface ChatHeaderProps {
   /** Drawer width state; the expand toggle renders only when the handler is
    *  provided (keeps the header usable outside the V2 drawer). */
@@ -50,8 +70,18 @@ export interface ChatHeaderProps {
    * media_stages_08_2026 — this icon didn't exist before that handover; see
    * its investigation notes for why it's needed now that the sidebar button
    * no longer opens this surface).
+   *
+   * Presence is the caller's call, and it is no longer unconditional: as of
+   * the mobile chat header redesign (2026-08-16) ChatHero passes this on
+   * mobile ONLY when the active session actually has a media item, so the
+   * icon can never open an empty gallery on a phone. Desktop still passes it
+   * always.
    */
   onOpenMedia?: () => void;
+  /** Session media count, shown as a corner badge on the Media icon. A
+   *  separate prop rather than bundling with onOpenMedia so the handler stays
+   *  a plain callback; renders nothing at 0/undefined (see HeaderIconCount). */
+  mediaCount?: number;
   /**
    * Opens the session-scoped memories list panel — every memory (draft +
    * published) kept during the active chat session, listed for browsing;
@@ -59,19 +89,30 @@ export interface ChatHeaderProps {
    * editor. Renders in the icon cluster, right after Media, whenever
    * provided (session_memories_panel handover, 2026-08-14 — see its
    * investigation notes: main never had this flow, only the prototype did).
+   *
+   * Same conditional contract as onOpenMedia above: on mobile ChatHero
+   * passes this only when the active session actually has a memory.
    */
   onOpenSessionMemories?: () => void;
+  /** Session memory count, shown as a corner badge on the Memories icon.
+   *  Same contract as mediaCount above. */
+  memoriesCount?: number;
   /**
    * Opens ShareHeirloomModal — the "pass the product on" share sheet (copy
    * link + social/email intents, no backend). Renders in the icon cluster,
    * right after Memories, whenever provided; the same handler also backs
    * SidebarV2's own "Share Heirloom" nav row, so both entry points open one
    * modal owned by ChatHero.
+   *
+   * Desktop-only as of the mobile chat header redesign (2026-08-16) —
+   * ChatHero passes undefined on mobile, where SidebarV2's nav row is the
+   * remaining entry point. Same for onToggleFullScreen above, which has no
+   * meaning on a phone-width drawer.
    */
   onShareHeirloom?: () => void;
 }
 
-export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, onOpenSessionMemories, onShareHeirloom }: ChatHeaderProps) {
+export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpen, onOpenMedia, mediaCount, onOpenSessionMemories, memoriesCount, onShareHeirloom }: ChatHeaderProps) {
   const { state, dispatch, isAdmin, recentSessions, loadSession } = useChatStore();
   const { user, isSignedIn } = useAuthUser();
   const { signOut, openSignIn, openUserProfile } = useAuthActions();
@@ -185,7 +226,10 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
   const initials = getInitials(user?.name ?? null);
 
   return (
-    <header className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0">
+    <header
+      data-testid="chat-header"
+      className="flex items-center justify-between px-4 h-12 border-b border-border flex-shrink-0"
+    >
       {onMenuOpen && (
         <button
           type="button"
@@ -244,6 +288,14 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
         // Static brand mark — same markup as LandingNav.tsx's logo (the
         // project's one definition of it), scaled down for this 48px
         // in-app header instead of LandingNav's 64px marketing bar.
+        //
+        // This branch is SHARED, not mobile-only: ChatHero renders one
+        // ChatHeader for both breakpoints, so the mobile-only "icon, no
+        // wordmark" rule (mobile chat header redesign, 2026-08-16) has to be
+        // a split inside it rather than a separate branch. It's a CSS split
+        // (`hidden md:inline`) rather than an isMobile prop for two reasons:
+        // the hamburger directly above already gates itself the same way, and
+        // a class costs no JS media query and no post-hydration text flash.
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-6 h-6 rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center flex-shrink-0">
             <img
@@ -254,7 +306,10 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
               aria-hidden="true"
             />
           </div>
-          <span className="font-display font-semibold text-base text-text-primary tracking-wide truncate">
+          <span
+            data-testid="chat-header-wordmark"
+            className="hidden md:inline font-display font-semibold text-base text-text-primary tracking-wide truncate"
+          >
             Legacy
           </span>
         </div>
@@ -273,6 +328,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             <Images size={16} />
+            <HeaderIconCount count={mediaCount ?? 0} />
           </IconButton>
         )}
 
@@ -283,6 +339,7 @@ export function ChatHeader({ isFullScreen = false, onToggleFullScreen, onMenuOpe
             className="relative before:absolute before:content-[''] before:-inset-y-1 before:-inset-x-[2px]"
           >
             <Bookmark size={16} />
+            <HeaderIconCount count={memoriesCount ?? 0} />
           </IconButton>
         )}
 
