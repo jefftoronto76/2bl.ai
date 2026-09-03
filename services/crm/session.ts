@@ -12,6 +12,7 @@
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { recordConversionEvents } from './conversion-events'
+import { identityValue, setIdentityField } from '@/services/shared/identity'
 import type { TokenUsage } from '@/services/chat/server/types'
 
 function isPlausibleName(candidate: string): boolean {
@@ -304,6 +305,59 @@ async function persistVisitorPhone(sessionId: string, tenantId: string, phone: s
   }
 }
 
+// D7 fix — a [NAME:]/free-text-captured name previously reached
+// chat_sessions.visitor_name only, never `members`, even when the session
+// belongs to a signed-in member (memberId present). Fill-only-when-null,
+// same guarantee as everything else in services/shared/identity.ts: never
+// overwrites an existing members.name, whether it was set here in an
+// earlier session or by any other identity write path. Independent of (does
+// not gate, is not gated by) the chat_sessions write above.
+async function persistMemberName(memberId: string, tenantId: string, name: string): Promise<void> {
+  try {
+    const supabase = getAdminClient()
+    const { data, error: selectError } = await supabase
+      .from('members')
+      .select('name')
+      .eq('id', memberId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    if (selectError) {
+      console.error('[chat/session] member name select failed:', selectError.message)
+      return
+    }
+
+    if (!data) {
+      console.warn('[chat/session] member name persist skipped — member not found:', memberId)
+      return
+    }
+
+    if (identityValue((data as { name: string | null }).name) !== undefined) {
+      console.log('[chat/session] member name already set, skipping write:', { member_id: memberId })
+      return
+    }
+
+    const payload: Record<string, unknown> = {}
+    setIdentityField(payload, 'name', name)
+    if (Object.keys(payload).length === 0) return
+
+    const { error: updateError } = await supabase
+      .from('members')
+      .update(payload)
+      .eq('id', memberId)
+      .eq('tenant_id', tenantId)
+
+    if (updateError) {
+      console.error('[chat/session] member name update failed:', updateError.message)
+      return
+    }
+
+    console.log('[chat/session] member name written:', { member_id: memberId })
+  } catch (err) {
+    console.error('[chat/session] persistMemberName threw:', err instanceof Error ? err.message : err)
+  }
+}
+
 async function persistCalendarOffered(sessionId: string, tenantId: string): Promise<void> {
   try {
     const supabase = getAdminClient()
@@ -552,6 +606,7 @@ export async function handleSessionFinish(params: {
   if (markerName) {
     console.log('[chat/session] onFinish: name marker detected:', markerName)
     nameCaptured = await persistVisitorName(sessionId, tenantId, markerName)
+    if (memberId) await persistMemberName(memberId, tenantId, markerName)
   } else {
     console.log('[chat/session] onFinish: no name marker in assistant text')
   }
@@ -569,6 +624,7 @@ export async function handleSessionFinish(params: {
       if (name) {
         console.log('[chat/session] onFinish: name detected in visitor message')
         await persistVisitorName(sessionId, tenantId, name)
+        if (memberId) await persistMemberName(memberId, tenantId, name)
       }
     }
   }
