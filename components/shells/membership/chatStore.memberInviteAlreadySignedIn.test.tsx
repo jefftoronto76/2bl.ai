@@ -96,7 +96,25 @@ describe('Admin/member invite acceptance — already signed in on mount', () => 
 
     const [, init] = acceptCalls()[0];
     expect(init?.method).toBe('POST');
-    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ token: 'tok-abc' });
+    expect(JSON.parse((init?.body as string) ?? '{}')).toEqual({ token: 'tok-abc', alreadySignedIn: true });
+  });
+
+  // PR #448 review: acceptInvite's orphan-delete would destroy an
+  // already-signed-in visitor's real membership if it ran for this trigger.
+  // alreadySignedIn: true is what tells the route to skip it — this is the
+  // one flag standing between this fix and that regression.
+  it('marks the request alreadySignedIn — required so the server skips the destructive orphan cleanup', async () => {
+    render(
+      <ChatProvider inviteToken="tok-flag">
+        <ChatHero />
+      </ChatProvider>,
+    );
+
+    await waitFor(() => expect(acceptCalls().length).toBeGreaterThan(0), { timeout: 3000 });
+
+    const [, init] = acceptCalls()[0];
+    const body = JSON.parse((init?.body as string) ?? '{}');
+    expect(body.alreadySignedIn).toBe(true);
   });
 
   it('fires exactly once even though both the mount effect and the transition effect could observe the condition', async () => {
