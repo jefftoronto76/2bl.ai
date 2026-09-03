@@ -5,8 +5,11 @@
   Ported from the design reference's FadeCta() (NOT FinalCta(), which is dead
   code in the reference and never rendered):
   "Design Handovers/ Aug 2026 Atomic Updates/13_Heirloom_lander_nav_updateV4/
-  Heirloom Lander - Summer 2026 - Story Canvas.html" (~lines 648-661, plus the
-  .reveal / hl-rise keyframe at ~lines 72-76).
+  Heirloom Lander - Summer 2026 - Story Canvas.html" (~lines 648-661).
+
+  Scroll-in animation is the reference's own: useReveal (ref + seen) toggling
+  the shared 'reveal' / ' in' classes, whose `.reveal` / hl-rise CSS lives in
+  app/heirloom/globals.css (same as the other Wave 2 sections).
 
   The headline intentionally repeats the Hero's tagline — it is the design's
   closing echo, not a duplicate to dedupe.
@@ -41,7 +44,7 @@ export function CtaSection() {
       className="relative overflow-hidden text-center bg-background"
       style={{ padding: 'clamp(90px, 14vw, 170px) 24px' }}
     >
-      <div className={`hl-fadecta-reveal${seen ? ' in' : ''} relative z-[2] mx-auto`} style={{ maxWidth: 760 }}>
+      <div className={`reveal${seen ? ' in' : ''} relative z-[2] mx-auto`} style={{ maxWidth: 760 }}>
         <span className="inline-flex text-accent" aria-hidden="true">
           <Feather size={34} />
         </span>
@@ -57,15 +60,6 @@ export function CtaSection() {
           Write your first story in under two minutes.
         </p>
       </div>
-
-      <style>{`
-        .hl-fadecta-reveal { opacity: 0; }
-        .hl-fadecta-reveal.in { animation: hl-fadecta-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-        @keyframes hl-fadecta-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-        @media (prefers-reduced-motion: reduce) {
-          .hl-fadecta-reveal, .hl-fadecta-reveal.in { opacity: 1 !important; animation: none !important; transform: none !important; }
-        }
-      `}</style>
     </section>
   );
 }
