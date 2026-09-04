@@ -1,7 +1,7 @@
 // services/shared/log-safe.test.ts
 
 import { describe, it, expect } from 'vitest'
-import { logSafeIdentity } from './log-safe'
+import { logSafeIdentity, identityHash } from './log-safe'
 
 describe('logSafeIdentity', () => {
   it('marks null as absent', () => {
@@ -43,5 +43,32 @@ describe('logSafeIdentity', () => {
     const a = logSafeIdentity('Jane')
     const b = logSafeIdentity('John')
     expect(a.hash).not.toBe(b.hash)
+  })
+})
+
+describe('identityHash', () => {
+  it('returns null for null, undefined, empty, and whitespace-only values', () => {
+    expect(identityHash(null)).toBeNull()
+    expect(identityHash(undefined)).toBeNull()
+    expect(identityHash('')).toBeNull()
+    expect(identityHash('   ')).toBeNull()
+  })
+
+  it('returns an 8-hex-char hash for a real value, never the raw value', () => {
+    const result = identityHash('jane@example.com')
+    expect(result).toMatch(/^[0-9a-f]{8}$/)
+    expect(result).not.toContain('jane')
+  })
+
+  it('matches logSafeIdentity\'s hash for the same value (same algorithm)', () => {
+    expect(identityHash('jane@example.com')).toBe(logSafeIdentity('jane@example.com').hash)
+  })
+
+  it('produces the same hash regardless of case or surrounding whitespace', () => {
+    expect(identityHash('Jane@Example.com')).toBe(identityHash('  jane@example.com  '))
+  })
+
+  it('produces different hashes for different values', () => {
+    expect(identityHash('a@example.com')).not.toBe(identityHash('b@example.com'))
   })
 })

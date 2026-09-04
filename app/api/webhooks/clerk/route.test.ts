@@ -204,3 +204,32 @@ describe('POST /api/webhooks/clerk — D9, no raw email in console output', () =
     expect(output).toContain('heirloom_invite_token absent from unsafeMetadata')
   })
 })
+
+// auth_events.email is permanent, queryable storage (not a console log) —
+// the sign_up logAuthEvent call used to write the raw email into it.
+describe('POST /api/webhooks/clerk — auth_events.email is hashed, not raw', () => {
+  it('passes an 8-hex-char hash, never the raw email, to logAuthEvent', async () => {
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    await POST(makeRequest(userCreatedPayload()))
+
+    expect(mockLogAuthEvent).toHaveBeenCalledOnce()
+    const [arg] = mockLogAuthEvent.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.event_type).toBe('sign_up')
+    expect(arg.email).toMatch(/^[0-9a-f]{8}$/)
+    expect(arg.email).not.toBe('a@example.com')
+  })
+
+  it('passes null, not empty string, when the Clerk payload has no email', async () => {
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    await POST(makeRequest({
+      type: 'user.created',
+      data: { id: 'clerk-1', phone_numbers: [{ phone_number: '+15551234567' }], unsafe_metadata: {} },
+    }))
+
+    expect(mockLogAuthEvent).toHaveBeenCalledOnce()
+    const [arg] = mockLogAuthEvent.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.email).toBeNull()
+  })
+})

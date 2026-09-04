@@ -20,6 +20,10 @@
 
 import { createHash } from 'crypto'
 
+function hash8(trimmedLowercased: string): string {
+  return createHash('sha256').update(trimmedLowercased).digest('hex').slice(0, 8)
+}
+
 export interface LogSafeIdentity {
   present: boolean
   length: number
@@ -33,6 +37,22 @@ export function logSafeIdentity(value: string | null | undefined): LogSafeIdenti
   return {
     present: true,
     length: trimmed.length,
-    hash: createHash('sha256').update(trimmed.toLowerCase()).digest('hex').slice(0, 8),
+    hash: hash8(trimmed.toLowerCase()),
   }
+}
+
+/**
+ * Same hash as logSafeIdentity's `hash` field, but returned bare (no
+ * present/length wrapper) for writing into a plain scalar `text` column —
+ * e.g. auth_events.email, which stores one value, not a jsonb object.
+ * Presence is already encoded by NULL vs. non-NULL on that kind of column,
+ * so there's nothing for a wrapper to add. Returns null for a
+ * null/undefined/empty/whitespace-only value, same as logSafeIdentity's
+ * present:false case.
+ */
+export function identityHash(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  return hash8(trimmed.toLowerCase())
 }
