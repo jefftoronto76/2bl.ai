@@ -1,6 +1,13 @@
 # Identity Write Tracking — Proposal
 
-**Status:** proposal, not built. Gate 3 of the Heirloom identity audit.
+**Status:** built and deployed live, 2026-09-03. Gate 3 of the Heirloom
+identity audit. `identity_audit_members`/`identity_audit_users` triggers
+confirmed live on `members`/`users`; a real `identity.overwrite` row exists
+in `audit_events` (2026-09-03). App-code side (the three `AuditAction`
+values, `getAdminClient` source/correlationId consolidation, threaded
+through every real identity-write call site) merged the same day. This
+closes D10; see `System Docs/Identity System.md` §5's Gate 3 entry for the
+current-state summary — read this doc for the original design reasoning.
 **Companion:** `System Docs/Identity System.md` (defect register D1–D10).
 **Date:** 2026-08-16 (rev 3 — source attribution built into increment 1)
 

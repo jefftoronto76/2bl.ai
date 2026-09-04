@@ -2,8 +2,19 @@
 
 ## Context
 
-This is a proposal only — **nothing here is built or scheduled by this doc
-landing.** It follows the four-gate identity audit, the D1/D2/D4/D5 fixes
+**Status (updated 2026-09-04): Tiers 1–4 are all done.** Every item this doc
+sequenced — D8 (Tier 1), the waitlist name field and D7 (Tier 2), item 3b
+(Tier 3), and D3+Gate3 combined (Tier 4) — shipped 2026-09-03/04. Only Tier 5
+("Clerk at the front door only") remains open, unchanged from its original
+"needs its own dedicated scoping pass" recommendation below. See
+`System Docs/Identity System.md` §5/§7 for the current defect-register state
+this sequencing worked through. The rest of this doc is left as-written,
+below, as the historical record of the sequencing decision — read the
+Tier-by-tier notes added under "The list, sized and sequenced" for what
+actually shipped per item.
+
+This was originally a proposal only — **nothing here was built or scheduled by
+this doc landing.** It follows the four-gate identity audit, the D1/D2/D4/D5 fixes
 (`services/shared/identity.ts`, merged PR #448 and its predecessor), the
 end-state goals investigation, the sign-up/sign-in path documentation, and
 today's UI-CTA audit (`heirloom-signup-cta-audit-findings.md`). The ask: take
@@ -50,12 +61,12 @@ whole engagement.
 
 | Tier | Item | Current status | Size | Depends on |
 |---|---|---|---|---|
-| 1 | **D8 decision** — formalize "frozen by design" | Behavior already correct; undocumented decision only | Trivial (doc-only) | Nothing |
-| 2 | **Waitlist name-capture** | Confirmed: email-only today, no name field in UI or API (`GateView.tsx`'s `WaitlistView`, `/api/heirloom/members/waitlist/route.ts`) | Small, contained | One framing decision (below) |
-| 2 | **D7** — chat `[NAME:]` marker never reaches `members` | Confirmed: `persistVisitorName` (`services/crm/session.ts:155-201`) writes only to `chat_sessions.visitor_name`, never `members` | Small–medium, contained | Nothing |
-| 3 | **Item 3b** — name-completion interstitial | Fully designed, never built (`heirloom-signup-signin-fixes-proposal.md`) | Moderate — new surface (`GET /api/members/me`, new component, one constant, one `ChatHero.tsx` conditional) | Nothing new |
-| 4 | **D3 + Gate 3, combined** | D3 dormant (`user.updated` unsubscribed, dashboard config); Gate 3 is D3's proposed tripwire, "status: proposal, not built" | Larger — spans a precedence decision, an `AuditAction` addition, a PII-safe logging helper, and a DB trigger | Jeff's Studio work for the trigger DDL |
-| 5 | **"Clerk at the front door only"** | 5 confirmed violation sites, worst on the hot chat path (`app/api/sage/route.ts`) | Biggest — architectural, not a discrete fix | Its own dedicated scoping pass |
+| 1 | **D8 decision** — formalize "frozen by design" | **Shipped 2026-09-03** (`fcc64b6`) | Trivial (doc-only) | Nothing |
+| 2 | **Waitlist name-capture** | **Shipped 2026-09-03** (`9f91a3d`) — optional `name` field, fill-only-when-null at promotion, per the recommendation below | Small, contained | One framing decision (below) |
+| 2 | **D7** — chat `[NAME:]` marker never reaches `members` | **Shipped 2026-09-03** (`abae794`) | Small–medium, contained | Nothing |
+| 3 | **Item 3b** — name-completion interstitial | **Shipped 2026-09-03** (`75600f8`, `2c6d5b0`) | Moderate — new surface (`GET /api/members/me`, new component, one constant, one `ChatHero.tsx` conditional) | Nothing new |
+| 4 | **D3 + Gate 3, combined** | **Shipped 2026-09-03** — Gate 3 built and deployed live (`ac5433a`, `ecb8e11`, `263e408`); D3's direction chosen as recommendation (b) below — see Tier 4 note | Larger — spans a precedence decision, an `AuditAction` addition, a PII-safe logging helper, and a DB trigger | Jeff's Studio work for the trigger DDL — **done**, confirmed live |
+| 5 | **"Clerk at the front door only"** | Still open, unchanged | Biggest — architectural, not a discrete fix | Its own dedicated scoping pass |
 
 ### Tier 1 — trivial, doc-only
 
@@ -63,6 +74,9 @@ whole engagement.
 `invited_name` is intentionally write-once, no refresh mechanism, and that's
 accepted — `resolveMemberName`'s fallback-only read already makes this safe
 in practice. No code change.
+
+**Shipped 2026-09-03** — see `System Docs/Identity System.md` §5's D8
+decision note.
 
 ### Tier 2 — small, contained code changes
 
@@ -74,11 +88,17 @@ later at promotion to a real invite, same as every other path already
 enforces at the point an account actually forms. If agreed, the build is a
 name field on `WaitlistView` + the route's accepted body/insert — contained.
 
+**Shipped 2026-09-03, exactly as recommended** — optional at waitlist entry,
+fill-only-when-null at promotion.
+
 **D7.** Extend `persistVisitorName` to also write fill-only-when-null into
 the caller's `members` row when one is resolvable at marker-capture time
 (authenticated sessions only — an anonymous visitor has no `members` row to
 write to). Same `identityValue`/`setIdentityField` primitives already used
 everywhere else in the identity system. Single-function change.
+
+**Shipped 2026-09-03, exactly as scoped** — see
+`System Docs/Identity System.md` §1.2's `persistMemberName` row.
 
 ### Tier 3 — medium, already fully designed
 
@@ -89,6 +109,10 @@ already specifies the gate condition (`resolveMemberName` returns null AND
 `SaveChatCTA`'s name-input shape. Recommend building it as its own gated
 pass, unchanged from the original parking decision — this tier is a "when,"
 not a "what."
+
+**Shipped 2026-09-03** — including a same-day correction (`2c6d5b0`) so the
+interstitial's submit also writes the name to Clerk, not just Supabase; see
+`heirloom-signup-signin-fixes-proposal.md`'s updated status header.
 
 ### Tier 4 — larger, needs a decision before scoping further
 
@@ -112,6 +136,17 @@ Recommend scoping together:
 3. The trigger DDL itself is Jeff's Studio work, per the schema-migration
    rule in `CLAUDE.md` — a dependency, not something CC can build standalone.
 
+**Shipped 2026-09-03.** Direction **(b)** was chosen — sign-in-typed and
+chat-marker-captured names now also write to Clerk (`syncToClerk`/
+`updateClerkUserFirstName`), not (a); `user.updated` stays unsubscribed and
+D3 itself stays open but dormant, unchanged. All of steps 2 and 3 above
+shipped: the three `AuditAction` values, the PII-safe logging helper
+(`services/shared/log-safe.ts` — built slightly differently than "adapted
+from `sanitizeFailureReason`" anticipated here, since a hash needs to stay
+equality-comparable, which a fixed-phrase classifier can't do), the
+`getAdminClient` consolidation, and the trigger DDL — confirmed live via a
+real logged row.
+
 ### Tier 5 — biggest, not sequenced yet, needs its own pass
 
 **"Clerk at the front door only."** An architectural change, not a discrete
@@ -127,12 +162,13 @@ once Tiers 1–4 ship. Not something to fold into this doc as build-ready.
 
 ## Recommended order
 
-1. D8 decision (trivial, closes a doc gap same-day if approved)
-2. Waitlist name-capture decision + build (small)
-3. D7 (small–medium)
-4. Item 3b (moderate, already designed)
-5. D3 + Gate 3 scoping (larger, has an external dependency on Jeff's Studio work)
-6. "Clerk at the front door only" — separate scoping pass, after the above
+1. ~~D8 decision (trivial, closes a doc gap same-day if approved)~~ **Done, 2026-09-03.**
+2. ~~Waitlist name-capture decision + build (small)~~ **Done, 2026-09-03.**
+3. ~~D7 (small–medium)~~ **Done, 2026-09-03.**
+4. ~~Item 3b (moderate, already designed)~~ **Done, 2026-09-03.**
+5. ~~D3 + Gate 3 scoping (larger, has an external dependency on Jeff's Studio work)~~ **Done, 2026-09-03 — trigger deployed live.**
+6. "Clerk at the front door only" — separate scoping pass, after the above. **Still open — the one item left on this list.**
 
-This is a proposal for review, not a build order already in motion — pick
-whichever piece to start with, or reorder as you see fit.
+This was a proposal for review, not a build order already in motion when
+written — items 1–5 were picked up and built, in this order, over
+2026-09-03/04. Item 6 remains for its own dedicated pass.
