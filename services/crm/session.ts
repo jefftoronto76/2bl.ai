@@ -14,6 +14,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { updateClerkUserFirstName } from '@/services/auth'
 import { recordConversionEvents } from './conversion-events'
 import { identityValue, setIdentityField } from '@/services/shared/identity'
+import { logSafeIdentity } from '@/services/shared/log-safe'
 import type { TokenUsage } from '@/services/chat/server/types'
 
 function isPlausibleName(candidate: string): boolean {
@@ -98,6 +99,22 @@ export function detectVisitorPhoneMarker(text: string): string | null {
   return isPlausiblePhone(candidate) ? candidate : null
 }
 
+// D9 fix — the assistant text is instructed (see getMemberContext's marker-
+// emission instruction) to place [NAME:]/[EMAIL:]/[PHONE:] markers on their
+// own line at the very end of the message, which is exactly the window
+// onFinish's debug log below captures. Redacting the captured value inside
+// each of these three known, structured tags (not an open-ended scrub —
+// these are the only marker shapes this system ever asks the model to
+// emit) keeps the log line useful for verifying marker shape/placement
+// without ever printing the captured PII value itself. Exported for unit
+// testing.
+export function redactMarkersForLog(text: string): string {
+  return text
+    .replace(/\[NAME:\s*[^\]]*\]/g, '[NAME: <redacted>]')
+    .replace(/\[EMAIL:\s*[^\]]*\]/g, '[EMAIL: <redacted>]')
+    .replace(/\[PHONE:\s*[^\]]*\]/g, '[PHONE: <redacted>]')
+}
+
 // ── Visitor-message contact + name watcher ─────────────────────────────────
 // Replaces the Heirloom [CONTACT:] card: instead of Sage emitting a marker that
 // triggers a capture UI, the server scans the visitor's own message for a raw
@@ -177,8 +194,8 @@ async function persistVisitorName(sessionId: string, tenantId: string, name: str
     if (data.visitor_name && data.visitor_name.length > 0) {
       console.log('[chat/session] visitor_name already set, skipping write:', {
         session_id: sessionId,
-        existing: data.visitor_name,
-        extracted: name,
+        existing: logSafeIdentity(data.visitor_name),
+        extracted: logSafeIdentity(name),
       })
       return false
     }
@@ -194,7 +211,7 @@ async function persistVisitorName(sessionId: string, tenantId: string, name: str
       return false
     }
 
-    console.log('[chat/session] visitor_name written:', { session_id: sessionId, name })
+    console.log('[chat/session] visitor_name written:', { session_id: sessionId, name: logSafeIdentity(name) })
     return true
   } catch (err) {
     console.error('[chat/session] persistVisitorName threw:', err instanceof Error ? err.message : err)
@@ -229,8 +246,8 @@ async function persistVisitorEmail(sessionId: string, tenantId: string, email: s
     if (data.email && data.email.length > 0) {
       console.log('[chat/session] email already set, skipping write:', {
         session_id: sessionId,
-        existing: data.email,
-        extracted: email,
+        existing: logSafeIdentity(data.email),
+        extracted: logSafeIdentity(email),
       })
       return false
     }
@@ -246,7 +263,7 @@ async function persistVisitorEmail(sessionId: string, tenantId: string, email: s
       return false
     }
 
-    console.log('[chat/session] email written:', { session_id: sessionId, email })
+    console.log('[chat/session] email written:', { session_id: sessionId, email: logSafeIdentity(email) })
     return true
   } catch (err) {
     console.error('[chat/session] persistVisitorEmail threw:', err instanceof Error ? err.message : err)
@@ -281,8 +298,8 @@ async function persistVisitorPhone(sessionId: string, tenantId: string, phone: s
     if (data.phone && data.phone.length > 0) {
       console.log('[chat/session] phone already set, skipping write:', {
         session_id: sessionId,
-        existing: data.phone,
-        extracted: phone,
+        existing: logSafeIdentity(data.phone),
+        extracted: logSafeIdentity(phone),
       })
       return false
     }
@@ -298,7 +315,7 @@ async function persistVisitorPhone(sessionId: string, tenantId: string, phone: s
       return false
     }
 
-    console.log('[chat/session] phone written:', { session_id: sessionId, phone })
+    console.log('[chat/session] phone written:', { session_id: sessionId, phone: logSafeIdentity(phone) })
     return true
   } catch (err) {
     console.error('[chat/session] persistVisitorPhone threw:', err instanceof Error ? err.message : err)
@@ -492,7 +509,7 @@ export async function handleSessionFinish(params: {
   console.log('[chat/session] onFinish: received', {
     session_id: sessionId,
     text_length: text.length,
-    text_tail: text.slice(-300),
+    text_tail: redactMarkersForLog(text.slice(-300)),
     has_visitor_text: !!visitorText,
   })
 
@@ -542,7 +559,7 @@ export async function handleSessionFinish(params: {
   let emailCaptured = false
   const markerEmail = detectVisitorEmailMarker(text)
   if (markerEmail) {
-    console.log('[chat/session] onFinish: email marker detected:', markerEmail)
+    console.log('[chat/session] onFinish: email marker detected:', logSafeIdentity(markerEmail))
     emailCaptured = await persistVisitorEmail(sessionId, tenantId, markerEmail)
   } else {
     console.log('[chat/session] onFinish: no email marker in assistant text')
@@ -553,7 +570,7 @@ export async function handleSessionFinish(params: {
   let phoneCaptured = false
   const markerPhone = detectVisitorPhoneMarker(text)
   if (markerPhone) {
-    console.log('[chat/session] onFinish: phone marker detected:', markerPhone)
+    console.log('[chat/session] onFinish: phone marker detected:', logSafeIdentity(markerPhone))
     phoneCaptured = await persistVisitorPhone(sessionId, tenantId, markerPhone)
   } else {
     console.log('[chat/session] onFinish: no phone marker in assistant text')
@@ -621,7 +638,7 @@ export async function handleSessionFinish(params: {
   let nameCaptured = false
   const markerName = detectVisitorNameMarker(text)
   if (markerName) {
-    console.log('[chat/session] onFinish: name marker detected:', markerName)
+    console.log('[chat/session] onFinish: name marker detected:', logSafeIdentity(markerName))
     nameCaptured = await persistVisitorName(sessionId, tenantId, markerName)
     if (memberId) await persistMemberName(memberId, tenantId, markerName)
   } else {

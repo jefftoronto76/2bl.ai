@@ -310,4 +310,30 @@ describe('getMemberContext', () => {
       expect(result).toBeNull()
     })
   })
+
+  // D9 fix: the "found" success log's resultPreview field used to slice the
+  // built prose (name/email/phone/primer, and the [NAME:]/[EMAIL:]/[PHONE:]
+  // marker instruction on a first turn) straight into the log line.
+  describe('D9 — no raw PII in console output', () => {
+    it('never logs the raw name/email/phone/primer text, logging only a result length', async () => {
+      memberRowResult = {
+        data: { id: 'member-1', primer: 'They mentioned their dog Biscuit last visit.', name: 'Sarah Chen', invited_name: 'Sarah', email: 'sarah@example.com', phone: '+15551234567' },
+        error: null,
+      }
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      const result = await getMemberContext(null, 'tenant-1', 'member-1', true)
+
+      const output = logSpy.mock.calls.map((args) => JSON.stringify(args)).join('\n')
+      logSpy.mockRestore()
+
+      expect(result).not.toBeNull()
+      expect(output).not.toContain('Sarah Chen')
+      expect(output).not.toContain('sarah@example.com')
+      expect(output).not.toContain('+15551234567')
+      expect(output).not.toContain('Biscuit')
+      expect(output).toContain('"resultLength"')
+      expect(output).toContain('[chat/member-context] found')
+    })
+  })
 })

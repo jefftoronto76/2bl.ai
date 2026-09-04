@@ -9,6 +9,7 @@ import { deleteClerkUser } from '@/services/auth'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 import { identityValue, setIdentityField, setIdentityEmail } from '@/services/shared/identity'
+import { logSafeIdentity } from '@/services/shared/log-safe'
 
 export const HEIRLOOM_TENANT_ID = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
 
@@ -239,7 +240,7 @@ export async function linkInvitedMember(
 ): Promise<boolean> {
   console.log('[members] linkInvitedMember — called', {
     clerkId,
-    email,
+    email: logSafeIdentity(email),
     token: token ? token.slice(0, 8) + '…' : null,
   })
 
@@ -271,14 +272,19 @@ export async function linkInvitedMember(
   if (userErr || !userRow) {
     console.error('[members] linkInvitedMember — EXIT: could not resolve users.id', {
       clerkId,
-      email,
+      email: logSafeIdentity(email),
       error: userErr?.message,
     })
     void logEvent({
       action: AuditAction.MEMBER_USER_RESOLVE_FAILED,
       clerk_user_id: clerkId,
       outcome: 'failure',
-      metadata: { stage: 'link_invited_member', email, error: userErr?.message ?? 'no row returned' },
+      // No users.id/member_id to attribute this to — that's exactly what
+      // failed to resolve. clerk_user_id above is the real, non-PII join key
+      // an auditor has to trace this row back to a person; email is a
+      // logSafeIdentity fingerprint, not the raw value (audit_events is
+      // permanent storage, unlike a console log).
+      metadata: { stage: 'link_invited_member', email: logSafeIdentity(email), error: userErr?.message ?? 'no row returned' },
     })
     return false
   }
@@ -290,7 +296,7 @@ export async function linkInvitedMember(
   let invitedRow: { id: string; tenant_id: string; name: string | null } | null = null
 
   if (!token) {
-    console.log('[members] linkInvitedMember — token lookup skipped (no token provided, will try email)', { clerkId, email })
+    console.log('[members] linkInvitedMember — token lookup skipped (no token provided, will try email)', { clerkId, email: logSafeIdentity(email) })
   }
 
   if (token) {
@@ -335,7 +341,7 @@ export async function linkInvitedMember(
     if (findErr) {
       console.error('[members] linkInvitedMember — EXIT: email find query failed', {
         clerkId,
-        email,
+        email: logSafeIdentity(email),
         error: findErr.message,
       })
       return false
@@ -354,7 +360,7 @@ export async function linkInvitedMember(
   if (!invitedRow) {
     console.log('[members] linkInvitedMember — EXIT: no matching invited row (no invite, email mismatch, or token used)', {
       clerkId,
-      email,
+      email: logSafeIdentity(email),
       hadToken: !!token,
     })
     return false
@@ -579,7 +585,7 @@ export async function acceptInvite(
       }
       if (deletedCount === 1 && deletedRows[0].name && !row.name) {
         rescuedName = deletedRows[0].name
-        console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: rescuedName })
+        console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: logSafeIdentity(rescuedName) })
       }
     }
   }

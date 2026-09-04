@@ -8,6 +8,7 @@ import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID
 import { linkInvitedMember } from '@/services/members'
 import { acceptStoryInvite } from '@/services/crm/story-invites'
 import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
+import { logSafeIdentity, identityHash } from '@/services/shared/log-safe'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -108,7 +109,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       event_type: mappedType,
       tenant_id: await getTenantFromRequest(req),
       clerk_user_id: clerkUserId,
-      email,
+      // Hashed, not raw — auth_events is permanent storage and this column
+      // has no reader anywhere in the codebase (confirmed by sweep); a
+      // human comparing a known email can still hash it the same way and
+      // match by equality. clerk_user_id above is the real join key.
+      email: identityHash(email),
       outcome: 'success',
       correlation_id: correlationId,
       svix_event_id: svixId,
@@ -160,7 +165,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     } else {
       console.log('[webhook/clerk] heirloom_invite_token absent from unsafeMetadata (non-invite or GateView modal sign-up)', {
         clerkUserId,
-        email,
+        email: logSafeIdentity(email),
       })
     }
 
