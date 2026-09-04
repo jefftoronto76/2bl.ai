@@ -466,6 +466,122 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   Paths 6a/6b for the full UI-to-mechanism mapping this finding came out of.
   **Backlog, not urgent — not fixed as part of this pass.**
 
+- **Chat-captured `[NAME:]` marker never reached `members`, only
+  `chat_sessions` — found in the Gate 1 identity audit (2026-08-16, "D7"),
+  fixed 2026-09-03.** `persistVisitorName` (`services/crm/session.ts`) wrote
+  a marker-captured name into `chat_sessions.visitor_name` only — an
+  authenticated visitor whose `members.name` was still null stayed nameless
+  there even after typing their name mid-conversation, since nothing else
+  ever read `chat_sessions` back into `members`. **Fixed:** `persistVisitorName`
+  now also writes fill-only-when-null into the caller's `members` row when
+  one is resolvable at marker-capture time (authenticated sessions only —
+  an anonymous visitor has no `members` row to write to), using the same
+  `services/shared/identity.ts` primitives every other write path already
+  uses. See `System Docs/Identity System.md` §1.2's `persistMemberName` row.
+
+- **Sign-in-typed and chat-marker-captured names never reached Clerk, only
+  Supabase — found in the identity end-state goals investigation
+  (2026-08-17, folded into "D3"), fixed 2026-09-03 ("D3 A/B/C").** The
+  custom OTP sign-up flow already pushed a typed name to Clerk
+  (`services/auth/providers/clerk/client.ts`'s `signUp.update()`), but that
+  write is sign-up-branch-only by construction — a name typed at an existing
+  member's *sign-in* (`MagicLinkCard`/`SaveChatCTA`), or captured later via
+  a `[NAME:]` chat marker, updated `members`/`chat_sessions` but never
+  Clerk, leaving Clerk's own "Profile details" panel permanently blank for
+  those members. **Fixed:** a new `updateClerkUserFirstName`
+  (`services/auth/providers/clerk/server.ts`, mirroring `deleteClerkUser`'s
+  async-factory pattern) is now called from `POST /api/members/sync` when
+  the caller opts in with `syncToClerk: true` (both the sign-in Clerk-sync
+  gap and `SaveChatCTA`'s `claimAllSessions` path now set it) and from
+  `persistVisitorName`'s chat-marker path above. Non-fatal by design —
+  logged, never blocks — same treatment `hardDeleteMember` already gives a
+  failed `deleteClerkUser` call. Deliberately scoped narrowly (an explicit
+  opt-in flag, not an unconditional write) since `/api/members/sync` is
+  called from several places that should not all start writing to Clerk.
+  See `System Docs/Identity System.md` §1.2's "Into Clerk" #21 row.
+
+- **No `AuditAction` for a successful identity write, and what logging
+  existed wrote raw PII — found in the Gate 1 identity audit (2026-08-16,
+  "D9"/"D10"), fixed 2026-09-03 ("Gate 3").** Between the two, none of the
+  identity defects fixed 2026-08-17 (D1/D2/D4/D5) had left any queryable
+  trace when they happened — damage was only ever detectable after the fact
+  by joining `members` to `users`. **Fixed:** a Postgres `BEFORE UPDATE`
+  trigger on both `members` and `users` now logs
+  `identity.write`/`identity.overwrite`/`identity.cleared` into
+  `audit_events` on every write, regardless of which code path caused it —
+  confirmed live via a real logged row. The trigger reads
+  `x-identity-source`/`x-correlation-id` (PostgREST's
+  `current_setting('request.headers', true)`) to attribute each write to
+  the code path that made it; on the app side, `getAdminClient` was
+  consolidated from three duplicate implementations into one
+  source-attributed factory, threaded through all 11 real identity-write
+  call sites. The trigger DDL is Jeff's Studio work, per `CLAUDE.md`'s
+  schema-migration rule — the app-code side above is what shipped through
+  this repo. See `Design Handovers/identity-tracking-proposal.md` for the
+  full design and `System Docs/Identity System.md` §1.4/§5 for the
+  current-state summary.
+
+- **Raw PII (name/email/phone) logged in plaintext across several identity
+  write paths — found in the Gate 1 identity audit (2026-08-16, "D9"),
+  fixed 2026-09-03/04.** A full-repo sweep (not just the four originally-
+  known locations) found 20 `console.log`/`error`/`warn` call sites across
+  5 files (`services/crm/session.ts`, `services/members/members.ts`,
+  `app/api/webhooks/clerk/route.ts`, `services/chat/server/member-context.ts`,
+  `app/api/sessions/[id]/route.ts`) writing a raw name/email/phone value, or
+  an indirect leak of one (a text slice containing a marker value, or a
+  prose preview built from identity fields). A follow-up sweep, prompted by
+  the first fix's own review, found the same problem one layer deeper: one
+  `logEvent` call (`members.ts`'s `MEMBER_USER_RESOLVE_FAILED`) wrote a raw
+  email into `audit_events`'s `metadata` — permanent, queryable storage,
+  unlike a console log — and a first-class `auth_events.email` column
+  (populated only by the Clerk webhook's `sign_up` event) stored the raw
+  email outright. **Fixed:** a new `services/shared/log-safe.ts` reuses
+  Gate 3's own hash design (SHA-256 of the trimmed/lowercased value, first
+  8 hex chars) — `logSafeIdentity(value)` for structured log/metadata
+  objects (`{present, length, hash}`), `identityHash(value)` for a scalar
+  column like `auth_events.email` (just the bare hash or `null` — presence
+  is already NULL-vs-non-NULL there). Every real instance across all three
+  storage layers (console, `audit_events` metadata, `auth_events.email`) now
+  uses one of these instead of the raw value. **Not fixed:** 20 pre-existing
+  `auth_events` rows still carry a raw email — an attempted redaction
+  (verified against the live hash algorithm first) was rejected outright by
+  a `BEFORE UPDATE` trigger (`prevent_audit_mutation()`, the same one that
+  makes `audit_events`/`auth_events` append-only) even from a service-role
+  connection. Redacting them requires Jeff to temporarily lift that trigger
+  in Studio — deferred, pending his own review, not attempted as a
+  workaround. See `System Docs/Identity System.md` §5's D9 entry, PR #459.
+
+- **Waitlist entry had no name field — found during the identity remaining-
+  work sequencing pass (2026-09-03), fixed 2026-09-03.** `WaitlistView`
+  (`GateView.tsx`) and `POST /api/heirloom/members/waitlist` accepted only
+  an email — a waitlist entry could not carry the visitor's name even if
+  they'd have happily given it, and nothing pre-filled it at promotion to a
+  real invite. **Fixed:** added an optional `name` field to both, fill-only-
+  when-null into the eventual invited row at promotion — deliberately
+  optional at waitlist entry (no Clerk account exists yet at that point, so
+  Goal 1's "name required at signup" doesn't apply there) and enforced only
+  later, same as every other path that already enforces at the point an
+  account actually forms.
+
+- **Name-completion gap for accounts created without one — scoped in
+  `Design Handovers/heirloom-signup-signin-fixes-proposal.md` §3b
+  (2026-08-18), built 2026-09-03 as "item 3b."** Several sign-up paths
+  (Clerk's own prebuilt modal via `GateView`, chief among them) could
+  produce an active `members` row with no resolvable name at all, with no
+  mechanism to ever ask for one afterward. **Fixed:** a new
+  `NameCompletionGate` component gates the chat surface (rendering an
+  interstitial instead) for any signed-in member where
+  `resolveMemberName(member)` returns null **and** `members.created_at >=
+  NAME_REQUIRED_SINCE` (a rollout cutoff, so every pre-existing account is
+  grandfathered rather than newly blocked) — checked via a new read-only
+  `GET /api/members/me`. Deliberately a universal backstop, not a per-path
+  fix: it catches any account missing a name regardless of which of the
+  many sign-up paths created it, including a future path nobody has
+  designed yet. Submits to the existing `POST /api/members/sync` with
+  `syncToClerk: true` (see the D3 A/B/C entry above) — fails open (renders
+  the chat surface) on any fetch error, so a broken check never blocks a
+  member who already has a name.
+
 ## Prompt & AI
 
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not

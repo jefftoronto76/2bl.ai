@@ -1,6 +1,13 @@
 # Heirloom Identity — Four End-State Goals: Status & Proposal
 
-**Status:** investigation + proposal, nothing implemented.
+**Status:** investigation + proposal, nothing implemented at the time this was
+written. **Re-graded 2026-09-04** against `System Docs/Identity System.md`
+(itself corrected the same day) — see the "Re-graded" note under each Goal
+below for what's shipped since. Short version: Goal 1's Layer 2 is built,
+Goal 2's confirmed gap is closed, Goal 3 is unchanged (its one loose end is
+still open), Goal 4's identity-write-tracing scope is built and live
+(Gate 3) — its broader "navigation traceability" scope question is still
+unanswered, not decided either way.
 **Builds on:** the D1/D2 fixes (`b4fbfb9`, `e87379b`, `3cde3ed` on
 `claude/heirloom-identity-audit-htyd8g`, not yet merged to `main`) and the
 four-gate audit (`System Docs/Identity System.md`,
@@ -16,6 +23,21 @@ not assumed from the earlier audit's snapshot.
 ## Goal 1 — Sign-up requires a name, everywhere
 
 **Status: partially done, and weaker than the current code makes it look.**
+
+**Re-graded 2026-09-04: Layer 2 is built, exactly as proposed below.**
+`NameCompletionGate` (built 2026-09-03 as "item 3b") is the server-side
+name-completion gate this section proposes — same shape (a one-field
+interstitial reusing `SaveChatCTA`'s form), same gating logic
+(`resolveMemberName` returns null **and** `created_at >= NAME_REQUIRED_SINCE`,
+the cutover this section calls for), same explicit grandfathering of every
+pre-existing account. **Layer 1 (the Clerk Dashboard "require name" toggle)
+is still unconfirmed** — this is Jeff's side, not code, and hasn't been
+verified either way; see `heirloom-signup-signin-fixes-proposal.md`'s §3a
+status note. This section's own closing line — "Both are proposed; neither
+alone is sufficient" — still holds: Layer 2 alone catches every account
+after the fact, but doesn't stop `signUp.create()` succeeding without a name
+in the first place at the two prebuilt-modal paths (#3, #4 in the table
+below), which only Layer 1 can do.
 
 ### The actual set of account-creation entry points
 
@@ -120,6 +142,18 @@ proposed; neither alone is sufficient.
 **Status: mostly true post-D1/D2, with one confirmed live gap and one
 inconsistency.**
 
+**Re-graded 2026-09-04: the confirmed gap is closed, the inconsistency is
+not.** `acceptInvite` now takes `name` as its 4th parameter
+(`services/members/members.ts`, fixed 2026-08-18, PR referenced as "Fix Path
+2" in `Known Gaps.md`/the sequencing doc) — exactly the fix this section
+proposes, closing the race this section traces in detail. The
+`acceptStoryInvite` insert-not-routed-through-the-helper inconsistency
+(§"Inconsistency, not a live gap" below) is confirmed **still open** —
+`services/crm/story-invites.ts:580` still writes `name: name ?? null`
+directly, not through `setIdentityField`. Still harmless for the same reason
+this section already gives (insert-only, nothing to overwrite) — flagged
+here as unchanged, not re-litigated as newly urgent.
+
 ### Confirmed gap: `acceptInvite` has no name fallback
 
 Traced every account-creation-adjacent path's users/members pairing. Four are
@@ -202,6 +236,18 @@ but the route itself writes both tables correctly.
 **Status: done for the paths that route through the shared helper. Two loose
 ends, both low-risk.**
 
+**Re-graded 2026-09-04: unchanged, except Gate 3 (referenced below as future
+work) is now built and live.** The `acceptStoryInvite` insert loose end is
+still open — see Goal 2's re-grade note above, same line, same reasoning.
+The `acceptInvite`/`linkInvitedMember` fill-only-when-null behavior is
+unchanged (still the intentional, stricter-than-required design this section
+already describes as correct). The one thing that's moved: the paragraph
+below says "that is what D3 and the Gate 3 trigger's `identity.overwrite`
+action exist to catch" — Gate 3 is no longer future work, it's deployed and
+has already logged a real `identity.overwrite` row. D3 itself (the
+`user.updated`-webhook overwrite risk this rule structurally cannot cover)
+remains open but dormant, unchanged.
+
 `identityValue`/`setIdentityField`/`setIdentityEmail`
 (`services/shared/identity.ts`) is imported by 11 files:
 `ensure-clerk-user.ts`, `claim-membership.ts`, `sync-member.ts`,
@@ -240,6 +286,21 @@ consistency cleanup in the two items above, which can ride along with Goal 2's
 
 **Status: not built. Confirmed against current code, not assumed from the
 proposal doc's age.**
+
+**Re-graded 2026-09-04: the identity-write-tracing scope is built and live;
+the broader navigation-tracing scope question below is still unanswered.**
+Gate 3 shipped 2026-09-03 exactly as designed — the three `AuditAction`
+values, `getAdminClient` consolidated with header-based `source`
+attribution, and the `BEFORE UPDATE` trigger on `members`/`users` all exist
+now, confirmed live via a real logged `identity.overwrite` row. That closes
+"what changed, from what to what, via which path, when" for identity data —
+the scope this section's own "Scope check" paragraph confirms Gate 3 was
+always meant to cover. **The scope-check's flagged ambiguity was never
+resolved either way:** if Goal 4 also meant broader activity/session
+navigation tracking (page views, chat panel opens, which routes a member
+visits), that is still new, unscoped, undecided work — nobody chose an
+answer, it just wasn't revisited. Flagging again rather than assuming it's
+covered by Gate 3's identity-only scope.
 
 Checked directly:
 
@@ -302,14 +363,15 @@ silently.
 
 ## Summary table
 
-| Goal | Status | Gap | Proposed fix | New code needed? |
-|---|---|---|---|---|
-| 1. Name required at sign-up | Partial | 2 prebuilt-modal paths with zero enforcement; even "enforced" paths are client-only and non-fatal to Clerk | Clerk Dashboard config (Jeff) + server-side name-completion gate, cutover-dated | Yes — one gate, reusing `SaveChatCTA`'s shape |
-| 2. Name in both tables | Mostly done | `acceptInvite` has no name fallback, depends on race-prone rescue | Add `name` param to `acceptInvite`, same fill-only-when-null pattern as its siblings | Yes — small, one function |
-| 3. Never overwritten to blank | Done | 2 consistency loose ends, no live risk | Route `acceptStoryInvite`'s insert through the shared helper | Yes — trivial, can ride with Goal 2's fix |
-| 4. Full traceability | Not built | Gate 3 unimplemented; "navigation" may exceed Gate 3's scope | Build Gate 3 as approved; **scope decision needed** on navigation before proposing more | Yes — the whole Gate 3 build, scope TBD |
+| Goal | Status (2026-08-16) | Status (re-graded 2026-09-04) | Gap remaining |
+|---|---|---|---|
+| 1. Name required at sign-up | Partial | Layer 2 (server-side gate) **built** | Layer 1 (Clerk Dashboard toggle) still unconfirmed |
+| 2. Name in both tables | Mostly done | Confirmed gap **closed** (`acceptInvite` name param) | `acceptStoryInvite`'s insert still not routed through the shared helper (harmless, cosmetic) |
+| 3. Never overwritten to blank | Done | Unchanged | Same loose end as Goal 2, above |
+| 4. Full traceability | Not built | Identity-write-tracing scope (Gate 3) **built and live** | Broader navigation-tracing scope still an open, undecided question |
 
-Goals 2 and 3's fixes are small enough to implement and test together, same
-shape as the D1/D2 work. Goal 1 needs a design decision (interstitial UX,
-cutover mechanics) before implementation. Goal 4's Gate 3 portion is
-ready to build as-is; the navigation question needs an answer first.
+Goals 2 and 3's fixes shipped together, same shape as the D1/D2 work. Goal 1's
+Layer 2 shipped as its own gated pass (item 3b); Layer 1 is Jeff's side, still
+open. Goal 4's Gate 3 portion is done; the navigation-tracing question raised
+in this doc was never answered — it wasn't rejected, it just was never
+revisited. Worth a deliberate yes/no before it's assumed closed by omission.

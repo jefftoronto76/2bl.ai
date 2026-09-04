@@ -1,7 +1,13 @@
 # Heirloom Sign-Up/Sign-In: Fix Proposal for Paths 2, 3, 6, 7
 
-**Status:** proposal, nothing implemented. Stop for review before any code
-changes, same gated pattern as every prior pass on this branch.
+**Status (updated 2026-09-04):** §1 (Path 3), §2 (Path 2 — `acceptInvite`'s
+direct `name` param), and §3b (the name-completion interstitial) are all
+shipped — confirmed against current code. §3a (the Clerk Dashboard "require
+name" toggle) is **unverified — Jeff, please confirm whether this toggle was
+actually changed in the Dashboard**; it can't be checked from code, and this
+doc previously said "nothing implemented" for all four items, which was
+already stale by the time that line was last read. §4 (the `Known Gaps.md`
+correction) was not independently re-checked in this pass.
 **Builds on:** `Design Handovers/heirloom-signup-signin-paths.md` (the 12-path
 inventory this proposal fixes four rows from) and
 `Design Handovers/identity-endstate-goals-proposal.md` (Goals 1/2, which first
