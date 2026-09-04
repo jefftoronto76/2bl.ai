@@ -176,33 +176,41 @@ export function useAuthFlowAdapter(): {
             metadata: { auth_surface: 'custom_otp', step: 'signUp_update_name_threw', contactType: type, code: extractClerkErrorCode(e) } })
         }
       }
-      // Write the invite token(s) to Clerk unsafeMetadata so the user.created
-      // webhook can look up the invited members row / story invite directly
-      // instead of relying on email match or racing the client's own accept
-      // call. Both keys go in ONE signUp.update() call — unsafeMetadata is a
-      // full-object replace, not a merge, so writing them separately would let
-      // the second call silently wipe the first. Non-fatal by design — a
-      // metadata failure never blocks the sign-up itself.
-      if (contact.inviteToken || contact.storyInviteToken) {
-        try {
-          const unsafeMetadata: Record<string, string> = {}
-          if (contact.inviteToken) unsafeMetadata.heirloom_invite_token = contact.inviteToken
-          if (contact.storyInviteToken) unsafeMetadata.heirloom_story_invite_token = contact.storyInviteToken
+      // Write the invite token(s) — plus heirloom_signup_surface below — to
+      // Clerk unsafeMetadata so the user.created webhook can look up the
+      // invited members row / story invite directly instead of relying on
+      // email match or racing the client's own accept call. Every key goes
+      // in ONE signUp.update() call — unsafeMetadata is a full-object
+      // replace, not a merge, so writing them separately would let a later
+      // call silently wipe an earlier one. Non-fatal by design — a metadata
+      // failure never blocks the sign-up itself.
+      //
+      // heirloom_signup_surface: 'custom_otp' — written on EVERY custom-OTP
+      // sign-up, not just invite/story ones (unlike the two token keys,
+      // which are conditional). Lets app/api/webhooks/clerk/route.ts tell a
+      // chat-form signup apart from a Clerk-prebuilt-modal one when its own
+      // syncMember fallback races the client's direct /api/members/sync call
+      // for the same person — see services/shared/identity.ts's
+      // MemberSource doc comment for why that race makes this necessary
+      // rather than optional.
+      try {
+        const unsafeMetadata: Record<string, string> = { heirloom_signup_surface: 'custom_otp' }
+        if (contact.inviteToken) unsafeMetadata.heirloom_invite_token = contact.inviteToken
+        if (contact.storyInviteToken) unsafeMetadata.heirloom_story_invite_token = contact.storyInviteToken
 
-          const { error: tokenErr } = await signUp.update({ unsafeMetadata })
-          if (tokenErr) {
-            logAuthStep({ event_type: 'sign_up', outcome: 'failure',
-              failure_reason: extractErrorMessage(tokenErr),
-              metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type, code: extractClerkErrorCode(tokenErr) } })
-          } else {
-            logAuthStep({ event_type: 'sign_up', outcome: 'success',
-              metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type } })
-          }
-        } catch (e: unknown) {
+        const { error: tokenErr } = await signUp.update({ unsafeMetadata })
+        if (tokenErr) {
           logAuthStep({ event_type: 'sign_up', outcome: 'failure',
-            failure_reason: extractErrorMessage(e),
-            metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token_threw', contactType: type, code: extractClerkErrorCode(e) } })
+            failure_reason: extractErrorMessage(tokenErr),
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type, code: extractClerkErrorCode(tokenErr) } })
+        } else {
+          logAuthStep({ event_type: 'sign_up', outcome: 'success',
+            metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token', contactType: type } })
         }
+      } catch (e: unknown) {
+        logAuthStep({ event_type: 'sign_up', outcome: 'failure',
+          failure_reason: extractErrorMessage(e),
+          metadata: { auth_surface: 'custom_otp', step: 'signUp_update_invite_token_threw', contactType: type, code: extractClerkErrorCode(e) } })
       }
 
       const { error: sendErr } =

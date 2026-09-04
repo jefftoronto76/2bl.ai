@@ -53,6 +53,11 @@ export async function claimMembership(
     clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'pending',
+    // This function's only caller (POST /api/heirloom/members/claim) is only
+    // ever triggered by GateView's Clerk-prebuilt-modal claim effect — no
+    // ambiguity the way syncMember has. See services/shared/identity.ts's
+    // MemberSource doc comment.
+    source: 'self_serve_clerk',
     updated_at: new Date().toISOString(),
   }
   setIdentityField(insertPayload, 'name', contact.name)
