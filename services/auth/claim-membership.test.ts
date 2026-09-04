@@ -78,4 +78,14 @@ describe('claimMembership', () => {
     expect(payload.name).toBe('Jane')
     expect(payload.email).toBe('jane@example.com')
   })
+
+  it("stamps members.source as 'self_serve_clerk' on insert — this function's only caller is GateView's Clerk-modal claim flow", async () => {
+    const { client, insertCalls } = makeClient({ existing: null })
+    adminHolder.client = client
+
+    await claimMembership('clerk-1', 'tenant-1')
+
+    const payload = insertCalls[0] as Record<string, unknown>
+    expect(payload.source).toBe('self_serve_clerk')
+  })
 })

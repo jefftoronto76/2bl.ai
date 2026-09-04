@@ -233,3 +233,26 @@ describe('POST /api/webhooks/clerk — auth_events.email is hashed, not raw', ()
     expect(arg.email).toBeNull()
   })
 })
+
+// members.source (services/shared/identity.ts's MemberSource) — distinct
+// from the Gate 3 `source: 'clerk_webhook'` attribution already asserted
+// above. Resolves which self-serve bucket the webhook's own syncMember
+// fallback should use, based on the heirloom_signup_surface marker the
+// custom OTP client flow writes to unsafeMetadata.
+describe('POST /api/webhooks/clerk — memberSource resolution for the syncMember fallback', () => {
+  it("passes memberSource: 'self_serve_chat' when heirloom_signup_surface: 'custom_otp' is present", async () => {
+    const res = await POST(makeRequest(userCreatedPayload({ heirloom_signup_surface: 'custom_otp' })))
+
+    expect(res.status).toBe(200)
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.memberSource).toBe('self_serve_chat')
+  })
+
+  it("passes memberSource: 'self_serve_clerk' when heirloom_signup_surface is absent (a Clerk-prebuilt-modal signup)", async () => {
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.memberSource).toBe('self_serve_clerk')
+  })
+})

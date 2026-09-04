@@ -110,3 +110,12 @@ describe('POST /api/heirloom/members/waitlist — optional name', () => {
     expect(body).toEqual({ ok: true, already_exists: true })
   })
 })
+
+describe('POST /api/heirloom/members/waitlist — members.source', () => {
+  it("stamps source: 'waitlist' on insert", async () => {
+    await POST(req({ email: 'e@x.com' }))
+
+    const [payload] = insertMock.mock.calls[0] as [Record<string, unknown>]
+    expect(payload.source).toBe('waitlist')
+  })
+})

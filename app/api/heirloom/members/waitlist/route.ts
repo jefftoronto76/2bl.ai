@@ -51,6 +51,7 @@ export async function POST(req: Request) {
     email,
     status: 'waitlist',
     role: 'member',
+    source: 'waitlist',
     updated_at: new Date().toISOString(),
   }
   setIdentityField(insertPayload, 'name', body.name)

@@ -22,19 +22,25 @@ vi.mock('@/services/audit', () => ({
 
 import { syncMember } from './sync-member'
 
-// Two-call mock:
+// Three-call mock:
 //   Call 1: from('users').upsert().select('id').single()
-//   Call 2: from('members').upsert().select().single()
+//   Call 2: from('members').select('id').eq().eq().maybeSingle() — the
+//     pre-existence check that decides whether memberSource may be written
+//   Call 3: from('members').upsert().select().single()
 function makeSyncClient({
   userRow,
   userError = null,
   memberRow,
   memberError = null,
+  // Defaults to "no existing row" (a genuine first creation) — matches
+  // every pre-existing test's expectations, which predate the pre-check.
+  existingMemberRow = null,
 }: {
   userRow: unknown
   userError?: unknown
   memberRow?: unknown
   memberError?: unknown
+  existingMemberRow?: unknown
 }) {
   const usersUpsertCalls: unknown[] = []
   const membersUpsertCalls: unknown[] = []
@@ -53,6 +59,15 @@ function makeSyncClient({
         }
       }
       return {
+        select(_cols: string) {
+          return {
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: existingMemberRow, error: null }),
+              }),
+            }),
+          }
+        },
         upsert(payload: unknown, _opts: unknown) {
           membersUpsertCalls.push(payload)
           return {
@@ -259,6 +274,51 @@ describe('syncMember', () => {
           expect(users[key]).toBeUndefined()
         }
       }
+    })
+  })
+
+  // ── members.source (distinct from Gate 3's `source`/IdentitySource) ──────
+  describe('memberSource — members.source, written once at genuine creation only', () => {
+    it('writes memberSource into the members upsert payload for a brand-new clerk_id', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms1' },
+        memberRow: { id: 'member-uuid-ms1' },
+        existingMemberRow: null,
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms1', memberSource: 'self_serve_chat' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect(payload.source).toBe('self_serve_chat')
+    })
+
+    it('never writes source when a members row already exists for this clerk_id — the overwrite-on-re-login regression guard', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms2' },
+        memberRow: { id: 'member-uuid-ms2' },
+        existingMemberRow: { id: 'member-uuid-ms2' },
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms2', memberSource: 'self_serve_clerk' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect('source' in payload).toBe(false)
+    })
+
+    it('omits source from the payload when the caller supplies no memberSource, even for a brand-new row', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms3' },
+        memberRow: { id: 'member-uuid-ms3' },
+        existingMemberRow: null,
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms3' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect('source' in payload).toBe(false)
     })
   })
 })

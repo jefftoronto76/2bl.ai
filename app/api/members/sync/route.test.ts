@@ -140,3 +140,12 @@ describe('POST /api/members/sync — Gate 3 attribution', () => {
     expect(call.correlationId).toBeNull()
   })
 })
+
+describe('POST /api/members/sync — memberSource (members.source, distinct from Gate 3 source)', () => {
+  it("always passes memberSource: 'self_serve_chat' — this route is only ever called from chat-embedded components", async () => {
+    await POST(req({ name: 'Jane' }))
+
+    const [call] = syncMemberMock.mock.calls[0] as [Record<string, unknown>]
+    expect(call.memberSource).toBe('self_serve_chat')
+  })
+})

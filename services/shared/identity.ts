@@ -112,3 +112,23 @@ export function resolveMemberName(row: {
 }): string | null {
   return identityValue(row.name) ?? identityValue(row.invited_name) ?? null
 }
+
+/**
+ * `members.source` — how a person originally joined, written once (at true
+ * row creation only) and never updated after.
+ *
+ * NOT Gate 3's `IdentitySource` (`services/auth/supabase-admin.ts`) — that's
+ * per-write audit-trail attribution (which code path caused *this* write
+ * event), threaded through `getAdminClient`'s headers, ephemeral per call.
+ * This is a permanent fact about the person, stored once on `members.source`
+ * itself. Same word, different table, different lifetime — do not conflate
+ * the two or reuse one for the other.
+ *
+ * `self_serve_chat` (the custom, chat-embedded OTP form — the app's own
+ * enforced form) and `self_serve_clerk` (Clerk's prebuilt sign-up modal —
+ * unenforced, no name requirement) are deliberately separate values, not one
+ * `self_serve` bucket: distinguishing which door a member came through is
+ * the whole point of this field for Goal 1 (name-required-at-signup)
+ * reporting.
+ */
+export type MemberSource = 'invite' | 'story_invite' | 'self_serve_chat' | 'self_serve_clerk' | 'waitlist'

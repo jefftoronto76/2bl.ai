@@ -50,6 +50,13 @@ export async function POST(req: Request) {
     phone: user.phone ?? null,
     source: 'api_members_sync',
     correlationId: req.headers.get('x-correlation-id'),
+    // This route is only ever called from chat-embedded components
+    // (MessageList's handleAuthSuccess, chatStore's claimAllSessions,
+    // NameCompletionGate) — never from a Clerk-prebuilt-modal flow — so a
+    // genuine first-time creation reaching syncMember through here is
+    // reliably the custom OTP form. See services/shared/identity.ts's
+    // MemberSource doc comment.
+    memberSource: 'self_serve_chat',
   })
 
   if (!result.ok) {

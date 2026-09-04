@@ -7,7 +7,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { linkInvitedMember } from '@/services/members'
 import { acceptStoryInvite } from '@/services/crm/story-invites'
-import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
+import { setIdentityField, setIdentityEmail, type MemberSource } from '@/services/shared/identity'
 import { logSafeIdentity, identityHash } from '@/services/shared/log-safe'
 
 // Clerk event types we care about → auth_events rows
@@ -169,6 +169,21 @@ export async function POST(req: Request): Promise<NextResponse> {
       })
     }
 
+    // heirloom_signup_surface: 'custom_otp' when the custom OTP form wrote it
+    // (services/auth/providers/clerk/client.ts) — absent for a Clerk-
+    // prebuilt-modal sign-up (LandingNav's "Sign Up", GateView's invalid-
+    // token modal), since that flow never calls signUp.update() at all.
+    // Resolves which self-serve members.source bucket applies below when
+    // this webhook's own syncMember fallback ends up being the row's actual
+    // creator — see services/shared/identity.ts's MemberSource doc comment
+    // for why this can't just be inferred from "this call came from the
+    // webhook" (a chat-form signup's own direct /api/members/sync call races
+    // this same webhook, unordered, for the same person).
+    const signupSurface =
+      ((data.unsafe_metadata as Record<string, unknown> | undefined)
+        ?.heirloom_signup_surface as string | undefined) ?? null
+    const memberSource: MemberSource = signupSurface === 'custom_otp' ? 'self_serve_chat' : 'self_serve_clerk'
+
     // Extract the story-invite token written to Clerk unsafeMetadata during
     // sign-up by the story-invite flow (signUp.update({ unsafeMetadata: {
     // heirloom_story_invite_token } })). Mutually exclusive with inviteToken
@@ -236,6 +251,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           phone: phone ?? undefined,
           source: 'clerk_webhook',
           correlationId: svixId,
+          memberSource,
         })
 
         if (!membersResult.ok) {
