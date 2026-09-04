@@ -279,7 +279,12 @@ export async function linkInvitedMember(
       action: AuditAction.MEMBER_USER_RESOLVE_FAILED,
       clerk_user_id: clerkId,
       outcome: 'failure',
-      metadata: { stage: 'link_invited_member', email, error: userErr?.message ?? 'no row returned' },
+      // No users.id/member_id to attribute this to — that's exactly what
+      // failed to resolve. clerk_user_id above is the real, non-PII join key
+      // an auditor has to trace this row back to a person; email is a
+      // logSafeIdentity fingerprint, not the raw value (audit_events is
+      // permanent storage, unlike a console log).
+      metadata: { stage: 'link_invited_member', email: logSafeIdentity(email), error: userErr?.message ?? 'no row returned' },
     })
     return false
   }

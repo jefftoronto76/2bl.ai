@@ -9,14 +9,15 @@
 
 import { vi, describe, it, expect } from 'vitest'
 
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, logEventMock } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  logEventMock: vi.fn(),
 }))
 vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => adminHolder.client,
 }))
 vi.mock('@/services/audit', () => ({
-  logEvent: vi.fn(),
+  logEvent: (...args: unknown[]) => logEventMock(...args),
 }))
 vi.mock('@/services/auth', () => ({
   deleteClerkUser: vi.fn(async () => {}),
@@ -47,13 +48,21 @@ function captureAllConsoleOutput() {
 
 // Mirrors members.test.ts's makeLinkClient shape (three calls: users upsert,
 // members email-fallback find, members update).
-function makeLinkClient({ userRow, inviteRow }: { userRow: unknown; inviteRow: unknown }) {
+function makeLinkClient({
+  userRow,
+  userError = null,
+  inviteRow,
+}: {
+  userRow: unknown
+  userError?: unknown
+  inviteRow: unknown
+}) {
   const client = {
     from(table: string) {
       if (table === 'users') {
         return {
           upsert(_payload: unknown, _opts: unknown) {
-            return { select: () => ({ single: async () => ({ data: userRow, error: null }) }) }
+            return { select: () => ({ single: async () => ({ data: userRow, error: userError }) }) }
           },
         }
       }
@@ -143,6 +152,34 @@ describe('linkInvitedMember — D9, no raw email in any console output', () => {
 
     expect(output).not.toContain(RAW_EMAIL)
     expect(output).toContain('[members] linkInvitedMember — token lookup skipped')
+  })
+})
+
+// Audit-metadata fix (audit_events is permanent storage, unlike a console
+// log): MEMBER_USER_RESOLVE_FAILED's logEvent call wrote the raw email
+// straight into metadata.
+describe('linkInvitedMember — no raw email in audit_events metadata', () => {
+  it('logs only a logSafeIdentity fingerprint for email in the MEMBER_USER_RESOLVE_FAILED metadata, with clerk_user_id for traceability', async () => {
+    logEventMock.mockClear()
+    adminHolder.client = makeLinkClient({
+      userRow: null,
+      userError: { message: 'upsert failed' },
+      inviteRow: null,
+    })
+
+    const result = await linkInvitedMember('clerk-42', RAW_EMAIL, null, null)
+
+    expect(result).toBe(false)
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.user_resolve_failed')
+    expect(arg.clerk_user_id).toBe('clerk-42')
+
+    const metadata = arg.metadata as Record<string, unknown>
+    expect(JSON.stringify(metadata)).not.toContain(RAW_EMAIL)
+    const emailFingerprint = metadata.email as Record<string, unknown>
+    expect(emailFingerprint.present).toBe(true)
+    expect(emailFingerprint.hash).toMatch(/^[0-9a-f]{8}$/)
   })
 })
 
