@@ -8,8 +8,10 @@ Goal 2's confirmed gap is closed, Goal 3 is unchanged (its one loose end is
 still open), Goal 4's identity-write-tracing scope is built and live
 (Gate 3) — its broader "navigation traceability" scope question is still
 unanswered, not decided either way.
-**Builds on:** the D1/D2 fixes (`b4fbfb9`, `e87379b`, `3cde3ed` on
-`claude/heirloom-identity-audit-htyd8g`, not yet merged to `main`) and the
+**Builds on:** the D1/D2 fixes (`b4fbfb9`, `e87379b`, `3cde3ed`, originally on
+`claude/heirloom-identity-audit-htyd8g` — that branch, and everything else
+built on it through this doc's re-grade below, is now fully merged to `main`
+as of 2026-09-03/04 via PRs #448/#451/#452/#457/#459/#460/#461) and the
 four-gate audit (`System Docs/Identity System.md`,
 `Design Handovers/identity-tracking-proposal.md`,
 `Design Handovers/test-plans/identity-test-plan.md`).
