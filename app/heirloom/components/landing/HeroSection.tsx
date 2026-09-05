@@ -381,7 +381,7 @@ export function HeroSection() {
   const { dispatch } = useChatStore();
 
   return (
-    <section data-screen-label="Hero" className="relative min-h-screen flex items-center overflow-hidden bg-background">
+    <section data-screen-label="Hero" className="hl-mc-hero relative min-h-screen flex items-center overflow-hidden bg-background">
       <div className="hl-mc-hero-grid relative z-10 max-w-[1340px] w-full mx-auto px-4 sm:px-6 md:px-12">
         <div className="hl-mc-hero-text-col" style={{ transform: 'translateY(-5vh)' }}>
           <h1 className="font-display font-light tracking-tight text-text-primary" style={{ margin: 0 }}>
@@ -420,6 +420,13 @@ export function HeroSection() {
           .hl-mc-hero-text-col > div { justify-content: center; }
           .hl-mc-hero-text-col > .hl-mc-hero-cta-row { display: none !important; }
           .hl-mc-collage-col > .hl-mc-scaler { display: none !important; }
+          /* Mobile: the H1 starts 28vh from the top of the viewport instead of the
+             hero vertically centring in its min-height: 100vh. The section's
+             Tailwind items-center and the text column's inline translateY(-5vh)
+             both need overriding for the 28vh to land exactly. */
+          .hl-mc-hero { align-items: flex-start !important; }
+          .hl-mc-hero-grid { padding-top: 28vh; align-self: flex-start; }
+          .hl-mc-hero-text-col { transform: none !important; }
         }
         .hl-mc-nowrap { white-space: normal; }
         @media (min-width: 769px) { .hl-mc-nowrap { white-space: nowrap; } }
