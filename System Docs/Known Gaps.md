@@ -198,6 +198,42 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `System Docs/API Routes.md`'s `/api/webhooks/clerk` row and
   `System Docs/Utilities/Auth.md` for the mechanism.
 
+- **RESOLVED 2026-09-05 (stories-refresh-after-claim, PR #462) — sidebar
+  `stories` list, and in one edge case the standalone `MediaPage.tsx`,
+  never refetched after claiming an anonymous session on sign-in.**
+  Reported live and reproduced: a story existed on an anonymous
+  (not-signed-in) chat session; the visitor signed in via the custom OTP
+  "Save this chat" flow (`claimAllSessions`/`claimSessionsOnly`,
+  `chatStore.tsx`), the claim visibly succeeded and the story was confirmed
+  correctly linked to the new member's `member_id` directly in the
+  database — but the sidebar showed nothing until a manual page reload.
+  Root cause: `ChatHero.tsx`'s `stories` state was fetched exactly once, on
+  mount, via a `useCallback`-memoized `refreshStories` with an empty
+  dependency array — nothing re-invoked it on a later sign-in. Same root
+  cause as the sidebar-refetch fix in the story-invite-acceptance entry
+  above (2026-08-10/11, PRs #343/#344/#346/#348) — that fix only covered
+  the story-invite-*join* trigger (`joinedStoryConfirmation`), not the
+  claim-on-sign-in trigger this entry covers; the two are siblings, not a
+  duplicate. **Fixed:** a new effect watches `state.isMember`'s
+  false→true transition (mirroring `chatStore.tsx`'s own `wasSignedInRef`
+  pattern) and calls the existing `refreshStories()` on that edge —
+  `isMember` derives directly from Clerk, so this covers every sign-in
+  entry point uniformly rather than hooking into one specific claim
+  function. The same investigation, done per this bug report's own
+  request to check other account-scoped data, found one further edge case
+  in `MediaPage.tsx`: opening the standalone Media page while still
+  anonymous, then signing in without closing/reopening it left the
+  anonymous (empty) result on screen, since `useMediaPagination`'s
+  `queryKey` only changed on sort, never on auth state. Fixed the same
+  way — a new `isMember` prop folded into the `queryKey` so a sign-in
+  transition after the panel was already open produces a genuinely new
+  key. The common case (opening Media for the first time *after* sign-in)
+  was already correct via the existing `hasOpened` lazy-fetch gate, and
+  "past sessions" (`recentSessions`, `chatStore.tsx`) was checked and
+  confirmed already correct — it already reacts to the `isSignedIn`
+  transition. Deliberately built on its own branch/PR, separate from the
+  identity-audit work elsewhere in this file, since the two are unrelated.
+
 - **Admin/member invite acceptance had the same reliability gaps already
   fixed for story invites on 2026-08-10/11 (see the entry above) — found
   and fixed 2026-08-13 (PR #367).** Unlike the story-invite path,

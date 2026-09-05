@@ -136,6 +136,68 @@ D4/D5 rows damaged before their 2026-08-17 fixes are still not retroactively
 traceable — the trigger only sees writes from 2026-09-03 onward — but any
 future write of that shape now leaves one.
 
+### 1.5 `members.source` — how a person originally joined (adjacent, not core scope)
+
+Not one of this doc's three identity fields (see Scope above), but recorded
+here since it was built by the same effort and hits the same
+same-signup-races-the-webhook hazard class as §1.2/§1.3. `members.source`
+(`services/shared/identity.ts`'s `MemberSource` type) is a permanent,
+write-once-per-person record of *how* a member originally joined — a
+completely different concept from Gate 3's `IdentitySource`
+(`services/auth/supabase-admin.ts`, threaded through `getAdminClient`),
+which is per-write audit attribution, not a fact about the person. Same
+word, different table, different lifetime — do not conflate the two.
+
+**Built 2026-09-04 (PR #461).** Populated by all 5 real member-creation
+paths going forward:
+
+| Value | Writer | File |
+|---|---|---|
+| `invite` | `linkInvitedMember`, `acceptInvite` | `services/members/members.ts` |
+| `story_invite` | `acceptStoryInvite` | `services/crm/story-invites.ts` |
+| `self_serve_chat` | `syncMember`, called with `memberSource: 'self_serve_chat'` | `services/auth/sync-member.ts`, `app/api/members/sync/route.ts` |
+| `self_serve_clerk` | `syncMember`'s webhook-fallback call (when the marker below is absent), or `claimMembership` | `app/api/webhooks/clerk/route.ts`, `services/auth/claim-membership.ts` |
+| `waitlist` | Waitlist self-register | `app/api/heirloom/members/waitlist/route.ts` |
+
+`createMemberInvite` (writes `invited_name`, not `source`) is unchanged —
+`source` is stamped only once an invite is accepted, by the two rows above.
+
+**The race this needed to close.** `syncMember` is reachable two ways for
+the *same* chat-form (custom OTP) signup — directly, from the three
+chat-embedded `/api/members/sync` callers, and via the Clerk webhook's own
+`user.created` fallback cascade — with no ordering guarantee between them
+(the same race `heirloom-signup-signin-paths.md` already documents for
+Path 1). Hardcoding "webhook fallback ⇒ `self_serve_clerk`" would have
+mis-tagged a real custom-OTP signup purely on which side won the race.
+Fixed the same way `heirloom_invite_token`/`heirloom_story_invite_token`
+already solve this exact shape of problem: a
+`heirloom_signup_surface: 'custom_otp'` marker, written into Clerk
+`unsafeMetadata` by every custom-OTP sign-up attempt
+(`services/auth/providers/clerk/client.ts`'s `sendCode`), read by the
+webhook (`app/api/webhooks/clerk/route.ts`) to resolve `self_serve_chat`
+vs. `self_serve_clerk` regardless of which side of the race actually wins.
+
+**Immutability guard.** `syncMember` is called on every authentication, not
+just first creation — including an already-`invite`- or `story_invite`-
+sourced member's completely ordinary next login. To avoid silently
+overwriting a correct value, it runs a pre-check
+(`select id from members where clerk_id = X`) before its upsert and
+includes `source` in the payload only when that check confirms this is a
+genuine first-ever row creation. On an existing row, `source` is omitted
+from the payload entirely — regardless of its current value, including
+`NULL` (see next).
+
+**Existing null rows are an accepted historical gap, not backfilled.**
+34 of 41 live `members` rows (measured 2026-08-16, before this fix) had
+`source IS NULL` — created before this column had a writer on every path.
+A null row's true original source cannot be recovered by inference (the
+same person could in principle have arrived via any bucket before this fix
+shipped), so no bulk backfill and no "fill on next ordinary login" mechanism
+was built — a null row stays null unless Jeff runs a one-time,
+evidence-based `UPDATE` in Studio. This is the same tradeoff §5's D8 already
+made for `invited_name` (frozen by design, not reopened as a live gap) —
+consistent precedent, not a new exception.
+
 ---
 
 ## 2. Read paths
@@ -407,3 +469,11 @@ where email is not null and email !~ '^[0-9a-f]{8}$';
   — it does). See `Design Handovers/identity-remaining-work-sequencing-
   proposal.md` for the sequencing this batch worked through, and PRs #448,
   #451, #452, #457, #459.
+- **2026-09-04** — `members.source` populated consistently across all real
+  signup paths (`invite`, `story_invite`, `self_serve_chat`,
+  `self_serve_clerk`, `waitlist`), including the `heirloom_signup_surface`
+  race-condition fix and `syncMember`'s new pre-check guard against
+  clobbering an existing value on re-login. New §1.5 (adjacent to this
+  doc's core name/email/phone scope, not part of it). Existing null rows
+  left as an accepted historical gap, same precedent as D8. PR #461,
+  merged to `main` at `654d337`.
