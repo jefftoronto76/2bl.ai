@@ -1070,12 +1070,17 @@ export function MessageList({ messages, isLoading, errorType, onOpenMemory, memo
 
   // Called from MagicLinkCard.onSuccess: claim the anonymous session, then
   // sync the newly-authenticated user into the members table with their name.
+  // syncToClerk: true — closes D3's sign-in gap (client.ts's signUp.update
+  // only ever fires on the sign-up branch, so a name typed while signing
+  // in to an EXISTING account never reached Clerk any other way). Harmless
+  // on the sign-up branch too — Clerk already has this name from
+  // signUp.update, so this is just a same-value re-write there.
   const handleAuthSuccess = useCallback(async (name: string) => {
     await claimCurrentSession();
     await fetch('/api/members/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() || null }),
+      body: JSON.stringify({ name: name.trim() || null, syncToClerk: true }),
     }).catch((err) =>
       console.error('[heirloom/MessageList] members sync failed:', err),
     );

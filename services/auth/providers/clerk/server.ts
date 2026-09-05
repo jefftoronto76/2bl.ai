@@ -97,6 +97,24 @@ export async function deleteClerkUser(clerkUserId: string): Promise<void> {
   await client.users.deleteUser(clerkUserId)
 }
 
+/**
+ * Updates a Clerk user's first name server-side. Used only by the
+ * name-completion interstitial's submit path
+ * (components/shells/membership/NameCompletionGate.tsx) — the client-side
+ * signUp.update() write (client.ts) operates on a live, in-browser SignUp
+ * resource and is gated to the sign-up branch only, so a name typed by an
+ * already-authenticated visitor never reaches Clerk any other way.
+ * Deliberately narrow: this is not general Clerk/Supabase reconciliation —
+ * see D3 in System Docs/Identity System.md for that broader, unbuilt
+ * problem, which this function does not attempt to solve.
+ * clerkClient is an async factory in Core 3 (v7) — must be awaited before
+ * use, same as deleteClerkUser above.
+ */
+export async function updateClerkUserFirstName(clerkUserId: string, firstName: string): Promise<void> {
+  const client = await clerkClient()
+  await client.users.updateUser(clerkUserId, { firstName })
+}
+
 // Low-level Clerk re-exports for IN-BOUNDARY use only (the existing
 // services/auth helpers — get-auth-context, sync-user, … — import these
 // instead of @clerk/nextjs/server so the lint override can eventually narrow

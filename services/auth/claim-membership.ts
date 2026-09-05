@@ -6,6 +6,7 @@
 
 import { getAdminClient } from './supabase-admin'
 import { HEIRLOOM_TENANT_ID } from './sync-member'
+import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 export type ClaimMembershipResult = { ok: true } | { ok: false; error: string }
 
@@ -25,7 +26,7 @@ export async function claimMembership(
   tenantId: string = HEIRLOOM_TENANT_ID,
   contact: ClaimMembershipContact = {},
 ): Promise<ClaimMembershipResult> {
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('claim_membership')
 
   // Check for an existing row first so we never downgrade an active member.
   const { data: existing, error: fetchErr } = await supabase
@@ -52,11 +53,16 @@ export async function claimMembership(
     clerk_id: clerkUserId,
     tenant_id: tenantId,
     status: 'pending',
+    // This function's only caller (POST /api/heirloom/members/claim) is only
+    // ever triggered by GateView's Clerk-prebuilt-modal claim effect — no
+    // ambiguity the way syncMember has. See services/shared/identity.ts's
+    // MemberSource doc comment.
+    source: 'self_serve_clerk',
     updated_at: new Date().toISOString(),
   }
-  if (contact.name != null) insertPayload.name = contact.name
-  if (contact.email != null) insertPayload.email = contact.email
-  if (contact.phone != null) insertPayload.phone = contact.phone
+  setIdentityField(insertPayload, 'name', contact.name)
+  setIdentityEmail(insertPayload, 'email', contact.email)
+  setIdentityField(insertPayload, 'phone', contact.phone)
 
   const { error: insertErr } = await supabase.from('members').insert(insertPayload)
 

@@ -451,6 +451,137 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   no-owner-control auto-greet path decision flagged in the original entry.
   Not scheduled — still a separate, later task.
 
+- **Account dropdown only ever shows "Sign in," even for a visitor who's
+  never had an account — found during the UI-CTA sign-up audit,
+  2026-09-03, not fixed.** `ChatHeader.tsx:463`'s account dropdown renders
+  exactly one item when signed out — "Sign in" (`openSignIn()`) — with no
+  separate "Sign up" option and no label adaptation based on whether the
+  visitor is known. Clerk's modal likely still lets a brand-new visitor
+  create an account once opened (its own UI may offer a toggle), but the
+  label itself is misleading for a first-time visitor who has no reason to
+  read "Sign in" as "click here to get started." Distinct from the actual
+  sign-up doors on this surface — the separate "Sign Up" nav button
+  (`LandingNav.tsx:79`) and "Start Your Story" (opens the chat panel only,
+  no direct auth call) — see `Design Handovers/heirloom-signup-signin-paths.md`
+  Paths 6a/6b for the full UI-to-mechanism mapping this finding came out of.
+  **Backlog, not urgent — not fixed as part of this pass.**
+
+- **Chat-captured `[NAME:]` marker never reached `members`, only
+  `chat_sessions` — found in the Gate 1 identity audit (2026-08-16, "D7"),
+  fixed 2026-09-03.** `persistVisitorName` (`services/crm/session.ts`) wrote
+  a marker-captured name into `chat_sessions.visitor_name` only — an
+  authenticated visitor whose `members.name` was still null stayed nameless
+  there even after typing their name mid-conversation, since nothing else
+  ever read `chat_sessions` back into `members`. **Fixed:** `persistVisitorName`
+  now also writes fill-only-when-null into the caller's `members` row when
+  one is resolvable at marker-capture time (authenticated sessions only —
+  an anonymous visitor has no `members` row to write to), using the same
+  `services/shared/identity.ts` primitives every other write path already
+  uses. See `System Docs/Identity System.md` §1.2's `persistMemberName` row.
+
+- **Sign-in-typed and chat-marker-captured names never reached Clerk, only
+  Supabase — found in the identity end-state goals investigation
+  (2026-08-17, folded into "D3"), fixed 2026-09-03 ("D3 A/B/C").** The
+  custom OTP sign-up flow already pushed a typed name to Clerk
+  (`services/auth/providers/clerk/client.ts`'s `signUp.update()`), but that
+  write is sign-up-branch-only by construction — a name typed at an existing
+  member's *sign-in* (`MagicLinkCard`/`SaveChatCTA`), or captured later via
+  a `[NAME:]` chat marker, updated `members`/`chat_sessions` but never
+  Clerk, leaving Clerk's own "Profile details" panel permanently blank for
+  those members. **Fixed:** a new `updateClerkUserFirstName`
+  (`services/auth/providers/clerk/server.ts`, mirroring `deleteClerkUser`'s
+  async-factory pattern) is now called from `POST /api/members/sync` when
+  the caller opts in with `syncToClerk: true` (both the sign-in Clerk-sync
+  gap and `SaveChatCTA`'s `claimAllSessions` path now set it) and from
+  `persistVisitorName`'s chat-marker path above. Non-fatal by design —
+  logged, never blocks — same treatment `hardDeleteMember` already gives a
+  failed `deleteClerkUser` call. Deliberately scoped narrowly (an explicit
+  opt-in flag, not an unconditional write) since `/api/members/sync` is
+  called from several places that should not all start writing to Clerk.
+  See `System Docs/Identity System.md` §1.2's "Into Clerk" #21 row.
+
+- **No `AuditAction` for a successful identity write, and what logging
+  existed wrote raw PII — found in the Gate 1 identity audit (2026-08-16,
+  "D9"/"D10"), fixed 2026-09-03 ("Gate 3").** Between the two, none of the
+  identity defects fixed 2026-08-17 (D1/D2/D4/D5) had left any queryable
+  trace when they happened — damage was only ever detectable after the fact
+  by joining `members` to `users`. **Fixed:** a Postgres `BEFORE UPDATE`
+  trigger on both `members` and `users` now logs
+  `identity.write`/`identity.overwrite`/`identity.cleared` into
+  `audit_events` on every write, regardless of which code path caused it —
+  confirmed live via a real logged row. The trigger reads
+  `x-identity-source`/`x-correlation-id` (PostgREST's
+  `current_setting('request.headers', true)`) to attribute each write to
+  the code path that made it; on the app side, `getAdminClient` was
+  consolidated from three duplicate implementations into one
+  source-attributed factory, threaded through all 11 real identity-write
+  call sites. The trigger DDL is Jeff's Studio work, per `CLAUDE.md`'s
+  schema-migration rule — the app-code side above is what shipped through
+  this repo. See `Design Handovers/identity-tracking-proposal.md` for the
+  full design and `System Docs/Identity System.md` §1.4/§5 for the
+  current-state summary.
+
+- **Raw PII (name/email/phone) logged in plaintext across several identity
+  write paths — found in the Gate 1 identity audit (2026-08-16, "D9"),
+  fixed 2026-09-03/04.** A full-repo sweep (not just the four originally-
+  known locations) found 20 `console.log`/`error`/`warn` call sites across
+  5 files (`services/crm/session.ts`, `services/members/members.ts`,
+  `app/api/webhooks/clerk/route.ts`, `services/chat/server/member-context.ts`,
+  `app/api/sessions/[id]/route.ts`) writing a raw name/email/phone value, or
+  an indirect leak of one (a text slice containing a marker value, or a
+  prose preview built from identity fields). A follow-up sweep, prompted by
+  the first fix's own review, found the same problem one layer deeper: one
+  `logEvent` call (`members.ts`'s `MEMBER_USER_RESOLVE_FAILED`) wrote a raw
+  email into `audit_events`'s `metadata` — permanent, queryable storage,
+  unlike a console log — and a first-class `auth_events.email` column
+  (populated only by the Clerk webhook's `sign_up` event) stored the raw
+  email outright. **Fixed:** a new `services/shared/log-safe.ts` reuses
+  Gate 3's own hash design (SHA-256 of the trimmed/lowercased value, first
+  8 hex chars) — `logSafeIdentity(value)` for structured log/metadata
+  objects (`{present, length, hash}`), `identityHash(value)` for a scalar
+  column like `auth_events.email` (just the bare hash or `null` — presence
+  is already NULL-vs-non-NULL there). Every real instance across all three
+  storage layers (console, `audit_events` metadata, `auth_events.email`) now
+  uses one of these instead of the raw value. **Not fixed:** 20 pre-existing
+  `auth_events` rows still carry a raw email — an attempted redaction
+  (verified against the live hash algorithm first) was rejected outright by
+  a `BEFORE UPDATE` trigger (`prevent_audit_mutation()`, the same one that
+  makes `audit_events`/`auth_events` append-only) even from a service-role
+  connection. Redacting them requires Jeff to temporarily lift that trigger
+  in Studio — deferred, pending his own review, not attempted as a
+  workaround. See `System Docs/Identity System.md` §5's D9 entry, PR #459.
+
+- **Waitlist entry had no name field — found during the identity remaining-
+  work sequencing pass (2026-09-03), fixed 2026-09-03.** `WaitlistView`
+  (`GateView.tsx`) and `POST /api/heirloom/members/waitlist` accepted only
+  an email — a waitlist entry could not carry the visitor's name even if
+  they'd have happily given it, and nothing pre-filled it at promotion to a
+  real invite. **Fixed:** added an optional `name` field to both, fill-only-
+  when-null into the eventual invited row at promotion — deliberately
+  optional at waitlist entry (no Clerk account exists yet at that point, so
+  Goal 1's "name required at signup" doesn't apply there) and enforced only
+  later, same as every other path that already enforces at the point an
+  account actually forms.
+
+- **Name-completion gap for accounts created without one — scoped in
+  `Design Handovers/heirloom-signup-signin-fixes-proposal.md` §3b
+  (2026-08-18), built 2026-09-03 as "item 3b."** Several sign-up paths
+  (Clerk's own prebuilt modal via `GateView`, chief among them) could
+  produce an active `members` row with no resolvable name at all, with no
+  mechanism to ever ask for one afterward. **Fixed:** a new
+  `NameCompletionGate` component gates the chat surface (rendering an
+  interstitial instead) for any signed-in member where
+  `resolveMemberName(member)` returns null **and** `members.created_at >=
+  NAME_REQUIRED_SINCE` (a rollout cutoff, so every pre-existing account is
+  grandfathered rather than newly blocked) — checked via a new read-only
+  `GET /api/members/me`. Deliberately a universal backstop, not a per-path
+  fix: it catches any account missing a name regardless of which of the
+  many sign-up paths created it, including a future path nobody has
+  designed yet. Submits to the existing `POST /api/members/sync` with
+  `syncToClerk: true` (see the D3 A/B/C entry above) — fails open (renders
+  the chat surface) on any fetch error, so a broken check never blocks a
+  member who already has a name.
+
 ## Prompt & AI
 
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
@@ -2303,6 +2434,115 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `GET /api/media` row for the sort toggle itself — not yet reflected in
   `Public Site.md`'s `MediaPage` section, which still only covers the
   2026-08-14 pagination work above.
+
+- **`/api/heirloom/members/claim` (`claimMembership`) is effectively
+  orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
+  invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
+  static "Claim a free membership" button → `openSignUp()`) was replaced
+  with the same deterministic chat-first `[ACCOUNT_CREATE: expired invite]`
+  pattern already used for admin/story invites — signup now happens via
+  `MagicLinkCard` → `/api/members/sync` (`syncMember`, `status: 'active'`),
+  not this route. The route's only caller, `GateView.tsx`'s own top-level
+  `useEffect` watching the Clerk false→true sign-in transition, is shared
+  plumbing across all three `GateView` branches and was left in place (not
+  deleted) — but `GateView` no longer mounts at all for the
+  invalid/expired-token population (`isGated` bypasses it), so the one
+  realistic path that used to trigger this effect's sign-up transition is
+  gone. The only way it could still fire is a signed-out visitor on the
+  no-token `WaitlistView` branch signing in through some other UI element
+  while `GateView` stays mounted — not a real trigger path today
+  (`WaitlistView` has no sign-in UI of its own).
+
+  **Correction, 2026-08-16 (sign-up/sign-in path audit):** the "orphaned"
+  conclusion above is wrong for a **garbage or mistyped** `?invite=` token —
+  a string that was **never** a real token, distinct from the
+  genuinely-issued-but-now-invalid case this entry was actually describing.
+  `memberTokenExists()` returns `false` for a garbage token, so
+  `bypassGateForExpiredInvite` never applies, `GateView` still mounts, and
+  its `openSignUp()` button remains reachable — confirmed by tracing the gate
+  logic in `Design Handovers/heirloom-signup-signin-paths.md` (Path 7).
+  Low-traffic (it requires a visitor to arrive with a token string that
+  never existed), but a real, live trigger. **Left in place, correctly.**
+
+- **Expired/invalid `?invite=` token now gets the same chat-first
+  deterministic signup flow as valid admin/story invites — built
+  2026-08-13, NOT YET LIVE-VERIFIED.** GateView's old path
+  (`openSignUp()`'s Clerk-prebuilt modal, only reachable when a visitor's
+  invite token fails validation) never guaranteed name capture and
+  violated the marker-fallback principle. Replaced with the same pattern
+  already proven for admin/story invites tonight: a new
+  `memberTokenExists(token, tenantId)` check (services/members/members.ts)
+  distinguishes a genuinely-issued-but-now-invalid token from a garbage
+  `?invite=` string; only the former bypasses the gate. The bypass also
+  requires `isLoaded && !isSignedIn` client-side (and `!session`
+  server-side for `autoOpenChat`), so a signed-in-but-pending member with a
+  stale link still sees GateView's "You're on the list." branch, not an
+  unsolicited chat pop-open. `GateView.tsx` itself is unchanged — its three
+  branches just become unreachable for this one case.
+  `/api/heirloom/members/claim` + `claimMembership` are **not** orphaned — a
+  garbage `?invite=` token still reaches them via `GateView`'s `openSignUp()`
+  branch; see the correction on the entry immediately above.
+  **Not yet done:** the four manual verification cases this fix specifically
+  requires (real-expired-token, garbage-token, cross-tenant-token,
+  signed-in-with-stale-token) haven't been run against a live preview —
+  `tsc`/`next build` are clean but that doesn't substitute for the actual
+  behavior check. Do this before trusting the fix in production.
+
+- **`primer` (`members`/`story_invite_links`) still has zero delineation in
+  the system prompt — flagged 2026-08-13, still not fixed as of
+  session-context-service (2026-08-13).** See the entry above this one
+  (same date) for the full gap. Explicitly NOT touched by
+  session-context-service — that change built the reusable delineation
+  mechanism (XML tags + `escapeForTag`, `services/chat/server/session-
+  context.ts`, see `System Docs/Utilities/Chat Server.md`) for a *new*
+  block (`<session_context>`), scoped deliberately to leave `member-
+  context.ts`'s existing `primer` concatenation untouched rather than
+  bundle an unrelated retrofit into that change ("One Change at a Time,"
+  `CLAUDE.md`). **The fix is now more clearly scoped than it was on
+  2026-08-13:** wrap `primer` the same way — `<member_context>` (or a
+  `<primer>` sub-tag) plus `escapeForTag()` on the interpolated value —
+  reusing the exact pattern that now has a second, real precedent in this
+  codebase (`services/prompt/composer.ts`'s `<document_context>` was the
+  only one before this). Still needs: the `autoOpenChat`-forced,
+  no-owner-control auto-greet path decision flagged in the original entry.
+  Not scheduled — still a separate, later task.
+
+- **RESOLVED 2026-08-14 (real-story-view-1d-entry-point) — Session-
+  context-service built (2026-08-13); the "click an empty story to start a
+  chat in it" UI flow that exercises it is now wired too.**
+  `services/chat/server/session-context.ts`
+  (`getSessionContext`/`attachSessionContext`, `chat_session_context`
+  table — schema DDL reported to Jeff, now live in Studio, see `System
+  Docs/DB_CHANGELOG.md`), the route-layer attach-at-creation-time wiring
+  (`app/api/sessions/route.ts`), and the client accessor plumbing
+  (`getSessionContextToAttach`, `chatStore.tsx`/`useChatTurn.ts`) landed
+  2026-08-13, already built and tested. The missing piece — the actual
+  `SidebarV2` story-row click handler — is now real: `ChatHero.tsx`'s
+  `handleSelectStory` calls `newChat()` then `setSessionContextToAttach({
+  contextType: 'story', contextRefId: storyId, contextFrequency:
+  'every_turn' })` on the empty-story branch (see the real-story-view entry
+  above for the full branching logic). `onStartStoryChat` (a separate,
+  always-visible per-row icon distinct from the row's own click) remains
+  unwired — out of scope for this pass, which only wired `onSelectStory`.
+  **A related-looking WIP existed on origin (`2026-08-13-story-click-
+  routing`, commit `4b3aa9f9`, checkpointed mid-task, never merged) — it
+  was NOT resumed, deliberately:** it wired `onSelectStory` via a
+  completely different, discarded approach — a client-only
+  `storyContextIdRef` used solely to auto-assign a Kept memory back to the
+  story, plus a one-time deterministic *chat message* (rendered directly in
+  the transcript via plain ReactMarkdown, explicitly NOT XML-delineated by
+  that WIP's own doc comment, since raw tags would render as literal broken
+  text there) naming the story/owner. It had no `chat_session_context` row,
+  no `attachSessionContext` call, and nothing re-injected on later turns —
+  a one-shot greeting, not persistent every-turn system-prompt context. It
+  also predated and partially overlapped with the real, later, merged
+  memory↔story linking (`assign-memory-to-story`, PR #377, the actual
+  `StoryPicker` UI) — its own auto-assign-on-Keep half was already
+  superseded by that. Its `contentCount`-branching idea for the click
+  handler was NOT reused either — that field was never rebuilt anywhere
+  (confirmed absent from `services/crm/stories.ts`'s `listStories`); the
+  real click handler checks emptiness for real via `GET /api/stories/[id]/
+  memories` instead (see the real-story-view entry above).
 
 - **RESOLVED 2026-08-14 — Steps 5 and 6 of the original media upload plan,
   the last two open items (PR #380).**

@@ -100,6 +100,7 @@ export function GateView() {
 // ── Waitlist form (no invite token case) ──────────────────────────────────────
 
 function WaitlistView() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -115,10 +116,16 @@ function WaitlistView() {
     setError(null);
     setSubmitting(true);
     try {
+      // name is optional here — this creates no Clerk account, so Goal 1's
+      // "name required at signup" doesn't apply yet; it's captured now
+      // (when offered) and carried on the same members row through
+      // promotion to a real invite, same as everything else that fills
+      // rather than overwrites.
+      const trimmedName = name.trim();
       const res = await fetch('/api/heirloom/members/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmed, ...(trimmedName ? { name: trimmedName } : {}) }),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -160,6 +167,16 @@ function WaitlistView() {
         Heirloom is currently in private access. Request an invitation below.
       </p>
       <form onSubmit={handleSubmit} className="w-full max-w-xs flex flex-col gap-3">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="First name (optional)"
+          aria-label="First name"
+          autoComplete="given-name"
+          disabled={submitting}
+          className="w-full px-4 py-3 rounded-full bg-surface border border-border text-text-primary font-body text-base placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        />
         <input
           type="email"
           required

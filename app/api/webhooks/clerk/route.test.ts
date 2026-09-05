@@ -25,13 +25,14 @@ vi.mock('@/services/audit', () => ({
   logAuthEvent: (...args: unknown[]) => mockLogAuthEvent(...args),
 }))
 
-vi.mock('@/services/auth/supabase-admin', () => ({
-  getAdminClient: () => ({
-    from: () => ({
-      upsert: () => Promise.resolve({ error: null }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
+const mockGetAdminClient = vi.fn((..._args: unknown[]) => ({
+  from: () => ({
+    upsert: () => Promise.resolve({ error: null }),
+    update: () => ({ eq: () => Promise.resolve({ error: null }) }),
   }),
+}))
+vi.mock('@/services/auth/supabase-admin', () => ({
+  getAdminClient: (...args: unknown[]) => mockGetAdminClient(...args),
 }))
 
 const mockFindUserByClerkId = vi.fn()
@@ -135,6 +136,18 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
     expect(mockSyncMember).toHaveBeenCalledTimes(1)
   })
 
+  it("passes source: 'clerk_webhook' and the svix-id as correlationId to both the direct users upsert and syncMember (Gate 3 attribution)", async () => {
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    // The direct `users` upsert getAdminClient() call, made before the
+    // linkInvitedMember/syncMember cascade.
+    expect(mockGetAdminClient).toHaveBeenCalledWith('clerk_webhook', { correlationId: 'id-1' })
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.source).toBe('clerk_webhook')
+    expect(syncCall.correlationId).toBe('id-1')
+  })
+
   it('a payload with no story-invite metadata at all is completely unaffected — existing cascade runs unchanged', async () => {
     const res = await POST(makeRequest(userCreatedPayload()))
 
@@ -169,5 +182,77 @@ describe('POST /api/webhooks/clerk — story-invite branch', () => {
     expect(mockAcceptStoryInvite).not.toHaveBeenCalled()
     expect(mockLinkInvitedMember).toHaveBeenCalledWith('clerk-1', 'a@example.com', null, null)
     expect(mockSyncMember).not.toHaveBeenCalled()
+  })
+})
+
+// D9 fix: the "heirloom_invite_token absent from unsafeMetadata" log line
+// (the non-invite / GateView-modal-sign-up path — no story-invite token, no
+// heirloom_invite_token, so linkInvitedMember runs its email fallback) used
+// to log the raw email value.
+describe('POST /api/webhooks/clerk — D9, no raw email in console output', () => {
+  it('never logs the raw email when no invite token is present in unsafeMetadata', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    const output = logSpy.mock.calls.map((args) => JSON.stringify(args)).join('\n')
+    logSpy.mockRestore()
+
+    expect(res.status).toBe(200)
+    expect(output).not.toContain('a@example.com')
+    expect(output).toContain('heirloom_invite_token absent from unsafeMetadata')
+  })
+})
+
+// auth_events.email is permanent, queryable storage (not a console log) —
+// the sign_up logAuthEvent call used to write the raw email into it.
+describe('POST /api/webhooks/clerk — auth_events.email is hashed, not raw', () => {
+  it('passes an 8-hex-char hash, never the raw email, to logAuthEvent', async () => {
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    await POST(makeRequest(userCreatedPayload()))
+
+    expect(mockLogAuthEvent).toHaveBeenCalledOnce()
+    const [arg] = mockLogAuthEvent.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.event_type).toBe('sign_up')
+    expect(arg.email).toMatch(/^[0-9a-f]{8}$/)
+    expect(arg.email).not.toBe('a@example.com')
+  })
+
+  it('passes null, not empty string, when the Clerk payload has no email', async () => {
+    mockLinkInvitedMember.mockResolvedValue(false)
+
+    await POST(makeRequest({
+      type: 'user.created',
+      data: { id: 'clerk-1', phone_numbers: [{ phone_number: '+15551234567' }], unsafe_metadata: {} },
+    }))
+
+    expect(mockLogAuthEvent).toHaveBeenCalledOnce()
+    const [arg] = mockLogAuthEvent.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.email).toBeNull()
+  })
+})
+
+// members.source (services/shared/identity.ts's MemberSource) — distinct
+// from the Gate 3 `source: 'clerk_webhook'` attribution already asserted
+// above. Resolves which self-serve bucket the webhook's own syncMember
+// fallback should use, based on the heirloom_signup_surface marker the
+// custom OTP client flow writes to unsafeMetadata.
+describe('POST /api/webhooks/clerk — memberSource resolution for the syncMember fallback', () => {
+  it("passes memberSource: 'self_serve_chat' when heirloom_signup_surface: 'custom_otp' is present", async () => {
+    const res = await POST(makeRequest(userCreatedPayload({ heirloom_signup_surface: 'custom_otp' })))
+
+    expect(res.status).toBe(200)
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.memberSource).toBe('self_serve_chat')
+  })
+
+  it("passes memberSource: 'self_serve_clerk' when heirloom_signup_surface is absent (a Clerk-prebuilt-modal signup)", async () => {
+    const res = await POST(makeRequest(userCreatedPayload()))
+
+    expect(res.status).toBe(200)
+    const [syncCall] = mockSyncMember.mock.calls[0] as [Record<string, unknown>]
+    expect(syncCall.memberSource).toBe('self_serve_clerk')
   })
 })

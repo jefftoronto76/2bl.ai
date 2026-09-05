@@ -105,6 +105,19 @@ export const AuditAction = {
   MEMBER_LINK_UPDATE_FAILED: 'member.link_update_failed',
   MEMBER_ORPHAN_CLEANUP_FAILED: 'member.orphan_cleanup_failed',
   MEMBER_ORPHAN_RECONCILED: 'member.orphan_reconciled',
+  // Identity writes (Gate 3 — Design Handovers/identity-tracking-proposal.md,
+  // System Docs/Identity System.md's defect register). Logged by a Postgres
+  // trigger on members/users (BEFORE UPDATE, deployed directly in Studio —
+  // no migration file in this repo), not by application code, so these
+  // values exist here purely for TypeScript-side consumers (queries,
+  // dashboards) to reference by name; the trigger itself writes the raw
+  // string. IDENTITY_WRITE (absent→value) is expected-volume, low-signal.
+  // IDENTITY_OVERWRITE (value→different value) is the D3 tripwire.
+  // IDENTITY_CLEARED (value→absent) is the D1/D4/D5 tripwire. A same-value
+  // rewrite is a deliberate no-op — never logged at all.
+  IDENTITY_WRITE: 'identity.write',
+  IDENTITY_OVERWRITE: 'identity.overwrite',
+  IDENTITY_CLEARED: 'identity.cleared',
   // Conversations (Composer history)
   CONVERSATION_CREATE: 'conversation.create',
   CONVERSATION_UPDATE: 'conversation.update',

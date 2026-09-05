@@ -3,6 +3,7 @@ import { getAuthContext } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { transferSessions } from '@/services/crm/sessions'
 import { logEvent, AuditAction } from '@/services/audit'
+import { resolveMemberName } from '@/services/shared/identity'
 
 export async function PATCH(
   req: NextRequest,
@@ -115,7 +116,7 @@ export async function PATCH(
     .maybeSingle()
 
   const memberEmail = memberRow?.email ?? null
-  const memberName = memberRow?.name ?? memberRow?.invited_name ?? null
+  const memberName = memberRow ? resolveMemberName(memberRow) : null
 
   console.log(
     `[sessions/[id]/transfer] stamping email and name for user_id=${target_user_id}`,

@@ -7,6 +7,8 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { findUserByClerkId, getTenantFromRequest, syncMember, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { linkInvitedMember } from '@/services/members'
 import { acceptStoryInvite } from '@/services/crm/story-invites'
+import { setIdentityField, setIdentityEmail, type MemberSource } from '@/services/shared/identity'
+import { logSafeIdentity, identityHash } from '@/services/shared/log-safe'
 
 // Clerk event types we care about → auth_events rows
 const EVENT_TYPE_MAP: Record<string, AuthEventType | null> = {
@@ -107,7 +109,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       event_type: mappedType,
       tenant_id: await getTenantFromRequest(req),
       clerk_user_id: clerkUserId,
-      email,
+      // Hashed, not raw — auth_events is permanent storage and this column
+      // has no reader anywhere in the codebase (confirmed by sweep); a
+      // human comparing a known email can still hash it the same way and
+      // match by equality. clerk_user_id above is the real join key.
+      email: identityHash(email),
       outcome: 'success',
       correlation_id: correlationId,
       svix_event_id: svixId,
@@ -123,15 +129,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     (eventType === 'user.created' || eventType === 'user.updated') &&
     clerkUserId
   ) {
-    const supabase = getAdminClient()
+    const supabase = getAdminClient('clerk_webhook', { correlationId: svixId })
 
     // Upsert users row — creates on user.created, updates on user.updated
+    // Same identity rule as every other write path. setIdentityEmail also
+    // normalises case here, which it previously did not — this upsert wrote raw
+    // case while linkInvitedMember lowercased the same column moments later in
+    // the same request.
     const usersPayload: Record<string, unknown> = {
       clerk_id: clerkUserId,
     }
-    if (name != null) usersPayload.name = name
-    if (email != null) usersPayload.email = email
-    if (phone != null) usersPayload.phone = phone
+    setIdentityField(usersPayload, 'name', name)
+    setIdentityEmail(usersPayload, 'email', email)
+    setIdentityField(usersPayload, 'phone', phone)
 
     const { error: usersErr } = await supabase
       .from('users')
@@ -155,9 +165,24 @@ export async function POST(req: Request): Promise<NextResponse> {
     } else {
       console.log('[webhook/clerk] heirloom_invite_token absent from unsafeMetadata (non-invite or GateView modal sign-up)', {
         clerkUserId,
-        email,
+        email: logSafeIdentity(email),
       })
     }
+
+    // heirloom_signup_surface: 'custom_otp' when the custom OTP form wrote it
+    // (services/auth/providers/clerk/client.ts) — absent for a Clerk-
+    // prebuilt-modal sign-up (LandingNav's "Sign Up", GateView's invalid-
+    // token modal), since that flow never calls signUp.update() at all.
+    // Resolves which self-serve members.source bucket applies below when
+    // this webhook's own syncMember fallback ends up being the row's actual
+    // creator — see services/shared/identity.ts's MemberSource doc comment
+    // for why this can't just be inferred from "this call came from the
+    // webhook" (a chat-form signup's own direct /api/members/sync call races
+    // this same webhook, unordered, for the same person).
+    const signupSurface =
+      ((data.unsafe_metadata as Record<string, unknown> | undefined)
+        ?.heirloom_signup_surface as string | undefined) ?? null
+    const memberSource: MemberSource = signupSurface === 'custom_otp' ? 'self_serve_chat' : 'self_serve_clerk'
 
     // Extract the story-invite token written to Clerk unsafeMetadata during
     // sign-up by the story-invite flow (signUp.update({ unsafeMetadata: {
@@ -224,6 +249,9 @@ export async function POST(req: Request): Promise<NextResponse> {
           name: name ?? undefined,
           email: email ?? undefined,
           phone: phone ?? undefined,
+          source: 'clerk_webhook',
+          correlationId: svixId,
+          memberSource,
         })
 
         if (!membersResult.ok) {

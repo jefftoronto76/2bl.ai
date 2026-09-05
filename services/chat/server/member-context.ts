@@ -3,6 +3,7 @@
 // Fail-open: any error returns null so the chat is never blocked.
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import { identityValue, resolveMemberName } from '@/services/shared/identity'
 
 /**
  * Returns the MEMBER CONTEXT text for the member who owns this session,
@@ -86,9 +87,13 @@ export async function getMemberContext(
   }
 
   // Step 2: fetch the member's identity + primer data.
+  // `name` is the member's current name; `invited_name` is invite-creation
+  // metadata and only ever a fallback (see resolveMemberName). This select
+  // previously omitted `name` entirely — that was D2: 12 members whose name was
+  // in the database but who the model was never told about, on every turn.
   const { data: memberRow, error: memberErr } = await supabase
     .from('members')
-    .select('id, primer, invited_name, email, phone')
+    .select('id, primer, name, invited_name, email, phone')
     .eq('id', resolvedMemberId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
@@ -101,6 +106,7 @@ export async function getMemberContext(
   const member = memberRow as {
     id: string
     primer: string | null
+    name: string | null
     invited_name: string | null
     email: string | null
     phone: string | null
@@ -111,10 +117,10 @@ export async function getMemberContext(
     return null
   }
 
-  const name      = member.invited_name?.trim() ?? null
-  const email     = member.email?.trim() ?? null
-  const phone     = member.phone?.trim() ?? null
-  const primerText = member.primer?.trim() ?? null
+  const name      = resolveMemberName(member)
+  const email     = identityValue(member.email) ?? null
+  const phone     = identityValue(member.phone) ?? null
+  const primerText = member.primer?.trim() || null
 
   const contextLines: string[] = []
   if (name)       contextLines.push(`Member's name is ${name}.`)
@@ -147,7 +153,7 @@ export async function getMemberContext(
     hasPhone: !!phone,
     isFirstTurn,
     emittingMarkerInstruction: markerInstruction.length > 0,
-    resultPreview: result.slice(0, 200),
+    resultLength: result.length,
   })
   return result
 }

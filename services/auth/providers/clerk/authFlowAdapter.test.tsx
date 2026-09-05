@@ -70,7 +70,10 @@ describe('useAuthFlowAdapter.sendCode — error-code-driven detection (signUp-fi
     expect(r).toEqual({ ok: true, flow: 'signup' })
     expect(mocks.current.signUp.create).toHaveBeenCalledWith({ emailAddress: 'new@b.com' })
     expect(mocks.current.signIn.emailCode.sendCode).not.toHaveBeenCalled()
-    expect(steps()).toEqual(['otp_sent'])
+    // signUp_update_invite_token now fires on every sign-up (it also carries
+    // heirloom_signup_surface, unconditional as of the memberSource work) —
+    // not just when an invite/story token is present.
+    expect(steps()).toEqual(['signUp_update_invite_token', 'otp_sent'])
   })
 
   it('existing email: form_identifier_exists (isTransferable false, as in production) → direct sign-in', async () => {
@@ -187,7 +190,7 @@ describe('useAuthFlowAdapter.sendCode — name attachment (sign-up path only)', 
     const r = await result.current.sendCode({ type: 'phone', value: '+15551234567', firstName: 'Jane' })
     expect(r).toEqual({ ok: true, flow: 'signup' })
     expect(mocks.current.signUp.verifications.sendPhoneCode).toHaveBeenCalled()
-    expect(steps()).toEqual(['signUp_update_name', 'otp_sent'])
+    expect(steps()).toEqual(['signUp_update_name', 'signUp_update_invite_token', 'otp_sent'])
   })
 
   it('a thrown name-update failure is logged but never blocks the sign-up (thrown channel)', async () => {
@@ -199,7 +202,10 @@ describe('useAuthFlowAdapter.sendCode — name attachment (sign-up path only)', 
     const r = await result.current.sendCode({ type: 'email', value: 'new@b.com', firstName: 'Jane' })
     expect(r).toEqual({ ok: true, flow: 'signup' })
     expect(mocks.current.signUp.verifications.sendEmailCode).toHaveBeenCalled()
-    expect(steps()).toEqual(['signUp_update_name_threw', 'otp_sent'])
+    // The mock rejects every signUp.update() call, so the metadata write
+    // (unconditional as of the memberSource work) throws too, not just the
+    // name update.
+    expect(steps()).toEqual(['signUp_update_name_threw', 'signUp_update_invite_token_threw', 'otp_sent'])
   })
 
   it('sign-in path NEVER attaches the name — existing profiles are not overwritten', async () => {
@@ -214,11 +220,12 @@ describe('useAuthFlowAdapter.sendCode — name attachment (sign-up path only)', 
     expect(mocks.current.signUp.update).not.toHaveBeenCalled()
   })
 
-  it('no name supplied → update is not called at all', async () => {
+  it('no name supplied → update is never called with a firstName/lastName payload (it still fires once, for the unconditional heirloom_signup_surface metadata write)', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     await result.current.sendCode({ type: 'email', value: 'new@b.com' })
-    expect(mocks.current.signUp.update).not.toHaveBeenCalled()
+    const calls = (mocks.current.signUp.update as AnyFn).mock.calls
+    expect(calls.every((args: unknown[]) => !('firstName' in (args[0] as object)) && !('lastName' in (args[0] as object)))).toBe(true)
   })
 })
 
@@ -233,7 +240,7 @@ describe('useAuthFlowAdapter.sendCode — invite token metadata (single write)',
     )
   }
 
-  it('both inviteToken and storyInviteToken land in a single signUp.update() call, not two', async () => {
+  it('both inviteToken and storyInviteToken land in a single signUp.update() call, alongside heirloom_signup_surface, not split across calls', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     await result.current.sendCode({
@@ -242,33 +249,43 @@ describe('useAuthFlowAdapter.sendCode — invite token metadata (single write)',
     const calls = metadataCalls()
     expect(calls).toHaveLength(1)
     expect(calls[0][0]).toEqual({
-      unsafeMetadata: { heirloom_invite_token: 'inv-tok', heirloom_story_invite_token: 'story-tok' },
+      unsafeMetadata: {
+        heirloom_signup_surface: 'custom_otp',
+        heirloom_invite_token: 'inv-tok',
+        heirloom_story_invite_token: 'story-tok',
+      },
     })
   })
 
-  it('inviteToken alone writes only heirloom_invite_token', async () => {
+  it('inviteToken alone writes heirloom_invite_token alongside heirloom_signup_surface', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     await result.current.sendCode({ type: 'email', value: 'new@b.com', inviteToken: 'inv-tok' })
     const calls = metadataCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][0]).toEqual({ unsafeMetadata: { heirloom_invite_token: 'inv-tok' } })
+    expect(calls[0][0]).toEqual({
+      unsafeMetadata: { heirloom_signup_surface: 'custom_otp', heirloom_invite_token: 'inv-tok' },
+    })
   })
 
-  it('storyInviteToken alone writes only heirloom_story_invite_token', async () => {
+  it('storyInviteToken alone writes heirloom_story_invite_token alongside heirloom_signup_surface', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     await result.current.sendCode({ type: 'email', value: 'new@b.com', storyInviteToken: 'story-tok' })
     const calls = metadataCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0][0]).toEqual({ unsafeMetadata: { heirloom_story_invite_token: 'story-tok' } })
+    expect(calls[0][0]).toEqual({
+      unsafeMetadata: { heirloom_signup_surface: 'custom_otp', heirloom_story_invite_token: 'story-tok' },
+    })
   })
 
-  it('neither token supplied → no unsafeMetadata update call at all', async () => {
+  it('neither token supplied → still writes a single unsafeMetadata call carrying only heirloom_signup_surface (members.source resolution depends on this)', async () => {
     ;(mocks.current.signUp.create as AnyFn).mockResolvedValue({ error: null })
     const { result } = renderHook(() => useAuthFlowAdapter())
     await result.current.sendCode({ type: 'email', value: 'new@b.com' })
-    expect(metadataCalls()).toHaveLength(0)
+    const calls = metadataCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toEqual({ unsafeMetadata: { heirloom_signup_surface: 'custom_otp' } })
   })
 
   it('sign-in path never writes invite-token metadata — existing profiles are not touched', async () => {

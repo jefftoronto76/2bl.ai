@@ -1,5 +1,6 @@
 import { clerkCurrentUser as currentUser } from './providers/clerk/server'
 import { getAdminClient } from './supabase-admin'
+import { setIdentityField, setIdentityEmail } from '@/services/shared/identity'
 
 /**
  * Upsert the current Clerk user into the Supabase `users` table by `clerk_id`,
@@ -19,10 +20,12 @@ export async function ensureClerkUser(): Promise<string | null> {
   const phone = clerk.phoneNumbers[0]?.phoneNumber ?? null
   const name = [clerk.firstName, clerk.lastName].filter(Boolean).join(' ') || null
 
-  const row: { clerk_id: string; email?: string; name?: string; phone?: string } = { clerk_id: clerk.id }
-  if (email) row.email = email
-  if (name) row.name = name
-  if (phone) row.phone = phone
+  // Behaviourally unchanged — this function already got the rule right. Routed
+  // through the shared helper so it stays that way by construction.
+  const row: Record<string, unknown> = { clerk_id: clerk.id }
+  setIdentityEmail(row, 'email', email)
+  setIdentityField(row, 'name', name)
+  setIdentityField(row, 'phone', phone)
 
   // A live authenticated session with no identifiers is unexpected — still
   // upsert (the session is real and the caller needs users.id to link it),
@@ -34,7 +37,7 @@ export async function ensureClerkUser(): Promise<string | null> {
     )
   }
 
-  const supabase = getAdminClient()
+  const supabase = getAdminClient('ensure_clerk_user')
   const { data, error } = await supabase
     .from('users')
     .upsert(row, { onConflict: 'clerk_id' })

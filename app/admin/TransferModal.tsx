@@ -13,6 +13,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconSearch } from '@tabler/icons-react'
+import { resolveMemberName } from '@/services/shared/identity'
 
 interface MemberRow {
   id: string
@@ -78,7 +79,7 @@ export function TransferModal({
       })
     : allMembers
 
-  const displayName = (m: MemberRow) => m.name ?? m.invited_name ?? '—'
+  const displayName = (m: MemberRow) => resolveMemberName(m) ?? '—'
   const sessionDisplayName = visitorName ?? 'Anonymous'
 
   async function handleConfirm() {

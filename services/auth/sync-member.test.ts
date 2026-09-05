@@ -1,11 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { adminHolder } = vi.hoisted(() => ({
+const { adminHolder, getAdminClientCalls } = vi.hoisted(() => ({
   adminHolder: { client: null as unknown },
+  getAdminClientCalls: [] as unknown[][],
 }))
 
 vi.mock('./supabase-admin', () => ({
-  getAdminClient: () => adminHolder.client,
+  getAdminClient: (...args: unknown[]) => {
+    getAdminClientCalls.push(args)
+    return adminHolder.client
+  },
 }))
 
 const logEventMock = vi.fn()
@@ -18,19 +22,25 @@ vi.mock('@/services/audit', () => ({
 
 import { syncMember } from './sync-member'
 
-// Two-call mock:
+// Three-call mock:
 //   Call 1: from('users').upsert().select('id').single()
-//   Call 2: from('members').upsert().select().single()
+//   Call 2: from('members').select('id').eq().eq().maybeSingle() — the
+//     pre-existence check that decides whether memberSource may be written
+//   Call 3: from('members').upsert().select().single()
 function makeSyncClient({
   userRow,
   userError = null,
   memberRow,
   memberError = null,
+  // Defaults to "no existing row" (a genuine first creation) — matches
+  // every pre-existing test's expectations, which predate the pre-check.
+  existingMemberRow = null,
 }: {
   userRow: unknown
   userError?: unknown
   memberRow?: unknown
   memberError?: unknown
+  existingMemberRow?: unknown
 }) {
   const usersUpsertCalls: unknown[] = []
   const membersUpsertCalls: unknown[] = []
@@ -49,6 +59,15 @@ function makeSyncClient({
         }
       }
       return {
+        select(_cols: string) {
+          return {
+            eq: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: existingMemberRow, error: null }),
+              }),
+            }),
+          }
+        },
         upsert(payload: unknown, _opts: unknown) {
           membersUpsertCalls.push(payload)
           return {
@@ -70,6 +89,31 @@ function makeSyncClient({
 describe('syncMember', () => {
   beforeEach(() => {
     logEventMock.mockReset()
+    getAdminClientCalls.length = 0
+  })
+
+  it('defaults getAdminClient source to "sync_member" when the caller does not specify one (Gate 3 attribution)', async () => {
+    const { client } = makeSyncClient({
+      userRow: { id: 'user-uuid-src1' },
+      memberRow: { id: 'member-uuid-src1' },
+    })
+    adminHolder.client = client
+
+    await syncMember({ clerkUserId: 'clerk-src1' })
+
+    expect(getAdminClientCalls[0]).toEqual(['sync_member', { correlationId: undefined }])
+  })
+
+  it('passes through an explicit source and correlationId from the caller', async () => {
+    const { client } = makeSyncClient({
+      userRow: { id: 'user-uuid-src2' },
+      memberRow: { id: 'member-uuid-src2' },
+    })
+    adminHolder.client = client
+
+    await syncMember({ clerkUserId: 'clerk-src2', source: 'clerk_webhook', correlationId: 'corr-abc' })
+
+    expect(getAdminClientCalls[0]).toEqual(['clerk_webhook', { correlationId: 'corr-abc' }])
   })
 
   it('includes the resolved users.id as user_id in the members upsert payload', async () => {
@@ -140,5 +184,141 @@ describe('syncMember', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toBe('members upsert failed')
+  })
+
+  // ── D1: a no-value name must never reach a column ────────────────────────
+  //
+  // The upsert conflicts on clerk_id, so a `name` key present with a null
+  // value overwrites an existing members.name. Absence is what leaves it
+  // alone. These assert on key presence for that reason, not on the value.
+  describe('identity-write invariant (D1)', () => {
+    async function upsertPayloadsFor(input: Parameters<typeof syncMember>[0]) {
+      const { client, getUsersUpsertCalls, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-d1' },
+        memberRow: { id: 'member-uuid-d1' },
+      })
+      adminHolder.client = client
+      await syncMember(input)
+      return {
+        users: getUsersUpsertCalls()[0] as Record<string, unknown>,
+        members: getMembersUpsertCalls()[0] as Record<string, unknown>,
+      }
+    }
+
+    // Fails before the fix: `if (name !== undefined)` let null through and
+    // members.name was written as NULL. This is the defect, in one case.
+    it('omits name from both payloads when name is explicitly null', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: null })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is an empty string', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is whitespace only', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '   ' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('omits name from both payloads when name is undefined', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c' })
+      expect('name' in members).toBe(false)
+      expect('name' in users).toBe(false)
+    })
+
+    it('writes a real name, trimmed, to both payloads', async () => {
+      const { users, members } = await upsertPayloadsFor({ clerkUserId: 'c', name: '  Sarah Chen  ' })
+      expect(members.name).toBe('Sarah Chen')
+      expect(users.name).toBe('Sarah Chen')
+    })
+
+    it('applies the same rule to email and phone', async () => {
+      const { users, members } = await upsertPayloadsFor({
+        clerkUserId: 'c',
+        email: null,
+        phone: '',
+      })
+      expect('email' in members).toBe(false)
+      expect('phone' in members).toBe(false)
+      expect('email' in users).toBe(false)
+      expect('phone' in users).toBe(false)
+    })
+
+    it('normalises email case on both payloads', async () => {
+      const { users, members } = await upsertPayloadsFor({
+        clerkUserId: 'c',
+        email: ' Sarah@Example.COM ',
+      })
+      expect(members.email).toBe('sarah@example.com')
+      expect(users.email).toBe('sarah@example.com')
+    })
+
+    // Belt-and-braces: whatever the input, no identity column may ever carry a
+    // null into an upsert payload. Guards against a future field being added
+    // without routing through setIdentityField.
+    it('never puts a null identity value on either payload, for any input', async () => {
+      for (const v of [null, '', '   ', undefined]) {
+        const { users, members } = await upsertPayloadsFor({
+          clerkUserId: 'c',
+          name: v as string | null | undefined,
+          email: v as string | null | undefined,
+          phone: v as string | null | undefined,
+        })
+        for (const key of ['name', 'email', 'phone']) {
+          expect(members[key]).toBeUndefined()
+          expect(users[key]).toBeUndefined()
+        }
+      }
+    })
+  })
+
+  // ── members.source (distinct from Gate 3's `source`/IdentitySource) ──────
+  describe('memberSource — members.source, written once at genuine creation only', () => {
+    it('writes memberSource into the members upsert payload for a brand-new clerk_id', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms1' },
+        memberRow: { id: 'member-uuid-ms1' },
+        existingMemberRow: null,
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms1', memberSource: 'self_serve_chat' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect(payload.source).toBe('self_serve_chat')
+    })
+
+    it('never writes source when a members row already exists for this clerk_id — the overwrite-on-re-login regression guard', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms2' },
+        memberRow: { id: 'member-uuid-ms2' },
+        existingMemberRow: { id: 'member-uuid-ms2' },
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms2', memberSource: 'self_serve_clerk' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect('source' in payload).toBe(false)
+    })
+
+    it('omits source from the payload when the caller supplies no memberSource, even for a brand-new row', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-ms3' },
+        memberRow: { id: 'member-uuid-ms3' },
+        existingMemberRow: null,
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-ms3' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect('source' in payload).toBe(false)
+    })
   })
 })
