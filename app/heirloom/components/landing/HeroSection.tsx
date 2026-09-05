@@ -425,7 +425,7 @@ export function HeroSection() {
              Tailwind items-center and the text column's inline translateY(-5vh)
              both need overriding for the 28vh to land exactly. */
           .hl-mc-hero { align-items: flex-start !important; }
-          .hl-mc-hero-grid { padding-top: 28vh; align-self: flex-start; }
+          .hl-mc-hero-grid { padding-top: 20vh; align-self: flex-start; }
           .hl-mc-hero-text-col { transform: none !important; }
         }
         .hl-mc-nowrap { white-space: normal; }
