@@ -52,7 +52,7 @@ export function PageThread() {
     let photoN = 0;
     for (let t = 0; t < bottoms.length - 1; t++) {
       const yMid = (bottoms[t].y + pts[(t + 1) * 2][1]) / 2;
-      const isPhoto = t % 2 === 0 && t < bottoms.length - 2 && W > 720;
+      const isPhoto = t % 2 === 0 && t < bottoms.length - 2;
       if (isPhoto) {
         beads.push({ key: 't' + t, photo: true, id: 'th-bead-' + t, cap: TH_CAPS[photoN % TH_CAPS.length], x: W / 2, y: yMid, w: 108, h: 82 });
         photoN++;
