@@ -15,6 +15,14 @@
   ⚠️ production chat activation — unchanged: "Start Your Story" dispatches
   { type: 'OPEN_CHAT' } via useChatStore, same as every other CTA on this page.
 
+  Mobile (≤768px): MobileStoryThread replaces the constellation with a vertical
+  photo + journal-caption thread, per "Design Handovers/september_2026/
+  14_mobile_hero_story_thread_09/README.md". It is a second, narrower
+  breakpoint layered on top of the existing 920px single-column collapse — the
+  920px rules are untouched, and desktop (>768px) renders exactly as before.
+  The thread's CTA is the same production button with the same OPEN_CHAT
+  dispatch; the top text block's CTA is hidden at ≤768px so it renders once.
+
   data-screen-label="Hero" is the marker PageThread.tsx depends on to find
   this section's boundaries.
 */
@@ -238,6 +246,135 @@ function MemoryConstellation() {
   );
 }
 
+// ─── Mobile story thread (≤768px replacement for the constellation) ─────────
+//
+// Static display block: 8 items top-to-bottom on a dashed centre guide line —
+// three photo + handwritten-caption pairs (each a <figure>/<figcaption>, no dot,
+// tighter top padding) interleaved with a date/location card and an audio card,
+// ending on the CTA. No interactivity beyond the CTA. The photos are mobile-only
+// copies (mobile-thread-*.webp) so future edits to the desktop collage's
+// Hero-0 / Video / Hero-6 don't ripple into the thread, and vice versa.
+
+type ThreadPhoto = { src: string; alt: string; w: number; h: number; eager?: boolean };
+
+const THREAD_PHOTOS: Record<'beach' | 'mammoth' | 'wedding', ThreadPhoto> = {
+  beach: { src: '/heirloom/landerimages/mobile-thread-beach.webp', alt: 'Aerial drone shot of the beach, 2019', w: 260, h: 168, eager: true },
+  mammoth: { src: '/heirloom/landerimages/mobile-thread-mammoth.webp', alt: 'Skiing at Mammoth Mountain, California, 2008', w: 230, h: 150 },
+  wedding: { src: '/heirloom/landerimages/mobile-thread-wedding.webp', alt: 'Beach wedding, September 15, 2012', w: 220, h: 300 },
+};
+
+const THREAD_CAPTIONS = {
+  beach: 'In 2019, we bought a drone, which gave us a cool perspective of the beach. In this shot...',
+  mammoth: "After the APTA conference in 2008 in Los Angeles, a few of us snuck up to Mammoth Mountain, CA, one of North America's greatest ski resorts...",
+  wedding: 'September 15, 2012. It was a magical beach wedding just before late summer turned to fall, where we vowed to love each other forever...',
+};
+
+function ThreadDot() {
+  return <span className="hl-mc-thread-dot" aria-hidden="true" />;
+}
+
+/** Photo + its paired caption, read by assistive tech as one unit. */
+function ThreadFigure({ photo, caption }: { photo: ThreadPhoto; caption: string }) {
+  return (
+    <figure className="hl-mc-thread-figure">
+      <div className="hl-mc-thread-item">
+        <ThreadDot />
+        <div className="hl-mc-thread-photo" style={{ width: photo.w, height: photo.h }}>
+          <img
+            src={photo.src}
+            alt={photo.alt}
+            width={photo.w}
+            height={photo.h}
+            loading={photo.eager ? undefined : 'lazy'}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+      <figcaption className="hl-mc-thread-item hl-mc-thread-caption">
+        <p className="hl-mc-hand hl-mc-thread-caption-text" style={{ fontSize: 16, lineHeight: 1.4, color: 'var(--color-text-muted)' }}>{caption}</p>
+      </figcaption>
+    </figure>
+  );
+}
+
+function MobileStoryThread() {
+  const { dispatch } = useChatStore();
+
+  return (
+    <div className="hl-mc-thread-wrap">
+      <div className="hl-mc-thread-line" aria-hidden="true" />
+
+      {/* 1 + 2 · beach photo + caption */}
+      <ThreadFigure photo={THREAD_PHOTOS.beach} caption={THREAD_CAPTIONS.beach} />
+
+      {/* 3 · date / location card */}
+      <div className="hl-mc-thread-item">
+        <ThreadDot />
+        <div className="hl-mc-thread-card" style={{ flexDirection: 'row', gap: 14, textAlign: 'left' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+            <span className="font-mono" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgb(var(--color-accent))' }}>JUN</span>
+            <span className="font-display" style={{ fontSize: 22, lineHeight: 1, color: 'rgb(var(--color-text-primary))' }}>21</span>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'rgb(var(--color-text-primary))' }}>Secret Places, BC, Canada</div>
+            <div className="font-mono" style={{ fontSize: 11, color: 'rgb(var(--color-text-dim))', marginTop: 3 }}>Aug 12, 2017</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 4 + 5 · Mammoth photo + caption */}
+      <ThreadFigure photo={THREAD_PHOTOS.mammoth} caption={THREAD_CAPTIONS.mammoth} />
+
+      {/* 6 · audio card (static — no playback) */}
+      <div className="hl-mc-thread-item">
+        <ThreadDot />
+        <div className="hl-mc-thread-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              role="img"
+              aria-label="Play Dad’s Wedding Speech"
+              className="hl-mc-play"
+              style={{ width: 30, height: 30, border: '1.5px solid rgb(var(--color-accent))', color: 'rgb(var(--color-accent))' }}
+            >
+              <PlayTri size={10} />
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'rgb(var(--color-text-primary))' }}>Dad&rsquo;s Wedding Speech</span>
+          </div>
+          <Wave n={34} color="rgb(var(--color-accent))" seed={3} />
+          <span className="font-mono" style={{ fontSize: 11, color: 'rgb(var(--color-text-dim))' }}>03:47</span>
+        </div>
+      </div>
+
+      {/* 7 + 8 · wedding photo + caption */}
+      <ThreadFigure photo={THREAD_PHOTOS.wedding} caption={THREAD_CAPTIONS.wedding} />
+
+      {/* CTA — the thread ends here. ⚠️ production chat activation — identical to the top block's button */}
+      <div style={{ marginTop: 28 }}>
+        <button
+          type="button"
+          onClick={() => dispatch({ type: 'OPEN_CHAT' })}
+          className="bg-accent hover:bg-accent-hover text-background font-body text-base font-semibold px-7 rounded-[13px] transition-colors min-h-[52px] flex items-center"
+        >
+          Start Your Story
+        </button>
+      </div>
+
+      <style>{`
+        .hl-mc-thread-wrap { display: none; position: relative; width: 100%; max-width: 300px; margin: 0 auto; flex-direction: column; align-items: center; }
+        .hl-mc-thread-line { position: absolute; top: 6px; bottom: 6px; left: 50%; width: 1px; background: repeating-linear-gradient(to bottom, rgb(var(--color-accent)) 0 4px, transparent 4px 11px); opacity: 0.4; z-index: 0; }
+        .hl-mc-thread-figure { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; margin: 0; }
+        .hl-mc-thread-item { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; padding: 16px 0; margin: 0; }
+        .hl-mc-thread-item.hl-mc-thread-caption { padding-top: 10px; }
+        .hl-mc-thread-dot { width: 9px; height: 9px; border-radius: 999px; background: rgb(var(--color-background)); border: 2px solid rgb(var(--color-accent)); margin-bottom: 14px; box-shadow: 0 0 0 5px rgb(var(--color-background)); }
+        .hl-mc-thread-photo { border-radius: 16px; overflow: hidden; background: rgb(var(--color-surface-2)); box-shadow: 0 18px 34px -14px rgb(var(--color-text-primary) / 0.3), 0 2px 6px -2px rgb(var(--color-text-primary) / 0.18); }
+        .hl-mc-thread-card { width: 240px; padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; background: rgb(var(--color-surface)); border: 1px solid var(--color-border); border-radius: 16px; box-shadow: 0 14px 30px -16px rgb(var(--color-text-primary) / 0.3), 0 1px 3px rgb(var(--color-text-primary) / 0.06); }
+        .hl-mc-thread-caption-text { width: 240px; text-align: center; margin: 0; }
+        @media (max-width: 768px) { .hl-mc-thread-wrap { display: flex !important; } }
+      `}</style>
+    </div>
+  );
+}
+
 // ─── Hero ─────────────────────────────────────────────────────────────────
 
 export function HeroSection() {
@@ -246,15 +383,15 @@ export function HeroSection() {
   return (
     <section data-screen-label="Hero" className="relative min-h-screen flex items-center overflow-hidden bg-background">
       <div className="hl-mc-hero-grid relative z-10 max-w-[1340px] w-full mx-auto px-4 sm:px-6 md:px-12">
-        <div style={{ transform: 'translateY(-5vh)' }}>
+        <div className="hl-mc-hero-text-col" style={{ transform: 'translateY(-5vh)' }}>
           <h1 className="font-display font-light tracking-tight text-text-primary" style={{ margin: 0 }}>
             <span style={{ display: 'block', fontSize: 'clamp(38px, 4.6vw, 54px)', lineHeight: 1.1 }}>All memories fade.</span>
             <span className="hl-mc-nowrap" style={{ display: 'block', fontSize: 'clamp(28px, 3.4vw, 42px)', lineHeight: 1.15, marginTop: 8 }}>
               Don&rsquo;t let yours be forgotten.
             </span>
           </h1>
-          <div className="flex flex-wrap items-center gap-4" style={{ marginTop: 36 }}>
-            {/* ⚠️ production chat activation — unchanged */}
+          <div className="hl-mc-hero-cta-row flex flex-wrap items-center gap-4" style={{ marginTop: 36 }}>
+            {/* ⚠️ production chat activation — unchanged. Hidden at ≤768px; MobileStoryThread renders the same button once at the thread's end. */}
             <button
               type="button"
               onClick={() => dispatch({ type: 'OPEN_CHAT' })}
@@ -266,6 +403,7 @@ export function HeroSection() {
         </div>
         <div className="hl-mc-collage-col flex items-center justify-center">
           <MemoryConstellation />
+          <MobileStoryThread />
         </div>
       </div>
 
@@ -274,6 +412,14 @@ export function HeroSection() {
         @media (max-width: 920px) {
           .hl-mc-hero-grid { grid-template-columns: 1fr; gap: 8px; }
           .hl-mc-hero-grid > .hl-mc-collage-col { display: flex; }
+        }
+        /* Second, narrower breakpoint (mobile story thread) — layered on top of the
+           920px collapse above, which stays as-is for the 769–920px range. */
+        @media (max-width: 768px) {
+          .hl-mc-hero-text-col { text-align: center; }
+          .hl-mc-hero-text-col > div { justify-content: center; }
+          .hl-mc-hero-text-col > .hl-mc-hero-cta-row { display: none !important; }
+          .hl-mc-collage-col > .hl-mc-scaler { display: none !important; }
         }
         .hl-mc-nowrap { white-space: normal; }
         @media (min-width: 769px) { .hl-mc-nowrap { white-space: nowrap; } }
