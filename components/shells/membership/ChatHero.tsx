@@ -482,6 +482,25 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [joinedStoryConfirmation, showToast, refreshStories]);
 
+  // Re-fetch stories on the anonymous->signed-in transition. stories was
+  // fetched once on mount (see refreshStories above), which is correctly
+  // empty for an anonymous visitor — but claimAllSessions/claimSessionsOnly
+  // (chatStore.tsx) link the visitor's local sessions to their account on
+  // sign-in without ever telling this component, so the sidebar kept
+  // showing that stale empty list until a manual page reload even though
+  // the visitor's stories were, by then, correctly attached in the DB.
+  // isMember covers every sign-in entry point uniformly (custom OTP,
+  // magic-link, story/member invite) since it derives straight from Clerk,
+  // so this doesn't need to hook into any one claim function directly.
+  // Mirrors chatStore.tsx's own wasSignedInRef false->true guard.
+  const wasMemberRef = useRef(state.isMember);
+  useEffect(() => {
+    if (state.isMember && !wasMemberRef.current) {
+      refreshStories();
+    }
+    wasMemberRef.current = state.isMember;
+  }, [state.isMember, refreshStories]);
+
   const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
 
   const handleRenameCommit = useCallback((id: string, newTitle: string) => {
@@ -1448,7 +1467,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           mounted unconditionally (not gated on isMobile) since this surface
           is identical across viewport sizes. Always rendered so its
           translate-x transition can animate; `open` controls visibility. */}
-      <MediaPage open={mediaPageOpen} onClose={() => setMediaPageOpen(false)} onFlash={showToast} />
+      <MediaPage open={mediaPageOpen} onClose={() => setMediaPageOpen(false)} onFlash={showToast} isMember={state.isMember} />
 
       {/* absolute inset-0 — resolves to the drawer's relative body (this
           section is static), so modals overlay the whole drawer. */}
