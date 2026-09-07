@@ -95,6 +95,13 @@ interface MediaPageProps {
   open: boolean;
   onClose: () => void;
   onFlash: (message: string) => void;
+  // Included in useMediaPagination's queryKey below so a sign-in that
+  // happens while this page is already open (or was opened once before,
+  // per hasOpened) still refetches. Anonymous -> signed-in changes GET
+  // /api/media's account scope from nothing to the visitor's own account,
+  // but MediaPage stays mounted across sign-in and queryKey otherwise
+  // wouldn't change, leaving the anonymous (empty) result stuck on screen.
+  isMember: boolean;
 }
 
 type MediaSort = 'newest' | 'oldest';
@@ -104,7 +111,7 @@ const SORT_OPTIONS: { value: MediaSort; label: string }[] = [
   { value: 'oldest', label: 'Oldest' },
 ];
 
-export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
+export function MediaPage({ open, onClose, onFlash, isMember }: MediaPageProps) {
   // Fetches once, the first time the page is ever opened — not on every
   // open/close, since MediaPage stays mounted (see the file header comment)
   // and re-fetching account-wide media on every reopen would be wasted work.
@@ -121,7 +128,7 @@ export function MediaPage({ open, onClose, onFlash }: MediaPageProps) {
   const [sort, setSort] = useState<MediaSort>('newest');
 
   const { items, setItems, loading, loadingMore, hasMore, sentinelRef } = useMediaPagination({
-    queryKey: hasOpened ? `account:${sort}` : null,
+    queryKey: hasOpened ? `account:${sort}:${isMember}` : null,
     buildUrl: ({ limit, cursor }) => {
       const params = new URLSearchParams({ limit: String(limit) });
       if (cursor) params.set('cursor', cursor);

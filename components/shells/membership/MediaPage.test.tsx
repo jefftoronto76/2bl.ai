@@ -58,7 +58,7 @@ afterEach(() => {
 describe('MediaPage — loading skeleton', () => {
   it('shows a 6-card shimmer skeleton while loading, then swaps to real content', async () => {
     const resolveFetch = deferredMediaList([makeItem({ status: 'ready' })]);
-    render(<MediaPage open onClose={() => {}} onFlash={() => {}} />);
+    render(<MediaPage open onClose={() => {}} onFlash={() => {}} isMember={false} />);
 
     const loadingRegion = screen.getByLabelText('Loading media');
     expect(loadingRegion).toHaveAttribute('aria-busy', 'true');
@@ -85,7 +85,7 @@ describe('MediaPage — sort toggle', () => {
       }),
     );
 
-    render(<MediaPage open onClose={() => {}} onFlash={() => {}} />);
+    render(<MediaPage open onClose={() => {}} onFlash={() => {}} isMember={false} />);
 
     await waitFor(() => expect(screen.getByText('newest.pdf')).toBeInTheDocument());
     expect(requestedUrls[0]).not.toContain('sort=');
@@ -105,5 +105,38 @@ describe('MediaPage — sort toggle', () => {
     expect(oldestTab).toHaveAttribute('aria-selected', 'true');
     expect(newestTab).toHaveAttribute('aria-selected', 'false');
     expect(requestedUrls.some((u) => u.includes('sort=oldest'))).toBe(true);
+  });
+});
+
+describe('MediaPage — refetch on sign-in', () => {
+  // Regression test: opening Media while anonymous (hasOpened flips true,
+  // items empty) and then signing in without closing/reopening the panel
+  // never re-fetched, since useMediaPagination's queryKey only changed on
+  // sort — the anonymous (empty) list stayed on screen until a manual page
+  // reload even though the visitor's media was, by then, correctly attached
+  // to their account. isMember is now part of the queryKey so a sign-in
+  // transition produces a genuinely new key.
+  it('refetches the account-scoped list once isMember flips false -> true', async () => {
+    const requestedUrls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        requestedUrls.push(url);
+        const items = requestedUrls.length === 1 ? [] : [makeItem({ id: 'claimed-1', original_filename: 'claimed.pdf' })];
+        return Promise.resolve(jsonResponse({ items }));
+      }),
+    );
+
+    const { rerender } = render(
+      <MediaPage open onClose={() => {}} onFlash={() => {}} isMember={false} />,
+    );
+
+    await waitFor(() => expect(requestedUrls.length).toBe(1));
+    expect(screen.queryByText('claimed.pdf')).toBeNull();
+
+    rerender(<MediaPage open onClose={() => {}} onFlash={() => {}} isMember />);
+
+    await waitFor(() => expect(screen.getByText('claimed.pdf')).toBeInTheDocument());
+    expect(requestedUrls.length).toBeGreaterThanOrEqual(2);
   });
 });
