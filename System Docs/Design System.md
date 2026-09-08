@@ -40,6 +40,21 @@ fixed, **don't mix the two mechanisms to gate the same element**, and if you
 must, know that 768px exactly will take the JS branch's rendering with the CSS
 branch's styling.
 
+**Heirloom lander breakpoints (added 2026-09-07, PR #468).** The rebuilt lander
+in `app/heirloom/components/landing/` does **not** use Tailwind `screens` for its
+layout collapses. Each section carries raw `@media (max-width: …)` rules in a
+component-scoped `<style>` block: **920px** (`HeroSection.tsx` — hero grid to a
+single column; also `BuyerPersonasSection`, `HowItWorksSection`), **768px**
+(`HeroSection.tsx` — desktop constellation swapped for the vertical
+`MobileStoryThread`, headline centred and pinned to `20vh`; also
+`WhatIsHeirloomSection`), and per-section extras at 820/760/560/460px
+(`HowItWorksSection`, `Footer`). Because these are `max-width` queries, the
+768px one collides with Tailwind's `min-width: 768px` `md:` at exactly 768px —
+the same one-pixel disagreement described above, now on a third surface (see
+the breakpoint entry in `Known Gaps.md`). The 768px rule was added on top of
+the pre-existing 920px collapse deliberately, so the 769–920px range keeps the
+single-column desktop hero.
+
 ### globals.css structure (split by product)
 
 Brand design tokens are **split into per-product, route-scoped CSS files** so
@@ -52,7 +67,7 @@ is what gives the isolation:
 | `app/globals.css` | Tailwind directives and the shared base reset only (`box-sizing`, `html`/`body` reset, `scroll-behavior`, font-smoothing) plus one cross-brand keyframe/utility (`.chat-bubble-shake`, used by `components/chat/DeliveryStatus.tsx`). **No brand token blocks, no per-product component CSS.** | `app/layout.tsx` (root — loads on every route) |
 | `app/(jefflougheed)/globals.css` | The default `:root` tokens (the jefflougheed.ca + admin/platform palette), the `html[data-brand="jefflougheed"]` dark-mode landing override block (plus its light-section exceptions — `#outcomes`, `#how-it-works`, `#testimonials`, chat surfaces) — **and** all jefflougheed public-site component CSS: the Sage chat overlay, chat-first hero stage (`.stage`/`.hero`/`.composer`), `nav-chat-*`, Calendly overrides, scrollbars, `.highlight-marker`/`.mark-highlight`. (`data-brand="jefflougheed"` is set in `app/layout.tsx` on every route except SBL/Heirloom/Legacy/admin.) | `app/(jefflougheed)/layout.tsx`, **and** `app/admin/layout.tsx` + `app/(platform)/layout.tsx` — admin/platform live outside the `(jefflougheed)` route group but share the inkwell palette, so they import this file explicitly. |
 | `app/secondbrainlabs/globals.css` | SBL tokens promoted to `:root` + the `sb-pulse` / `sb-dot` keyframes. | `app/secondbrainlabs/layout.tsx` |
-| `app/heirloom/globals.css` | Canonical `--color-*` tokens (`background`, `surface`, `surface-2`, `accent`, `accent-hover`, `text-primary`, `text-muted`, `text-dim`, `border`, `border-hover`) plus `--color-modal-*` tokens, promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` utilities (kept `[data-brand="heirloom"]`-scoped — `.bg-pattern-dots` is no longer defined in this file). | `app/heirloom/layout.tsx` |
+| `app/heirloom/globals.css` | Canonical `--color-*` tokens (`background`, `surface`, `surface-2`, `accent`, `accent-hover`, `text-primary`, `text-muted`, `text-dim`, `border`, `border-hover`) plus `--color-modal-*` tokens, promoted to `:root`; the `--font-*` remaps **stay scoped to `[data-brand="heirloom"]`** (next/font defines `--font-heirloom-*` on that wrapper, not on `:root`, so the remaps must resolve there); the `.bg-*-glow` utilities (kept `[data-brand="heirloom"]`-scoped — `.bg-pattern-dots` is no longer defined in this file; since the PR #468 lander rebuild their only consumer is `app/heirloom/coming-soon/page.tsx`); the Clerk `.cl-*` text overrides; the modal/sheet animation keyframes and utilities (`hl-fade-in`, `hl-modal-in`, `hl-sheet-up`, `hl-sheet-left`, `hl-sheet-left-out`); **two coexisting scroll-reveal utilities** — the transition-based `.hl-reveal`/`.hl-visible` (pre-redesign, now unreferenced) and the lander's `.reveal`/`.reveal.in` + `@keyframes hl-rise` (see "Heirloom landing animation + asset conventions" below); `.hl-thumb-fade`; and one shared `prefers-reduced-motion` override block covering all of them. | `app/heirloom/layout.tsx` |
 
 The token table below is the **jefflougheed.ca + admin palette** (the default
 `:root` tokens in `app/(jefflougheed)/globals.css`), consumed via Tailwind
@@ -152,6 +167,10 @@ that file — the wrapper `<div>` is where next/font defines
 `:root`. Per the redesign, the four `.bg-*-glow` utilities collapse to the
 flat `--color-background` (no radial glow, no grain); `.bg-pattern-dots` is
 no longer defined in this file at all — the redesigned landing doesn't use it.
+After the PR #468 rebuild no landing section applies any of the four
+`.bg-*-glow` classes either (sections use plain `bg-background` / `bg-surface`
+or their own scoped CSS); the last consumer is `app/heirloom/coming-soon/
+page.tsx`, so the block can go when that page does.
 
 | Heirloom token | Value |
 |----------------|-------|
@@ -172,6 +191,47 @@ no longer defined in this file at all — the redesigned landing doesn't use it.
 `--font-heirloom-hand`, which `app/heirloom/globals.css` remaps onto
 `--font-display` / `--font-accent` / `--font-body` / `--font-mono` /
 `--font-hand` **on the Heirloom layout wrapper only**, so Tailwind
-`font-display` and `font-body` resolve correctly on Heirloom routes.
+`font-display` and `font-body` resolve correctly on Heirloom routes. Only
+`--font-display`, `--font-body` and `--font-mono` have Tailwind utilities
+(`tailwind.config.js` `fontFamily`: `display`, `body`, `mono`, plus `serif`/
+`sans`); **`--font-hand` and `--font-accent` have none** — Caveat reaches the
+page only through the `.hl-mc-hand` class defined inline in
+`app/heirloom/components/landing/HeroSection.tsx`, which also hardcodes its
+ink colour (`#5c4a36`, the one lander colour not expressed as a `--color-*`
+token). Adding `hand` to `fontFamily` is part of the lander Tailwind
+conversion tracked in `Known Gaps.md` (Heirloom Lander, entry 15). Note too
+that `app/heirloom/layout.tsx`'s DB-branding injection overrides
+`--font-display` / `--font-body` / `--font-mono` but never `--font-hand`, so
+a tenant font switch leaves the hand-lettered accents on Caveat.
+
+### Heirloom landing animation + asset conventions
+
+Added with the 2026-09 lander rebuild (PR #468); the lander itself is
+documented in `System Docs/Public Site.md` ("Heirloom lander").
+
+- **Scroll-reveal.** `app/heirloom/globals.css` defines `@keyframes hl-rise`
+  (18px rise + fade, 0.8s, `cubic-bezier(0.22,1,0.36,1)`), `.reveal { opacity:
+  0 }` and `.reveal.in { animation: hl-rise … forwards }`, guarded by the file's
+  shared `prefers-reduced-motion` block. It is driven by
+  `app/heirloom/components/landing/useReveal.ts` — an IntersectionObserver
+  reveal-once hook (threshold 0.12, disconnects on first intersection) with a
+  1300ms fallback timer and an in-viewport-on-mount check, returning
+  `[ref, seen]`; sections toggle `'reveal' + (seen ? ' in' : '')` and stagger
+  children with an inline `animationDelay`. New lander sections should use this
+  pair. The older `.hl-reveal`/`.hl-visible` transition utility in the same file
+  is the pre-redesign mechanism and is no longer referenced by anything.
+- **Scoped component CSS.** `HeroSection.tsx` (`.hl-mc-*`), `PageThread.tsx`
+  (`.hl-thread-*`) and `Footer.tsx` (`.hl-foot*`) each ship their own
+  `<style>` block rather than Tailwind utilities — see the styling tech-debt
+  entry in `Known Gaps.md` (Heirloom Lander, entry 15).
+- **Lander imagery** lives in `public/heirloom/landerimages/`, all WebP (19
+  files), referenced as `/heirloom/landerimages/<name>.webp` from plain `<img>`
+  tags with explicit `width`/`height`. Two components derive filenames from
+  content strings at runtime — `PageThread.tsx`'s `TH_CAPS` captions
+  (`Family`, `Pets`, `Friendships`, `A day` — note the space) and the hero's
+  `ph` slot labels (`Hero-0..9`, `Video`) — so renaming a caption renames the
+  file it needs. `mobile-thread-{beach,mammoth,wedding}.webp` are deliberate
+  byte-identical copies of `Hero-0`/`Video`/`Hero-6` for the ≤768px story
+  thread.
 
 ---
