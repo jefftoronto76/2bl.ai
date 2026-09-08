@@ -1,8 +1,9 @@
 # 2BL Platform Architecture — Honest Overview
 *May 26, 2026*
 
-> **Spot-checked against the codebase 2026-08-14** (PRs now past #390 — this
-> document's own PR references top out around #46). Several "still
+> **Spot-checked against the codebase 2026-08-14, design/landing bullets
+> re-checked 2026-09-07** (PRs now past #468 — this document's own PR
+> references top out around #46). Several "still
 > deferred/pending" items below have since shipped; those bullets have been
 > corrected in place. The rest of the narrative (Phase A history, target
 > structure, references) is left as the historical record it is — treat any
@@ -218,7 +219,7 @@ Vercel preview checks. Nothing merges until this passes.
 
 Phase A is complete, so Heirloom is now underway.
 
-- Landing page ✅
+- Landing page ✅ — rebuilt 2026-09 from the Summer 2026 Story Canvas reference (PR #468): photo-constellation hero, page-wide `PageThread` scroll overlay, all body sections re-ported, mobile story thread at ≤768px, wordmark Legacy → Heirloom. Documented in `System Docs/Public Site.md` ("Heirloom lander"); open items in `Known Gaps.md` (Heirloom Lander).
 - Chat wired ✅ — full session lifecycle (POST /api/sessions → session_id to /api/sage → PATCH on completion), PR #39; migrated onto the shared `useChatTurn` engine, PR #44
 - Multi-tenant admin ✅
 - Blocks ✅ — Prompt Studio Blocks/Compile/Publish flow is live (`app/admin/prompt-studio/blocks/`)
@@ -276,7 +277,7 @@ app/
   (jefflougheed)/
     globals.css            ← Jeff's personal brand tokens
   heirloom/
-    globals.css            ← Heirloom espresso/gold tokens
+    globals.css            ← Heirloom egg-shell + terracotta tokens (canonical --color-* names)
   secondbrainlabs/
     globals.css            ← 2BL platform tokens
   (sage)/
@@ -346,8 +347,9 @@ Every major decision can be verified against these sources:
 
 ### Design
 - **Heirloom host: heirloom.2bl.ai** — 2BL.md, confirmed May 24 2026
-- **Heirloom palette + Cormorant Garamond** — LJ_Legacy26 tailwind.config.js
-- **Token scoping via [data-brand]** — app/globals.css, SBL pattern
+- **Cormorant Garamond as the Heirloom display face** — LJ_Legacy26 tailwind.config.js (a historic design-file name; unrelated to the `app/legacy/` tenant)
+- **Heirloom palette (egg-shell base, SBL terracotta accent) + lander design** — `Design Handovers/ Aug 2026 Atomic Updates/13_Heirloom_lander_nav_updateV4/Heirloom Lander - Summer 2026 - Story Canvas.html` (PR #468); mobile hero thread from `Design Handovers/september_2026/14_mobile_hero_story_thread_09/`
+- **Token scoping via [data-brand]** — `app/heirloom/globals.css` / `app/secondbrainlabs/globals.css` (per-product files; `app/globals.css` holds no brand tokens)
 
 ### Security
 - **HIPAA technical safeguards** — 45 CFR §164.312
