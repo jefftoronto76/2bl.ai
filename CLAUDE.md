@@ -29,7 +29,7 @@ one file per topic, loaded on demand rather than read every session:
 | `[BOOKING:]`/`[NAME:]`/etc. marker syntax | `System Docs/Marker Syntax.md` |
 | Shared admin/UI components | `System Docs/Shared Primitives.md` |
 | Admin page routes | `System Docs/Pages.md` |
-| Visitor-facing chat components (Sage, Heirloom) | `System Docs/Public Site.md` |
+| Heirloom public storefront — landing page (`components/landing/`) and chat components (the lander currently deviates from the Tailwind-only rule below — see `System Docs/Known Gaps.md`, Heirloom Lander, entry 15) | `System Docs/Public Site.md` |
 | Media upload pipeline (`services/media/`) — processing, vision tool-use pattern | `System Docs/Utilities/Media.md` |
 | jefflougheed.ca chat widget mechanisms (mobile routing, keyboard/scroll-lock contract, CSS branding cascade, dead/duplicate CSS) | `System Docs/jefflougheed Chat Widget.md` |
 | Middleware, domain routing, multi-tenant admin | `System Docs/App Structure and Routing.md` |
@@ -140,7 +140,11 @@ starts.
 ## Stack
 
 - **Framework:** Next.js 15, React 19, TypeScript (strict mode — always)
-- **Styling:** Tailwind (public site), Mantine v7 (admin interface)
+- **Styling:** Tailwind utility classes only (public site) — no inline
+  styles or style objects, no component-scoped <style> blocks except
+  where a third-party library requires it. Mantine v7 (admin interface).
+  No hardcoded hex values anywhere — colors must resolve through the
+  design token system (--color-*, var(--mantine-color-*)).
   — v7 is intentional. v9 requires React canary APIs not in React 19 stable.
   Do not upgrade Mantine without explicit instruction from Jeff.
   Companion packages: `@mantine/notifications@7.17.8` (toast notifications,
@@ -274,7 +278,8 @@ A task is complete when all of the following are true:
 - [ ] Feature works as specified
 - [ ] Mobile responsive verified
 - [ ] Test plan written before implementation and passing
-- [ ] No design system inconsistencies (Mantine admin / Tailwind public)
+- [ ] No design system inconsistencies (Mantine admin / Tailwind-only
+      public — no inline styles, no style objects, no scoped <style> blocks)
 - [ ] Accessibility checked — semantic HTML, keyboard nav, color contrast
 - [ ] Error states handled with on-brand messaging
 - [ ] Performance targets not regressed
