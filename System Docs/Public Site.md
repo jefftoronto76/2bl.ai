@@ -263,8 +263,8 @@ mono label); `SoonVote.tsx` (the "want it sooner?" vote widget — the count is 
 hardcoded `initial` plus the viewer's own vote, persisted in localStorage under
 `hl.comicVote`, `hl.rememberVote`, `hl.liveEditorVote`, `hl.socialMediaVote`; nothing is
 sent anywhere); `constellationPath.ts`. The body sections use the reveal helpers;
-`HeroSection`, `PageThread` and `Footer` do not. The older `.hl-reveal` / `.hl-visible`
-utility still defined in `globals.css` is no longer referenced by anything.
+`HeroSection`, `PageThread` and `Footer` do not. (The pre-redesign `.hl-reveal` /
+`.hl-visible` utility in `globals.css` had no remaining consumers; PR #470 removes it.)
 
 **Styling.** The ported sections are written largely as inline `style` objects and
 component-scoped `<style>` blocks over `rgb(var(--color-*))` tokens, with Tailwind used
@@ -277,12 +277,12 @@ are byte-identical copies of `Hero-0` / `Video` / `Hero-6` so the desktop collag
 mobile thread can be edited independently.
 
 **Tests.** Three files: `BuyerPersonasSection.test.tsx`, `PricingSection.test.tsx`,
-`CtaSection.Footer.test.tsx`. The remaining sections are uncovered. As of 2026-09-07
-`CtaSection.Footer.test.tsx` still asserts the pre-redesign Pricing CTA label ("Start
-Your Story", now "Drop us a message") and fails under `npm test` — see `Known Gaps.md`.
+`CtaSection.Footer.test.tsx`. The remaining sections are uncovered. (Until PR #470,
+`CtaSection.Footer.test.tsx` asserted the pre-redesign Pricing CTA label and failed under
+`npm test` — see `Known Gaps.md`, Heirloom Lander, entry 12.)
 
-**Not mounted.** `AddOnsSection.tsx` and `TestimonialsSection.tsx` remain on disk but
-nothing imports them.
+**Not mounted.** `AddOnsSection.tsx` and `TestimonialsSection.tsx` remained on disk with no
+importer after the rebuild; PR #470 deletes them.
 
 ### `HeirloomPage` (server gate)
 

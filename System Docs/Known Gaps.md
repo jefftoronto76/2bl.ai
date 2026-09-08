@@ -1419,6 +1419,8 @@ numbered because CLAUDE.md and other docs cross-reference them.
    the fifth bead requests `A song.webp` → 404. Also: `A day.webp` has a
    space in its filename. **Fix if ever done:** trim `TH_CAPS` to the
    images that exist (or guard on a known-files list) — a one-line change.
+   **Fixed in PR #470** (opened 2026-09-07): `TH_CAPS` trimmed to the four
+   existing images. The section-count coupling itself remains by design.
 
 7. **The first `PageThread` photo bead sits 28px below the mobile hero
    thread's CTA at 375px — 2026-09-07 (PR #467), needs a design call.**
@@ -1439,6 +1441,7 @@ numbered because CLAUDE.md and other docs cross-reference them.
    describes "changes vs. the live file" though it *is* the live file;
    `app/heirloom/globals.css:98` says the reveal rule "matches .hl-reveal in
    LandingPage.tsx", which contains no such class. Mechanical fixes.
+   **Fixed in PR #470** (opened 2026-09-07) — all five comments refreshed.
 
 9. **Dead CSS: `.hl-reveal` / `.hl-visible` have no consumers —
    2026-09-07, not fixed.** Defined in `app/heirloom/globals.css:99–100`
@@ -1448,7 +1451,7 @@ numbered because CLAUDE.md and other docs cross-reference them.
    `services/` finds zero uses. Same hazard as the `.chat-overlay-*` entry
    in the jefflougheed section: someone restyling "the landing reveal" via
    `.hl-reveal` would change nothing. **Fix:** delete the three rules and
-   the line-98 comment.
+   the line-98 comment. **Fixed in PR #470** (opened 2026-09-07).
 
 10. **Orphaned lander components on disk — 2026-09-07, not fixed.**
     `app/heirloom/components/landing/AddOnsSection.tsx` (127 lines, the
@@ -1456,6 +1459,7 @@ numbered because CLAUDE.md and other docs cross-reference them.
     `null`; its comment says testimonials are "intentionally hidden for
     now", but nothing mounts it either) are imported by nothing since
     `LandingPage.tsx` became a ten-child composer. Delete or wire up.
+    **Fixed in PR #470** (opened 2026-09-07) — both files deleted.
 
 11. **Three parallel `useReveal` implementations — 2026-09-07, not
     fixed.** `services/shared/useReveal.ts` (jefflougheed `Problem`/
@@ -1476,7 +1480,8 @@ numbered because CLAUDE.md and other docs cross-reference them.
     Result: 1 failed / 16 passed. Nobody noticed because no automated gate
     runs the suite — see the Build & Tooling entry added the same day.
     **Fix:** change the string on line 59; the header comment's "same
-    action, byte-for-byte" claim stays true.
+    action, byte-for-byte" claim stays true. **Fixed in PR #470** (opened
+    2026-09-07) — lander suite back to 17/17.
 
 13. **The `lander-redesign-pre-main-merge` tag on origin points at the
     wrong commit — 2026-09-07, Jeff's action.** The tag was meant to
