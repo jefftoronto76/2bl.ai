@@ -501,6 +501,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   no direct auth call) — see `Design Handovers/heirloom-signup-signin-paths.md`
   Paths 6a/6b for the full UI-to-mechanism mapping this finding came out of.
   **Backlog, not urgent — not fixed as part of this pass.**
+  **Correction, 2026-09-07 (lander docs refresh, after PR #468):** the
+  "Sign Up" nav button no longer exists — the lander redesign removed it
+  (`LandingNav.tsx`'s header comment records the removal; the only nav CTA
+  left is "Start Your Story", and `LandingNav.tsx:79` is now the nav-link
+  label inside the links map). The core finding stands unchanged: the account
+  dropdown still offers only "Sign in", and with the nav button gone the
+  Clerk modal reached through that dropdown is now the *only* sign-up door
+  on the storefront other than the chat's own account flow.
 
 - **Chat-captured `[NAME:]` marker never reached `members`, only
   `chat_sessions` — found in the Gate 1 identity audit (2026-08-16, "D7"),
@@ -1092,6 +1100,17 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   2026-08-16 by grep; the only other `max-width: 768px` hits are the
   jefflougheed CSS blocks (`Nav`/`Problem`/`Session`), which are a separate
   isolated surface, and test-file comments.
+  **Update, 2026-09-07 (lander docs refresh, after PR #468):** the
+  breakpoint is now defined **three** ways, not two. The rebuilt lander's
+  `HeroSection.tsx` swaps the desktop constellation for `MobileStoryThread`
+  with its own inline `<style>` media query at `max-width: 768px` (and
+  `WhatIsHeirloomSection.tsx` collapses its grid at the same value), so at
+  exactly 768px the lander shows the *mobile* hero while Tailwind's `md:`
+  utilities on the same page are already in their *desktop* state. Same
+  root cause as above — a magic number in components rather than one
+  shared constant — with one more surface to touch when it is fixed. The
+  lander's other collapses (920/820/760/560/460px) are raw `max-width`
+  queries too; see `System Docs/Design System.md`'s Breakpoints section.
 
 - **The mobile chat header's brand mark has no accessible name —
   2026-08-16, deliberate.** In the `SHOW_STORY_SWITCHER`-false branch the
@@ -1112,6 +1131,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   rejected because `not-sr-only` resets `overflow`/`white-space` and would
   fight the span's existing `truncate` on desktop, i.e. it risks a desktop
   regression to solve a non-problem on mobile.
+  **Cross-reference, 2026-09-07:** the wordmark this entry is about still
+  reads "Legacy" (`ChatHeader.tsx:313`), while the lander's `LandingNav`
+  was renamed to "Heirloom" in PR #468 — see the Heirloom Lander section's
+  first entry for that divergence. Any fix here should use the Heirloom name.
 
 - **Mobile transcript could get stuck horizontally scrolled after closing
   the sidebar — found and fixed 2026-08-17 (#433).** Reported as "content
@@ -1317,6 +1340,188 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 *Cross-reference: the Heirloom chat-widget V2 UI-first entry in the `Chat UI` section documents several Sidebar-hosted features from that pass (Uploads removal, Share Heirloom nav row, tap-outside-to-close, drawer width) — see that section if a Sidebar-nav-row gap doesn't have its own entry here.*
 
 *Cross-reference: the mobile sidebar drawer's exit animation (this section) and the follow-up gap generalizing it to every other conditionally-rendered overlay are tracked in the `Chat UI` section.*
+
+## Heirloom Lander
+
+Recorded 2026-09-07 during the documentation refresh after the lander redesign
+merged to `main` (PR #468 — nav rename Legacy → Heirloom, photo-constellation
+hero, page-wide `PageThread`, all body sections rebuilt from the Summer 2026
+Story Canvas reference, mobile story thread at ≤768px). The lander itself is
+documented in `System Docs/Public Site.md` ("Heirloom lander"). Entries are
+numbered because CLAUDE.md and other docs cross-reference them.
+
+1. **In-app `ChatHeader` wordmark still reads "Legacy" after the lander was
+   renamed to Heirloom — 2026-09-07 (PR #468), not fixed, out of the lander
+   PRs' hard boundary.** `LandingNav.tsx` now renders "Heirloom"
+   (`aria-label="Heirloom home"`), but the `SHOW_STORY_SWITCHER`-false brand
+   mark in `components/shells/membership/ChatHeader.tsx:313` still renders
+   the string `Legacy`, pinned by `ChatHero.mobileHeader.test.tsx`. A
+   visitor sees "Heirloom" on the storefront and "Legacy" the moment the
+   chat panel opens. Every lander PR was scoped to leave
+   `components/shells/membership/**` untouched, so this was recorded rather
+   than changed. **Fix if ever done:** change the string and its test
+   assertions, and update the two `Public Site.md` sentences that describe
+   the mark (both already carry a divergence note).
+
+2. **Nav link labelled "Pricing" scrolls to a section that shows no
+   pricing — 2026-09-07 (PR #468, `PricingSection` port), deliberate id
+   retention, user-visible mislabel.** `PricingSection.tsx` is now the
+   "We're almost ready" beta-signup panel (`data-screen-label="Public
+   Release Soon"`, CTA "Drop us a message") but keeps `id="pricing"` because
+   it is `LandingNav`'s "Pricing" scroll target and the id was declared
+   load-bearing during the port. The result is a nav item whose label
+   promises a price list and delivers a beta-signup card. Needs a copy
+   decision (rename the link, e.g. "Early Access", and the id together), not
+   a code fix in isolation — three files reference the id (`LandingNav.tsx`,
+   `PricingSection.tsx`, `PricingSection.test.tsx`).
+
+3. **`SoonVote` displays fabricated vote counts — 2026-09-07 (PR #450
+   helper, used by PRs #453–#455), not fixed.** `SoonVote.tsx` shows a
+   hardcoded `initial` number (`hl.comicVote` 126, `hl.rememberVote` 183,
+   `hl.liveEditorVote` 247, `hl.socialMediaVote` 94) plus the viewer's own
+   vote, persisted only in that browser's localStorage. Nothing is sent
+   anywhere, so the count is a fixed prop dressed as a live tally — the
+   posture this document rejected elsewhere ("fabricating a number nothing
+   tracks", see the Memories `memoryCount` and Share-links UTM entries) now
+   ships on the public storefront. The design reference specified it this
+   way. **Needs, before this is production-real:** a vote endpoint (or
+   dropping the number and keeping only the "want it sooner?" toggle).
+
+4. **Hidden hero images still download on the wrong breakpoint —
+   2026-09-07 (PRs #447 and #464), not fixed.** `HeroSection.tsx` renders
+   both visuals unconditionally and hides one with CSS: the constellation's
+   ten `<img>`s (`Hero-0..9.webp`, no `loading` attribute, so eager) are
+   fetched on phones where the block is `display:none`, and the three
+   mobile-thread images are in the DOM on desktop (the first eager, two
+   `loading="lazy"`). Roughly 180 KB of unused WebP on mobile, against
+   CLAUDE.md's "LCP under 2 seconds on mobile" target. **Fix if ever done:**
+   `<picture>`/`srcset` with `media` queries, or render the branch
+   conditionally from a media-query hook (which reintroduces the JS/CSS
+   breakpoint split tracked in the Chat UI section).
+
+5. **Six lander `<img>` sites instead of `next/image` — 2026-09-07, not
+   fixed.** `HeroSection.tsx` (three sites), `HowItWorksSection.tsx`,
+   `LandingNav.tsx`, `PageThread.tsx`. `@next/next/no-img-element` fires as
+   a warning on every build (the build passes). All six set explicit
+   `width`/`height`, so there is no layout shift; what is lost is
+   responsive resizing and automatic format negotiation. Deliberate during
+   the port to keep the reference's pixel geometry; revisit together with
+   entry 4.
+
+6. **`PageThread` bead geometry is coupled to the section count, and only
+   four of its six caption images exist — 2026-09-07 (PR #467 removed the
+   old 720px gate), latent 404.** `PageThread.tsx` places one bead per
+   `[data-screen-label]` boundary and picks photo beads from
+   `TH_CAPS = ['Family','Pets','Friendships','A day','A song','A trip']`,
+   using the caption string as the image filename. Nine labelled sections
+   yield exactly four photo beads today, which is exactly how many images
+   exist in `public/heirloom/landerimages/`; add one labelled section and
+   the fifth bead requests `A song.webp` → 404. Also: `A day.webp` has a
+   space in its filename. **Fix if ever done:** trim `TH_CAPS` to the
+   images that exist (or guard on a known-files list) — a one-line change.
+
+7. **The first `PageThread` photo bead sits 28px below the mobile hero
+   thread's CTA at 375px — 2026-09-07 (PR #467), needs a design call.**
+   Beads are centred at `x: W/2` with no mobile offset, and PR #467
+   deliberately removed the width gate that used to suppress them below
+   720px. At 375px the "Family" bead lands directly under the mobile story
+   thread's "Start Your Story" button — no overlap (verified by bounding
+   box), but it reads as the hero thread continuing straight into the page
+   thread. Arguably the intent; flagged because it is the one spot where
+   the two thread components meet.
+
+8. **Stale code comments left by the incremental lander PRs — 2026-09-07,
+   not fixed.** `HeroSection.tsx`'s 768px CSS block still says "28vh" twice
+   while the value is `20vh` (PR #466 changed the value, not the comment);
+   `useReveal.ts:16` says "Unused until the Wave 2 section ports import it"
+   (seven sections import it); `LandingCta.tsx:27–33` lists icons "for the
+   remaining Wave 2 sections" that have shipped; `LandingNav.tsx:6`
+   describes "changes vs. the live file" though it *is* the live file;
+   `app/heirloom/globals.css:98` says the reveal rule "matches .hl-reveal in
+   LandingPage.tsx", which contains no such class. Mechanical fixes.
+
+9. **Dead CSS: `.hl-reveal` / `.hl-visible` have no consumers —
+   2026-09-07, not fixed.** Defined in `app/heirloom/globals.css:99–100`
+   (plus a `prefers-reduced-motion` clause at `:120`) for the pre-redesign
+   `LandingPage.tsx`; the rebuilt sections use `.reveal` / `.reveal.in` +
+   `@keyframes hl-rise` instead. Grep across `app/`, `components/`,
+   `services/` finds zero uses. Same hazard as the `.chat-overlay-*` entry
+   in the jefflougheed section: someone restyling "the landing reveal" via
+   `.hl-reveal` would change nothing. **Fix:** delete the three rules and
+   the line-98 comment.
+
+10. **Orphaned lander components on disk — 2026-09-07, not fixed.**
+    `app/heirloom/components/landing/AddOnsSection.tsx` (127 lines, the
+    pre-redesign add-ons grid) and `TestimonialsSection.tsx` (returns
+    `null`; its comment says testimonials are "intentionally hidden for
+    now", but nothing mounts it either) are imported by nothing since
+    `LandingPage.tsx` became a ten-child composer. Delete or wire up.
+
+11. **Three parallel `useReveal` implementations — 2026-09-07, not
+    fixed.** `services/shared/useReveal.ts` (jefflougheed `Problem`/
+    `Session`/`WidgetShell`, adds a `visible` class), `app/legacy/
+    components/LandingPage.tsx`'s local copy, and
+    `app/heirloom/components/landing/useReveal.ts` (returns `[ref, seen]`,
+    ported verbatim from the Story Canvas reference). The Media-pipeline
+    entry that called `services/shared/useReveal.ts` "the only existing
+    precedent" carries a correction. The shared one is the natural home if
+    they are ever unified; they differ in return shape and fallback timer.
+
+12. **`npm test` is red on `main`: `CtaSection.Footer.test.tsx` asserts the
+    pre-redesign Pricing CTA label — 2026-09-07 (PR #455 renamed the label,
+    PR #456 added the test), not fixed.** Line 59 clicks
+    `getByRole('button', { name: 'Start Your Story' })` inside
+    `<PricingSection />`, whose button now reads "Drop us a message" (the
+    sibling `PricingSection.test.tsx:45` asserts the new label correctly).
+    Result: 1 failed / 16 passed. Nobody noticed because no automated gate
+    runs the suite — see the Build & Tooling entry added the same day.
+    **Fix:** change the string on line 59; the header comment's "same
+    action, byte-for-byte" claim stays true.
+
+13. **The `lander-redesign-pre-main-merge` tag on origin points at the
+    wrong commit — 2026-09-07, Jeff's action.** The tag was meant to
+    snapshot the lander integration branch before main was merged in
+    (`cee4b2a1`). Pushing tags from the Claude Code session is refused
+    (HTTP 403 on `refs/tags/*`), so it was created as a GitHub Release —
+    which targeted `main`, leaving the remote tag on `c77dd158` ("Add files
+    via upload"), main's head at the time. A local annotated tag with the
+    intended message points at `cee4b2a1`, so the same name resolves to two
+    different trees depending on where it is checked out. **Fix:** delete
+    the release/tag and recreate it at `cee4b2a1`, or edit the release's
+    target. The snapshot itself is safe regardless — `cee4b2a1` is the
+    first parent of the merge commit that brought main in.
+
+14. **`mobile-thread-*.webp` are byte-identical copies of desktop images —
+    2026-09-07 (PR #464), deliberate, do not dedupe.** `mobile-thread-beach`
+    = `Hero-0`, `mobile-thread-mammoth` = `Video`, `mobile-thread-wedding` =
+    `Hero-6`. Separate files so the desktop collage and the mobile story
+    thread can be re-photographed independently (the README for the mobile
+    thread flags that the current photos are placeholders for Jeff's real
+    memories). Recorded so a future cleanup doesn't "fix" the duplication.
+
+15. **Tech debt — the lander's styling deviates from the CLAUDE.md
+    Tailwind-only public-site rule — 2026-09-07 (PRs #449–#467), decision:
+    record, do not convert yet.** The rebuilt sections are written largely
+    as inline `style={{…}}` objects and component-scoped `<style>` blocks
+    (`.hl-mc-*` in `HeroSection.tsx`, `.hl-thread-*` in `PageThread.tsx`,
+    `.hl-foot*` in `Footer.tsx`, per-section media queries in the rest)
+    over `rgb(var(--color-*))` tokens; Tailwind appears only for a handful
+    of utilities (`bg-accent hover:bg-accent-hover text-background`,
+    `font-mono`, `w-full h-full object-cover`). This was a deliberate port
+    decision — each file's header comment maps the reference's `--hl-*`
+    colours onto the canonical `--color-*` tokens, and the token rule *is*
+    respected, with one exception: `.hl-mc-hand` in `HeroSection.tsx`
+    hardcodes `#5c4a36`. CLAUDE.md now states the rule explicitly (Tailwind
+    utility classes only on the public site; no inline styles, style objects
+    or scoped `<style>` blocks except where a third-party library requires
+    it; no hardcoded hex) and its "Where the rest of this lives" table
+    points here, so this entry is the acknowledged exception until the
+    conversion lands. **Work item:** convert section by section to Tailwind
+    utilities plus `tailwind.config.js` tokens (add `font-hand` / the
+    `--font-hand` face while doing so, see `Design System.md`), keeping the
+    Story Canvas geometry; verify each section visually on the Vercel
+    preview at 375/768/769/1200px as the lander PRs did. Not converted in
+    the 2026-09-07 docs PR or its companion code-hygiene PR.
 
 ## Memory Panel & Stories
 
@@ -2448,8 +2653,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   skeleton), subsequent pages appended (not replacing) on an
   `IntersectionObserver` sentinel scrolling into view (same create-ref/
   observe/disconnect shape as `services/shared/useReveal.ts`, the only
-  existing precedent — no other load-more/infinite-scroll pattern existed
-  in this codebase to match instead). Applied to `MediaGallery.tsx` too,
+  existing precedent at the time — no other load-more/infinite-scroll
+  pattern existed in this codebase to match instead; **correction
+  2026-09-07:** two further `useReveal` implementations now exist, see the
+  Heirloom Lander section's parallel-`useReveal` entry). Applied to `MediaGallery.tsx` too,
   not just `MediaPage.tsx`, despite a single chat's media being naturally
   more bounded — nothing in this schema caps attachments per conversation,
   and the two surfaces share `MediaItemsGrid`/`MediaCard`, so leaving one
@@ -2765,6 +2972,21 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   Widget.md`'s §6.
 
 ## Build & Tooling
+
+- **The Definition of Done requires passing tests, but nothing in the repo
+  runs them — found during the lander docs refresh, 2026-09-07, not
+  fixed.** `package.json`'s `test` script is `vitest run`, but the `build`
+  script (`tsx scripts/sync-branding.ts && next build`) and `vercel.json`'s
+  identical `buildCommand` never invoke it; there is no `.github/` directory
+  (no Actions, no required checks), no `.husky/`, and no non-sample git
+  hook. So a red suite is invisible to every automated gate — which is how
+  `CtaSection.Footer.test.tsx` shipped to `main` asserting a CTA label the
+  same PR had renamed (see the Heirloom Lander section). CLAUDE.md's "Test
+  plan written before implementation and passing" is enforced only by a
+  human remembering to run `npm test`. **Fix if ever done:** a GitHub
+  Actions workflow (or a Vercel build step) that runs `vitest run` on every
+  PR, and a branch-protection rule that requires it — the tests already
+  exist and take seconds.
 
 - **Next.js route.ts stray-export incident (2026, moved here from CLAUDE.md's
   "Dependency & API Rules," 2026-08-04 split).** `bbb66e7` exported a helper,
