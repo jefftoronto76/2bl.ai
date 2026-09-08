@@ -2991,7 +2991,17 @@ numbered because CLAUDE.md and other docs cross-reference them.
   human remembering to run `npm test`. **Fix if ever done:** a GitHub
   Actions workflow (or a Vercel build step) that runs `vitest run` on every
   PR, and a branch-protection rule that requires it — the tests already
-  exist and take seconds.
+  exist and take seconds. **State of the suite on `main` as of 2026-09-07:**
+  besides the lander test above, three unrelated files were already red —
+  `components/admin/content/BlockCard.test.tsx`,
+  `components/admin/content/BlockEditForm.test.tsx` (the same area
+  `useBlockEditForm.test.ts` fails `tsc --noEmit` on, a missing `type` field
+  on `BlockEditFormBlock` fixtures) and
+  `components/shells/membership/ChatHero.kebabDelete.test.tsx` (mobile
+  overlay sidebar queries time out) — 10 failing assertions across the
+  three, reproduced against `origin/main` in a clean worktree. None is
+  touched by the lander PRs; they are recorded here so the next person to
+  run the suite knows which red is theirs.
 
 - **Next.js route.ts stray-export incident (2026, moved here from CLAUDE.md's
   "Dependency & API Rules," 2026-08-04 split).** `bbb66e7` exported a helper,
