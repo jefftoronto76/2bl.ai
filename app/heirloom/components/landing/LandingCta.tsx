@@ -24,13 +24,11 @@
     --hl-accent-line   → rgb(var(--color-accent) / 0.3)
     --hl-text          → rgb(var(--color-text-primary))
 
-  Icons for the remaining Wave 2 sections (no generic Icon wrapper — each
-  section imports what it needs from lucide-react directly, the same pattern
-  HeroSection.tsx uses; heart / mapPin / mic are already established there):
-    bookMark → BookMarked (or Bookmark)
-    edit     → Pencil (or Edit)
-    feather  → Feather
-    shield   → Shield
+  Icons: there is no generic Icon wrapper — each section imports what it needs
+  from lucide-react directly, the same pattern HeroSection.tsx uses. The
+  reference's icon names mapped as: heart → Heart, mapPin → MapPin, mic → Mic,
+  bookMark → BookMarked, edit → Pencil, feather → Feather, shield → Shield,
+  panels → LayoutGrid.
 */
 
 import type { MouseEventHandler, ReactNode } from 'react';

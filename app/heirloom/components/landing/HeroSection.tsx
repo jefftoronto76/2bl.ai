@@ -420,10 +420,10 @@ export function HeroSection() {
           .hl-mc-hero-text-col > div { justify-content: center; }
           .hl-mc-hero-text-col > .hl-mc-hero-cta-row { display: none !important; }
           .hl-mc-collage-col > .hl-mc-scaler { display: none !important; }
-          /* Mobile: the H1 starts 28vh from the top of the viewport instead of the
+          /* Mobile: the H1 starts 20vh from the top of the viewport instead of the
              hero vertically centring in its min-height: 100vh. The section's
              Tailwind items-center and the text column's inline translateY(-5vh)
-             both need overriding for the 28vh to land exactly. */
+             both need overriding for the 20vh to land exactly. */
           .hl-mc-hero { align-items: flex-start !important; }
           .hl-mc-hero-grid { padding-top: 20vh; align-self: flex-start; }
           .hl-mc-hero-text-col { transform: none !important; }

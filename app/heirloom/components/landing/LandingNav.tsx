@@ -1,18 +1,18 @@
 'use client';
 
 /*
-  LandingNav — updated per design review.
+  LandingNav — the lander's fixed top bar (Summer 2026 redesign, PR #449).
 
-  Changes vs. the live file:
-  1. Wordmark "Legacy" → "Heirloom" (+ aria-label). Reverts the earlier
-     branding-only rename — nav now shows the real product name.
-  2. Nav links: "How It Works" / "What You Can Make" / "Pricing". "About" is
-     removed. Note the target-id mapping below — it's not 1:1 with the old
-     labels, see README.
-  3. "Sign Up" ghost button removed. "Start Your Story" stays, wiring
-     unchanged (dispatch OPEN_CHAT).
+  - Wordmark "Heirloom" (+ aria-label "Heirloom home"). The pre-redesign
+    "Legacy" wordmark, the "About" link and the "Sign Up" ghost button were
+    removed in that redesign.
+  - Three scroll links — "How It Works" / "What You Can Make" / "Pricing". The
+    label → target-id mapping in navLinks below is deliberately NOT 1:1
+    (see System Docs/Public Site.md, "Heirloom lander"); renaming a section id
+    breaks these links.
+  - "Start Your Story" is the only CTA; its wiring is production's.
 
-  ⚠️ DO NOT modify the remaining handler:
+  ⚠️ DO NOT modify the handler:
   • Start Your Story → dispatch({ type: 'OPEN_CHAT' })
 */
 
