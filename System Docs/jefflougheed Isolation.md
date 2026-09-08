@@ -18,6 +18,10 @@ jefflougheed.ca-only code and assets are isolated from shared/platform code:
   root `public/` rather than moving the folder into `app/(jefflougheed)/`. The
   webmanifest lives at `/sage/jefflougheed/favicons/site.webmanifest` and its
   internal icon `src`s point at `/sage/jefflougheed/favicons/…`.
+  The same per-brand namespacing rule applies platform-wide, not just here:
+  SBL under `public/2bl/`, Heirloom under `public/heirloom/` (`favicons/` and,
+  since the 2026-09 lander rebuild, `landerimages/` — 19 WebP photos referenced
+  from `app/heirloom/components/landing/`).
 
 The widget-shell chat surfaces have been extracted (centralization Step E):
 the former `Hero.tsx`, `Chat.tsx`, and `sage/*` (`SageReply`, `BookingCard`,
