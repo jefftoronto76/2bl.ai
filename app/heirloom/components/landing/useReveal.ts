@@ -13,7 +13,9 @@
       (so above-the-fold content doesn't wait on the observer).
 
   Attach the returned ref to a section wrapper and key its reveal styling off
-  `seen`. Unused until the Wave 2 section ports import it.
+  `seen`. Used by the lander's body sections (WhatIs, HowItWorks, ContributorModel,
+  Features, BuyerPersonas, Pricing, Cta); HeroSection, PageThread and Footer
+  carry their own scoped CSS instead.
 */
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
