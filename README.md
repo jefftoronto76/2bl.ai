@@ -206,14 +206,21 @@ Together they cover each other's gaps.
 
 ## Heirloom — storefront + AI chat
 
-`app/heirloom/` (Tailwind, `[data-brand="heirloom"]` palette) holds the landing
-page (`components/landing/*`), `layout.tsx`, `globals.css`, and `page.tsx` — the
-product app root: a landing page with a slide-in chat panel layered over it
-(Escape / backdrop-click to close).
+`app/heirloom/` (`[data-brand="heirloom"]` palette) holds the landing page
+(`components/landing/*`), `layout.tsx`, `globals.css`, `page.tsx` (the server
+gate — invite/auth resolution) and `HeirloomApp.tsx` (the client shell: the
+landing page with a slide-in chat panel layered over it, Escape / backdrop-click
+to close).
 
+- The lander was rebuilt in 2026-09 from the Summer 2026 Story Canvas design
+  reference (PR #468): photo-constellation hero, a page-wide scroll thread
+  (`PageThread`), all body sections re-ported, and a mobile-only vertical story
+  thread at ≤768px; the wordmark is **Heirloom**. Every CTA opens the chat by
+  dispatching `OPEN_CHAT`. Details in `System Docs/Public Site.md` ("Heirloom
+  lander"); open items in `System Docs/Known Gaps.md` (Heirloom Lander).
 - The chat is the platform **membership shell** — its presentation lives in
   `components/shells/membership/` (app-importable shared presentation, extracted
-  in centralization Step F); `page.tsx` mounts it.
+  in centralization Step F); `HeirloomApp.tsx` mounts it.
 - Chat store: `useReducer` shell store (`chatStore.tsx`) composed with the shared
   `useChatTurn` engine; the pure shell reducer is headless in
   `services/chat/ui/v1/chatReducer.ts`. Streams from `/api/sage` via the shared

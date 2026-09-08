@@ -19,7 +19,7 @@ tenants. Products, tenants, and resellers are data, not code.
 | Product | Purpose | Status |
 |---------|---------|--------|
 | Sage | AI inbound assistant for SMBs | Live |
-| Heirloom | AI biography and story engine | In migration — storefront, AI chat, and memory/story creation live (confirmed 2026-08-14, `services/crm/memories.ts` + `services/crm/stories.ts`); collaboration features (invites, sharing) still landing |
+| Heirloom | AI biography and story engine | In migration — storefront, AI chat, and memory/story creation live (confirmed 2026-09-07; `services/crm/memories.ts` + `services/crm/stories.ts`). Storefront lander redesigned to the Summer 2026 Story Canvas reference in PR #468 (nav wordmark Legacy → Heirloom, photo-constellation hero, mobile story thread); pricing is presented as a pre-launch beta signup, not a price list. Collaboration features (invites, sharing) still landing |
 | HUGS | Family and aging parent support | Planned |
 
 Products are not hardcoded. Adding a new product means adding a tenant
@@ -134,7 +134,7 @@ tenants/
 app/
   (platform)/      ← 2BL platform admin
   (sage)/          ← Sage product routes
-  (heirloom)/      ← Heirloom product routes
+  heirloom/        ← Heirloom product routes (plain segment, not a route group — middleware rewrites heirloom.2bl.ai here)
   (hugs)/          ← HUGS product routes
   (jefflougheed)/  ← jefflougheed.ca — customer tenant of Sage
   secondbrainlabs/ ← 2BL marketing storefront

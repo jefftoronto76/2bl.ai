@@ -24,13 +24,21 @@ route group / segment and resolved at the edge by `middleware.ts`.
   host is rewritten there by middleware). `layout.tsx` imports the Heirloom token
   file (`app/heirloom/globals.css`) and wraps the page in
   `<div data-brand="heirloom">` (which carries the next/font
-  `--font-heirloom-serif` / `--font-heirloom-sans` variables that the Heirloom
-  `--font-*` remaps depend on), loading Cormorant Garamond (serif/display) + DM
-  Sans (body) via `next/font/google`. `layout.tsx` has **no `metadata.icons`**
-  (so Heirloom routes fall back to the App Router `app/favicon.ico` convention).
-  `page.tsx` is the **product app root**: it mounts `ChatProvider` and renders
-  the landing page with a slide-in chat panel layered over it (see the
-  "Heirloom storefront" section in `System Docs/Public Site.md`).
+  `--font-heirloom-serif` / `-sans` / `-mono` / `-hand` variables that the
+  Heirloom `--font-*` remaps depend on), loading Cormorant Garamond
+  (serif/display) + DM Sans (body) + DM Mono (mono) + Caveat (hand-lettered
+  accent) via `next/font/google`. `layout.tsx` sets `metadata.icons` →
+  `/heirloom/favicons/…` (ico, svg, 96px png, apple-touch-icon) plus
+  `manifest: '/heirloom/favicons/site.webmanifest'`. `page.tsx` is the
+  **server gate** (invite/auth resolution); `HeirloomApp.tsx` is the client
+  shell that mounts `ChatProvider`, renders `components/landing/LandingPage.tsx`
+  and layers `ChatDrawerV2` over it — every lander CTA opens that panel by
+  dispatching `{ type: 'OPEN_CHAT' }` through `useChatStore` (see the "Heirloom
+  storefront" and "Heirloom lander" sections in `System Docs/Public Site.md`).
+  The lander's in-page anchors are load-bearing and deliberately not 1:1 with
+  their nav labels: `LandingNav` "How It Works" → `#what-is-heirloom`, "What
+  You Can Make" → `#how-it-works`, "Pricing" → `#pricing`; `Footer` "About" →
+  `#what-is-heirloom`.
 - **`app/legacy/`** — the Legacy storefront for `legacy.2bl.ai`
   (`page.tsx` + `layout.tsx`). Same pattern as `app/heirloom/`: a plain path
   segment (not a route group), rewritten to from the `legacy.2bl.ai` host by
@@ -39,7 +47,8 @@ route group / segment and resolved at the edge by `middleware.ts`.
   (which carries the next/font `--font-legacy-serif` / `--font-legacy-sans` /
   `--font-legacy-mono` variables), loading Cormorant Garamond (serif/display) +
   DM Sans (body) + DM Mono via `next/font/google`. `layout.tsx` has no
-  `metadata.icons` (falls back to `app/favicon.ico`, same as Heirloom).
+  `metadata.icons` (falls back to `app/favicon.ico` — unlike Heirloom, which
+  sets its own; re-verify this claim when touching `app/legacy/layout.tsx`).
 - **`app/layout.tsx`** — the shared root layout. `<ClerkProvider afterSignOutUrl="/">` is
   inside `<body>` (not wrapping `<html>`) — Clerk requires this placement; do not move it.
   It imports the global base layer (`app/globals.css` — reset + shared component
