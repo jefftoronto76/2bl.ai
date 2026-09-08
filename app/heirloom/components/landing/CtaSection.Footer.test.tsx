@@ -56,7 +56,7 @@ describe('CtaSection (FadeCta port)', () => {
 
   it('dispatches the same action as the Pricing CTA', () => {
     render(<PricingSection />)
-    fireEvent.click(screen.getByRole('button', { name: 'Start Your Story' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Drop us a message' }))
     const pricingCall = mockDispatch.mock.calls[0]
     mockDispatch.mockClear()
 
