@@ -22,7 +22,7 @@ type Bead =
   | { key: string; photo: true; id: string; cap: string; x: number; y: number; w: number; h: number }
   | { key: string; photo: false; x: number; y: number };
 
-const TH_CAPS = ['Family', 'Pets', 'Friendships', 'A day', 'A song', 'A trip'];
+const TH_CAPS = ['Family', 'Pets', 'Friendships', 'A day']; // each caption doubles as the bead's image filename in /public/heirloom/landerimages/
 
 export function PageThread() {
   const layerRef = useRef<HTMLDivElement>(null);
