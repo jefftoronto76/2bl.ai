@@ -15,6 +15,7 @@ on the public side).
 | [`Nav`](#nav) | `app/(jefflougheed)/components/Nav.tsx` |
 | [`HeirloomPage` (server gate)](#heirloompage-server-gate) | `app/heirloom/page.tsx` |
 | [`HeirloomApp`](#heirloomapp) | `app/heirloom/HeirloomApp.tsx` |
+| [Heirloom lander (`components/landing/`)](#heirloom-lander-componentslanding) | `app/heirloom/components/landing/*` |
 | [`chatStore` (`ChatProvider`, `useChatStore`, `Message`)](#chatstore-chatprovider-usechatstore-message) | `components/shells/membership/chatStore.tsx` |
 | [`ChatHero`](#chathero) | `components/shells/membership/ChatHero.tsx` |
 | [`MediaGallery`](#mediagallery) | `components/shells/membership/MediaGallery.tsx` |
@@ -179,23 +180,109 @@ Sage visitor chat in `components/shells/widget/`), app-importable shared present
 Heirloom-local `app/heirloom/lib/stream.ts` reader was deleted; the hook owns
 transport via the shared `readDataStream` (`services/chat/server/stream-utils.ts`).
 `app/heirloom/` now holds `page.tsx` (server gate), `HeirloomApp.tsx` (client shell),
-`layout.tsx`, `globals.css`, and `components/landing/*`.
+`layout.tsx`, `globals.css`, `components/landing/*` (the lander — own section below), and
+`coming-soon/page.tsx` (a standalone static "By invitation only." route, independent of
+both the lander and the gate).
 
-**Lander section ports (Summer 2026 reference):** sections under `components/landing/`
-are being replaced one or two at a time from `Design Handovers/ Aug 2026 Atomic
-Updates/13_Heirloom_lander_nav_updateV4/Heirloom Lander - Summer 2026 - Story Canvas.html`.
-Ported sections share `useReveal.ts` (scroll-reveal hook) + the `.reveal` / `.reveal.in`
-rise animation in `globals.css`, `Eyebrow.tsx`, and `LandingCta.tsx`; each maps the
-reference's `var(--hl-*)` colors onto the canonical `--color-*` tokens (mapping table in
-each file's header comment). Every CTA keeps production's `dispatch({ type: 'OPEN_CHAT' })`
-wiring via `useChatStore` — the reference's `legacy-open-chat` window CustomEvent is never
-ported. Ported so far: `HeroSection` + `PageThread` (constellation hero + scroll thread),
-`WhatIsHeirloomSection`, `HowItWorksSection` (book suite), `ContributorModelSection`,
-`FeaturesSection` (best parts),
-`BuyerPersonasSection` ("Every story deserves to be told", `id="personas"`), and
-`PricingSection` (now the "We're almost ready" beta-signup panel — `id="pricing"` is
-`LandingNav`'s scroll target and must stay). Section tests sit beside each component
-(`*.test.tsx`).
+### Heirloom lander (`components/landing/`)
+
+**Files:** `app/heirloom/components/landing/*` — the composer `LandingPage.tsx`, one file
+per section, and the shared helpers listed below. Photos in `public/heirloom/landerimages/`.
+
+Rebuilt in full from the design team's Summer 2026 reference and merged to `main` on
+2026-09-07 (PR #468; built as PRs #449–#458 and #464–#467 on the
+`claude/lander-hero-constellation-thread-8jf3oz` integration branch; the pre-merge lander
+state is tagged `lander-redesign-pre-main-merge` — see `Known Gaps.md` for a caveat on
+where that tag currently points). Two design sources: `Design Handovers/ Aug 2026 Atomic
+Updates/13_Heirloom_lander_nav_updateV4/Heirloom Lander - Summer 2026 - Story Canvas.html`
+(nav, hero, every body section) and `Design Handovers/september_2026/
+14_mobile_hero_story_thread_09/` (the ≤768px mobile hero thread). Each section file's
+header comment carries the `var(--hl-*)` → canonical `--color-*` token mapping it uses.
+
+**Composition.** `LandingPage.tsx` is a thin, stateless composer: `PageThread`
+(absolutely-positioned overlay) → `LandingNav` → `HeroSection` → `WhatIsHeirloomSection`
+→ `HowItWorksSection` → `ContributorModelSection` → `FeaturesSection` →
+`BuyerPersonasSection` → `PricingSection` → `CtaSection` → `Footer`. Every section carries
+a `data-screen-label` attribute; `PageThread` finds section boundaries with
+`document.querySelectorAll('[data-screen-label]')` and places one bead at each, so
+**section order and the presence of that attribute are load-bearing** (adding or
+removing a labelled section changes the thread geometry — see `Known Gaps.md`, Heirloom
+Lander).
+
+**Sections, in render order:**
+- `LandingNav` — wordmark **Heirloom** (`aria-label="Heirloom home"`; the pre-redesign
+  "Legacy" wordmark and the "Sign Up" ghost button are gone). Three scroll links whose
+  labels deliberately do **not** match their target ids 1:1 — "How It Works" →
+  `#what-is-heirloom`, "What You Can Make" → `#how-it-works`, "Pricing" → `#pricing` —
+  plus "Start Your Story". `Footer`'s "About" also targets `#what-is-heirloom`. Renaming
+  a section id breaks these links.
+- `HeroSection` — `data-screen-label="Hero"`. Above 768px it renders
+  `MemoryConstellation`, the photo-constellation collage (`Hero-0..Hero-9.webp`,
+  `Video.webp`, an audio card, a note, chips), scaled into its column with a
+  `ResizeObserver`. At ≤768px it renders `MobileStoryThread` instead: a static vertical
+  thread of three photo + handwritten-caption `<figure>` pairs
+  (`mobile-thread-beach/mammoth/wedding.webp`), a date/location card and an audio card,
+  ending on the CTA; the top text block's CTA is hidden there so the button renders once.
+  Two breakpoints coexist — the 920px single-column collapse and the 768px mobile branch
+  (headline centred, H1 pinned to `20vh` from the viewport top). Scoped `.hl-mc-*` CSS;
+  shares `constellationPath.ts`'s `mcPath` with `PageThread`.
+- `PageThread` — the page-wide scroll-drawn dotted thread that lights up as the visitor
+  scrolls, with four photo beads (`Family`, `Pets`, `Friendships`, `A day` — the caption
+  strings double as image filenames) that render at every width since PR #467. Scoped
+  `.hl-thread-*` CSS.
+- `WhatIsHeirloomSection` — `id="what-is-heirloom"`, label "Through simple
+  conversations"; Capture / Shape / Publish cards.
+- `HowItWorksSection` — `id="how-it-works"`, label "It becomes a book"; the book
+  centrepiece uses the real `book-keepsake.webp` photo; four "other ways to share it"
+  cards, The Comic carrying a `SoonVote`.
+- `ContributorModelSection` — `id="contributors"`, label "One story. Many voices"; one
+  `SoonVote`.
+- `FeaturesSection` — `id="best-parts"`, label "The Best Parts"; two `SoonVote`s.
+- `BuyerPersonasSection` — `id="personas"`, label "Every story deserves to be told".
+- `PricingSection` — `id="pricing"`, label "Public Release Soon": now the "We're almost
+  ready" beta-signup panel whose CTA reads "Drop us a message". `id="pricing"` is retained
+  because it is `LandingNav`'s "Pricing" scroll target, even though the section no longer
+  shows pricing (recorded in `Known Gaps.md`).
+- `CtaSection` — label "All memories fade", the closing CTA (`PrimaryCta`).
+- `Footer` — label "Footer", the Second Brain Labs footer; presentational only, no chat
+  wiring. Scoped `.hl-foot*` CSS.
+
+**Chat wiring — unchanged from production.** Every CTA dispatches
+`{ type: 'OPEN_CHAT' }` via `useChatStore` (`LandingNav`, both `HeroSection` buttons,
+`PricingSection`, `CtaSection`); `HeirloomApp` opens `ChatDrawerV2` in response. The
+reference's `legacy-open-chat` window CustomEvent is never ported. `LandingCta.tsx`
+(`PrimaryCta` / `GhostCta`) is visual-only and takes a plain `onClick` — **the calling
+section owns the dispatch**; `CtaSection` is its only consumer and `GhostCta` currently
+has no call site.
+
+**Shared helpers.** `useReveal.ts` (IntersectionObserver reveal-once hook — threshold
+0.12, 1300ms fallback timer, in-viewport-on-mount check) paired with the `.reveal` /
+`.reveal.in` rise animation (`@keyframes hl-rise`) in `app/heirloom/globals.css`, each
+element setting its own inline `animationDelay` for the stagger; `Eyebrow.tsx` (uppercase
+mono label); `SoonVote.tsx` (the "want it sooner?" vote widget — the count is a
+hardcoded `initial` plus the viewer's own vote, persisted in localStorage under
+`hl.comicVote`, `hl.rememberVote`, `hl.liveEditorVote`, `hl.socialMediaVote`; nothing is
+sent anywhere); `constellationPath.ts`. The body sections use the reveal helpers;
+`HeroSection`, `PageThread` and `Footer` do not. The older `.hl-reveal` / `.hl-visible`
+utility still defined in `globals.css` is no longer referenced by anything.
+
+**Styling.** The ported sections are written largely as inline `style` objects and
+component-scoped `<style>` blocks over `rgb(var(--color-*))` tokens, with Tailwind used
+for a handful of utilities only — a deliberate port decision that deviates from
+CLAUDE.md's Tailwind-only public-site rule. Tracked as tech debt in `Known Gaps.md`
+(Heirloom Lander, entry 15); not converted yet.
+
+**Assets.** `public/heirloom/landerimages/`, 19 files, all WebP. `mobile-thread-*.webp`
+are byte-identical copies of `Hero-0` / `Video` / `Hero-6` so the desktop collage and the
+mobile thread can be edited independently.
+
+**Tests.** Three files: `BuyerPersonasSection.test.tsx`, `PricingSection.test.tsx`,
+`CtaSection.Footer.test.tsx`. The remaining sections are uncovered. As of 2026-09-07
+`CtaSection.Footer.test.tsx` still asserts the pre-redesign Pricing CTA label ("Start
+Your Story", now "Drop us a message") and fails under `npm test` — see `Known Gaps.md`.
+
+**Not mounted.** `AddOnsSection.tsx` and `TestimonialsSection.tsx` remain on disk but
+nothing imports them.
 
 ### `HeirloomPage` (server gate)
 
@@ -227,7 +314,7 @@ When the token genuinely exists for this tenant but didn't authorize (expired/us
 
 **File:** `app/heirloom/HeirloomApp.tsx`
 
-`'use client'` shell — accepts `gateEnabled` and `isAuthorized` from the server page, wraps `<ChatProvider gateEnabled={…} isAuthorized={…}>`, and renders the landing page + slide-in chat panel.
+`'use client'` shell — accepts the full gate/invite prop set from the server page (see the `HeirloomPage` row above for the enumeration; `gateEnabled` and `isAuthorized` are two of them), wraps `<ChatProvider gateEnabled={…} isAuthorized={…}>`, and renders `components/landing/LandingPage.tsx` + the slide-in chat panel (`ChatDrawerV2`) that every lander CTA opens via `OPEN_CHAT`.
 Escape key and backdrop click dispatch `CLOSE_CHAT`.
 Panel carries `role="dialog"` / `aria-modal` / `aria-hidden`.
 
@@ -457,7 +544,7 @@ The metadata line now always states the upload date, appending "· Processing" i
 Filename is click-to-rename (pencil affordance, inline `<input>`, autofocus, commit on Enter/blur, Escape cancels without forcing a blur — mirrors `MemoryCardView.tsx`'s own fix for the same stale-value-on-synchronous-blur bug) via a new `onRename(id, name)` prop — **local-state only, no PATCH endpoint exists for media items; see `Known Gaps.md`.**
 
 **Thumbnail fade-in, 2026-08-17 (PR #441):** the thumbnail `<img>` gains a `hl-thumb-fade` class (`app/heirloom/globals.css`) plus `hl-thumb-loaded` toggled on by a new `thumbLoaded` state, set via the `<img>`'s own `onLoad` handler — replaces the abrupt pop-in from Stage 3 above with a short (0.18s) opacity transition once the browser actually finishes loading the image.
-`hl-thumb-fade`/`hl-thumb-loaded` follow the same two-class convention as the file's other `hl-*` animation pairs (e.g. `hl-reveal`/`hl-visible`), and the new rule sits in the same `prefers-reduced-motion: reduce` guard block as those others — `hl-thumb-fade { opacity: 1 !important; transition: none !important; }` — so it stays instant for visitors who've opted out of motion, exactly like the rest of the `hl-*` set.
+`hl-thumb-fade`/`hl-thumb-loaded` follow the same two-class convention as the file's other `hl-*` animation pairs (e.g. `.reveal`/`.reveal.in`, the lander's scroll-reveal — the older `hl-reveal`/`hl-visible` pair is still defined but unreferenced since the PR #468 lander rebuild), and the new rule sits in the same `prefers-reduced-motion: reduce` guard block as those others — `hl-thumb-fade { opacity: 1 !important; transition: none !important; }` — so it stays instant for visitors who've opted out of motion, exactly like the rest of the `hl-*` set.
 Covered by `media/MediaCard.test.tsx`.
 
 ### `AddToMemoryPanel` / `useMediaItemActions`
@@ -666,7 +753,7 @@ Now a direct child of `ChatHero`'s root, above the sidebar + chat + panel row, m
 `ChatHeader.tsx` itself is unchanged — this was a mount-point fix in `ChatHero.tsx` only.
 
 **Switcher gated off 2026-08-13** (`Design Handovers/ Aug 2026 Atomic Updates/Updated Headers`): a module-level `SHOW_STORY_SWITCHER` flag (default `false`) now wraps the entire switcher block above — state, handlers, and JSX are all still present and unchanged, just conditional on the flag, so flipping it back to `true` fully restores the old behavior with no other edits needed.
-When `false`, the same slot renders a static, non-interactive logo + "Legacy" wordmark instead — the real brand mark already defined in `LandingNav.tsx` (feather glyph in a rounded `bg-accent/20` square), scaled down from LandingNav's 64px marketing-bar proportions (`w-8 h-8` icon, `text-lg` wordmark) to this 48px in-app header's (`w-6 h-6` icon, `text-base` wordmark).
+When `false`, the same slot renders a static, non-interactive logo + "Legacy" wordmark instead (`ChatHeader.tsx`, feather glyph in a rounded `bg-accent/20` square), scaled down from `LandingNav.tsx`'s 64px marketing-bar proportions (`w-8 h-8` icon, `text-lg` wordmark) to this 48px in-app header's (`w-6 h-6` icon, `text-base` wordmark). **The two wordmarks have diverged since PR #468 (2026-09-07):** `LandingNav.tsx` now reads **Heirloom**, so a visitor sees "Heirloom" on the lander and "Legacy" the moment the chat panel opens — the in-app header is the outlier; tracked in `Known Gaps.md` (Heirloom Lander).
 Losing the switcher also removes the only mobile-visible way to switch conversations outside the hamburger drawer — desktop is unaffected, the docked `SidebarV2` Sessions list still covers switching there.
 The `chatStore.loadSession.test.tsx` describe block exercising the dropdown is `describe.skip`'d, not deleted, for the same reason.
 
@@ -689,7 +776,7 @@ Covered by `ChatHeader.profileDropdownOutsideClick.test.tsx`.
 The `SHOW_STORY_SWITCHER` switcher block above still has the blur-only behavior — it's gated off, so it was left untouched rather than fixed blind.
 
 **Mobile header narrowed 2026-08-16 (mobile chat header redesign):** desktop is untouched; mobile now reads hamburger → brand icon → Media *if this session has media* → Memories *if this session has memories* → Account → Close.
-Three changes make that: (1) the `SHOW_STORY_SWITCHER`-false brand mark keeps its feather icon but drops the "Legacy" wordmark below `md` — that branch is **shared**, not mobile-only (one `ChatHeader` serves both breakpoints), so the split is a `hidden md:inline` class on the wordmark `<span>` rather than a second branch, matching how the hamburger directly above already gates itself and costing no JS media query or post-hydration text flash.
+Three changes make that: (1) the `SHOW_STORY_SWITCHER`-false brand mark keeps its feather icon but drops the "Legacy" wordmark (still "Legacy" here even though the lander's `LandingNav` now says "Heirloom" — see the divergence note above) below `md` — that branch is **shared**, not mobile-only (one `ChatHeader` serves both breakpoints), so the split is a `hidden md:inline` class on the wordmark `<span>` rather than a second branch, matching how the hamburger directly above already gates itself and costing no JS media query or post-hydration text flash.
 (2) `onOpenMedia`/`onOpenSessionMemories` are still always passed on desktop but are **count-gated on mobile** — `ChatHero.tsx` passes `!isMobile || hasSessionMedia` / `!isMobile || hasSessionMemories`, so neither icon can open an empty pane on a phone.
 Both counts reuse state `ChatHero` already holds — `mediaItems` from `useChatStore()` (chatStore's session-scoped catch-up + Realtime + poll + optimistic `addMediaItem`, cleared on every session switch) and `currentSessionMemories` (the exact array `SessionMemoriesPanel` renders, already filtered to `state.sessionId`) — **no new fetch, no new endpoint, no count column**.
 (3) `onShareHeirloom` and `onToggleFullScreen` are passed as `undefined` when `isMobile`, so the `Share2` and `Maximize2`/`Minimize2` icons come off mobile entirely — Share keeps `SidebarV2`'s own nav row as its single mobile entry point (see the `ShareHeirloomModal` row), Fullscreen has no meaning at drawer-is-the-viewport widths.
