@@ -15,6 +15,16 @@ Consumed by all four root layouts (`app/admin/layout.tsx`,
 (`components/admin/theme/mantine-theme.ts`), the admin Appearance settings
 page, and `app/api/admin/appearance/route.ts`.
 
+Two Heirloom-layout specifics worth knowing (recorded 2026-09-07):
+`app/heirloom/layout.tsx` fire-and-forget-inserts three `branding_logs` rows
+per render (`fetch` / `computed` / `inject`) through `getAdminClient()`, cast
+past the generated DB types because the table isn't in them — temporary debug
+instrumentation, not part of the service contract. And when `use_db_branding`
+is on, the layout overrides `--font-display` / `--font-body` / `--font-mono`
+from the tenant row but **never `--font-hand`**, so a tenant font switch
+leaves the lander's Caveat hand-lettered accents (`HeroSection.tsx`,
+`.hl-mc-hand`) unchanged.
+
 | File | Exports | Purpose |
 |------|---------|---------|
 | `get-tenant-branding.ts` | `TenantBranding` (interface), `getTenantBranding(tenantId, target?)` | Fetches the `tenant_branding` row for a tenant and `target` (`'storefront'` — default — or `'admin'`, so one tenant can brand its storefront and its admin differently). Service-role read via `getAdminClient()`, wrapped in `unstable_noStore()` so branding is never baked into a static render. **Returns `null` on miss, DB error, or throw** — never raises; callers fall back to their own CSS defaults. The 21 selected columns are the full `TenantBranding` shape: palette (`background`, `accent`, `accent_hover`, `accent_rgb`, `lede`, `heading`, `body`, `sidebar_bg`, `sidebar_text`, `muted`, `border`), typography (`font_primary`, `font_secondary`, `font_mono`), and behavior flags (`paper_effect`, `accent_buttons`, `use_db_branding`, `favicon_base_path`, `custom_css`). Every field is nullable. |
