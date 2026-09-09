@@ -9,7 +9,7 @@ vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => adminHolder.client,
 }))
 
-import { getSystemPrompt, DEFAULT_SYSTEM_PROMPT } from './compiler'
+import { getSystemPrompt, getSystemPromptRecord, DEFAULT_SYSTEM_PROMPT } from './compiler'
 
 interface FilterCall {
   fn: string
@@ -101,5 +101,50 @@ describe('getSystemPrompt', () => {
     expect(result).toBe('v1 live content')
     const filters = (client.__query as { __filters: FilterCall[] }).__filters
     expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
+  })
+})
+
+describe('getSystemPromptRecord', () => {
+  it('returns the live row with its id and version, using the same filters as getSystemPrompt', async () => {
+    const client = makeClient({ data: { id: 'cp-1', version: 23, content: 'LIVE' }, error: null })
+    adminHolder.client = client
+    const record = await getSystemPromptRecord('tenant-1')
+    expect(record).toEqual({ content: 'LIVE', compiledPromptId: 'cp-1', version: 23, fallback: false })
+    const filters = (client.__query as { __filters: FilterCall[] }).__filters
+    expect(hasFilter(filters, 'select', 'id, version, content')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'tenant_id', 'tenant-1')).toBe(true)
+    expect(hasFilter(filters, 'eq', 'status', 'live')).toBe(true)
+    expect(hasFilter(filters, 'order', 'version', { ascending: false })).toBe(true)
+    expect(hasFilter(filters, 'limit', 1)).toBe(true)
+  })
+
+  it.each([
+    ['no-tenant', null, { data: null, error: null }],
+    ['no-live-row', 'tenant-1', { data: null, error: null }],
+    ['query-error', 'tenant-1', { data: null, error: { message: 'boom' } }],
+  ] as const)('falls back to DEFAULT_SYSTEM_PROMPT with reason %s', async (reason, tenantId, result) => {
+    adminHolder.client = makeClient(result)
+    const record = await getSystemPromptRecord(tenantId)
+    expect(record).toEqual({
+      content: DEFAULT_SYSTEM_PROMPT,
+      compiledPromptId: null,
+      version: null,
+      fallback: true,
+      fallbackReason: reason,
+    })
+  })
+
+  it('falls back with reason threw when the client throws', async () => {
+    adminHolder.client = { from: () => { throw new Error('connection lost') } }
+    const record = await getSystemPromptRecord('tenant-1')
+    expect(record.fallback).toBe(true)
+    expect(record.fallbackReason).toBe('threw')
+    expect(record.content).toBe(DEFAULT_SYSTEM_PROMPT)
+  })
+
+  it('agrees with getSystemPrompt on content for the same client state', async () => {
+    adminHolder.client = makeClient({ data: { id: 'cp-1', version: 3, content: 'SAME' }, error: null })
+    const [viaString, viaRecord] = [await getSystemPrompt('tenant-1'), await getSystemPromptRecord('tenant-1')]
+    expect(viaRecord.content).toBe(viaString)
   })
 })
