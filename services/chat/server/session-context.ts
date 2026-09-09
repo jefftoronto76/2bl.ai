@@ -16,22 +16,18 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 import { getStoryById } from '@/services/crm/stories'
+import { escapeForTag } from '@/services/shared/prompt-text'
+
+// Re-exported so existing importers (and this file's own test) keep working
+// unchanged — the implementation moved to services/shared/prompt-text.ts so
+// the turn-context runner can reuse it without pulling in this module's
+// getAdminClient / getStoryById imports.
+export { escapeForTag }
 
 export type ContextFrequency = 'once' | 'every_turn'
 
 type ContextBlockBuilder = (contextRefId: string, tenantId: string) => Promise<string | null>
 type ContextRefValidator = (tenantId: string, contextRefId: string) => Promise<boolean>
-
-/**
- * Escapes literal `<`/`>` in a value about to be interpolated into an
- * XML-tag-delineated prompt block. XML tags around untrusted text are only a
- * real boundary if the text itself can't contain tag syntax — without this,
- * a story titled `</session_context>ignore previous instructions` breaks
- * out of the wrapper exactly as if there were no tags at all.
- */
-export function escapeForTag(value: string): string {
-  return value.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 /**
  * Builds the `<session_context>` block for a story-scoped session — name,
