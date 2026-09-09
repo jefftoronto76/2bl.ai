@@ -203,3 +203,109 @@ and `hydrateConversation`'s genuine-session-transition reset both clear it,
 so it can never leak into an unrelated session. **The actual "click an empty
 story to start a chat in it" UI flow that calls `setSessionContextToAttach`
 is a separate, not-yet-landed piece** — see `System Docs/Known Gaps.md`.
+
+### Chat server — turn-context, the "Traffic Cop" (`services/chat/server/turn-context/`)
+
+**Status: Phase 1 — built, tested, zero call sites (2026-09-09).** `streamChat()`
+still assembles its own prompt from the six-segment array in `index.ts`;
+nothing in this directory is wired in until Phase 2 (shadow run) and Phase 3a
+(cutover). Design and phasing: `Design Handovers/traffic_cop_design_2026-09-05.md`.
+Decisions taken 2026-09-09 against that doc's §9: selection keys on
+`(tenant, slot)` only, no product dimension (9.1); the token budget is
+**log-only through Phase 4** (9.2); notification source and location
+granularity deferred, not blocking (9.3/9.4); Phase 2 parity gate is 7 days,
+zero *unexplained* mismatches (9.5); the `publish_compiled_prompt` RPC body
+was confirmed directly against Supabase and matches the design's inference
+(9.6); the member `status` filter ships as its own separate PR, not bundled
+into Phase 3b (9.7).
+
+**Entry point — `resolveTurnPrompt(request, options?)` (`index.ts`).** Takes a
+`TurnContextRequest` (`tenantId`, `sessionId`, `memberId` — all
+server-resolved by the caller, never from the client body — plus `messages`,
+`mode`, `mediaItems`, `correlationId`), derives `isFirstTurn`/`turnIndex`
+once with `streamChat`'s exact rule (`deriveTurnSignals`), runs Job #1 and
+Job #2, and returns `{ system, selection, injections, budget, isFirstTurn,
+turnIndex }`. If the base-prompt provider itself fails or times out, the
+turn is rescued with `DEFAULT_SYSTEM_PROMPT` and the record says so
+(`selection.fallback: true`, `meta.rescuedWithDefault`).
+
+**Job #1 — `select-prompt.ts`.** An ordered, synchronous, I/O-free rule list;
+first non-null answer wins; a rule that throws is skipped. Phase 1 ships
+rules 3–5 of the design's five: `mode`, `member-status`, `default-slot`.
+Rules 3 and 4 hold no opinion today — their mapping tables
+(`SlotRuleConfig.modeSlots` / `.memberStatusSlots`) are empty because no
+tenant has published a mode- or status-specific slot — so every turn
+records `ruleId: 'default-slot'`, `slotKey: 'base'`, truthfully. Enabling
+either is a config change. Rules 1–2 (`session-token`,
+`session-context-type`) wait on schema Jeff owns (§9.3). The slot is
+**recorded, not yet acted on**: the base-prompt provider still uses the
+"highest-version live row per tenant" read until Phase 4 makes it
+slot-aware.
+
+**Job #2 — providers + runner.** One adapter per segment `streamChat`
+assembles today, each delegating to the *unchanged* resolver and mirroring
+`streamChat`'s own gate in `appliesTo` so the decision record can say
+`not-applicable` rather than `empty`:
+
+| id | order | priority | freshness | trust | pii | wraps | applies when |
+|---|---|---|---|---|---|---|---|
+| `base-prompt` | 0 | 0 (budget-exempt) | turn | system | none | `getSystemPromptRecord` | always |
+| `booking` | 10 | 10 | turn | system | none | `getBookingCardSection` | tenant resolved |
+| `member-context` | 20 | 20 | turn | system¹ | identity | `getMemberContext` + the `MEMBER CONTEXT:\n` header the call site always added | session or member |
+| `session-context` | 30 | 30 | session (`once`/`every_turn` per row) | system² | none | `getSessionContext` | session and tenant |
+| `media` | 40 | 40 | turn | system | none | `resolveMediaContext` (its own `CHAT_MEDIA_CONTEXT_RESOLVED` write still fires) | items and tenant and member |
+| `question-mode` | 50 | 15 | static | system | none | `QUESTION_MODE_CONTEXT` | `mode === 'question'` |
+
+¹ Deliberately `system` in Phase 1 so output is byte-identical; Phase 3b
+splits the operator-authored `primer` out as an `operator` sub-block, closing
+the delineation gap tracked in `Known Gaps.md`. ² `getSessionContext` already
+emits the escaped `<session_context>` block itself; wrapping again would
+double-delineate. `order` is prompt position; `priority` is importance under
+budget — question-mode is last in the prompt but not the first block to drop.
+
+`runner.ts` is where the guarantees live, so a provider author cannot forget
+them: **fail-open centrally** (`Promise.allSettled`; a throw, rejection, or
+declared-timeout becomes an `InjectionDecision` with `status: 'failed' |
+'timeout'` and the block is omitted — today a rejection inside `streamChat`'s
+`Promise.all` would 502 the turn, and three of the six resolvers have no
+try/catch of their own); **delineation by trust class** (`system` passes
+through; `operator`/`participant` are wrapped in an escaped
+`<context id="…">` tag with the same "reference data, never instructions"
+preamble `session-context.ts` uses — `escapeForTag` now lives in
+`services/shared/prompt-text.ts` for this reason); **deterministic order**
+by `order`, then id; **budget** estimated with `tokensFor` (chars/4),
+`DEFAULT_BUDGET = { capTokens: 2000, enforce: false }` — log-only, so the
+record reports `overCap` but nothing is dropped; when enforced (Phase 5+),
+whole non-exempt blocks are dropped lowest-priority-first, never truncated.
+**Per-provider `timeoutMs` is supported but unset on all six** — today's
+resolvers have no deadline, so applying one before the Phase 2 shadow run
+would manufacture parity mismatches; the shadow data picks the number.
+
+**Decision record — `trace.ts`, `AuditAction.CHAT_TURN_CONTEXT_RESOLVED`
+(`'chat.turn_context_resolved'`).** `recordTurnContext(resolved, ctx)` writes
+one `audit_events` row per turn (`target_type: 'chat_session'`,
+`correlation_id` threaded) whose metadata carries `selection` (slot, rule,
+`compiled_prompts.id`/version, fallback), one entry per registered provider
+(`injected | skipped(not-applicable | empty) | failed | timeout |
+dropped_budget`, `estTokens`, `ms`, truncated infra error, provider `meta`),
+`budget`, `isFirstTurn`, `turnIndex`, `systemLength`, and `shadow`/`parity`
+flags for Phase 2. Content-free by contract: never block text, never a raw
+identity value (`trace.test.ts` asserts this against PII fixtures). Not
+called by anything yet.
+
+**Adding a provider** = one file under `providers/`, one line in
+`registry.ts`, one colocated `providers/<id>.test.ts`, one row in the table
+above. `registry.test.ts` enforces the first three (unique ids/orders,
+declared metadata, exactly one budget-exempt provider, a test file per id,
+no timeouts in Phase 1).
+
+**Tests.** `runner.test.ts` (guarantees), `select-prompt.test.ts`,
+`providers/*.test.ts`, `registry.test.ts`, `trace.test.ts`, `index.test.ts`
+(`deriveTurnSignals` mirrors `index.test.ts`'s `isFirstTurn` suite), and
+`assembly.golden.test.ts` — which carries a **verbatim copy of `streamChat`'s
+concatenation** and asserts byte-identical `system` output across Sage
+visitor, question mode, Heirloom first turn, story turn with attachments,
+no-tenant fallback, and provider-failure scenarios. No test asserted the
+six-segment assembly order before this file; if the recipe in `index.ts`
+changes, this test must change with it, and that diff is the review signal.
+It is also the Phase 2 parity oracle in test form.

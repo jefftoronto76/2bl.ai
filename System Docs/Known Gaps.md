@@ -628,6 +628,31 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 
 ## Prompt & AI
 
+- **Traffic Cop Phase 1 is built and tested but wired to nothing — do not
+  assume the prompt path has changed (2026-09-09).**
+  `services/chat/server/turn-context/` (`resolveTurnPrompt`, the six provider
+  adapters, `select-prompt.ts`, `trace.ts`, `AuditAction.CHAT_TURN_CONTEXT_RESOLVED`)
+  exists with zero call sites; `streamChat` still assembles its own prompt
+  from the array in `services/chat/server/index.ts`, and the audit action has
+  never been written. Design and phase plan:
+  `Design Handovers/traffic_cop_design_2026-09-05.md`; current state and the
+  2026-09-09 decisions against its §9: `System Docs/Utilities/Chat Server.md`'s
+  turn-context section. Phase 2 (shadow run alongside the existing assembly,
+  `shadow: true`, parity flag) is the next step. Two things found during the
+  Phase 1 build that the design did not anticipate: (1) per-provider
+  timeouts are implemented but deliberately unset — today's resolvers have no
+  deadline, so any default would create shadow mismatches; the shadow data
+  sets the number. (2) `System Docs/Database Schema.md`'s `prompt_types` row
+  still lists a `tenant_id` column and a `(tenant_id, key)` unique constraint
+  that `DB_CHANGELOG.md`'s 2026-06-26 entry says were dropped in favour of
+  `prompt_type_tenants`; the Phase 4 slot-aware read depends on which is true
+  — reconcile the schema doc against Studio before Phase 4. Also on main:
+  Jeff's upload of the design doc landed at
+  `Design Handovers/Design Handovers/traffic_cop_design_2026-09-05.md` (a
+  nested duplicate directory); the correctly-placed copy is on branch
+  `claude/traffic-cop-prompt-context-czvj9i` — delete the nested one when
+  that branch merges.
+
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
   type-aware — single-live-per-type (2026-07-27) constrains Publish but not
   fully the runtime read.** `services/prompt/compiler.ts`'s `getSystemPrompt`
