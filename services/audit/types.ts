@@ -175,6 +175,14 @@ export const AuditAction = {
   // Chat — generic session context attachment (session-context-service,
   // 2026-08-13). services/chat/server/session-context.ts's attachSessionContext.
   CHAT_SESSION_CONTEXT_ATTACHED: 'chat.session_context_attached',
+  // Chat — the per-turn prompt decision record (Traffic Cop, Design
+  // Handovers/traffic_cop_design_2026-09-05.md §5.8): which compiled prompt
+  // slot was selected and why, plus one entry per registered context
+  // provider (injected / skipped / failed / timeout / dropped_budget) with
+  // token estimates and timings. Content-free — never block text or raw
+  // identity values. Written by services/chat/server/turn-context/trace.ts's
+  // recordTurnContext; no call site until Phase 2 (shadow).
+  CHAT_TURN_CONTEXT_RESOLVED: 'chat.turn_context_resolved',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

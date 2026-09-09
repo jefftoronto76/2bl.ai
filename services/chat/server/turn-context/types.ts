@@ -14,6 +14,9 @@
 
 import type { ChatMessage, ChatMode, MediaAttachmentInput } from '../types'
 
+/** The two fields deriveTurnSignals reads — so callers can pass any message shape that has them. */
+export type ChatMessageLike = Pick<ChatMessage, 'role' | 'content'>
+
 // ── Input ───────────────────────────────────────────────────────────────
 
 /**
