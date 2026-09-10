@@ -1,0 +1,6 @@
+body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: #f4f1ea; }
+.spike { max-width: 640px; }
+.page { background: #fffdf7; border: 1px solid #d9d2c3; box-sizing: border-box; padding: 16px; overflow: hidden; }
+.page__title { margin: 0 0 8px; font-size: 18px; }
+.page__body { margin: 0; font-size: 14px; }
+.spike__nav { display: flex; gap: 12px; align-items: center; margin-top: 12px; }

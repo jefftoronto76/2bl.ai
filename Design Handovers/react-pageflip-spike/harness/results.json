@@ -1,0 +1,227 @@
+{
+  "T1_mount_raw": {
+    "events": [
+      "init:\"A/{\\\"page\\\":0,\\\"mode\\\":\\\"landscape\\\"}\""
+    ],
+    "items": 6,
+    "errors": [
+      "[error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+  },
+  "T2_flipNext": {
+    "events": [
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"A/2\"",
+      "changeState:\"A/\\\"read\\\"\""
+    ],
+    "index": 2,
+    "state": "read",
+    "errors": []
+  },
+  "T3_turnToPage_4": {
+    "events": [
+      "flip:\"A/4\""
+    ],
+    "index": 4,
+    "state": "read"
+  },
+  "T3b_turnToPage_same": {
+    "events": [
+      "flip:\"A/4\""
+    ]
+  },
+  "T4_flip_to_0": {
+    "events": [
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"A/0\"",
+      "changeState:\"A/\\\"read\\\"\""
+    ],
+    "index": 0,
+    "state": "read"
+  },
+  "T5_rapid_double_flipNext": {
+    "events": [
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"A/2\"",
+      "changeState:\"A/\\\"read\\\"\"",
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"A/4\"",
+      "changeState:\"A/\\\"read\\\"\""
+    ],
+    "index": 4,
+    "state": "read",
+    "errors": []
+  },
+  "T6_flipNext_at_end": {
+    "events": [],
+    "index": 4,
+    "state": "read"
+  },
+  "T7_add_page_raw": {
+    "events": [],
+    "items": 7,
+    "pageCount": 7,
+    "errors": []
+  },
+  "T12_resize_to_portrait": {
+    "events": [
+      "flip:\"A/4\"",
+      "changeOrientation:\"A/\\\"portrait\\\"\""
+    ],
+    "errors": []
+  },
+  "T12b_resize_to_landscape": {
+    "events": [
+      "flip:\"A/4\"",
+      "changeOrientation:\"A/\\\"landscape\\\"\""
+    ],
+    "errors": []
+  },
+  "T8_raw_unmount_no_cleanup": {
+    "listenersBefore": {
+      "beforeunload": 1,
+      "mousemove": 1,
+      "mouseup": 1,
+      "touchend": 1,
+      "resize": 1,
+      "touchmove": 1
+    },
+    "listenersAfter": {
+      "beforeunload": 1,
+      "mousemove": 1,
+      "mouseup": 1,
+      "touchend": 1,
+      "resize": 1,
+      "touchmove": 1
+    },
+    "errors": [],
+    "rootChildren": 0
+  },
+  "T9_raw_destroy_then_unmount": {
+    "listenersAfter": {
+      "beforeunload": 1,
+      "mousemove": 1,
+      "mouseup": 1,
+      "touchend": 1,
+      "resize": 1,
+      "touchmove": 1
+    },
+    "errors": [
+      "[pageerror] Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+      "[warning] %s\n\n%s\n An error occurred in the <div> component. Consider adding an error boundary to your tree to customize error handling behavior.\nVisit https://react.dev/link/error-boundaries to learn more about error boundaries."
+    ]
+  },
+  "T10_strict_raw": {
+    "events": [
+      "init:\"A/{\\\"page\\\":0,\\\"mode\\\":\\\"landscape\\\"}\""
+    ],
+    "items": 6,
+    "pageCount": 6,
+    "errors": []
+  },
+  "T11_strict_spike": {
+    "events": [
+      "init:\"A/{\\\"page\\\":0,\\\"mode\\\":\\\"landscape\\\"}\""
+    ],
+    "items": 6,
+    "errors": []
+  },
+  "T11b_spike_next_click": {
+    "events": [
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"A/2\"",
+      "changeState:\"A/\\\"read\\\"\""
+    ],
+    "status": "page 2 · read",
+    "errors": []
+  },
+  "T13_spike_unmount_cleanup": {
+    "listenersBefore": {
+      "beforeunload": 1,
+      "mousemove": 3,
+      "mouseup": 3,
+      "touchend": 3,
+      "resize": 3,
+      "touchmove": 3
+    },
+    "listenersAfter": {
+      "beforeunload": 1,
+      "mousemove": 2,
+      "mouseup": 2,
+      "touchend": 2,
+      "resize": 2,
+      "touchmove": 2
+    },
+    "errors": []
+  },
+  "T14_raw_stale_closure": {
+    "events_after_rerender_with_label_B": [
+      "flip:\"B/2\""
+    ]
+  },
+  "T14b_spike_stale_closure": {
+    "events_after_rerender_with_label_B": [
+      "changeState:\"B/\\\"flipping\\\"\"",
+      "flip:\"B/2\"",
+      "changeState:\"B/\\\"read\\\"\""
+    ]
+  },
+  "T15_strict_spike_after_remount": {
+    "block": {
+      "attached": true,
+      "rect": 600,
+      "items": 6
+    },
+    "events": [
+      "changeState:\"S/\\\"flipping\\\"\"",
+      "flip:\"S/2\"",
+      "changeState:\"S/\\\"read\\\"\""
+    ],
+    "status": "page 2 · read",
+    "errors": []
+  },
+  "T15b_strict_spike_unmount": {
+    "listenersBefore": {
+      "beforeunload": 1,
+      "mousemove": 4,
+      "mouseup": 4,
+      "touchend": 4,
+      "resize": 4,
+      "touchmove": 4
+    },
+    "listenersAfter": {
+      "beforeunload": 1,
+      "mousemove": 3,
+      "mouseup": 3,
+      "touchend": 3,
+      "resize": 3,
+      "touchmove": 3
+    },
+    "errors": []
+  },
+  "T16_rerender_default": {
+    "childListMutationsAfterRerender": 8,
+    "flipEventLabel": [
+      "flip:\"B/2\""
+    ],
+    "errors": []
+  },
+  "T16b_rerender_renderOnlyPageLengthChange": {
+    "childListMutationsAfterRerender": 0,
+    "flipEventLabel": [
+      "flip:\"A/2\""
+    ],
+    "errors": []
+  },
+  "T17_rerender_mid_flip": {
+    "events": [
+      "changeState:\"A/\\\"flipping\\\"\"",
+      "flip:\"B/2\"",
+      "changeState:\"B/\\\"read\\\"\""
+    ],
+    "index": 2,
+    "state": "read",
+    "items": 6,
+    "errors": []
+  }
+}
