@@ -1,0 +1,1 @@
+{ "extends": "../probe/tsconfig.json", "compilerOptions": { "jsx": "react-jsx", "types": ["vite/client"] }, "include": ["./main.tsx", "../spike/*.ts", "../spike/*.tsx"] }

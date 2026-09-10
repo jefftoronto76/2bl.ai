@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Heirloom token values copied from app/heirloom/globals.css for the harness. */
+:root {
+  --color-background: 250 246 238;
+  --color-surface: 255 255 255;
+  --color-surface-2: 244 239 229;
+  --color-text-primary: 31 26 20;
+  --color-text-muted: rgba(46, 36, 23, 0.62);
+  --color-accent: 200 84 46;
+  --color-border: rgba(46, 36, 23, 0.14);
+}
+html, body, #root { height: 100%; margin: 0; }
+body { background: rgb(var(--color-surface-2)); padding: 16px; box-sizing: border-box; }
+/* Stand-in for the shell surface whose height the visualViewport hook mutates. */
+#surface { height: var(--surface-h, 100%); }

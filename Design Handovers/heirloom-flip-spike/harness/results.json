@@ -1,0 +1,319 @@
+{
+  "H1_mount_strict": {
+    "status": "Page 1 of 8 · idle",
+    "leaves": 1,
+    "current": "none",
+    "errors": [
+      "[error] Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "events": []
+  },
+  "H11_idle_mounted_3s": {
+    "windowMs": 3000,
+    "rafCallbacksPerSec": 0,
+    "longTasks": 0,
+    "TaskDuration": "0.93 ms",
+    "ScriptDuration": "0 ms",
+    "LayoutCount": 0,
+    "LayoutDuration": "0 ms",
+    "RecalcStyleCount": 0,
+    "RecalcStyleDuration": "0 ms",
+    "JSHeapUsedSize": "5 KB",
+    "webAnimations": 0
+  },
+  "H2_click_next": {
+    "midRotation": "rotateY(-154.163deg)",
+    "events": [
+      "next:1",
+      "settled:1"
+    ],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "current": "none",
+    "previous": "rotateY(-180deg)",
+    "errors": []
+  },
+  "H14_click_prev": {
+    "midPrevRotation": "rotateY(-47.9412deg)",
+    "events": [
+      "prev:0",
+      "settled:0"
+    ],
+    "status": "Page 1 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "H3_drag_10pct_cancel": {
+    "events": [],
+    "status": "Page 1 of 8 · idle",
+    "phase": "idle",
+    "current": "none"
+  },
+  "H4_drag_40pct_commit": {
+    "events": [
+      "next:1",
+      "settled:1"
+    ],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "current": "none"
+  },
+  "H5_flick_8pct_fast": {
+    "events": [
+      "next:2",
+      "settled:2"
+    ],
+    "status": "Page 3 of 8 · idle",
+    "phase": "idle"
+  },
+  "H8_drag_during_flip": {
+    "events": [
+      "next:3",
+      "settled:3"
+    ],
+    "status": "Page 4 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "H7_rapid_10_clicks": {
+    "nextAccepted": 1,
+    "settled": 1,
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "nextEnabled": true,
+    "errors": []
+  },
+  "H7b_rapid_alternating": {
+    "accepted": 1,
+    "settled": 1,
+    "status": "Page 3 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "H7c_rapid_20_keypresses": {
+    "accepted": 2,
+    "settled": 2,
+    "status": "Page 3 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "H7d_5_keypresses_paced_600ms": {
+    "accepted": 5,
+    "settled": 5,
+    "status": "Page 6 of 8 · idle",
+    "phase": "idle"
+  },
+  "H6_drag_back_on_first_page": {
+    "events": [],
+    "status": "Page 1 of 8 · idle",
+    "previousLeafPresent": 0,
+    "current": "none"
+  },
+  "H13_keyboard": {
+    "events": [
+      "next:1",
+      "settled:1",
+      "prev:0",
+      "settled:0"
+    ],
+    "status": "Page 1 of 8 · idle"
+  },
+  "H9_geometry_mutation_mid_drag": {
+    "boxBefore": {
+      "w": 448,
+      "h": 597.328125
+    },
+    "boxAfter": {
+      "w": 388,
+      "h": 517.328125
+    },
+    "events": [
+      "next:1",
+      "settled:1"
+    ],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "H10a_window_listeners_per_cycle": [
+    {
+      "mousemove": 1,
+      "pointerdown": 1,
+      "pointerup": 1,
+      "touchstart": 1,
+      "touchend": 1,
+      "touchcancel": 1,
+      "mousedown": 1,
+      "mouseup": 1,
+      "click": 1,
+      "auxclick": 1,
+      "dblclick": 1,
+      "contextmenu": 1,
+      "beforeunload": 1,
+      "resize": 1,
+      "__playwright_global_listeners_check__": 1
+    },
+    {
+      "mousemove": 1,
+      "pointerdown": 1,
+      "pointerup": 1,
+      "touchstart": 1,
+      "touchend": 1,
+      "touchcancel": 1,
+      "mousedown": 1,
+      "mouseup": 1,
+      "click": 1,
+      "auxclick": 1,
+      "dblclick": 1,
+      "contextmenu": 1,
+      "beforeunload": 1,
+      "resize": 1,
+      "__playwright_global_listeners_check__": 1
+    },
+    {
+      "mousemove": 1,
+      "pointerdown": 1,
+      "pointerup": 1,
+      "touchstart": 1,
+      "touchend": 1,
+      "touchcancel": 1,
+      "mousedown": 1,
+      "mouseup": 1,
+      "click": 1,
+      "auxclick": 1,
+      "dblclick": 1,
+      "contextmenu": 1,
+      "beforeunload": 1,
+      "resize": 1,
+      "__playwright_global_listeners_check__": 1
+    }
+  ],
+  "H10b_window_listener_sources": [
+    "mousemove: ",
+    "pointerdown: ",
+    "pointerup: ",
+    "touchstart: ",
+    "touchend: ",
+    "touchcancel: ",
+    "mousedown: ",
+    "mouseup: ",
+    "click: ",
+    "auxclick: ",
+    "dblclick: ",
+    "contextmenu: ",
+    "beforeunload: ",
+    "resize: ",
+    "__playwright_global_listeners_check__: "
+  ],
+  "H10_unmount": {
+    "windowBaseline": {
+      "beforeunload": 1
+    },
+    "windowMounted": {
+      "mousemove": 1,
+      "pointerdown": 1,
+      "pointerup": 1,
+      "touchstart": 1,
+      "touchend": 1,
+      "touchcancel": 1,
+      "mousedown": 1,
+      "mouseup": 1,
+      "click": 1,
+      "auxclick": 1,
+      "dblclick": 1,
+      "contextmenu": 1,
+      "beforeunload": 1,
+      "resize": 1,
+      "__playwright_global_listeners_check__": 1
+    },
+    "windowAfterUnmount": {
+      "mousemove": 1,
+      "pointerdown": 1,
+      "pointerup": 1,
+      "touchstart": 1,
+      "touchend": 1,
+      "touchcancel": 1,
+      "mousedown": 1,
+      "mouseup": 1,
+      "click": 1,
+      "auxclick": 1,
+      "dblclick": 1,
+      "contextmenu": 1,
+      "beforeunload": 1,
+      "resize": 1,
+      "__playwright_global_listeners_check__": 1
+    },
+    "documentBaseline": {},
+    "documentAfterUnmount": {
+      "selectionchange": 1
+    },
+    "idleAfterUnmount": {
+      "windowMs": 1500,
+      "rafCallbacksPerSec": 0,
+      "longTasks": 0,
+      "TaskDuration": "0.82 ms",
+      "ScriptDuration": "0 ms",
+      "LayoutCount": 0,
+      "LayoutDuration": "0 ms",
+      "RecalcStyleCount": 0,
+      "RecalcStyleDuration": "0 ms",
+      "JSHeapUsedSize": "3 KB",
+      "webAnimations": 0
+    },
+    "errors": []
+  },
+  "H12_reduced_motion": {
+    "events": [
+      "next:1",
+      "settled:1"
+    ],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "errors": [
+      "[warning] You have Reduced Motion enabled on your device. Animations may not appear as expected.. For more information and steps for solving, visit https://motion.dev/troubleshooting/reduced-motion-disabled"
+    ]
+  },
+  "M1_touch_drag_40pct_commit": {
+    "events": [
+      "next:1",
+      "settled:1"
+    ],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "M2_touch_drag_10pct_cancel": {
+    "events": [],
+    "status": "Page 2 of 8 · idle",
+    "phase": "idle"
+  },
+  "M3_vertical_touch_scrolls_not_flips": {
+    "events": [],
+    "status": "Page 2 of 8 · idle",
+    "scrollYBefore": 0,
+    "scrollYAfter": 0,
+    "touchAction": "pan-y"
+  },
+  "M4_viewport_shrink_and_body_lock_mid_touch_drag": {
+    "events": [
+      "next:2",
+      "settled:2"
+    ],
+    "status": "Page 3 of 8 · idle",
+    "phase": "idle",
+    "errors": []
+  },
+  "M5_idle_mounted_mobile_3s": {
+    "windowMs": 3000,
+    "rafCallbacksPerSec": 0,
+    "longTasks": 0,
+    "TaskDuration": "0.91 ms",
+    "ScriptDuration": "0 ms",
+    "LayoutCount": 0,
+    "LayoutDuration": "0 ms",
+    "RecalcStyleCount": 0,
+    "RecalcStyleDuration": "0 ms",
+    "JSHeapUsedSize": "5 KB",
+    "webAnimations": 0
+  }
+}

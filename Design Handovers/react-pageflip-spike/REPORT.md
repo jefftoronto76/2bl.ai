@@ -56,7 +56,7 @@ So: `read` is guaranteed after every *animated* flip and is genuinely never emit
 
 ## 3. Runtime defects in the React wrapper (not in Bolt's list)
 
-1. **No unmount cleanup.** The engine registers `mousemove`, `mouseup`, `touchmove`, `touchend`, `resize` on `window` and starts a `requestAnimationFrame` loop that is never cancelled and rewrites inline styles every frame even at rest. Unmounting the React component leaves all of it running (T8). Leaked instances kept emitting `flip` events into the recorder on later resizes.
+1. **No unmount cleanup.** The engine registers `mousemove`, `mouseup`, `touchmove`, `touchend`, `resize` on `window` and starts a `requestAnimationFrame` loop that is never cancelled and rewrites inline styles every frame even at rest. Unmounting the React component leaves all of it running (T8). Leaked instances kept emitting `flip` events into the recorder on later resizes. **Measured (T18, CDP Performance metrics, 3 s window, headless Chromium):** at rest the mounted book runs 60 rAF callbacks/s, 180 style recalculations, 28.94 ms script and 81.73 ms total task time per 3 s (mobile emulation: 60.3/s, 181 recalcs, 23.85 ms script). **The loop cannot be stopped:** after unmount with our `getUI().destroy()` cleanup it still runs at 60.7 callbacks/s (11.93 ms script per 1.5 s); two leaked instances run at 120/s. In a Next.js app this survives client-side navigation for the life of the document.
 2. **`destroy()` is unusable under React.** It removes the React-owned root `<div>`; React then throws `removeChild: The node to be removed is not a child of this node` on unmount (T9). `getUI().destroy()` is the safe call, and it must run from a *layout*-effect cleanup, deferred one macrotask so StrictMode's simulated remount does not kill a live book (T13, T15, T15b — listeners released, book still flips after remount).
 3. **Every parent re-render rebuilds the page collection** (8 child-list mutations on an identical re-render, T16) because `children` is a fresh array each render. It survived a re-render landing mid-animation (T17), but it is work on every render. The escape hatch `renderOnlyPageLengthChange` stops the churn and **reintroduces stale handlers** (T16b: a re-render with a new callback still reported the old one). The wrapper binds latest-ref trampolines so either mode is safe.
 
@@ -74,7 +74,7 @@ So: `read` is guaranteed after every *animated* flip and is genuinely never emit
 - **Styling rule.** The engine writes inline `cssText`/`z-index` on our page elements every frame and reparents them into its own `.stf__block`. That is the third-party exception to Tailwind-only, and must be documented in `System Docs/Known Gaps.md` if adopted. The shipped CSS has a typo (`.sft__wrapper`) so the wrapper rule never applies; it works because `.stf__parent` is positioned.
 - **Mobile.** `touchmove` is registered non-passive on `window` by default (Lighthouse will flag it); `mousedown` calls `preventDefault` (no text selection inside pages); `clickEventForward` only whitelists `a` and `button`.
 - **Accessibility.** The engine provides no keyboard path; prev/next controls are ours (the spike has them, with `aria-live` status). Off-spread pages are `display:none`, so assistive tech sees only the current spread.
-- **Performance is a feature.** Idle rAF loop per instance cannot be paused via the API; must be measured on a mid-range phone before adoption.
+- **Performance is a feature.** The idle rAF loop is measured, not assumed: 60 callbacks/s and about 60 style recalcs/s per mounted instance, and it cannot be paused or cancelled through the API, even after teardown. Battery cost on a real phone is still unmeasured.
 - **Dependency hygiene.** Pin `page-flip` directly; the repo carries both `package-lock.json` and `pnpm-lock.yaml`, so which lockfile is authoritative needs a decision first.
 
 ## 6. Open questions not resolvable from source or docs
@@ -85,7 +85,9 @@ So: `read` is guaranteed after every *animated* flip and is genuinely never emit
 - React 19 compatibility is empirical only (React 19.2.4 in this harness); the wrapper was built for React 17 and upstream makes no statement.
 - Abandonment: no maintainer response since 2021. Budget for a fork or `patch-package` from day one.
 
+| T18 | Idle cost while mounted / after unmount (same probe as the hand-rolled spike) | 60 rAF/s at rest; loop persists after teardown |
+
 ## Evidence index
 
-`harness/results.json` holds the raw output of all 17 scenarios (T1–T17); `harness/mid-flip.png`
+`harness/results.json` holds the raw output of the 17 scenarios (T1–T17) and `harness/idle-results.json` the idle-cost samples (T18); `harness/mid-flip.png`
 is a frame captured mid-animation. `probe/` holds the five TypeScript resolution probes.
