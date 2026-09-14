@@ -8,9 +8,14 @@ import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 
-type MemberStatus = 'active' | 'invited' | 'waitlist' | 'suspended' | 'deleted'
+// 'pending' is written by services/auth/claim-membership.ts (the GateView
+// self-service Clerk-modal path) but was never recognized here — a bulk
+// status action against a pending membership was rejected outright. Added
+// so the platform admin tooling can act on it like any other status; not
+// PROTECTED (see below) since, unlike 'deleted', it isn't a one-way door.
+type MemberStatus = 'active' | 'invited' | 'waitlist' | 'suspended' | 'deleted' | 'pending'
 
-const VALID_STATUSES = new Set<MemberStatus>(['active', 'invited', 'waitlist', 'suspended', 'deleted'])
+const VALID_STATUSES = new Set<MemberStatus>(['active', 'invited', 'waitlist', 'suspended', 'deleted', 'pending'])
 
 // Statuses that should never be overwritten by a bulk status change (a hard-deleted
 // membership stays deleted regardless of what the bulk action intends).
