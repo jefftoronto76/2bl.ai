@@ -50,6 +50,9 @@ finalizes page dimensions.
 - Real per-memory data — photo-only and mixed content types first.
 - On-device verification: 390px, iOS edge-swipe conflict, scroll passthrough under
   `position: fixed` body lock.
+- **Design token gap:** no shadow token exists yet (surfaced during the flip spike,
+  hand-rolled-Motion evaluation, Sept 10). CD/CC will need to add one, or confirm the
+  flip surface doesn't require elevation, before/while building the real component.
 - Cross-check existing member photos against the Sprint 0 resolution spec — surface any
   gap now, not after Sprint 4.
 
