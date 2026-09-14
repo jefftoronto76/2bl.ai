@@ -56,3 +56,18 @@ export function identityHash(value: string | null | undefined): string | null {
   if (trimmed.length === 0) return null
   return hash8(trimmed.toLowerCase())
 }
+
+/**
+ * Same 8-hex-char SHA-256 prefix, but of the value exactly as given — no
+ * trim, no lowercase — for fingerprinting *content* rather than identity.
+ * Added for the Traffic Cop shadow comparison
+ * (services/chat/server/turn-context/shadow.ts): two prompt strings that
+ * differ only by whitespace or case must hash differently, because that is
+ * precisely the kind of mismatch the comparison exists to surface. Returns
+ * null for null/undefined so "absent" stays distinguishable from "empty
+ * string" (which hashes normally).
+ */
+export function contentHash(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  return hash8(value)
+}
