@@ -46,8 +46,10 @@ function captureAllConsoleOutput() {
   }
 }
 
-// Mirrors members.test.ts's makeLinkClient shape (three calls: users upsert,
-// members email-fallback find, members update).
+// Mirrors members.test.ts's makeLinkClient shape, post atomic-claim rewrite:
+// users upsert, members email-fallback find, members orphan delete, members
+// atomic claim (update+eq+is+select+maybeSingle — distinguished from a
+// name-fill update by payload shape, same trick members.test.ts uses).
 function makeLinkClient({
   userRow,
   userError = null,
@@ -72,7 +74,19 @@ function makeLinkClient({
         select() {
           return { ilike: () => afterFilter, eq: () => afterFilter }
         },
-        update(_payload: unknown) {
+        delete() {
+          return { eq: () => ({ eq: () => ({ neq: () => ({ select: async () => ({ data: [], error: null }) }) }) }) }
+        },
+        update(payload: Record<string, unknown>) {
+          if ('status' in payload) {
+            return {
+              eq: () => ({
+                is: () => ({
+                  select: () => ({ maybeSingle: async () => ({ data: inviteRow, error: null }) }),
+                }),
+              }),
+            }
+          }
           return { eq: async () => ({ error: null }) }
         },
       }
@@ -81,7 +95,9 @@ function makeLinkClient({
   return client
 }
 
-// Mirrors members.test.ts's makeAcceptInviteClient shape.
+// Mirrors members.test.ts's makeAcceptInviteClient shape, post atomic-claim
+// rewrite: pre-check select, conflict-check select, orphan delete, atomic
+// claim (distinguished from a name-fill update by payload shape).
 function makeAcceptInviteClient({ invitedRow, orphanRows }: { invitedRow: unknown; orphanRows: unknown[] }) {
   const client = {
     from(_table: string) {
@@ -99,7 +115,20 @@ function makeAcceptInviteClient({ invitedRow, orphanRows }: { invitedRow: unknow
         delete() {
           return { eq: () => ({ eq: () => ({ neq: () => ({ select: async () => ({ data: orphanRows, error: null }) }) }) }) }
         },
-        update(_payload: unknown) {
+        update(payload: Record<string, unknown>) {
+          if ('status' in payload) {
+            return {
+              eq: () => ({
+                eq: () => ({
+                  is: () => ({
+                    is: () => ({
+                      select: () => ({ maybeSingle: async () => ({ data: invitedRow, error: null }) }),
+                    }),
+                  }),
+                }),
+              }),
+            }
+          }
           return { eq: async () => ({ error: null }) }
         },
       }
@@ -198,6 +227,6 @@ describe('acceptInvite — D9, no raw rescued name in console output', () => {
 
     expect(result.ok).toBe(true)
     expect(output).not.toContain(RAW_RESCUED_NAME)
-    expect(output).toContain('[acceptInvite] step 3 rescuing orphan name')
+    expect(output).toContain('[members] deleteOrphanRows — rescuing orphan name')
   })
 })

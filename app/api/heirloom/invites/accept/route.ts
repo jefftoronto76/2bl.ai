@@ -3,13 +3,13 @@
 // Called by ChatProvider on the false→true isSignedIn transition when the
 // visitor arrived with a valid ?invite=TOKEN in the URL.
 //
-// Sequence (handled in acceptInvite service function):
-// 1. Find the invited members row by token (unused only).
-// 2. Delete any orphan active row syncMember may have inserted (the webhook
-//    upserts on clerk_id conflict; the invited row has clerk_id=null so no
-//    conflict fires and a second row is created first).
-// 3. Stamp the original invited row: clerk_id, user_id, status='active',
-//    source='invite', used_at=now().
+// Sequence lives entirely in acceptInvite's own doc comment
+// (services/members/members.ts) — not duplicated here, since a prior copy
+// of this same sequence went stale relative to that function more than
+// once. acceptInvite races the Clerk webhook's linkInvitedMember for the
+// same signup event; both close that race via an atomic conditional UPDATE
+// rather than an ordering assumption — see Design Handovers/
+// identity_reconciliation_replan_2026-09-14.md.
 
 import { getCurrentUser, ensureClerkUser } from '@/services/auth'
 import { acceptInvite } from '@/services/members'

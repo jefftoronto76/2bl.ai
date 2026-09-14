@@ -88,25 +88,51 @@ function makeTokenSelectClient(returnData: unknown, returnError: unknown = null)
   return { client }
 }
 
-// Three-call mock for linkInvitedMember:
-//   Call 1: from('users').upsert().select('id').single()
-//   Call 2: from('members').select().ilike().eq().is().maybeSingle()
-//   Call 3: from('members').update().eq()
+// Mock for linkInvitedMember, covering its full new call sequence:
+//   1. from('users').upsert().select('id').single()
+//   2. (if token) from('members').select().eq('token').eq('status').is('used_at').maybeSingle()
+//   3. (if no token, or step 2 empty) .select().ilike('email').eq('status').is('used_at').maybeSingle()
+//   4. from('members').delete().eq('clerk_id').eq('tenant_id').neq('id').select('id,name')
+//      — the orphan cleanup, shared with acceptInvite's own deleteOrphanRows
+//   5. from('members').update(claimPayload).eq('id').is('used_at').select('id,name').maybeSingle()
+//      — the atomic claim. claimQueue is consumed in order: index 0 is the
+//      first attempt, index 1 (if present) is the one-shot retry after a
+//      23505 on index 0.
+//   6. (if step 5 succeeds and a name-fill is needed) a second, distinct
+//      .update({name}).eq('id') — distinguished from the claim update by
+//      payload shape ('status' in payload => claim; otherwise => name-fill).
+//   Steps 4-5 can each run twice (initial + 23505 retry) — orphanQueue/
+//   claimQueue are consumed one entry per call, falling back to a safe
+//   default (no orphans / unused by design) once exhausted.
+type QueueItem<T = unknown> = { data: T; error: unknown }
+
 function makeLinkClient({
   userRow,
   userError = null,
-  inviteRow,
-  findError = null,
-  updateError = null,
+  tokenRow = null,
+  tokenLookupError = null,
+  emailRow = null,
+  emailLookupError = null,
+  orphanQueue = [{ data: [], error: null }],
+  claimQueue,
+  nameFillError = null,
 }: {
   userRow: unknown
   userError?: unknown
-  inviteRow: unknown
-  findError?: unknown
-  updateError?: unknown
+  tokenRow?: unknown
+  tokenLookupError?: unknown
+  emailRow?: unknown
+  emailLookupError?: unknown
+  orphanQueue?: QueueItem<unknown[] | null>[]
+  claimQueue: QueueItem[]
+  nameFillError?: unknown
 }) {
-  const updateCalls: unknown[] = []
+  const updateCalls: Record<string, unknown>[] = []
+  const deleteCalls: unknown[] = []
   const usersUpsertCalls: unknown[] = []
+  const orphanResults = [...orphanQueue]
+  const claimResults = [...claimQueue]
+
   const client = {
     from(table: string) {
       if (table === 'users') {
@@ -121,25 +147,75 @@ function makeLinkClient({
           },
         }
       }
-      // members table. Two lookup chains reach the same result:
-      //   token: select → eq('token') → eq('status') → is('used_at') → maybeSingle
-      //   email: select → ilike('email') → eq('status') → is('used_at') → maybeSingle
-      const terminal = {
-        is(_col: string, _val: unknown) {
-          return { maybeSingle: async () => ({ data: inviteRow, error: findError }) }
-        },
-      }
-      const afterFilter = { eq: (_col: string, _val: unknown) => terminal }
+      // members
       return {
         select(_cols: string) {
           return {
-            ilike: (_col: string, _val: unknown) => afterFilter,
-            eq: (_col: string, _val: unknown) => afterFilter,
+            // token lookup: .eq('token').eq('status').is('used_at').maybeSingle()
+            eq(_col: string, _val: unknown) {
+              return {
+                eq(_col2: string, _val2: unknown) {
+                  return {
+                    is(_col3: string, _val3: unknown) {
+                      return { maybeSingle: async () => ({ data: tokenRow, error: tokenLookupError }) }
+                    },
+                  }
+                },
+              }
+            },
+            // email fallback: .ilike('email').eq('status').is('used_at').maybeSingle()
+            ilike(_col: string, _val: unknown) {
+              return {
+                eq(_col2: string, _val2: unknown) {
+                  return {
+                    is(_col3: string, _val3: unknown) {
+                      return { maybeSingle: async () => ({ data: emailRow, error: emailLookupError }) }
+                    },
+                  }
+                },
+              }
+            },
           }
         },
-        update(payload: unknown) {
+        delete() {
+          deleteCalls.push(true)
+          return {
+            eq(_col: string, _val: unknown) {
+              return {
+                eq(_col2: string, _val2: unknown) {
+                  return {
+                    neq(_col3: string, _val3: unknown) {
+                      return {
+                        select: async (_cols: string) => orphanResults.shift() ?? { data: [], error: null },
+                      }
+                    },
+                  }
+                },
+              }
+            },
+          }
+        },
+        update(payload: Record<string, unknown>) {
           updateCalls.push(payload)
-          return { eq: async (_col: string, _val: unknown) => ({ error: updateError }) }
+          // The claim payload always carries status:'active'; the name-fill
+          // payload is name-only. Distinguishing by shape (rather than call
+          // order) mirrors how the real code branches on which write this is.
+          if ('status' in payload) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return {
+                  is(_col2: string, _val2: unknown) {
+                    return {
+                      select(_cols: string) {
+                        return { maybeSingle: async () => claimResults.shift() ?? { data: null, error: null } }
+                      },
+                    }
+                  },
+                }
+              },
+            }
+          }
+          return { eq: async (_col: string, _val: unknown) => ({ error: nameFillError }) }
         },
       }
     },
@@ -147,6 +223,7 @@ function makeLinkClient({
   return {
     client,
     getUpdateCalls: () => updateCalls,
+    getDeleteCalls: () => deleteCalls,
     getUsersUpsertCalls: () => usersUpsertCalls,
   }
 }
@@ -363,27 +440,30 @@ describe('linkInvitedMember', () => {
   })
 
   it('updates the members row with clerk_id, user_id, status=active when a matching invite is found', async () => {
+    // No token passed — this call goes through the email-lookup branch.
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-1' },
-      inviteRow: { id: 'member-uuid-1', tenant_id: 'tenant-1' },
+      emailRow: { id: 'member-uuid-1', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-1', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await linkInvitedMember('clerk-xyz', 'alice@example.com')
 
     const updates = getUpdateCalls()
-    expect(updates).toHaveLength(1)
-    const update = updates[0] as Record<string, unknown>
-    expect(update.clerk_id).toBe('clerk-xyz')
-    expect(update.user_id).toBe('user-uuid-1')
-    expect(update.status).toBe('active')
-    expect(typeof update.used_at).toBe('string')
+    expect(updates).toHaveLength(1) // just the claim — no name to fill
+    const claim = updates[0]
+    expect(claim.clerk_id).toBe('clerk-xyz')
+    expect(claim.user_id).toBe('user-uuid-1')
+    expect(claim.status).toBe('active')
+    expect(typeof claim.used_at).toBe('string')
   })
 
   it('calls getAdminClient with source "link_invited_member" (Gate 3 attribution)', async () => {
     const { client } = makeLinkClient({
       userRow: { id: 'user-uuid-2' },
-      inviteRow: { id: 'member-uuid-2', tenant_id: 'tenant-1' },
+      emailRow: { id: 'member-uuid-2', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-2', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -400,7 +480,8 @@ describe('linkInvitedMember', () => {
   it('omits email from the users upsert when called with an empty email and a token', async () => {
     const { client, getUsersUpsertCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-d5' },
-      inviteRow: { id: 'member-uuid-d5', tenant_id: 'tenant-1' },
+      tokenRow: { id: 'member-uuid-d5', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-d5', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -416,7 +497,8 @@ describe('linkInvitedMember', () => {
   it('writes a real email lowercased on the users upsert', async () => {
     const { client, getUsersUpsertCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-d5b' },
-      inviteRow: { id: 'member-uuid-d5b', tenant_id: 'tenant-1' },
+      emailRow: { id: 'member-uuid-d5b', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-d5b', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -429,7 +511,8 @@ describe('linkInvitedMember', () => {
   it('no-ops on the members update when no matching invite row exists (normal sign-up)', async () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-2' },
-      inviteRow: null,
+      emailRow: null,
+      claimQueue: [],
     })
     adminHolder.client = client
 
@@ -442,7 +525,8 @@ describe('linkInvitedMember', () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: null,
       userError: { message: 'upsert failed' },
-      inviteRow: { id: 'member-uuid-3', tenant_id: 'tenant-1' },
+      emailRow: { id: 'member-uuid-3', tenant_id: 'tenant-1' },
+      claimQueue: [],
     })
     adminHolder.client = client
 
@@ -461,8 +545,9 @@ describe('linkInvitedMember', () => {
   it('returns early without updating members when the invite find fails', async () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-4' },
-      inviteRow: null,
-      findError: { message: 'find failed' },
+      emailRow: null,
+      emailLookupError: { message: 'find failed' },
+      claimQueue: [],
     })
     adminHolder.client = client
 
@@ -471,21 +556,23 @@ describe('linkInvitedMember', () => {
     expect(getUpdateCalls()).toHaveLength(0)
   })
 
-  it('returns false and logs MEMBER_LINK_UPDATE_FAILED (with pg_code) when the final update fails', async () => {
-    // Simulates the clerk_id unique-constraint collision race: syncMember
-    // already inserted an orphan row for this clerk_id on an earlier webhook
-    // delivery, so linkInvitedMember's UPDATE to the still-invited row fails.
+  it('returns false and logs MEMBER_LINK_UPDATE_FAILED (with pg_code) when the claim fails on both the initial attempt and the retry', async () => {
+    // A 23505 now triggers one bounded retry (see the "closes the race" suite
+    // below) rather than an immediate failure — this asserts the eventual-
+    // failure path once both attempts are exhausted, still failing the same
+    // way and logging the same audit event as before.
+    const conflict = { message: 'duplicate key value violates unique constraint', code: '23505' }
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-13' },
-      inviteRow: { id: 'member-uuid-13', tenant_id: 'tenant-1' },
-      updateError: { message: 'duplicate key value violates unique constraint', code: '23505' },
+      emailRow: { id: 'member-uuid-13', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: null, error: conflict }, { data: null, error: conflict }],
     })
     adminHolder.client = client
 
     const result = await linkInvitedMember('clerk-13', 'thirteen@example.com')
 
     expect(result).toBe(false)
-    expect(getUpdateCalls()).toHaveLength(1)
+    expect(getUpdateCalls()).toHaveLength(2) // initial claim attempt + the one retry
 
     expect(logEventMock).toHaveBeenCalledOnce()
     const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
@@ -496,75 +583,135 @@ describe('linkInvitedMember', () => {
   })
 
   // ── name capture (from Clerk firstName/lastName) ───────────────────────────
+  //
+  // The name-fill is now its own follow-up write after the claim, not part
+  // of the claim's own payload — getUpdateCalls()[0] is always the claim;
+  // getUpdateCalls()[1], when present, is the name-fill.
 
-  it('sets name from Clerk when the invited row has none', async () => {
+  it('sets name from Clerk when the claimed row has none', async () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-14' },
-      inviteRow: { id: 'member-uuid-14', tenant_id: 'tenant-1', name: null },
+      emailRow: { id: 'member-uuid-14', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-14', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await linkInvitedMember('clerk-14', 'ada@example.com', null, 'Ada Lovelace')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Ada Lovelace')
+    const updates = getUpdateCalls()
+    expect(updates).toHaveLength(2)
+    expect(updates[1].name).toBe('Ada Lovelace')
   })
 
   it('does not set name when Clerk has none on file', async () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-15' },
-      inviteRow: { id: 'member-uuid-15', tenant_id: 'tenant-1', name: null },
+      emailRow: { id: 'member-uuid-15', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-15', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await linkInvitedMember('clerk-15', 'noname@example.com', null, null)
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1) // claim only, no name-fill attempted
   })
 
-  it('does not overwrite an existing invited-row name with the Clerk name', async () => {
+  it('does not overwrite an existing claimed-row name with the Clerk name', async () => {
     const { client, getUpdateCalls } = makeLinkClient({
       userRow: { id: 'user-uuid-16' },
-      inviteRow: { id: 'member-uuid-16', tenant_id: 'tenant-1', name: 'Already Set' },
+      emailRow: { id: 'member-uuid-16', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: { id: 'member-uuid-16', name: 'Already Set' }, error: null }],
     })
     adminHolder.client = client
 
     await linkInvitedMember('clerk-16', 'already@example.com', null, 'New Clerk Name')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1)
+  })
+
+  // ── closes the race: linkInvitedMember side ───────────────────────────────
+  //
+  // System Docs/Identity System.md §1.3: this function and acceptInvite both
+  // fire for the same signup event with no ordering guarantee. These prove
+  // the fix directly — a claim that matches zero rows is treated as success
+  // (the row IS linked, just not by this call), not as a failure to retry or
+  // report; and a 23505 on the first attempt is retried exactly once, and
+  // succeeds when the retry's claim matches.
+
+  it('returns true without error when the claim matches zero rows — already linked by a concurrent acceptInvite call', async () => {
+    const { client, getUpdateCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-race1' },
+      emailRow: { id: 'member-uuid-race1', tenant_id: 'tenant-1' },
+      claimQueue: [{ data: null, error: null }], // zero rows, no error — the race outcome
+    })
+    adminHolder.client = client
+
+    const result = await linkInvitedMember('clerk-race1', 'race1@example.com')
+
+    expect(result).toBe(true)
+    expect(getUpdateCalls()).toHaveLength(1) // one attempt, no retry — this wasn't an error
+    expect(logEventMock).not.toHaveBeenCalled() // linkInvitedMember logs nothing on success, matching its pre-existing behavior
+  })
+
+  it('retries exactly once after a 23505 and succeeds when the retry claim matches', async () => {
+    const conflict = { message: 'duplicate key value violates unique constraint', code: '23505' }
+    const { client, getUpdateCalls, getDeleteCalls } = makeLinkClient({
+      userRow: { id: 'user-uuid-race2' },
+      emailRow: { id: 'member-uuid-race2', tenant_id: 'tenant-1' },
+      orphanQueue: [{ data: [], error: null }, { data: [], error: null }],
+      claimQueue: [
+        { data: null, error: conflict },
+        { data: { id: 'member-uuid-race2', name: null }, error: null },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await linkInvitedMember('clerk-race2', 'race2@example.com')
+
+    expect(result).toBe(true)
+    expect(getUpdateCalls()).toHaveLength(2) // failed attempt + successful retry
+    expect(getDeleteCalls()).toHaveLength(2) // initial orphan cleanup + retry cleanup
   })
 })
 
 // ── acceptInvite ─────────────────────────────────────────────────────────────
 
-// Three-call mock for acceptInvite:
-//   Call 1: from('members').select().eq('token').is('used_at').is('revoked_at').maybeSingle()
-//   Call 2: from('members').delete().eq('clerk_id').eq('tenant_id').neq('id').select('id, name')
-//   Call 3: from('members').update().eq('id')
+// Mock for acceptInvite, covering its full new call sequence:
+//   1. from('members').select().eq('token').is('used_at').is('revoked_at').maybeSingle()
+//      — the pre-check. Gates step 2 and gives a fast 404/403; not the claim.
+//   2. (skipOrphanCleanup) .select().eq('clerk_id').eq('tenant_id').neq('id').maybeSingle()
+//      OR (default) .delete().eq('clerk_id').eq('tenant_id').neq('id').select('id,name')
+//   3. from('members').update(claimPayload).eq('token').eq('tenant_id').is('used_at')
+//      .is('revoked_at').select('id,name').maybeSingle() — the atomic claim.
+//      claimQueue is consumed in order: index 0 is the first attempt, index 1
+//      (if present) is the one-shot retry after a 23505 on index 0.
+//   4. (if the claim succeeds and a name-fill is needed) a second, distinct
+//      .update({name}).eq('id') — distinguished from the claim by payload
+//      shape ('status' in payload => claim; otherwise => name-fill).
 function makeAcceptInviteClient({
-  invitedRow,
-  findError = null,
-  orphanRows = [],
-  orphanError = null,
-  updateError = null,
-  // skipOrphanCleanup path only:
+  preRow,
+  preError = null,
+  orphanQueue = [{ data: [], error: null }],
+  claimQueue,
   conflictingRow = null,
   conflictError = null,
+  nameFillError = null,
 }: {
-  invitedRow: unknown
-  findError?: unknown
-  orphanRows?: unknown[]
-  orphanError?: unknown
-  updateError?: unknown
+  preRow: unknown
+  preError?: unknown
+  orphanQueue?: QueueItem<unknown[] | null>[]
+  claimQueue: QueueItem[]
   conflictingRow?: unknown
   conflictError?: unknown
+  nameFillError?: unknown
 }) {
-  const updateCalls: unknown[] = []
+  const updateCalls: Record<string, unknown>[] = []
   const deleteCalls: unknown[] = []
-  // Step 1 (find the invited row) and the skipOrphanCleanup conflict check
-  // are both a `select(...).eq(...)` chain on `members`, but end differently
+  const orphanResults = [...orphanQueue]
+  const claimResults = [...claimQueue]
+
+  // Step 1 (the pre-check) and the skipOrphanCleanup conflict check are both
+  // a `select(...).eq(...)` chain on `members`, but end differently
   // (`.is().is().maybeSingle()` vs `.eq().neq().maybeSingle()`). Exposing
   // both continuations on the same returned object handles either without
   // needing to track call order.
@@ -578,7 +725,7 @@ function makeAcceptInviteClient({
                 is(_col2: string, _val2: unknown) {
                   return {
                     is(_col3: string, _val3: unknown) {
-                      return { maybeSingle: async () => ({ data: invitedRow, error: findError }) }
+                      return { maybeSingle: async () => ({ data: preRow, error: preError }) }
                     },
                   }
                 },
@@ -604,7 +751,7 @@ function makeAcceptInviteClient({
                   return {
                     neq(_col3: string, _val3: unknown) {
                       return {
-                        select: async (_cols: string) => ({ data: orphanRows, error: orphanError }),
+                        select: async (_cols: string) => orphanResults.shift() ?? { data: [], error: null },
                       }
                     },
                   }
@@ -613,9 +760,36 @@ function makeAcceptInviteClient({
             },
           }
         },
-        update(payload: unknown) {
+        update(payload: Record<string, unknown>) {
           updateCalls.push(payload)
-          return { eq: async (_col: string, _val: unknown) => ({ error: updateError }) }
+          // The claim payload always carries status:'active'; the name-fill
+          // payload is name-only. Distinguishing by shape (rather than call
+          // order) mirrors how the real code branches on which write this is.
+          if ('status' in payload) {
+            // .eq('token').eq('tenant_id').is('used_at').is('revoked_at').select().maybeSingle()
+            return {
+              eq(_col: string, _val: unknown) {
+                return {
+                  eq(_col2: string, _val2: unknown) {
+                    return {
+                      is(_col3: string, _val3: unknown) {
+                        return {
+                          is(_col4: string, _val4: unknown) {
+                            return {
+                              select(_cols: string) {
+                                return { maybeSingle: async () => claimResults.shift() ?? { data: null, error: null } }
+                              },
+                            }
+                          },
+                        }
+                      },
+                    }
+                  },
+                }
+              },
+            }
+          }
+          return { eq: async (_col: string, _val: unknown) => ({ error: nameFillError }) }
         },
       }
     },
@@ -627,7 +801,7 @@ describe('acceptInvite', () => {
   beforeEach(() => { logEventMock.mockReset() })
 
   it('returns 404 when no matching unused, unrevoked invite token exists', async () => {
-    const { client } = makeAcceptInviteClient({ invitedRow: null })
+    const { client } = makeAcceptInviteClient({ preRow: null, claimQueue: [] })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-1', 'user-1')
@@ -639,22 +813,24 @@ describe('acceptInvite', () => {
 
   it('stamps the invited row with clerk_id, user_id, status=active on success', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-1', tenant_id: HEIRLOOM_TENANT_ID },
+      preRow: { id: 'member-1', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: { id: 'member-1', name: null }, error: null }],
     })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-1', 'user-1')
 
     expect(result.ok).toBe(true)
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.clerk_id).toBe('clerk-1')
-    expect(update.user_id).toBe('user-1')
-    expect(update.status).toBe('active')
+    const [claim] = getUpdateCalls()
+    expect(claim.clerk_id).toBe('clerk-1')
+    expect(claim.user_id).toBe('user-1')
+    expect(claim.status).toBe('active')
   })
 
   it('calls getAdminClient with source "accept_invite" (Gate 3 attribution)', async () => {
     const { client } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
+      preRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: { id: 'member-2', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -665,8 +841,9 @@ describe('acceptInvite', () => {
 
   it('logs only MEMBER_INVITE_ACCEPTED (no orphan event) when no orphan row existed', async () => {
     const { client } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
-      orphanRows: [],
+      preRow: { id: 'member-2', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [], error: null }],
+      claimQueue: [{ data: { id: 'member-2', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -679,8 +856,9 @@ describe('acceptInvite', () => {
 
   it('logs MEMBER_ORPHAN_RECONCILED with the deleted count when a syncMember-created orphan row is deleted, then MEMBER_INVITE_ACCEPTED', async () => {
     const { client } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-3', tenant_id: HEIRLOOM_TENANT_ID },
-      orphanRows: [{ id: 'orphan-1' }],
+      preRow: { id: 'member-3', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-1', name: null }], error: null }],
+      claimQueue: [{ data: { id: 'member-3', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -696,15 +874,16 @@ describe('acceptInvite', () => {
 
   it('logs MEMBER_ORPHAN_CLEANUP_FAILED but still stamps the invited row and logs MEMBER_INVITE_ACCEPTED when the orphan delete fails', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-4', tenant_id: HEIRLOOM_TENANT_ID },
-      orphanError: { message: 'delete failed' },
+      preRow: { id: 'member-4', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: null, error: { message: 'delete failed' } }],
+      claimQueue: [{ data: { id: 'member-4', name: null }, error: null }],
     })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-4', 'user-4')
 
     expect(result.ok).toBe(true)
-    expect(getUpdateCalls()).toHaveLength(1)
+    expect(getUpdateCalls()).toHaveLength(1) // the delete failing is non-fatal; one claim attempt, no retry (no 23505)
 
     expect(logEventMock).toHaveBeenCalledTimes(2)
     const [failedArg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
@@ -714,10 +893,10 @@ describe('acceptInvite', () => {
     expect(acceptedArg.action).toBe('member.invite_accepted')
   })
 
-  it('returns ok:false when the final stamp update fails', async () => {
-    const { client } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-5', tenant_id: HEIRLOOM_TENANT_ID },
-      updateError: { message: 'update failed' },
+  it('returns ok:false when the claim fails with a non-23505 error (no retry)', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      preRow: { id: 'member-5', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: null, error: { message: 'update failed' } }],
     })
     adminHolder.client = client
 
@@ -726,151 +905,161 @@ describe('acceptInvite', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.status).toBe(500)
+    expect(getUpdateCalls()).toHaveLength(1) // no retry — only 23505 triggers one
   })
 
   // ── orphan name rescue (race with /api/members/sync) ──────────────────────
+  //
+  // The name-fill is now its own follow-up write after the claim, not part
+  // of the claim's own payload — getUpdateCalls()[0] is always the claim;
+  // getUpdateCalls()[1], when present, is the name-fill.
 
-  it('rescues the deleted orphan\'s name onto the invited row when the invited row has none', async () => {
+  it('rescues the deleted orphan\'s name onto the claimed row when it has none', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-6', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [{ id: 'orphan-6', name: 'Real Name' }],
+      preRow: { id: 'member-6', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-6', name: 'Real Name' }], error: null }],
+      claimQueue: [{ data: { id: 'member-6', name: null }, error: null }],
     })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-6', 'user-6')
 
     expect(result.ok).toBe(true)
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Real Name')
+    const updates = getUpdateCalls()
+    expect(updates).toHaveLength(2)
+    expect(updates[1].name).toBe('Real Name')
   })
 
-  it('does not overwrite an existing invited-row name with the orphan\'s name', async () => {
+  it('does not overwrite an existing claimed-row name with the orphan\'s name', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-7', tenant_id: HEIRLOOM_TENANT_ID, name: 'Already Set' },
-      orphanRows: [{ id: 'orphan-7', name: 'Orphan Name' }],
+      preRow: { id: 'member-7', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-7', name: 'Orphan Name' }], error: null }],
+      claimQueue: [{ data: { id: 'member-7', name: 'Already Set' }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-7', 'user-7')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1)
   })
 
   it('does not set a name when the orphan row has no name', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-8', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [{ id: 'orphan-8', name: null }],
+      preRow: { id: 'member-8', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-8', name: null }], error: null }],
+      claimQueue: [{ data: { id: 'member-8', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-8', 'user-8')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1)
   })
 
   it('does not set a name when more than one orphan row is deleted', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-9', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [
-        { id: 'orphan-9a', name: 'Name A' },
-        { id: 'orphan-9b', name: 'Name B' },
-      ],
+      preRow: { id: 'member-9', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{
+        data: [
+          { id: 'orphan-9a', name: 'Name A' },
+          { id: 'orphan-9b', name: 'Name B' },
+        ],
+        error: null,
+      }],
+      claimQueue: [{ data: { id: 'member-9', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-9', 'user-9')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1)
   })
 
   // ── name parameter (closes the Path 2 race — no orphan to rescue from) ────
 
   it('falls back to the passed-in name when there is no orphan to rescue from', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-10', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [],
+      preRow: { id: 'member-10', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: { id: 'member-10', name: null }, error: null }],
     })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-10', 'user-10', 'Clerk Name')
 
     expect(result.ok).toBe(true)
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Clerk Name')
+    const updates = getUpdateCalls()
+    expect(updates[1].name).toBe('Clerk Name')
   })
 
   it('prefers the rescued orphan name over the passed-in name when both are available', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-11', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [{ id: 'orphan-11', name: 'Rescued Name' }],
+      preRow: { id: 'member-11', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-11', name: 'Rescued Name' }], error: null }],
+      claimQueue: [{ data: { id: 'member-11', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-11', 'user-11', 'Clerk Name')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Rescued Name')
+    const updates = getUpdateCalls()
+    expect(updates[1].name).toBe('Rescued Name')
   })
 
   // PR #448 review: `rescuedName ?? name` treats a whitespace-only
   // rescuedName as present, blocking a real Clerk name fallback.
   it('falls through to the passed-in name when the rescued orphan name is whitespace-only', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-11b', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [{ id: 'orphan-11b', name: '   ' }],
+      preRow: { id: 'member-11b', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-11b', name: '   ' }], error: null }],
+      claimQueue: [{ data: { id: 'member-11b', name: null }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-11b', 'user-11b', 'Clerk Name')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Clerk Name')
+    const updates = getUpdateCalls()
+    expect(updates[1].name).toBe('Clerk Name')
   })
 
   // PR #448 review: `!row.name` doesn't treat a whitespace-only stored name
   // as absent, so the fallback is wrongly skipped and no real name is set.
-  it('treats a whitespace-only existing invited-row name as absent, still applying the fallback', async () => {
+  it('treats a whitespace-only claimed-row name as absent, still applying the fallback', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-11c', tenant_id: HEIRLOOM_TENANT_ID, name: '   ' },
-      orphanRows: [],
+      preRow: { id: 'member-11c', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: { id: 'member-11c', name: '   ' }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-11c', 'user-11c', 'Clerk Name')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBe('Clerk Name')
+    const updates = getUpdateCalls()
+    expect(updates[1].name).toBe('Clerk Name')
   })
 
-  it('does not overwrite an existing invited-row name with the passed-in name', async () => {
+  it('does not overwrite an existing claimed-row name with the passed-in name', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-12', tenant_id: HEIRLOOM_TENANT_ID, name: 'Already Set' },
-      orphanRows: [],
+      preRow: { id: 'member-12', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: { id: 'member-12', name: 'Already Set' }, error: null }],
     })
     adminHolder.client = client
 
     await acceptInvite('tok', 'clerk-12', 'user-12', 'Clerk Name')
 
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.name).toBeUndefined()
+    expect(getUpdateCalls()).toHaveLength(1)
   })
 
   it.each([undefined, null, '', '   '])(
     'omits name when no orphan and the passed-in name is %p',
     async (name) => {
       const { client, getUpdateCalls } = makeAcceptInviteClient({
-        invitedRow: { id: 'member-13', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-        orphanRows: [],
+        preRow: { id: 'member-13', tenant_id: HEIRLOOM_TENANT_ID },
+        claimQueue: [{ data: { id: 'member-13', name: null }, error: null }],
       })
       adminHolder.client = client
 
       await acceptInvite('tok', 'clerk-13', 'user-13', name as string | null | undefined)
 
-      const [update] = getUpdateCalls() as [Record<string, unknown>]
-      expect(update.name).toBeUndefined()
+      expect(getUpdateCalls()).toHaveLength(1)
     },
   )
 
@@ -884,8 +1073,9 @@ describe('acceptInvite', () => {
 
   it('never calls delete when skipOrphanCleanup is set', async () => {
     const { client, getDeleteCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-14', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      preRow: { id: 'member-14', tenant_id: HEIRLOOM_TENANT_ID },
       conflictingRow: null,
+      claimQueue: [{ data: { id: 'member-14', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -897,23 +1087,25 @@ describe('acceptInvite', () => {
 
   it('stamps the invited row normally when skipOrphanCleanup is set and no conflicting row exists', async () => {
     const { client, getUpdateCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-15', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      preRow: { id: 'member-15', tenant_id: HEIRLOOM_TENANT_ID },
       conflictingRow: null,
+      claimQueue: [{ data: { id: 'member-15', name: null }, error: null }],
     })
     adminHolder.client = client
 
     const result = await acceptInvite('tok', 'clerk-15', 'user-15', null, { skipOrphanCleanup: true })
 
     expect(result.ok).toBe(true)
-    const [update] = getUpdateCalls() as [Record<string, unknown>]
-    expect(update.clerk_id).toBe('clerk-15')
-    expect(update.status).toBe('active')
+    const [claim] = getUpdateCalls()
+    expect(claim.clerk_id).toBe('clerk-15')
+    expect(claim.status).toBe('active')
   })
 
   it('returns 409 without deleting or stamping when the visitor already has a membership for this tenant', async () => {
     const { client, getUpdateCalls, getDeleteCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-16', tenant_id: HEIRLOOM_TENANT_ID, name: null },
+      preRow: { id: 'member-16', tenant_id: HEIRLOOM_TENANT_ID },
       conflictingRow: { id: 'existing-member-16' },
+      claimQueue: [],
     })
     adminHolder.client = client
 
@@ -928,8 +1120,9 @@ describe('acceptInvite', () => {
 
   it('the false→true signup path (skipOrphanCleanup unset) still deletes the orphan as before', async () => {
     const { client, getDeleteCalls } = makeAcceptInviteClient({
-      invitedRow: { id: 'member-17', tenant_id: HEIRLOOM_TENANT_ID, name: null },
-      orphanRows: [{ id: 'orphan-17', name: 'Real Name' }],
+      preRow: { id: 'member-17', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [{ id: 'orphan-17', name: 'Real Name' }], error: null }],
+      claimQueue: [{ data: { id: 'member-17', name: null }, error: null }],
     })
     adminHolder.client = client
 
@@ -937,6 +1130,97 @@ describe('acceptInvite', () => {
 
     expect(result.ok).toBe(true)
     expect(getDeleteCalls()).toHaveLength(1)
+  })
+
+  // ── cross-tenant guard, now folded into the pre-check (was a separate
+  //    step 2 before the rewrite; behavior unchanged) ─────────────────────
+
+  it('returns 403 when the pre-check finds a row belonging to a different tenant', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      preRow: { id: 'member-18', tenant_id: 'some-other-tenant' },
+      claimQueue: [],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-18', 'user-18')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(403)
+    expect(getUpdateCalls()).toHaveLength(0)
+  })
+
+  // ── closes the race: acceptInvite side ────────────────────────────────────
+  //
+  // System Docs/Identity System.md §1.3: this function and linkInvitedMember
+  // both fire for the same signup event with no ordering guarantee. These
+  // prove the fix directly — a claim that matches zero rows is treated as
+  // success (the row IS linked, just not by this call — tagged
+  // claimed_by_concurrent_call in the audit metadata), not as a 404/500 to
+  // retry or report; and a 23505 on the first attempt is retried exactly
+  // once, and succeeds when the retry's claim matches.
+
+  it('returns ok:true with claimed_by_concurrent_call when the claim matches zero rows — already claimed by the racing webhook', async () => {
+    const { client, getUpdateCalls } = makeAcceptInviteClient({
+      preRow: { id: 'member-race1', tenant_id: HEIRLOOM_TENANT_ID },
+      claimQueue: [{ data: null, error: null }], // zero rows, no error — the race outcome
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-race1', 'user-race1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.memberId).toBe('member-race1')
+    expect(getUpdateCalls()).toHaveLength(1) // one attempt, no retry — this wasn't an error
+
+    expect(logEventMock).toHaveBeenCalledOnce()
+    const [arg] = logEventMock.mock.calls[0] as [Record<string, unknown>]
+    expect(arg.action).toBe('member.invite_accepted')
+    expect((arg.metadata as Record<string, unknown>).claimed_by_concurrent_call).toBe(true)
+  })
+
+  it('retries exactly once after a 23505 and succeeds when the retry claim matches', async () => {
+    const conflict = { message: 'duplicate key value violates unique constraint', code: '23505' }
+    const { client, getUpdateCalls, getDeleteCalls } = makeAcceptInviteClient({
+      preRow: { id: 'member-race2', tenant_id: HEIRLOOM_TENANT_ID },
+      orphanQueue: [{ data: [], error: null }, { data: [], error: null }],
+      claimQueue: [
+        { data: null, error: conflict },
+        { data: { id: 'member-race2', name: null }, error: null },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-race2', 'user-race2')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.memberId).toBe('member-race2')
+    expect(getUpdateCalls()).toHaveLength(2) // failed claim attempt + successful retry
+    expect(getDeleteCalls()).toHaveLength(2) // initial orphan cleanup + retry cleanup
+  })
+
+  it('does not retry the orphan cleanup or claim when skipOrphanCleanup is set and the claim hits 23505', async () => {
+    // skipOrphanCleanup's whole premise is "don't delete — this might be a
+    // real membership." A 23505 retry that deletes anyway would silently
+    // reintroduce exactly the destructive-delete risk that option exists to
+    // prevent, so the retry's cleanup step is skipped here too.
+    const conflict = { message: 'duplicate key value violates unique constraint', code: '23505' }
+    const { client, getDeleteCalls } = makeAcceptInviteClient({
+      preRow: { id: 'member-race3', tenant_id: HEIRLOOM_TENANT_ID },
+      conflictingRow: null,
+      claimQueue: [
+        { data: null, error: conflict },
+        { data: { id: 'member-race3', name: null }, error: null },
+      ],
+    })
+    adminHolder.client = client
+
+    const result = await acceptInvite('tok', 'clerk-race3', 'user-race3', null, { skipOrphanCleanup: true })
+
+    expect(result.ok).toBe(true)
+    expect(getDeleteCalls()).toHaveLength(0)
   })
 })
 

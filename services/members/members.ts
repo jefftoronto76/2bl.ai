@@ -223,9 +223,31 @@ export async function memberTokenExists(
  *     (e.g. old invite flow without unsafeMetadata, or GateView sign-up via the
  *     prebuilt Clerk modal which bypasses the custom OTP flow).
  *
- * Returns true when an invited row was found and stamped (caller should skip
- * syncMember to avoid inserting a duplicate active row). Returns false when no
- * invited row was found — caller proceeds with syncMember as normal.
+ * The row claim itself (after the lookup above resolves which row) is a
+ * single atomic conditional UPDATE, not the lookup's own SELECT followed by
+ * an unconditional UPDATE-by-id. This function and acceptInvite
+ * (services/members/members.ts) both fire for the same signup event — this
+ * one from the Clerk webhook, that one from the client's own accept call —
+ * with no ordering guarantee between them (System Docs/Identity System.md
+ * §1.3). Folding "is this still claimable" into the UPDATE's own WHERE
+ * clause means Postgres's row lock decides which of the two concurrent
+ * callers wins, not application code racing a stale read. See Design
+ * Handovers/identity_reconciliation_replan_2026-09-14.md for the full design.
+ *
+ * Also deletes any orphan row syncMember may have created for this clerk_id
+ * before this function claims the real invited row — acceptInvite always
+ * had this step; this function never did, which is exactly the failure mode
+ * its own former doc comment described ("simulates the clerk_id
+ * unique-constraint collision race"). Safe unconditionally here (no
+ * skipOrphanCleanup escape hatch, unlike acceptInvite): the lookup above can
+ * only ever match a row still in status='invited'/used_at IS NULL, so an
+ * already-established member's real membership can never be what gets
+ * deleted — that ambiguity doesn't arise on this path.
+ *
+ * Returns true when an invited row was found and stamped BY THIS CALL, or
+ * when it was already claimed by a concurrent acceptInvite call for the
+ * same row — either way the row is correctly linked. Returns false when no
+ * invited row was found at all — caller proceeds with syncMember as normal.
  */
 export async function linkInvitedMember(
   clerkId: string,
@@ -293,7 +315,12 @@ export async function linkInvitedMember(
   console.log('[members] linkInvitedMember — resolved users.id', { clerkId, userId })
 
   // Step 1: token-based lookup (primary). Token is unique — no .ilike needed.
-  let invitedRow: { id: string; tenant_id: string; name: string | null } | null = null
+  // This pre-check resolves WHICH row + tenant to target below; it is not
+  // itself the claim decision (the atomic UPDATE further down re-checks
+  // used_at authoritatively, so a stale snapshot here can't cause an
+  // incorrect write — only, at worst, an unnecessary-but-harmless orphan
+  // cleanup attempt for a row that turns out to already be claimed).
+  let invitedRow: { id: string; tenant_id: string } | null = null
 
   if (!token) {
     console.log('[members] linkInvitedMember — token lookup skipped (no token provided, will try email)', { clerkId, email: logSafeIdentity(email) })
@@ -302,7 +329,7 @@ export async function linkInvitedMember(
   if (token) {
     const { data: tokenRow, error: tokenErr } = await supabase
       .from('members')
-      .select('id, tenant_id, name')
+      .select('id, tenant_id')
       .eq('token', token)
       .eq('status', 'invited')
       .is('used_at', null)
@@ -319,7 +346,7 @@ export async function linkInvitedMember(
         memberId: tokenRow.id,
         tenantId: tokenRow.tenant_id,
       })
-      invitedRow = tokenRow as { id: string; tenant_id: string; name: string | null }
+      invitedRow = tokenRow as { id: string; tenant_id: string }
     } else {
       console.log('[members] linkInvitedMember — token not found or already used, trying email fallback', {
         clerkId,
@@ -332,7 +359,7 @@ export async function linkInvitedMember(
   if (!invitedRow && email) {
     const { data: emailRow, error: findErr } = await supabase
       .from('members')
-      .select('id, tenant_id, name')
+      .select('id, tenant_id')
       .ilike('email', email)
       .eq('status', 'invited')
       .is('used_at', null)
@@ -353,7 +380,7 @@ export async function linkInvitedMember(
         memberId: emailRow.id,
         tenantId: emailRow.tenant_id,
       })
-      invitedRow = emailRow as { id: string; tenant_id: string; name: string | null }
+      invitedRow = emailRow as { id: string; tenant_id: string }
     }
   }
 
@@ -368,30 +395,58 @@ export async function linkInvitedMember(
 
   const memberId = invitedRow.id
   const tenantId = invitedRow.tenant_id
-  console.log('[members] linkInvitedMember — stamping invited row', { clerkId, memberId, tenantId })
+  const lookupMethod = token ? 'token' : 'email'
 
-  const now = new Date().toISOString()
-  const { error: updateErr } = await supabase
-    .from('members')
-    .update({
-      clerk_id: clerkId,
-      user_id: userId,
-      status: 'active',
-      source: 'invite',
-      used_at: now,
-      updated_at: now,
-      // Fill-only-when-null is deliberate (PRs #368/#371) and stricter than the
-      // shared invariant requires — it never overwrites, so it can never delete.
-      // identityValue here just stops a whitespace-only Clerk name being written.
-      ...(identityValue(name) && !invitedRow.name ? { name: identityValue(name) } : {}),
-    })
-    .eq('id', memberId)
+  // Step 3 (symmetric with acceptInvite, new here): delete any other row
+  // sharing this clerk_id + tenant — a syncMember-created orphan from the
+  // same signup race, safe to remove because the invited row's own clerk_id
+  // is still null at this point (it can't be what this delete matches).
+  // Shares acceptInvite's own deleteOrphanRows helper (defined below in this
+  // file — hoisted, so callable from here) rather than a second copy of the
+  // same delete-and-log logic.
+  let rescuedName = await deleteOrphanRows(supabase, clerkId, tenantId, memberId)
 
-  if (updateErr) {
-    console.error('[members] linkInvitedMember — EXIT: update failed', {
+  console.log('[members] linkInvitedMember — claiming invited row', { clerkId, memberId, tenantId })
+
+  // Step 4: the atomic claim. WHERE id = memberId AND used_at IS NULL,
+  // evaluated by Postgres under its own row lock — the authoritative
+  // decision, not the pre-check lookup above.
+  const claim = async () => {
+    const now = new Date().toISOString()
+    return supabase
+      .from('members')
+      .update({
+        clerk_id: clerkId,
+        user_id: userId,
+        status: 'active',
+        source: 'invite',
+        used_at: now,
+        updated_at: now,
+      })
+      .eq('id', memberId)
+      .is('used_at', null)
+      .select('id, name')
+      .maybeSingle()
+  }
+
+  let { data: claimedRow, error: claimErr } = await claim()
+
+  if (claimErr?.code === '23505') {
+    // An orphan reappeared in the gap between step 3's delete and this
+    // write — the exact window the old unconditional UPDATE's own comment
+    // already described as a real failure mode. One bounded retry, same
+    // pattern acceptStoryInvite already uses for this error code.
+    console.warn('[members] linkInvitedMember — claim hit 23505, retrying orphan cleanup once', { clerkId, memberId })
+    const retryRescued = await deleteOrphanRows(supabase, clerkId, tenantId, memberId)
+    rescuedName = rescuedName ?? retryRescued
+    ;({ data: claimedRow, error: claimErr } = await claim())
+  }
+
+  if (claimErr) {
+    console.error('[members] linkInvitedMember — EXIT: claim failed', {
       clerkId,
       memberId,
-      error: updateErr.message,
+      error: claimErr.message,
     })
     void logEvent({
       action: AuditAction.MEMBER_LINK_UPDATE_FAILED,
@@ -399,31 +454,147 @@ export async function linkInvitedMember(
       target_type: 'member',
       target_id: memberId,
       outcome: 'failure',
-      metadata: { error: updateErr.message, pg_code: updateErr.code },
+      metadata: { error: claimErr.message, pg_code: claimErr.code },
     })
     return false
+  }
+
+  if (!claimedRow) {
+    // Zero rows: a concurrent acceptInvite call already claimed this row
+    // first. It's linked — just not by this call. Same success outcome.
+    console.log('[members] linkInvitedMember — claim matched no rows, already linked by a concurrent call', { clerkId, memberId })
+    return true
+  }
+
+  const claimed = claimedRow as { id: string; name: string | null }
+
+  // Step 5: fill-only-when-null name, its own small follow-up write.
+  // claimed.name reflects the row's name BEFORE step 4 (that UPDATE never
+  // touched the column), which is exactly what "was it empty" needs to mean.
+  // identityValue on both candidates and on claimed.name itself is what
+  // makes a whitespace-only stored name count as absent, same as every
+  // other identity write in this codebase — a DB-side `.is('name', null)`
+  // guard would miss that case (whitespace isn't SQL NULL) and silently
+  // no-op exactly where the JS check said to write. Not re-checking
+  // used_at here: this call only runs immediately after this same
+  // function's own successful claim, on the row it just claimed.
+  const finalName = identityValue(rescuedName) ?? identityValue(name)
+  if (!identityValue(claimed.name) && finalName) {
+    const { error: nameErr } = await supabase
+      .from('members')
+      .update({ name: finalName })
+      .eq('id', claimed.id)
+    if (nameErr) {
+      console.error('[members] linkInvitedMember — name fill failed (non-fatal)', { memberId: claimed.id, error: nameErr.message })
+    }
   }
 
   console.log('[members] linkInvitedMember — SUCCESS: stamped invited row', {
     clerk_id: clerkId,
     member_id: memberId,
     tenant_id: tenantId,
-    lookup_method: token && invitedRow ? 'token' : 'email',
+    lookup_method: lookupMethod,
   })
   return true
+}
+
+type AdminClient = ReturnType<typeof getAdminClient>
+
+/**
+ * Deletes any other row sharing this clerk_id + tenant (a syncMember-created
+ * orphan from the same signup race — see acceptInvite's own doc comment) and
+ * returns a rescued name when exactly one row was deleted and it carried one.
+ * Shared by acceptInvite (initial cleanup and its one-shot retry after a
+ * 23505 on the claim) and linkInvitedMember (same shape of cleanup, added
+ * for symmetry — see that function's own doc comment).
+ */
+async function deleteOrphanRows(
+  supabase: AdminClient,
+  clerkUserId: string,
+  tenantId: string,
+  invitedRowId: string,
+): Promise<string | undefined> {
+  const { data: orphanRows, error: orphanErr } = await supabase
+    .from('members')
+    .delete()
+    .eq('clerk_id', clerkUserId)
+    .eq('tenant_id', tenantId)
+    .neq('id', invitedRowId)
+    .select('id, name')
+
+  if (orphanErr) {
+    console.error('[members] deleteOrphanRows — delete failed (non-fatal)', { clerkUserId, error: orphanErr.message })
+    void logEvent({
+      action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
+      clerk_user_id: clerkUserId,
+      target_type: 'member',
+      target_id: invitedRowId,
+      outcome: 'failure',
+      metadata: { error: orphanErr.message },
+    })
+    // Non-fatal: the caller attempts the claim anyway. The tenant-scoped
+    // clerk_id unique index will surface a real error if the orphan remains.
+    return undefined
+  }
+
+  const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
+  const deletedCount = deletedRows.length
+  console.log('[members] deleteOrphanRows — attempted', { clerkUserId, memberId: invitedRowId, deletedCount })
+  if (deletedCount > 0) {
+    // A syncMember-created orphan actually existed — confirms the
+    // linkInvitedMember/syncMember race described in Known Gaps.md fired
+    // and was reconciled here rather than left as a stuck user_id-null row.
+    void logEvent({
+      action: AuditAction.MEMBER_ORPHAN_RECONCILED,
+      clerk_user_id: clerkUserId,
+      target_type: 'member',
+      target_id: invitedRowId,
+      metadata: { deleted_count: deletedCount },
+    })
+  }
+  if (deletedCount === 1 && deletedRows[0].name) {
+    console.log('[members] deleteOrphanRows — rescuing orphan name', { memberId: invitedRowId, name: logSafeIdentity(deletedRows[0].name) })
+    return deletedRows[0].name
+  }
+  return undefined
 }
 
 /**
  * Accepts an invite by token after the user has signed up via Clerk.
  *
+ * The row claim (step 3 below) is a single atomic conditional UPDATE, not a
+ * prior SELECT followed by an unconditional UPDATE-by-id. This function and
+ * the Clerk webhook's linkInvitedMember both fire for the same signup event
+ * — this one from the client's own accept call, that one from the webhook —
+ * with no ordering guarantee between them (System Docs/Identity System.md
+ * §1.3). Folding "is this still claimable" into the UPDATE's own WHERE
+ * clause means Postgres's row lock decides which of the two concurrent
+ * callers wins, not application code racing a stale read — the actual
+ * defect the old unconditional UPDATE's own comment already documented
+ * ("the unique constraint on clerk_id will surface a real error if the
+ * orphan remains"). See Design Handovers/
+ * identity_reconciliation_replan_2026-09-14.md for the full design.
+ *
  * Sequence:
- * 1. Find the invited members row by token (must be unused).
- * 2. Guard against cross-tenant acceptance.
- * 3. Delete the orphan active row that syncMember may have inserted (the
- *    Clerk webhook upserts on clerk_id conflict; the invited row has
- *    clerk_id=null so no conflict fires and a second row is created).
- * 4. Stamp the original invited row with clerk_id, user_id, status='active',
- *    source='invite', used_at.
+ * 1. Cheap existence/tenant pre-check. Gates step 2 (never delete another
+ *    clerk_id's row for a garbage or cross-tenant token) and fails fast on
+ *    an invalid token — it is NOT the claim decision; step 3 re-checks
+ *    authoritatively regardless of whether this snapshot is stale by the
+ *    time it's acted on.
+ * 2. Delete any orphan active row syncMember may have inserted for this
+ *    clerk_id (the invited row's own clerk_id is still null here, so this
+ *    can never match the invited row itself). Skipped when skipOrphanCleanup
+ *    is set — see that option's own doc comment.
+ * 3. Atomic claim: UPDATE ... WHERE token = ? AND tenant_id = ? AND
+ *    used_at IS NULL AND revoked_at IS NULL, RETURNING the row. Zero rows
+ *    back means a concurrent call (almost always the racing webhook)
+ *    already claimed it first — treated as success, not failure, since the
+ *    row IS correctly linked. A 23505 (the orphan reappeared in the gap
+ *    between step 2 and step 3) gets one bounded retry, same pattern
+ *    acceptStoryInvite already uses for this exact error code.
+ * 4. Fill-only-when-null name, its own small follow-up write — never inline
+ *    in step 3's SET, since step 3's own RETURNING needs to reflect the
+ *    PRE-claim name to decide correctly whether a fill is even needed.
  */
 export async function acceptInvite(
   token: string,
@@ -441,7 +612,7 @@ export async function acceptInvite(
     /** True when the caller is an already-signed-in visitor (the mount-time
      *  effect added for the "already signed in with a fresh invite link"
      *  gap, chatStore.tsx), not the false→true sign-up transition. Skips
-     *  step 3's orphan delete entirely: that delete's premise is "any other
+     *  step 2's orphan delete entirely: that delete's premise is "any other
      *  row sharing this clerk_id is a same-request signup-race artifact
      *  syncMember created moments ago" — true only for a brand-new sign-up.
      *  For an already-signed-in visitor, that other row is just as likely
@@ -469,22 +640,23 @@ export async function acceptInvite(
 
   const supabase = getAdminClient('accept_invite')
 
-  // Step 1: find the invited row. Excludes revoked invites — a revoked token
-  // is dead everywhere, not just at the /invite/[token] redirect.
-  const { data: invitedRow, error: findErr } = await supabase
+  // Step 1: cheap pre-check — same predicate the old single SELECT used, but
+  // its result now only gates step 2 below and gives a fast 404/403 for an
+  // obviously bad token. Never used to decide the claim itself (step 3).
+  const { data: preRow, error: preErr } = await supabase
     .from('members')
-    .select('id, tenant_id, name')
+    .select('id, tenant_id')
     .eq('token', token)
     .is('used_at', null)
     .is('revoked_at', null)
     .maybeSingle()
 
-  if (findErr) {
-    console.error('[acceptInvite] step 1 find failed', { clerkUserId, error: findErr.message })
-    return { ok: false, status: 500, error: findErr.message }
+  if (preErr) {
+    console.error('[acceptInvite] step 1 find failed', { clerkUserId, error: preErr.message })
+    return { ok: false, status: 500, error: preErr.message }
   }
 
-  if (!invitedRow) {
+  if (!preRow) {
     console.warn('[acceptInvite] step 1 token not found or already used', {
       clerkUserId,
       token: token.slice(0, 8) + '…',
@@ -492,35 +664,34 @@ export async function acceptInvite(
     return { ok: false, status: 404, error: 'Invalid or already used token' }
   }
 
-  const row = invitedRow as { id: string; tenant_id: string; name: string | null }
+  const pre = preRow as { id: string; tenant_id: string }
   console.log('[acceptInvite] step 1 invited row found', {
-    memberId: row.id,
-    tenantId: row.tenant_id,
+    memberId: pre.id,
+    tenantId: pre.tenant_id,
     clerkUserId,
   })
 
-  // Step 2: cross-tenant guard.
-  if (row.tenant_id !== HEIRLOOM_TENANT_ID) {
-    console.error('[acceptInvite] step 2 cross-tenant attempt rejected', {
-      tenantId: row.tenant_id,
+  if (pre.tenant_id !== HEIRLOOM_TENANT_ID) {
+    console.error('[acceptInvite] step 1 cross-tenant attempt rejected', {
+      tenantId: pre.tenant_id,
       clerkUserId,
     })
     return { ok: false, status: 403, error: 'Forbidden' }
   }
 
-  // Step 3: delete any orphan row syncMember inserted for this clerk_id
+  // Step 2: delete any orphan row syncMember inserted for this clerk_id
   // (clerk_id was null on the invited row → no conflict → new active row).
   // Selecting `name` alongside `id` lets us rescue it below: /api/members/sync
   // can independently write a real `name` onto that orphan row (it races
   // acceptInvite off the same Clerk session-activation event, no ordering
-  // guaranteed), and the invited row being stamped in step 4 never has one.
+  // guaranteed), and the invited row being claimed in step 3 never has one.
   //
   // Skipped entirely when skipOrphanCleanup is set — see the param's doc
   // comment. Instead: if this clerk_id already owns a different row for this
   // tenant, that row is this visitor's real membership, not an artifact to
-  // clean up. Stamping row.id would violate the unique clerk_id constraint
-  // regardless, so surface that plainly (no accept, nothing deleted) rather
-  // than attempt a destructive delete to make room for it.
+  // clean up. Claiming pre.id would violate the tenant-scoped clerk_id
+  // unique index regardless, so surface that plainly (no accept, nothing
+  // deleted) rather than attempt a destructive delete to make room for it.
   let rescuedName: string | undefined
 
   if (options?.skipOrphanCleanup) {
@@ -528,117 +699,131 @@ export async function acceptInvite(
       .from('members')
       .select('id')
       .eq('clerk_id', clerkUserId)
-      .eq('tenant_id', row.tenant_id)
-      .neq('id', row.id)
+      .eq('tenant_id', pre.tenant_id)
+      .neq('id', pre.id)
       .maybeSingle()
 
     if (conflictErr) {
-      console.error('[acceptInvite] step 3 conflict check failed', { clerkUserId, error: conflictErr.message })
+      console.error('[acceptInvite] step 2 conflict check failed', { clerkUserId, error: conflictErr.message })
       return { ok: false, status: 500, error: conflictErr.message }
     }
     if (conflictingRow) {
-      console.log('[acceptInvite] step 3 skipped: visitor already has a membership for this tenant', {
+      console.log('[acceptInvite] step 2 skipped: visitor already has a membership for this tenant', {
         clerkUserId,
         existingMemberId: (conflictingRow as { id: string }).id,
       })
       return { ok: false, status: 409, error: 'Already a member' }
     }
   } else {
-    const { data: orphanRows, error: orphanErr } = await supabase
-      .from('members')
-      .delete()
-      .eq('clerk_id', clerkUserId)
-      .eq('tenant_id', row.tenant_id)
-      .neq('id', row.id)
-      .select('id, name')
+    rescuedName = await deleteOrphanRows(supabase, clerkUserId, pre.tenant_id, pre.id)
+  }
 
-    if (orphanErr) {
-      console.error('[acceptInvite] step 3 orphan delete failed (non-fatal)', {
-        clerkUserId,
-        error: orphanErr.message,
+  // Step 3: the atomic claim. Postgres's row lock — not this function's
+  // control flow — decides which of two concurrent callers (this one and a
+  // racing linkInvitedMember) actually performs the write.
+  const claim = async () => {
+    const now = new Date().toISOString()
+    return supabase
+      .from('members')
+      .update({
+        clerk_id: clerkUserId,
+        user_id: supabaseUserId,
+        status: 'active',
+        source: 'invite',
+        used_at: now,
+        updated_at: now,
       })
-      void logEvent({
-        action: AuditAction.MEMBER_ORPHAN_CLEANUP_FAILED,
-        clerk_user_id: clerkUserId,
-        target_type: 'member',
-        target_id: row.id,
-        outcome: 'failure',
-        metadata: { error: orphanErr.message },
-      })
-      // Non-fatal: attempt to stamp the invited row anyway. The unique constraint
-      // on clerk_id will surface a real error if the orphan remains.
-    } else {
-      const deletedRows = (orphanRows ?? []) as { id: string; name: string | null }[]
-      const deletedCount = deletedRows.length
-      console.log('[acceptInvite] step 3 orphan delete attempted', { clerkUserId, memberId: row.id, deletedCount })
-      if (deletedCount > 0) {
-        // A syncMember-created orphan actually existed — confirms the
-        // linkInvitedMember/syncMember race described in Known Gaps.md fired
-        // and was reconciled here rather than left as a stuck user_id-null row.
-        void logEvent({
-          action: AuditAction.MEMBER_ORPHAN_RECONCILED,
-          clerk_user_id: clerkUserId,
-          target_type: 'member',
-          target_id: row.id,
-          metadata: { deleted_count: deletedCount },
-        })
-      }
-      if (deletedCount === 1 && deletedRows[0].name && !row.name) {
-        rescuedName = deletedRows[0].name
-        console.log('[acceptInvite] step 3 rescuing orphan name', { memberId: row.id, name: logSafeIdentity(rescuedName) })
-      }
+      .eq('token', token)
+      .eq('tenant_id', HEIRLOOM_TENANT_ID)
+      .is('used_at', null)
+      .is('revoked_at', null)
+      .select('id, name')
+      .maybeSingle()
+  }
+
+  let { data: claimedRow, error: claimErr } = await claim()
+
+  if (claimErr?.code === '23505') {
+    // An orphan reappeared in the gap between step 2's delete and this
+    // write — vanishingly rare, but the old code's own comment already
+    // acknowledged this exact window. One bounded retry, same pattern
+    // acceptStoryInvite already uses for this exact error code.
+    console.warn('[acceptInvite] step 3 claim hit 23505, retrying orphan cleanup once', { clerkUserId })
+    if (!options?.skipOrphanCleanup) {
+      const retryRescued = await deleteOrphanRows(supabase, clerkUserId, pre.tenant_id, pre.id)
+      rescuedName = rescuedName ?? retryRescued
+    }
+    ;({ data: claimedRow, error: claimErr } = await claim())
+  }
+
+  if (claimErr) {
+    console.error('[acceptInvite] step 3 claim failed', { memberId: pre.id, clerkUserId, error: claimErr.message })
+    return { ok: false, status: 500, error: claimErr.message }
+  }
+
+  if (!claimedRow) {
+    // Zero rows matched the claim's WHERE — someone else (almost always the
+    // racing webhook) already claimed this token first, in the gap between
+    // step 1's pre-check and this write. The row IS correctly linked; this
+    // call just wasn't the one that did it. That is success, not failure —
+    // the entire point of making the claim conditional.
+    console.log('[acceptInvite] step 3 claim matched no rows — already claimed by a concurrent call', {
+      clerkUserId,
+      token: token.slice(0, 8) + '…',
+    })
+    void logEvent({
+      action: AuditAction.MEMBER_INVITE_ACCEPTED,
+      tenant_id: pre.tenant_id,
+      actor_id: supabaseUserId,
+      actor_type: 'user',
+      clerk_user_id: clerkUserId,
+      target_type: 'member',
+      target_id: pre.id,
+      metadata: { claimed_by_concurrent_call: true },
+    })
+    return { ok: true, data: { memberId: pre.id } }
+  }
+
+  const claimed = claimedRow as { id: string; name: string | null }
+
+  // Step 4: fill-only-when-null name, its own small follow-up write.
+  // claimed.name reflects the row's name BEFORE step 3 (that UPDATE never
+  // touched the column), which is exactly what "was it empty" needs to mean.
+  // Each candidate normalized independently, not `identityValue(rescuedName
+  // ?? name)` — `??` treats a whitespace-only rescuedName as present (it's
+  // neither null nor undefined) and would block a real Clerk name from ever
+  // being used as the fallback. identityValue on claimed.name itself, not a
+  // DB-side `.is('name', null)` guard, for the same reason: whitespace isn't
+  // SQL NULL, and a DB guard would miss exactly the case the JS check
+  // catches. Flagged in PR #448 review (for the equivalent single-statement
+  // version this replaces).
+  const finalName = identityValue(rescuedName) ?? identityValue(name)
+  if (!identityValue(claimed.name) && finalName) {
+    const { error: nameErr } = await supabase
+      .from('members')
+      .update({ name: finalName })
+      .eq('id', claimed.id)
+    if (nameErr) {
+      // Best-effort: the accept itself already succeeded. Log and move on.
+      console.error('[acceptInvite] step 4 name fill failed (non-fatal)', { memberId: claimed.id, error: nameErr.message })
     }
   }
 
-  // Step 4: stamp the original invited row.
-  const now = new Date().toISOString()
-  const { error: updateErr } = await supabase
-    .from('members')
-    .update({
-      clerk_id: clerkUserId,
-      user_id: supabaseUserId,
-      status: 'active',
-      source: 'invite',
-      used_at: now,
-      updated_at: now,
-      // Each candidate is normalized independently before the fallback, not
-      // `identityValue(rescuedName ?? name)` — `??` treats a whitespace-only
-      // rescuedName as present (it's neither null nor undefined) and would
-      // block a real Clerk name from ever being used as the fallback.
-      // `identityValue(row.name)`, not `!row.name`, for the same reason: a
-      // whitespace-only stored name must count as absent here too. Flagged
-      // in PR #448 review.
-      ...(!identityValue(row.name) && (identityValue(rescuedName) ?? identityValue(name))
-        ? { name: identityValue(rescuedName) ?? identityValue(name) }
-        : {}),
-    })
-    .eq('id', row.id)
-
-  if (updateErr) {
-    console.error('[acceptInvite] step 4 stamp failed', {
-      memberId: row.id,
-      clerkUserId,
-      error: updateErr.message,
-    })
-    return { ok: false, status: 500, error: updateErr.message }
-  }
-
-  console.log('[acceptInvite] step 4 accepted', {
-    memberId: row.id,
+  console.log('[acceptInvite] step 3 accepted', {
+    memberId: claimed.id,
     clerkUserId,
     supabaseUserId,
-    usedAt: now,
   })
   void logEvent({
     action: AuditAction.MEMBER_INVITE_ACCEPTED,
-    tenant_id: row.tenant_id,
+    tenant_id: pre.tenant_id,
     actor_id: supabaseUserId,
     actor_type: 'user',
     clerk_user_id: clerkUserId,
     target_type: 'member',
-    target_id: row.id,
+    target_id: claimed.id,
   })
-  return { ok: true, data: { memberId: row.id } }
+  return { ok: true, data: { memberId: claimed.id } }
 }
 
 /**
