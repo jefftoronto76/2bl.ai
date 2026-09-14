@@ -31,7 +31,10 @@ const mockBooking = vi.fn<(t: string) => Promise<string>>()
 vi.mock('../booking', () => ({ getBookingCardSection: (t: string) => mockBooking(t) }))
 
 const mockMember = vi.fn<(...a: unknown[]) => Promise<string | null>>()
-vi.mock('../member-context', () => ({ getMemberContext: (...a: unknown[]) => mockMember(...a) }))
+vi.mock('../member-context', () => ({
+  MARKER_INSTRUCTION_LEAD: 'On your first reply, silently append',
+  getMemberContext: (...a: unknown[]) => mockMember(...a),
+}))
 
 const mockSession = vi.fn<(...a: unknown[]) => Promise<string | null>>()
 vi.mock('../session-context', () => ({ getSessionContext: (...a: unknown[]) => mockSession(...a) }))
@@ -143,6 +146,7 @@ describe('resolveTurnPrompt — byte parity with streamChat assembly', () => {
     )
     expect(resolved.system).toBe(`${LIVE_PROMPT}\n\nMEMBER CONTEXT:\n${MEMBER_FIRST}`)
     expect(resolved.isFirstTurn).toBe(true)
+    expect(resolved.injections.find(d => d.id === 'member-context')?.meta).toEqual({ firstTurnMarkerInstruction: true })
     expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
   })
 

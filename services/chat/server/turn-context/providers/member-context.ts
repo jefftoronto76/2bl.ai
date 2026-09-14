@@ -8,7 +8,7 @@
 // block would change the prompt text. Phase 3b splits primer out as an
 // `operator` sub-block once the shadow run has proven parity.
 
-import { getMemberContext } from '../../member-context'
+import { getMemberContext, MARKER_INSTRUCTION_LEAD } from '../../member-context'
 import type { ContextProvider } from '../types'
 
 export const MEMBER_CONTEXT_HEADER = 'MEMBER CONTEXT:\n'
@@ -28,10 +28,13 @@ export const memberContextProvider: ContextProvider = {
     if (!text) return null
     return {
       body: `${MEMBER_CONTEXT_HEADER}${text}`,
-      // Content-free: whether the first-turn marker instruction was part of
-      // the block. Field-level presence/hash reporting needs getMemberContext
-      // to return structured data — Phase 3b, alongside the primer split.
-      meta: { firstTurnMarkerInstruction: input.isFirstTurn },
+      // Content-free: whether the first-turn marker instruction was actually
+      // part of the block — read from the text, because getMemberContext
+      // also gates it on the member having a name/email/phone, so
+      // isFirstTurn alone over-reports. Field-level presence/hash reporting
+      // needs getMemberContext to return structured data — Phase 3b,
+      // alongside the primer split.
+      meta: { firstTurnMarkerInstruction: text.includes(MARKER_INSTRUCTION_LEAD) },
     }
   },
 }

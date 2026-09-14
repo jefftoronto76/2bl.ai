@@ -646,12 +646,11 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   still lists a `tenant_id` column and a `(tenant_id, key)` unique constraint
   that `DB_CHANGELOG.md`'s 2026-06-26 entry says were dropped in favour of
   `prompt_type_tenants`; the Phase 4 slot-aware read depends on which is true
-  — reconcile the schema doc against Studio before Phase 4. Also on main:
-  Jeff's upload of the design doc landed at
-  `Design Handovers/Design Handovers/traffic_cop_design_2026-09-05.md` (a
-  nested duplicate directory); the correctly-placed copy is on branch
-  `claude/traffic-cop-prompt-context-czvj9i` — delete the nested one when
-  that branch merges.
+  — reconcile the schema doc against Studio before Phase 4. (An earlier
+  version of this entry noted a nested duplicate copy of the design doc at
+  `Design Handovers/Design Handovers/…` on main; PR #471 removed it. The
+  design doc itself is on branch `claude/traffic-cop-prompt-context-czvj9i`,
+  not yet on main.)
 
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
   type-aware — single-live-per-type (2026-07-27) constrains Publish but not

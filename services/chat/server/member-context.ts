@@ -29,6 +29,15 @@ import { identityValue, resolveMemberName } from '@/services/shared/identity'
  * - the member row has no name/email/phone/primer to report
  * - any DB call fails
  */
+/**
+ * Opening words of the first-turn marker-emission instruction appended to
+ * the MEMBER CONTEXT text. Exported so the turn-context provider can report
+ * — truthfully, from the text itself — whether the instruction was included,
+ * rather than assuming it from isFirstTurn (it is also gated on the member
+ * having at least one of name/email/phone).
+ */
+export const MARKER_INSTRUCTION_LEAD = 'On your first reply, silently append'
+
 export async function getMemberContext(
   sessionId: string | null,
   tenantId: string | null,
@@ -141,7 +150,7 @@ export async function getMemberContext(
   if (phone) markerLines.push(`[PHONE: ${phone}]`)
 
   const markerInstruction = isFirstTurn && markerLines.length > 0
-    ? `\n\nOn your first reply, silently append each of the following hidden markers on their own line at the very end of your message (they are stripped before the member sees your reply):\n${markerLines.join('\n')}`
+    ? `\n\n${MARKER_INSTRUCTION_LEAD} each of the following hidden markers on their own line at the very end of your message (they are stripped before the member sees your reply):\n${markerLines.join('\n')}`
     : ''
 
   const result = contextLines.join(' ') + markerInstruction
