@@ -13,7 +13,7 @@
 
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
-import type { ResolvedTurnPrompt } from './types'
+import type { ResolvedTurnPrompt, ShadowComparison } from './types'
 
 export interface TurnContextTraceContext {
   tenantId: string | null
@@ -27,11 +27,13 @@ export interface TurnContextTraceContext {
    */
   shadow: boolean
   parity?: boolean
+  /** Phase 2: the per-segment comparison behind `parity`. Hashes and lengths only. */
+  comparison?: ShadowComparison
 }
 
 export function buildTurnContextMetadata(
   resolved: ResolvedTurnPrompt,
-  ctx: Pick<TurnContextTraceContext, 'shadow' | 'parity'>,
+  ctx: Pick<TurnContextTraceContext, 'shadow' | 'parity' | 'comparison'>,
 ): Record<string, unknown> {
   return {
     selection: resolved.selection,
@@ -42,6 +44,7 @@ export function buildTurnContextMetadata(
     systemLength: resolved.system.length,
     shadow: ctx.shadow,
     ...(ctx.parity !== undefined ? { parity: ctx.parity } : {}),
+    ...(ctx.comparison ? { comparison: ctx.comparison } : {}),
   }
 }
 

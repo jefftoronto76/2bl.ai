@@ -160,6 +160,9 @@ describe('resolveTurnPrompt — byte parity with streamChat assembly', () => {
     expect(resolved.system).toBe(`${LIVE_PROMPT}\n\nMEMBER CONTEXT:\n${MEMBER_LATER}\n\n${STORY}\n\n${MEDIA}`)
     expect(resolved.isFirstTurn).toBe(false)
     expect(resolved.turnIndex).toBe(1)
+    // The exposed blocks are exactly what `system` was joined from, in order.
+    expect(resolved.blocks.map(b => b.id)).toEqual(['base-prompt', 'member-context', 'session-context', 'media'])
+    expect(resolved.blocks.map(b => b.body).join('\n\n')).toBe(resolved.system)
     expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', false)
     expect(mockSession).toHaveBeenCalledWith('session-1', 'tenant-1', false)
     expect(mockMedia).toHaveBeenCalledWith(mediaItems, 'tenant-1', 'member-1')
