@@ -637,7 +637,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `services/chat/server/index.ts`, and writes one
   `chat.turn_context_resolved` row per turn with `shadow: true` and a
   parity/comparison result. Its output is never used. Cutover (Phase 3a)
-  waits on 7 days of shadow data with zero unexplained mismatches. Design
+  waits on Jeff having run the manual seven-row verification checklist in
+  `System Docs/Utilities/Chat Server.md`'s turn-context section with every
+  row at `parity = true` — a checklist, not a calendar gate, because Heirloom
+  has no real production traffic yet. Design
   and phase plan: `Design Handovers/traffic_cop_design_2026-09-05.md`;
   current state, the comparison shape, the review query, and the 2026-09-09
   decisions against its §9: `System Docs/Utilities/Chat Server.md`'s

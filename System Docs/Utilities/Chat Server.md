@@ -216,8 +216,10 @@ Cutover is Phase 3a. Design and phasing:
 Decisions taken 2026-09-09 against that doc's §9: selection keys on
 `(tenant, slot)` only, no product dimension (9.1); the token budget is
 **log-only through Phase 4** (9.2); notification source and location
-granularity deferred, not blocking (9.3/9.4); Phase 2 parity gate is 7 days,
-zero *unexplained* mismatches (9.5); the `publish_compiled_prompt` RPC body
+granularity deferred, not blocking (9.3/9.4); the Phase 2 parity gate was
+first set as 7 days, zero *unexplained* mismatches (9.5) — **superseded
+2026-09-14 by the manual verification checklist below**, since Heirloom has
+no real production traffic yet; the `publish_compiled_prompt` RPC body
 was confirmed directly against Supabase and matches the design's inference
 (9.6); the member `status` filter ships as its own separate PR, not bundled
 into Phase 3b (9.7).
@@ -327,11 +329,58 @@ window:** the six resolvers run a second time per turn, concurrently with
 streaming; `resolveMediaContext` re-fires its own
 `CHAT_MEDIA_CONTEXT_RESOLVED` row on media turns. **`correlation_id` is
 null on shadow rows** — `ChatStreamRequest` does not carry one yet; that
-lands with the Phase 3a request-shape change. **Reading the data (Jeff,
-Studio):** `select metadata->>'parity', outcome, count(*) from audit_events
+lands with the Phase 3a request-shape change.
+
+**Phase 3 cutover gate — a manual checklist, not a calendar (decided
+2026-09-14).** Heirloom has no real production traffic yet (all current usage
+is Jeff testing), so a passive "N days of shadow data" gate would measure
+nothing. Instead, cutover happens when Jeff has deliberately exercised every
+row below on preview or production and every row's shadow rows show
+`parity = true` with `outcome = 'success'`. The rows are chosen to cover each
+provider present and absent at least once.
+
+| # | Turn type | How to trigger | Pass looks like |
+|---|---|---|---|
+| 1 | Signed-in member, **first turn**, story-scoped | Sign in on heirloom.2bl.ai → click an **empty** story in the sidebar (starts a new chat with `chat_session_context` attached, `every_turn`) → send one message | `parity = true`; `injections`: `base-prompt` injected, `member-context` injected with `meta.firstTurnMarkerInstruction = true`, `session-context` injected, `booking`/`media`/`question-mode` skipped; `comparison.segments`: those three `match`, the rest `both-absent` |
+| 2 | Signed-in member, **later turn** | Same session as row 1 → send a second message after the reply | `parity = true`; `isFirstTurn = false`, `turnIndex ≥ 1`; `member-context` injected with `meta.firstTurnMarkerInstruction = false`; `session-context` still injected (`every_turn`) |
+| 3 | Signed-in member, **media attached** | Any signed-in Heirloom chat → attach a photo or document → send (before or after processing finishes — both are valid; `ATTACHMENT IN PROGRESS` vs `ATTACHED MEDIA`) | `parity = true`; `media` injected and `match`; the pre-existing `CHAT_MEDIA_CONTEXT_RESOLVED` rows for that session appear ×3 (two legacy sites + the shadow's re-run) — expected during shadow, not a defect |
+| 4 | Signed-in member, tenant with **booking** configured | Heirloom's tenant has no `sage_parameters` rows, so member + booking does not occur on either tenant today. Booking presence is covered by rows 6/7 (jefflougheed.ca). To exercise the *combination*, Jeff would have to add a `sage_parameters` row to the Heirloom tenant in Studio — **which changes the live prompt** — so this row is optional; if run, remove the row afterwards | `parity = true`; `booking` injected and `match` alongside `member-context` |
+| 5 | **Invite-holder, not signed in** | Create a member invite (admin Members → Invite, with a primer) → open the invite link in a private window → chat **before** completing sign-in (`invite_token` path in `app/api/sage/route.ts`'s `resolveMemberId`, not Clerk) | `parity = true`; `member-context` injected (identity lines + primer from the invite), `actor_type = 'user'` on the row (a `memberId` resolved) |
+| 6 | **Anonymous visitor**, no member — baseline | Open jefflougheed.ca in a private window → send one message from the widget | `parity = true`; only `base-prompt` and `booking` injected; `member-context` skipped/`empty`, `session-context` skipped, `media` and `question-mode` `not-applicable`; `actor_type = 'anonymous'` |
+| 7 | **Question-mode** entry | jefflougheed.ca → the "ask a question" entry (`?mode=question`) → send one message | `parity = true`; `question-mode` injected and `match`, last in `comparison.segments`; otherwise as row 6 |
+
+Rows 1–3 and 5 are Heirloom; 6–7 are jefflougheed.ca; row 4 is optional
+(see its trigger). Also worth one deliberate run each: a Heirloom member chat
+started from **New Chat** (no story → `session-context` skipped/`empty`), and
+a **Stop** mid-reply (the turn skips `onFinish`, so its shadow row may be
+absent — expected, not a failure).
+
+**Reading the rows (Jeff, Studio).** Per session — `target_id` is the
+`chat_sessions.id`:
+```sql
+select created_at, outcome, metadata->>'parity' as parity,
+       metadata->'comparison'->>'classification' as classification,
+       metadata->'comparison'->'diffSegmentIds' as diff_segments,
+       metadata->'injections' as injections
+from audit_events
+where action = 'chat.turn_context_resolved'
+  and metadata->>'shadow' = 'true'
+  and target_id = '<chat_sessions.id>'
+order by created_at;
+```
+Overall — every row of the checklist should end up in the `true / success`
+bucket only:
+```sql
+select metadata->>'parity' as parity, outcome, count(*)
+from audit_events
 where action = 'chat.turn_context_resolved' and metadata->>'shadow' = 'true'
-group by 1, 2` — the 7-day gate is zero *unexplained* `parity = false`
-rows; `metadata->'comparison'` on each such row says which segment and how.
+group by 1, 2;
+```
+Any `parity = false` row: `metadata->'comparison'` names the segment
+(`diffSegmentIds`, per-segment verdicts with lengths and hash prefixes) and
+the kind of difference (`classification`); any `outcome = 'failure'` row:
+`metadata.stage` says where the shadow itself failed. Either is a Phase 3
+blocker until explained and fixed.
 
 **Adding a provider** = one file under `providers/`, one line in
 `registry.ts`, one colocated `providers/<id>.test.ts`, one row in the table
