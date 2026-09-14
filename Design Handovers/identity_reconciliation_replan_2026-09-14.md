@@ -92,50 +92,93 @@ and `PROTECTED_STATUSES` in `app/api/platform/members/status/route.ts` (lines
 Trivial, no dependencies, no interaction with the rest of this doc. Can ship
 on its own.
 
-### Piece B — one arbiter for invite/story-invite acceptance
+### Piece B — atomic claim for `acceptInvite` and `linkInvitedMember`
 
-This is Gate 1's Layer 2, re-scoped to what's actually still needed. Not an
-active-defect fix — the name-loss symptom is patched — but real architectural
-debt: two independently-maintained reconciliation strategies
-(orphan-delete-then-rescue vs. 23505-retry) for the same race shape. Worth
-being honest that this is a "should we" question, not a "must we" one.
+**Corrected scope, 2026-09-14 — supersedes the "shared claim primitive"
+framing above.** That framing was wrong, and it matters: a shared function
+called from two request handlers does not close a race, because sharing code
+is not the same as synchronizing execution. It would have reduced
+duplication while leaving the actual concurrency hazard exactly as open as
+it is today. Caught before any code was written, when asked directly whether
+it would close the race.
 
-**What it would do:** give `acceptInvite` and `acceptStoryInvite` a shared,
-single, tested claim primitive — something like
-`claimMembershipRow(tenantId, clerkUserId, supabaseUserId, { name, ... })`
-in `services/members/` — that both the webhook path and the client-accept
-path call, so there's one race-resolution strategy instead of two. It would
-use `services/shared/identity.ts`'s existing primitives internally (not
-reinvent them), and thread `IdentitySource`/`correlationId` through
-`getAdminClient` the same way every other writer already does, so Gate 3's
-audit trail keeps working without modification — exactly what that doc
-predicted.
+**The real problem, verified against current code
+(`services/members/members.ts`):** both `acceptInvite` (428–627) and
+`linkInvitedMember` (230–410) do `SELECT` the invited row, then
+`UPDATE ... WHERE id = <that id>` — unconditional, no re-check of `used_at`
+at write time. Two concurrent callers can both pass the `SELECT`, both
+believe they're the acceptor, both write. Worse: the code's own comment
+(`members.ts:568`) already documents a live failure mode — if `syncMember`
+creates an orphan row for this `clerk_id` in the gap between the orphan-
+delete step and the final stamp, the stamp hits the `(tenant_id, clerk_id)`
+unique index and fails outright, a real 500 to the user, in an unlucky but
+reachable interleaving.
 
-**Explicitly not in scope:** `linkInvitedMember`'s email-fallback path
-(paths 3/4 in the inventory — self-serve, no invite token) stays on
-`syncMember` as-is. Those defects are closed; touching that code now would be
-scope creep against a working, tested path.
+**The actual fix — an atomic conditional `UPDATE`, in both functions:**
+fold the "is this still claimable" check into the `UPDATE`'s own `WHERE`
+clause instead of a prior, separate `SELECT`:
 
-**Steps, gated the same way as before — one at a time, your approval between
-each:**
-1. Write the shared claim primitive, unused, full test coverage against both
-   the "webhook wins" and "client wins" orderings (mirroring the idempotency
-   argument from the original Gate 1 §3, which still holds — R0/R1 are
-   already true of `services/shared/identity.ts`, I'd just be composing them
-   at a higher level).
-2. Switch `acceptInvite` to call it, `linkInvitedMember`'s webhook-fallback
-   role unchanged, test old vs. new behavior matches on current data shape.
-3. Switch `acceptStoryInvite` to call it, same verification.
-4. Delete the now-redundant orphan-rescue/23505-retry logic each function
-   carried independently.
+```ts
+const { data, error } = await supabase
+  .from('members')
+  .update({ clerk_id, user_id, status: 'active', source: 'invite', used_at, updated_at })
+  .eq('token', token)          // or .eq('id', memberId) for linkInvitedMember,
+  .eq('tenant_id', tenantId)   // which already resolved the row via its own
+  .is('used_at', null)         // token/email lookup
+  .is('revoked_at', null)
+  .select('id, name')
+  .maybeSingle()
+```
 
-**Question back to you before I start on this piece specifically:** given
-it's debt-reduction rather than a live fix, do you want it now, or deferred
-alongside Tier 5 ("Clerk at the front door only" — moving `members` lookups
-off `clerk_id` as a live join key), which the other engagement already
-flagged as needing "its own dedicated scoping pass" and touches a lot of the
-same invite-acceptance code? They're not the same piece of work, but they'd
-conflict if built in parallel on separate branches.
+Postgres's own row lock decides who wins a concurrent `UPDATE` to the same
+row — no advisory lock, no RPC, no new mechanism. Whichever caller's
+statement reaches Postgres first commits; the second blocks, re-evaluates
+its `WHERE` against the now-committed row, matches zero rows, and `data`
+comes back empty. **The loser then treats "zero rows" as "already claimed
+elsewhere" — a success, not a failure** — instead of performing an
+independent write. This is the actual close: not less code, but a different
+kind of write.
+
+**Two things stay separate, deliberately:**
+- A cheap pre-check `SELECT` remains, but only to gate orphan cleanup (never
+  delete another `clerk_id`'s row for a garbage or cross-tenant token) and
+  to fail fast on an invalid token — it is never used to decide the claim
+  itself. The claim's own `WHERE` is authoritative regardless of whether the
+  pre-check's snapshot is stale by the time it's acted on.
+- The name-fill (fill-only-when-null) runs as its own small guarded
+  follow-up `UPDATE ... WHERE id = ? AND name IS NULL`, after the claim
+  succeeds — not folded into the claim's `SET`, since the claim's own
+  `RETURNING` needs to reflect the *pre-claim* name to decide correctly
+  whether a fill is even needed.
+
+**Symmetric orphan cleanup — the second real gap this closes.**
+`linkInvitedMember` never had the orphan-delete step `acceptInvite` has;
+only one of the two racing writers defended against the collision its own
+comment describes. Adding it to `linkInvitedMember` is safe without an
+`acceptInvite`-style `skipOrphanCleanup` escape hatch: `linkInvitedMember`'s
+own lookup (`status = 'invited' AND used_at IS NULL`) can never match an
+already-established member's row, so the "this might be a real, established
+membership, not a race artifact" ambiguity `skipOrphanCleanup` exists for
+doesn't arise here.
+
+**A bounded, single retry on `23505`** (the orphan reappearing in the gap
+between cleanup and the claim) in both functions — not a new pattern,
+`acceptStoryInvite` already does exactly this for the identical error code.
+
+**Explicitly not in scope:** `acceptStoryInvite` — not part of this pass.
+`linkInvitedMember`'s email-fallback path stays as the same lookup logic,
+just feeding the new atomic claim instead of an unconditional update.
+`syncMember`/`/api/members/sync` — untouched; those defects are already
+closed.
+
+**Verification plan:** every existing behavioral assertion in
+`services/members/members.test.ts`'s `acceptInvite`/`linkInvitedMember`
+suites carries forward (mocks rewritten for the new call shape, not the
+expectations), plus new tests specifically proving the race is closed: a
+claim that matches zero rows returns success with
+`claimed_by_concurrent_call: true` in the audit metadata rather than
+attempting its own write, and a `23505` on the claim retries exactly once
+before failing.
 
 ## 4. Explicitly not proposed
 
@@ -149,21 +192,15 @@ conflict if built in parallel on separate branches.
 - **Any change to `invited_name`, MEMBER CONTEXT's read side, or Clerk's
   hosted UI** — same scope-out as the original Gate 1 design, still correct.
 
-## 5. Still pending from my last report, not part of this plan's numbering
+## 5. Status
 
-The `onConflict: 'clerk_id'` regression in `services/auth/sync-member.ts:140`
-— Postgres has no arbiter matching that column set since
-`members_clerk_user_id_key` was dropped in favor of the tenant-scoped index.
-You didn't address this in your last message. I haven't touched it. It's a
-one-line fix (`onConflict: 'tenant_id,clerk_id'` plus adding `tenant_id` to
-the pre-check), independent of everything above, and I'd recommend it happen
-regardless of how Piece B is sequenced — every day it sits is a day
-`syncMember`'s `members` leg silently fails. Say the word and I'll put it on
-its own branch.
-
----
-
-**Waiting on:** approval of Piece A, a decision on Piece B's timing (now vs.
-deferred alongside Tier 5), and a yes/no on the regression fix. I'd suggest
-Piece A and the regression fix can both go now, independently, regardless of
-what you decide on Piece B.
+- **The `onConflict: 'clerk_id'` regression** (`services/auth/sync-member.ts:140`)
+  — fixed and shipped separately, PR #474, its own branch
+  (`claude/fix-sync-member-onconflict`), independent of this doc.
+- **Piece A** (`status='pending'`) — approved 2026-09-14.
+- **Piece B** — approved 2026-09-14, corrected scope above. Proceeding
+  without deferring to Tier 5: this fix is small, self-contained to
+  `acceptInvite`/`linkInvitedMember`, and closes a real, currently-reachable
+  failure mode (the 500 the current code's own comment describes) — worth
+  doing regardless of when Tier 5's larger "Clerk at the front door only"
+  pass happens.
