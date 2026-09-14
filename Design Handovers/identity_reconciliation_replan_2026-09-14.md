@@ -195,12 +195,19 @@ before failing.
 ## 5. Status
 
 - **The `onConflict: 'clerk_id'` regression** (`services/auth/sync-member.ts:140`)
-  — fixed and shipped separately, PR #474, its own branch
+  — fixed and shipped separately, **PR #474**, its own branch
   (`claude/fix-sync-member-onconflict`), independent of this doc.
-- **Piece A** (`status='pending'`) — approved 2026-09-14.
-- **Piece B** — approved 2026-09-14, corrected scope above. Proceeding
-  without deferring to Tier 5: this fix is small, self-contained to
-  `acceptInvite`/`linkInvitedMember`, and closes a real, currently-reachable
-  failure mode (the 500 the current code's own comment describes) — worth
-  doing regardless of when Tier 5's larger "Clerk at the front door only"
-  pass happens.
+- **Piece A** (`status='pending'`) — approved 2026-09-14. Built, tested,
+  **PR #478** (`claude/status-pending-widen`), open, awaiting review.
+- **Piece B** — approved 2026-09-14, corrected scope above (atomic
+  conditional `UPDATE`, not a shared function — that framing was wrong and
+  wouldn't have closed the race; caught before any code was written). Built,
+  tested, **PR #477** (`claude/invite-accept-atomic-claim`), open, awaiting
+  review. Proceeded without deferring to Tier 5: this fix is small,
+  self-contained to `acceptInvite`/`linkInvitedMember`, and closes a real,
+  currently-reachable failure mode (the 500 the pre-fix code's own comment
+  described) — worth doing regardless of when Tier 5's larger "Clerk at the
+  front door only" pass happens.
+
+All three PRs are independent and can merge in any order — none touch the
+same code as another.
