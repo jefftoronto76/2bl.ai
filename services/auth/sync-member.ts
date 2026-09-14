@@ -76,8 +76,8 @@ export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResu
   // Resolve whether a members row already exists for this clerk_id BEFORE
   // the upsert below, so memberSource can be written only on genuine first
   // creation. This upsert is a blanket .upsert(payload, {onConflict:
-  // 'clerk_id'}), reached on every single authentication (including an
-  // already-invite-sourced or story_invite-sourced member's completely
+  // 'tenant_id,clerk_id'}), reached on every single authentication (including
+  // an already-invite-sourced or story_invite-sourced member's completely
   // ordinary next login) — including memberSource unconditionally would
   // silently overwrite an already-correct members.source back to a
   // self_serve_* value the next time that member logs in again.
@@ -135,9 +135,17 @@ export async function syncMember(input: SyncMemberInput): Promise<SyncMemberResu
     payload.source = memberSource
   }
 
+  // Conflict target must match members_tenant_clerk_unique — a partial
+  // UNIQUE (tenant_id, clerk_id) WHERE clerk_id IS NOT NULL index, not a
+  // bare clerk_id constraint (members_clerk_user_id_key was dropped in favor
+  // of the tenant-scoped index — see Design Handovers/
+  // identity_reconciliation_design_2026-08-16.md §2.3). onConflict must name
+  // every column of the arbiter, so 'clerk_id' alone no longer matches
+  // anything and every call raises Postgres 42P10. payload already carries
+  // both columns above.
   const { data, error } = await supabase
     .from('members')
-    .upsert(payload, { onConflict: 'clerk_id' })
+    .upsert(payload, { onConflict: 'tenant_id,clerk_id' })
     .select()
     .single()
 
