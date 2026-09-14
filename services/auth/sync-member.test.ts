@@ -44,6 +44,7 @@ function makeSyncClient({
 }) {
   const usersUpsertCalls: unknown[] = []
   const membersUpsertCalls: unknown[] = []
+  const membersUpsertOpts: unknown[] = []
   const client = {
     from(table: string) {
       if (table === 'users') {
@@ -68,8 +69,9 @@ function makeSyncClient({
             }),
           }
         },
-        upsert(payload: unknown, _opts: unknown) {
+        upsert(payload: unknown, opts: unknown) {
           membersUpsertCalls.push(payload)
+          membersUpsertOpts.push(opts)
           return {
             select() {
               return { single: async () => ({ data: memberRow, error: memberError }) }
@@ -83,6 +85,7 @@ function makeSyncClient({
     client,
     getUsersUpsertCalls: () => usersUpsertCalls,
     getMembersUpsertCalls: () => membersUpsertCalls,
+    getMembersUpsertOpts: () => membersUpsertOpts,
   }
 }
 
@@ -184,6 +187,46 @@ describe('syncMember', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toBe('members upsert failed')
+  })
+
+  // ── members upsert conflict target must match the live unique index ──────
+  //
+  // members_clerk_user_id_key (a bare UNIQUE(clerk_id)) was dropped in favor
+  // of members_tenant_clerk_unique — UNIQUE (tenant_id, clerk_id) WHERE
+  // clerk_id IS NOT NULL (Design Handovers/identity_reconciliation_design_
+  // 2026-08-16.md §2.3). Postgres upsert requires onConflict to name every
+  // column of the arbiter it targets; 'clerk_id' alone no longer matches any
+  // constraint and Postgres raises 42P10 on every call. This regression is
+  // invisible to a mock that accepts any onConflict string, so it asserts on
+  // the actual value passed rather than just on a successful mocked result.
+  describe('members upsert conflict target (live schema regression guard)', () => {
+    it('targets tenant_id,clerk_id — the only unique index members currently has on clerk_id', async () => {
+      const { client, getMembersUpsertOpts } = makeSyncClient({
+        userRow: { id: 'user-uuid-13' },
+        memberRow: { id: 'member-uuid-13' },
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-13', tenantId: 'tenant-13' })
+
+      const [opts] = getMembersUpsertOpts() as [{ onConflict: string }]
+      expect(opts.onConflict).toBe('tenant_id,clerk_id')
+      expect(opts.onConflict).not.toBe('clerk_id')
+    })
+
+    it('always includes both tenant_id and clerk_id in the members payload — the arbiter columns onConflict names', async () => {
+      const { client, getMembersUpsertCalls } = makeSyncClient({
+        userRow: { id: 'user-uuid-14' },
+        memberRow: { id: 'member-uuid-14' },
+      })
+      adminHolder.client = client
+
+      await syncMember({ clerkUserId: 'clerk-14', tenantId: 'tenant-14' })
+
+      const [payload] = getMembersUpsertCalls() as [Record<string, unknown>]
+      expect(payload.clerk_id).toBe('clerk-14')
+      expect(payload.tenant_id).toBe('tenant-14')
+    })
   })
 
   // ── D1: a no-value name must never reach a column ────────────────────────
