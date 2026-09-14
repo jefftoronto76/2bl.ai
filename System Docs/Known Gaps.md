@@ -628,17 +628,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 
 ## Prompt & AI
 
-- **Traffic Cop Phase 1 is built and tested but wired to nothing — do not
-  assume the prompt path has changed (2026-09-09).**
+- **Traffic Cop is in shadow mode — the model still receives the legacy
+  prompt; do not assume the prompt path has changed (Phase 1 built 2026-09-09,
+  PR #471; Phase 2 shadow live 2026-09-14).**
   `services/chat/server/turn-context/` (`resolveTurnPrompt`, the six provider
-  adapters, `select-prompt.ts`, `trace.ts`, `AuditAction.CHAT_TURN_CONTEXT_RESOLVED`)
-  exists with zero call sites; `streamChat` still assembles its own prompt
-  from the array in `services/chat/server/index.ts`, and the audit action has
-  never been written. Design and phase plan:
-  `Design Handovers/traffic_cop_design_2026-09-05.md`; current state and the
-  2026-09-09 decisions against its §9: `System Docs/Utilities/Chat Server.md`'s
-  turn-context section. Phase 2 (shadow run alongside the existing assembly,
-  `shadow: true`, parity flag) is the next step. Two things found during the
+  adapters, `select-prompt.ts`, `trace.ts`, `shadow.ts`) now runs on every
+  real turn *alongside* `streamChat`'s own assembly in
+  `services/chat/server/index.ts`, and writes one
+  `chat.turn_context_resolved` row per turn with `shadow: true` and a
+  parity/comparison result. Its output is never used. Cutover (Phase 3a)
+  waits on 7 days of shadow data with zero unexplained mismatches. Design
+  and phase plan: `Design Handovers/traffic_cop_design_2026-09-05.md`;
+  current state, the comparison shape, the review query, and the 2026-09-09
+  decisions against its §9: `System Docs/Utilities/Chat Server.md`'s
+  turn-context section. Two things found during the
   Phase 1 build that the design did not anticipate: (1) per-provider
   timeouts are implemented but deliberately unset — today's resolvers have no
   deadline, so any default would create shadow mismatches; the shadow data

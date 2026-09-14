@@ -206,10 +206,13 @@ is a separate, not-yet-landed piece** — see `System Docs/Known Gaps.md`.
 
 ### Chat server — turn-context, the "Traffic Cop" (`services/chat/server/turn-context/`)
 
-**Status: Phase 1 — built, tested, zero call sites (2026-09-09).** `streamChat()`
-still assembles its own prompt from the six-segment array in `index.ts`;
-nothing in this directory is wired in until Phase 2 (shadow run) and Phase 3a
-(cutover). Design and phasing: `Design Handovers/traffic_cop_design_2026-09-05.md`.
+**Status: Phase 2 — shadow mode, live on every turn (2026-09-14; Phase 1 was
+PR #471).** `streamChat()` still assembles its own prompt from the six-segment
+array in `index.ts` and that string is still the only one the model receives.
+The traffic cop now runs *alongside* it on every real turn, compares its
+output byte-for-byte, and records the result — nothing it produces is used.
+Cutover is Phase 3a. Design and phasing:
+`Design Handovers/traffic_cop_design_2026-09-05.md`.
 Decisions taken 2026-09-09 against that doc's §9: selection keys on
 `(tenant, slot)` only, no product dimension (9.1); the token budget is
 **log-only through Phase 4** (9.2); notification source and location
@@ -293,6 +296,43 @@ flags for Phase 2. Content-free by contract: never block text, never a raw
 identity value (`trace.test.ts` asserts this against PII fixtures). Not
 called by anything yet.
 
+**Shadow mode — `shadow.ts` (Phase 2, 2026-09-14).** `runShadowTurn(params)`
+is called by `streamChat()` immediately after `systemPrompt` is built, so it
+runs concurrently with the model stream rather than ahead of it; the promise
+is settled in `runChatStream`'s `onFinish`, after `handleSessionFinish`, so
+it can only ever wait (≤ `SHADOW_TIMEOUT_MS`, 5 s), never delay anything the
+visitor sees. It **never rejects**: any failure at any stage (`resolve`,
+`timeout`, `compare`, `record`) is logged to console and as a
+`CHAT_TURN_CONTEXT_RESOLVED` row with `outcome: 'failure'` and
+`metadata.stage`, and the promise still resolves; `streamChat` attaches a
+belt-and-braces `.catch` regardless. `index.test.ts` proves a never-settling
+shadow does not delay the `Response` and a rejecting one affects neither the
+`Response` nor `onFinish`. `after()` from `next/server` (the pattern
+`services/media/processor.ts` uses) is the fallback if production ever shows
+shadow rows missing for normally-completed turns — not adopted, to keep the
+chat service free of Next imports. **The comparison** (`compareAssembly`,
+pure): byte equality of the two system strings → `parity`; plus
+`firstDiffIndex`, `whitespaceOnly`, `contentHash` prefixes of each whole
+string, one verdict per provider id (`match` / `both-absent` /
+`legacy-only` / `shadow-only` / `differs`, each side carrying
+presence/length/hash and the shadow's injection status), `diffSegmentIds`,
+and a `classification` (`identical` / `whitespace-only` /
+`segment-presence` / `segment-content` / `ordering` / `unknown`).
+`buildLegacySegments` rebuilds streamChat's six segments with the same
+expressions (deliberately a copy, so the live array stays untouched) and
+`legacyReconstructionMatch` flags any turn where that copy has drifted from
+the string actually sent. Never any prompt text — hashes and lengths only
+(`shadow.test.ts` asserts this against PII fixtures). **Cost during the
+window:** the six resolvers run a second time per turn, concurrently with
+streaming; `resolveMediaContext` re-fires its own
+`CHAT_MEDIA_CONTEXT_RESOLVED` row on media turns. **`correlation_id` is
+null on shadow rows** — `ChatStreamRequest` does not carry one yet; that
+lands with the Phase 3a request-shape change. **Reading the data (Jeff,
+Studio):** `select metadata->>'parity', outcome, count(*) from audit_events
+where action = 'chat.turn_context_resolved' and metadata->>'shadow' = 'true'
+group by 1, 2` — the 7-day gate is zero *unexplained* `parity = false`
+rows; `metadata->'comparison'` on each such row says which segment and how.
+
 **Adding a provider** = one file under `providers/`, one line in
 `registry.ts`, one colocated `providers/<id>.test.ts`, one row in the table
 above. `registry.test.ts` enforces the first three (unique ids/orders,
@@ -301,7 +341,9 @@ no timeouts in Phase 1).
 
 **Tests.** `runner.test.ts` (guarantees), `select-prompt.test.ts`,
 `providers/*.test.ts`, `registry.test.ts`, `trace.test.ts`, `index.test.ts`
-(`deriveTurnSignals` mirrors `index.test.ts`'s `isFirstTurn` suite), and
+(`deriveTurnSignals` mirrors `index.test.ts`'s `isFirstTurn` suite),
+`shadow.test.ts` (comparison verdicts/classifications, no-text guarantee,
+and every fail-open path of `runShadowTurn` including the 5 s timeout), and
 `assembly.golden.test.ts` — which carries a **verbatim copy of `streamChat`'s
 concatenation** and asserts byte-identical `system` output across Sage
 visitor, question mode, Heirloom first turn, story turn with attachments,
