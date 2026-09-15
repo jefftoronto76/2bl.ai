@@ -9,6 +9,7 @@ export function makeInput(overrides: Partial<TurnContextInput> = {}): TurnContex
     tenantId: 'tenant-1',
     sessionId: null,
     memberId: null,
+    memberStatus: null,
     messages: [{ role: 'user', content: 'Hi' }],
     mode: null,
     mediaItems: null,

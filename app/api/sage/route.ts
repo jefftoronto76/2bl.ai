@@ -4,11 +4,25 @@ import { validateMemberToken } from '@/services/members'
 import { streamChat } from '@/services/chat/server'
 import type { ChatMessage, ChatMode } from '@/services/chat/server'
 import type { MediaAttachmentInput } from '@/services/chat/server/types'
+import { resolveBlockedTurn, blockedTurnResponse } from '@/services/chat/server/turn-context/blocked-turn'
 
-async function resolveMemberId(
+interface ResolvedMember {
+  id: string
+  /** members.status as stored — read by the Traffic Cop's account-status rule. */
+  status: string | null
+}
+
+/**
+ * Resolves the member behind this turn, if any: the signed-in Clerk user's
+ * members row for this tenant, else the invite-token holder's row, else
+ * null (anonymous). Returns the row's status alongside its id so the
+ * account-status rule can decide *before* any model call whether this
+ * member may chat at all.
+ */
+async function resolveMember(
   tenantId: string | null,
   inviteToken: string | null,
-): Promise<string | null> {
+): Promise<ResolvedMember | null> {
   if (!tenantId) return null
 
   const user = await getCurrentUser()
@@ -16,16 +30,17 @@ async function resolveMemberId(
     const supabase = getAdminClient()
     const { data: memberRow } = await supabase
       .from('members')
-      .select('id')
+      .select('id, status')
       .eq('tenant_id', tenantId)
       .eq('clerk_id', user.providerUserId)
       .maybeSingle()
-    return (memberRow as { id: string } | null)?.id ?? null
+    const row = memberRow as { id: string; status: string | null } | null
+    return row ? { id: row.id, status: row.status ?? null } : null
   }
 
   if (inviteToken) {
     const row = await validateMemberToken(inviteToken)
-    if (row && row.tenant_id === tenantId) return row.id
+    if (row && row.tenant_id === tenantId) return { id: row.id, status: row.status ?? null }
   }
 
   return null
@@ -75,13 +90,34 @@ export async function POST(req: Request) {
       ? body.invite_token
       : null
 
-  const memberId = await resolveMemberId(tenantId, inviteToken)
+  const member = await resolveMember(tenantId, inviteToken)
+  const memberId = member?.id ?? null
+  const memberStatus = member?.status ?? null
+  const sessionId =
+    typeof body.session_id === 'string' && body.session_id.length > 0 ? body.session_id : null
+
+  // Traffic Cop account-status rule: a suspended or deleted member gets a
+  // fixed reply from the 'blocked' slot and never reaches streamChat — no
+  // prompt assembly, no model call. Active members, invite holders, and
+  // anonymous visitors fall through untouched.
+  const blocked = await resolveBlockedTurn({
+    tenantId,
+    sessionId,
+    memberId,
+    memberStatus,
+    messages,
+    mode,
+    mediaItems,
+    correlationId: null,
+  })
+  if (blocked) return blockedTurnResponse(blocked.text)
 
   return streamChat({
     messages,
     mode,
     sessionId: body.session_id ?? null,
     memberId,
+    memberStatus,
     tenant: { tenantId },
     promptType: typeof body.prompt_type === 'string' && body.prompt_type.length > 0
       ? body.prompt_type

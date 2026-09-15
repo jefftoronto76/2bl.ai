@@ -28,6 +28,12 @@ export interface TurnContextRequest {
   tenantId: string | null
   sessionId: string | null
   memberId: string | null
+  /**
+   * members.status of the resolved member (server-resolved alongside
+   * memberId), or null for an anonymous visitor / unknown. Read by the
+   * account-status slot rule (select-prompt.ts); never client-supplied.
+   */
+  memberStatus: string | null
   /** The conversation as sent on this request. Read-only here; never mutated. */
   messages: ChatMessage[]
   mode: ChatMode

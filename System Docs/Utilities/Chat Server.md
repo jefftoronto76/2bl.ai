@@ -222,7 +222,8 @@ first set as 7 days, zero *unexplained* mismatches (9.5) — **superseded
 no real production traffic yet; the `publish_compiled_prompt` RPC body
 was confirmed directly against Supabase and matches the design's inference
 (9.6); the member `status` filter ships as its own separate PR, not bundled
-into Phase 3b (9.7).
+into Phase 3b (9.7) — **shipped 2026-09-15 as the account-status rule, see
+below**.
 
 **Entry point — `resolveTurnPrompt(request, options?)` (`index.ts`).** Takes a
 `TurnContextRequest` (`tenantId`, `sessionId`, `memberId` — all
@@ -237,6 +238,42 @@ turn is rescued with `DEFAULT_SYSTEM_PROMPT` and the record says so
 **Job #1 — `select-prompt.ts`.** An ordered, synchronous, I/O-free rule list;
 first non-null answer wins; a rule that throws is skipped. Phase 1 ships
 rules 3–5 of the design's five: `mode`, `member-status`, `default-slot`.
+**`account-status` (added 2026-09-15) runs first**, ahead of all of them: a
+member whose `members.status` is `suspended` or `deleted` routes to the
+`blocked` slot (`BLOCKED_SLOT_KEY`, `BLOCKED_MEMBER_STATUSES` — config on
+`SlotRuleConfig`), whatever the mode or session; `active`, `invited`,
+`waitlist`, `pending`, and anonymous (`memberStatus: null`) fall through
+untouched. It is the only rule whose slot is *acted on* today (the others are
+recorded but wait for Phase 4): `blocked-turn.ts`'s `resolveBlockedTurn`
+runs in `app/api/sage/route.ts` **before `streamChat`**, and when the rules
+choose `blocked` it returns a fixed reply — the tenant's live compiled
+prompt in the `blocked` slot (`selectCompiledPrompt` +
+`compiledContentToPlainText`, `services/prompt/select.ts`), or
+`BLOCKED_TURN_FALLBACK_TEXT` when the slot has no live row or the read
+fails — as a hand-built AI SDK data-stream `Response`
+(`blockedTurnResponse`: one `0:` text part, one `d:` finish part, the same
+headers `toDataStreamResponse()` sets), so the client renders it with no
+change. No prompt assembly, no model call, no `handleSessionFinish`; the
+client still PATCHes the transcript as usual. Recorded as a
+`CHAT_TURN_CONTEXT_RESOLVED` row with `selection.ruleId = 'account-status'`,
+`metadata.blocked = true`, `modelCalled = false`, `injections: []` —
+never the status word, so a row cannot say which of the two it was. The
+block is the rule's decision, not the read's: a failure loading the
+editable copy falls back, never lets the member through. `memberStatus`
+is resolved by the route (`resolveMember`, both the Clerk and the
+invite-token path) and never client-supplied.
+
+**Creating the `blocked` slot (Jeff, admin UI — until then the fallback
+copy is used and rows show `selection.fallback = true`):** as a platform
+admin, add a prompt type with key `blocked` (name "Blocked") via the
+Prompt Types control with "make platform" so every tenant sees it; in the
+Heirloom tenant's Prompt Sets, create a set on that type, add one
+`identity` block whose body is the reply text (start from
+`BLOCKED_TURN_FALLBACK_TEXT` in `blocked-turn.ts` so the editable and
+fallback copies begin identical), then Compile & Publish. Only Heirloom
+needs it today — jefflougheed.ca has no members to block. The compiled
+row's `<identity>` wrapper is stripped at read time.
+
 Rules 3 and 4 hold no opinion today — their mapping tables
 (`SlotRuleConfig.modeSlots` / `.memberStatusSlots`) are empty because no
 tenant has published a mode- or status-specific slot — so every turn

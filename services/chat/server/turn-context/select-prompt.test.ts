@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
-import { selectPromptSlot, buildSlotRules, DEFAULT_SLOT_KEY, type SlotRule } from './select-prompt'
+import {
+  selectPromptSlot,
+  buildSlotRules,
+  DEFAULT_SLOT_KEY,
+  BLOCKED_SLOT_KEY,
+  BLOCKED_MEMBER_STATUSES,
+  DEFAULT_SLOT_RULE_CONFIG,
+  type SlotRule,
+} from './select-prompt'
 import { makeInput } from './test-input'
 
 describe('selectPromptSlot — Phase 1 rules 3–5', () => {
@@ -19,25 +27,61 @@ describe('selectPromptSlot — Phase 1 rules 3–5', () => {
     expect(selectPromptSlot(input)).toEqual(selectPromptSlot(input))
   })
 
-  it('lists the rules in the documented order', () => {
-    expect(buildSlotRules().map(r => r.id)).toEqual(['mode', 'member-status', 'default-slot'])
+  it('lists the rules in the documented order, account-status first', () => {
+    expect(buildSlotRules().map(r => r.id)).toEqual(['account-status', 'mode', 'member-status', 'default-slot'])
+  })
+})
+
+describe('selectPromptSlot — account-status rule', () => {
+  it.each(['suspended', 'deleted'])('routes a %s member to the blocked slot', status => {
+    expect(selectPromptSlot(makeInput({ memberId: 'member-1', memberStatus: status }))).toEqual({
+      slotKey: BLOCKED_SLOT_KEY,
+      ruleId: 'account-status',
+    })
+    expect(BLOCKED_SLOT_KEY).toBe('blocked')
+  })
+
+  it.each(['active', 'invited', 'waitlist', 'pending'])('leaves a %s member on normal routing', status => {
+    expect(selectPromptSlot(makeInput({ memberId: 'member-1', memberStatus: status }))).toEqual({
+      slotKey: DEFAULT_SLOT_KEY,
+      ruleId: 'default-slot',
+    })
+  })
+
+  it('leaves an anonymous visitor (no status) on normal routing — the baseline is unchanged', () => {
+    expect(selectPromptSlot(makeInput({ memberId: null, memberStatus: null }))).toEqual({
+      slotKey: DEFAULT_SLOT_KEY,
+      ruleId: 'default-slot',
+    })
+  })
+
+  it('wins over every later rule — a suspended member in question mode with a mode slot configured is still blocked', () => {
+    const rules = buildSlotRules({ ...DEFAULT_SLOT_RULE_CONFIG, modeSlots: { question: 'faq' }, memberStatusSlots: { member: 'members-only' } })
+    expect(selectPromptSlot(makeInput({ memberId: 'm', memberStatus: 'suspended', mode: 'question' }), rules)).toEqual({
+      slotKey: 'blocked',
+      ruleId: 'account-status',
+    })
+  })
+
+  it('blocks exactly suspended and deleted, nothing else, by default', () => {
+    expect([...BLOCKED_MEMBER_STATUSES]).toEqual(['suspended', 'deleted'])
   })
 })
 
 describe('selectPromptSlot — rule data is the extension point', () => {
   it('a mode slot, once configured, wins over member-status and default', () => {
-    const rules = buildSlotRules({ modeSlots: { question: 'faq' }, memberStatusSlots: { member: 'members-only' } })
+    const rules = buildSlotRules({ ...DEFAULT_SLOT_RULE_CONFIG, modeSlots: { question: 'faq' }, memberStatusSlots: { member: 'members-only' } })
     expect(selectPromptSlot(makeInput({ mode: 'question', memberId: 'member-1' }), rules)).toEqual({ slotKey: 'faq', ruleId: 'mode' })
   })
 
   it('a member-status slot applies to the matching status only', () => {
-    const rules = buildSlotRules({ modeSlots: {}, memberStatusSlots: { visitor: 'onboarding' } })
+    const rules = buildSlotRules({ ...DEFAULT_SLOT_RULE_CONFIG, modeSlots: {}, memberStatusSlots: { visitor: 'onboarding' } })
     expect(selectPromptSlot(makeInput({ memberId: null }), rules)).toEqual({ slotKey: 'onboarding', ruleId: 'member-status' })
     expect(selectPromptSlot(makeInput({ memberId: 'member-1' }), rules)).toEqual({ slotKey: 'base', ruleId: 'default-slot' })
   })
 
   it('a mode slot is ignored when the turn has no mode', () => {
-    const rules = buildSlotRules({ modeSlots: { question: 'faq' }, memberStatusSlots: {} })
+    const rules = buildSlotRules({ ...DEFAULT_SLOT_RULE_CONFIG, modeSlots: { question: 'faq' }, memberStatusSlots: {} })
     expect(selectPromptSlot(makeInput({ mode: null }), rules).ruleId).toBe('default-slot')
   })
 })

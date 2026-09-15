@@ -239,6 +239,7 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
       tenantId,
       sessionId,
       memberId,
+      memberStatus: req.memberStatus ?? null,
       messages: req.messages,
       mode: req.mode ?? null,
       mediaItems: req.mediaItems ?? null,

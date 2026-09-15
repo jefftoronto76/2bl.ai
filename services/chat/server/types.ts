@@ -41,6 +41,14 @@ export interface ChatStreamRequest {
   /** Supabase members.id for a pre-auth invited member. When set, getMemberContext
    *  looks up the member directly by id rather than via chat_sessions.user_id. */
   memberId?: string | null
+  /**
+   * members.status of the resolved member, or null/absent for an anonymous
+   * visitor. Resolved by the route alongside memberId. Read only by the
+   * Traffic Cop's account-status slot rule; a suspended/deleted member is
+   * blocked by the route before streamChat is ever called, so here it is
+   * informational (the shadow run's slot selection).
+   */
+  memberStatus?: string | null
   tenant: ChatTenantContext
   /** Accepted for forward-compatibility but currently ignored: getSystemPrompt
    *  resolves the tenant's highest-version compiled_prompts regardless of slot. */
