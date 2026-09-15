@@ -4,7 +4,7 @@
 // row per affected membership. Eligibility is resolved server-side (deleted
 // memberships are never overwritten back to a lesser state like suspended).
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -22,7 +22,7 @@ const VALID_STATUSES = new Set<MemberStatus>(['active', 'invited', 'waitlist', '
 const PROTECTED_STATUSES = new Set(['deleted'])
 
 export async function PATCH(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/status/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

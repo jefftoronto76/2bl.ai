@@ -3,7 +3,7 @@
 // dependent members, chat_sessions, etc. The audit record is written FIRST
 // so it is never lost even if the delete fails. This action is irreversible.
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { hardDeleteMember } from '@/services/members'
 
@@ -12,7 +12,7 @@ interface RouteContext {
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/[userId]/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

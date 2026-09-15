@@ -6,7 +6,7 @@
 // intermediate write is logged and skipped but does not roll back prior writes.
 // Migrate to a Postgres RPC when full atomicity is required.
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -18,7 +18,7 @@ interface RoleChange {
 const VALID_ROLES = new Set(['owner', 'admin', 'member', 'viewer'])
 
 export async function PATCH(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/roles/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

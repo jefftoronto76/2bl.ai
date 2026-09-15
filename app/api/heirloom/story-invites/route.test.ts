@@ -19,7 +19,7 @@ const mockRevokeStoryInviteLink = vi.fn()
 const mockGetActiveStoryInviteLink = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 

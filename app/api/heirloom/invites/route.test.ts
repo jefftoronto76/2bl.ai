@@ -14,7 +14,7 @@ const mockMembersMaybeSingle = vi.fn()
 const mockTenantsMaybeSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 

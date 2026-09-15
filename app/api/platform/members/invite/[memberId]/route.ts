@@ -8,7 +8,7 @@
 // revoked_at on an accepted-or-pending invite without deleting the row — is a
 // separate POST .../invite/:memberId/revoke endpoint.)
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
 import { toInviteLink } from '@/app/admin/members/inviteLink'
@@ -18,7 +18,7 @@ interface RouteContext {
 }
 
 export async function GET(req: Request, context: RouteContext) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/invite/[memberId]/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -59,7 +59,7 @@ export async function GET(req: Request, context: RouteContext) {
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/invite/[memberId]/route.ts')
   if (!user) {
     console.warn('[platform/members/invite/delete] 401 — no session')
     void logAuthEvent({

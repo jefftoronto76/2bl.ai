@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -9,7 +9,7 @@ import { logEvent, AuditAction } from '@/services/audit'
 // gated only by isPlatformAdmin — confirm RLS before prod. See handover §6.)
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/prompt-sets/[id]/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

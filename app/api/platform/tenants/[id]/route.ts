@@ -1,4 +1,4 @@
-import { getCurrentUser, getTenantFromRequest, type AuthUser } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest, type AuthUser } from '@/services/auth'
 import { updateTenant, deleteTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
 
@@ -16,7 +16,7 @@ interface RouteContext {
 async function denyUnlessPlatformAdmin(): Promise<
   { denied: Response; user: null } | { denied: null; user: AuthUser }
 > {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/tenants/[id]/route.ts')
   if (!user) {
     return { denied: Response.json({ error: 'Unauthorized' }, { status: 401 }), user: null }
   }

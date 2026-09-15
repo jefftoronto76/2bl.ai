@@ -1,4 +1,4 @@
-import { getCurrentUser, getTenantName, getTenantType, getAuthContext } from '@/services/auth';
+import { getCurrentUserTimed, getTenantName, getTenantType, getAuthContext } from '@/services/auth';
 import { redirect } from 'next/navigation';
 
 import '@mantine/core/styles.css';
@@ -21,7 +21,7 @@ import { ALL_FONTS, type FontEntry } from '@/services/branding/font-registry';
 // preview hosts, where the bare /sign-in alias does not). Role is read from
 // the boundary's AuthUser.isPlatformAdmin (resolved inside services/auth).
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserTimed('app/(platform)/layout.tsx');
   if (!user) {
     redirect('/secondbrainlabs/sign-in');
   }

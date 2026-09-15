@@ -4,14 +4,14 @@
 // the tenant's configured domain (so invite links point to the right product
 // host rather than the admin host).
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMemberInvite } from '@/services/members'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
 import { inviteUrlFor } from '@/app/admin/members/inviteLink'
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/invite/route.ts')
   if (!user) {
     console.warn('[platform/members/invite] 401 — no session')
     void logAuthEvent({

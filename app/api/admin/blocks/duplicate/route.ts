@@ -1,4 +1,4 @@
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { duplicateBlock } from '@/services/prompt/blocks'
 import { resolveTenantForPromptSet } from '@/services/prompt'
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     .eq('id', sourceId)
     .maybeSingle()
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/admin/blocks/duplicate/route.ts')
   const tenantResult = await resolveTenantForPromptSet(
     (sourceRow?.prompt_set_id as string | null) ?? null,
     authCtx,

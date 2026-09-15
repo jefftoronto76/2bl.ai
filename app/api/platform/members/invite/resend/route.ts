@@ -4,14 +4,14 @@
 // can rebuild the invite URL. Also resets invite-tracking fields (opened_at,
 // opens, revoked_at) and stamps a fresh expires_at so the new link starts clean.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { randomBytes } from 'crypto'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
 import { INVITE_TTL_DAYS } from '@/app/admin/members/constants'
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/invite/resend/route.ts')
   if (!user) {
     console.warn('[platform/members/invite/resend] 401 — no session')
     void logAuthEvent({

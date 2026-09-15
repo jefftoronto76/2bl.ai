@@ -35,7 +35,7 @@
 // sweep's pending-row counterpart, for that recovery path.
 
 import { after } from 'next/server'
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getMediaItem, isMediaAuditEnabled, logMediaEvent } from '@/services/media'
 import { processMediaItem } from '@/services/media/processor'
@@ -48,7 +48,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/media/[id]/start-processing/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

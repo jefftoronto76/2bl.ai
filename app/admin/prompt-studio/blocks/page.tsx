@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { getAdminClient } from '@/services/auth/supabase-admin'
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { resolveTenantForPromptSet } from '@/services/prompt'
 import { Box, Center, Flex, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
@@ -71,7 +71,7 @@ export default async function BlocksPage({
   // ?set= is asking for. When the requested set IS composer-family, this
   // overrides tenantId to the set's own tenant and requires isPlatformAdmin;
   // otherwise it's a no-op and tenantId stays exactly what it was.
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/admin/prompt-studio/blocks/page.tsx')
   const tenantResult = await resolveTenantForPromptSet(requestedSet ?? null, authCtx, user?.isPlatformAdmin === true)
   if (!tenantResult.ok) {
     return <BlocksFallback message={tenantResult.error} />

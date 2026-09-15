@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // GET /api/platform/prompt-sets/[id]/compiled  — NEW
@@ -7,7 +7,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 // tenant's compiled prompt). Same response shape as the tenant route.
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/prompt-sets/[id]/compiled/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

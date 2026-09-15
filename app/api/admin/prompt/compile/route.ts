@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { compilePrompt, resolveTenantForPromptSet } from '@/services/prompt'
 import { parseNote } from '@/services/prompt/release-note'
 import { logEvent, AuditAction } from '@/services/audit'
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   // A composer-family target overrides tenantId to its own (SBL) tenant and
   // requires isPlatformAdmin — see resolveTenantForPromptSet. Ordinary sets
   // are unaffected; tenantId stays authCtx.tenant_id.
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/admin/prompt/compile/route.ts')
   const tenantResult = await resolveTenantForPromptSet(promptSetId, authCtx, user?.isPlatformAdmin === true)
   if (!tenantResult.ok) {
     return NextResponse.json({ error: tenantResult.error }, { status: tenantResult.status })

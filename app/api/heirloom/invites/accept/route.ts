@@ -11,11 +11,11 @@
 // rather than an ordering assumption — see Design Handovers/
 // identity_reconciliation_replan_2026-09-14.md.
 
-import { getCurrentUser, ensureClerkUser } from '@/services/auth'
+import { getCurrentUserTimed, ensureClerkUser } from '@/services/auth'
 import { acceptInvite } from '@/services/members'
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/heirloom/invites/accept/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth';
+import { getCurrentUserTimed } from '@/services/auth';
 import { redirect } from 'next/navigation';
 import { Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
@@ -12,7 +12,7 @@ export default async function PlatformTenantsPage() {
   // this page runs a privileged service-role read across ALL tenants. Re-verify
   // here so the cross-tenant query never executes for a non-admin, rather than
   // relying on layout/page render ordering.
-  const user = await getCurrentUser();
+  const user = await getCurrentUserTimed('app/(platform)/platform/admin/page.tsx');
   if (!user) {
     redirect('/secondbrainlabs/sign-in');
   }

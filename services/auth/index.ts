@@ -20,6 +20,7 @@ export * from './errors'
 
 // Provider-backed session/identity API (Clerk adapter today).
 export { getSession, getCurrentUser, requirePlatformAdmin, deleteClerkUser, updateClerkUserFirstName } from './providers/clerk/server'
+export { getCurrentUserTimed } from './get-current-user-timed'
 
 // Existing service helpers — Supabase-resolved identity, tenant scoping, sync.
 export { getAuthContext } from './get-auth-context'

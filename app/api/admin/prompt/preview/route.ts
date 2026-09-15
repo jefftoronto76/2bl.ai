@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { buildCompiledContent, resolveTenantForPromptSet } from '@/services/prompt'
 
 export async function POST(req: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       ? body.prompt_set_id
       : null
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/admin/prompt/preview/route.ts')
   const tenantResult = await resolveTenantForPromptSet(promptSetId, authCtx, user?.isPlatformAdmin === true)
   if (!tenantResult.ok) {
     return NextResponse.json({ error: tenantResult.error }, { status: tenantResult.status })

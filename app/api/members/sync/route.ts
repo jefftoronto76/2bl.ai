@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser, syncMember, HEIRLOOM_TENANT_ID, getTenantFromRequest, updateClerkUserFirstName } from '@/services/auth'
+import { getCurrentUserTimed, syncMember, HEIRLOOM_TENANT_ID, getTenantFromRequest, updateClerkUserFirstName } from '@/services/auth'
 import { identityValue } from '@/services/shared/identity'
 
 /**
@@ -17,7 +17,7 @@ import { identityValue } from '@/services/shared/identity'
  * users.name survived). One writer, one rule.
  */
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/members/sync/route.ts')
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

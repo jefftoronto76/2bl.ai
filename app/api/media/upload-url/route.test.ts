@@ -25,7 +25,7 @@ const mockObjectExists = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
 }))
 
