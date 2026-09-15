@@ -287,6 +287,7 @@ describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
       tenant: { tenantId: 'tenant-1' },
       sessionId: 'session-1',
       memberId: 'member-1',
+      memberStatus: 'active',
       mode: 'question',
     })
     await vi.advanceTimersByTimeAsync(0)
@@ -311,6 +312,7 @@ describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
       tenantId: 'tenant-1',
       sessionId: 'session-1',
       memberId: 'member-1',
+      memberStatus: 'active',
       messages: [{ role: 'user', content: 'Hi' }],
       mode: 'question',
       mediaItems: null,

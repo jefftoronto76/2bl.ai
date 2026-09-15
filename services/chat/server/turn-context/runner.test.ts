@@ -15,6 +15,7 @@ const input: TurnContextInput = {
   tenantId: 'tenant-1',
   sessionId: 'session-1',
   memberId: null,
+  memberStatus: null,
   messages: [{ role: 'user', content: 'Hi' }],
   mode: null,
   mediaItems: null,

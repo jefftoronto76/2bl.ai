@@ -644,7 +644,16 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   and phase plan: `Design Handovers/traffic_cop_design_2026-09-05.md`;
   current state, the comparison shape, the review query, and the 2026-09-09
   decisions against its §9: `System Docs/Utilities/Chat Server.md`'s
-  turn-context section. Two things found during the
+  turn-context section. **The account-status rule (2026-09-15) is the one slot rule acted on
+ before Phase 4:** a `suspended`/`deleted` member is blocked at
+ `app/api/sage/route.ts` before `streamChat`, with a fixed reply from the
+ `blocked` slot — see `Chat Server.md`'s turn-context section for the
+ mechanism and the admin steps to create that slot (until created, the
+ built-in fallback copy is used). This closes the "suspended/deleted
+ member still gets MEMBER CONTEXT and a model reply" half of the
+ `resolveMemberId` status-filter finding (design §9.7); the read side —
+ `member-context.ts`'s own lookup still has no `status` filter, which now
+ only matters for statuses this rule does not block — stays as is. Two things found during the
   Phase 1 build that the design did not anticipate: (1) per-provider
   timeouts are implemented but deliberately unset — today's resolvers have no
   deadline, so any default would create shadow mismatches; the shadow data

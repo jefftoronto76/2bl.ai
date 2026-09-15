@@ -13,6 +13,10 @@ export type { CompileResult, CompileSuccess, BuildContentResult } from './compil
 export { saveCompiledPrompt } from './save'
 export type { SaveResult } from './save'
 
+// Slot-aware compiled-prompt read (Traffic Cop) + compiled → plain-text helper
+export { selectCompiledPrompt, compiledContentToPlainText } from './select'
+export type { CompiledPromptForSlot } from './select'
+
 // Cross-tenant resolution for a specific prompt_set (composer-family override
 // + platform-admin gate)
 export { resolveTenantForPromptSet } from './resolve-tenant-for-prompt-set'

@@ -87,6 +87,7 @@ function request(overrides: Partial<TurnContextRequest> = {}): TurnContextReques
     tenantId: 'tenant-1',
     sessionId: null,
     memberId: null,
+    memberStatus: null,
     messages: [{ role: 'user', content: 'Hi' }],
     mode: null,
     mediaItems: null,

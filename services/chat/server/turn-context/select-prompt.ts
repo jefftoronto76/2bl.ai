@@ -6,7 +6,8 @@
 // slot touches the database (Phase 4, services/prompt).
 //
 // Design Handovers/traffic_cop_design_2026-09-05.md §5.4 lists five rules.
-// Phase 1 ships rules 3–5. Rules 1–2 need schema that does not exist yet:
+// Phase 1 shipped rules 3–5; the account-status rule (2026-09-15) sits ahead
+// of all of them. Rules 1–2 need schema that does not exist yet:
 //   1. session-token   — chat_sessions has no link to the session_tokens row
 //                         that opened it.
 //   2. session-context-type — a context_type → slot mapping; the
@@ -26,7 +27,21 @@ import type { TurnContextInput } from './types'
 /** prompt_types.key of the untyped/default slot — what every tenant runs on today. */
 export const DEFAULT_SLOT_KEY = 'base'
 
+/**
+ * prompt_types.key of the slot a suspended/deleted member is routed to. Its
+ * live compiled content is the fixed reply the member sees — no model call
+ * (blocked-turn.ts). Created through the Prompt Sets admin UI so the copy
+ * is editable; blocked-turn.ts carries a fallback until it exists.
+ */
+export const BLOCKED_SLOT_KEY = 'blocked'
+
+/** members.status values that route to the blocked slot. Deliberately not distinguished from each other. */
+export const BLOCKED_MEMBER_STATUSES: readonly string[] = ['suspended', 'deleted']
+
 export interface SlotRuleConfig {
+  /** members.status values routed to `blockedSlotKey` before any other rule runs. */
+  blockedStatuses: readonly string[]
+  blockedSlotKey: string
   /** Mode → slot key, e.g. `{ question: 'faq' }`. Empty today. */
   modeSlots: Partial<Record<NonNullable<TurnContextInput['mode']>, string>>
   /** Member-status → slot key, e.g. `{ visitor: 'onboarding' }`. Empty today. */
@@ -34,6 +49,8 @@ export interface SlotRuleConfig {
 }
 
 export const DEFAULT_SLOT_RULE_CONFIG: SlotRuleConfig = {
+  blockedStatuses: BLOCKED_MEMBER_STATUSES,
+  blockedSlotKey: BLOCKED_SLOT_KEY,
   modeSlots: {},
   memberStatusSlots: {},
 }
@@ -46,6 +63,17 @@ export interface SlotRule {
 
 export function buildSlotRules(config: SlotRuleConfig = DEFAULT_SLOT_RULE_CONFIG): SlotRule[] {
   return [
+    {
+      // First, and unconditional on everything else: a suspended or deleted
+      // member never reaches the tenant's normal prompt, whatever the mode
+      // or session. Anonymous (memberStatus null) and every other status
+      // fall through untouched.
+      id: 'account-status',
+      slotFor: input =>
+        input.memberStatus !== null && config.blockedStatuses.includes(input.memberStatus)
+          ? config.blockedSlotKey
+          : null,
+    },
     {
       id: 'mode',
       slotFor: input => (input.mode ? config.modeSlots[input.mode] ?? null : null),

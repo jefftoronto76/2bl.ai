@@ -29,11 +29,16 @@ export interface TurnContextTraceContext {
   parity?: boolean
   /** Phase 2: the per-segment comparison behind `parity`. Hashes and lengths only. */
   comparison?: ShadowComparison
+  /**
+   * True when the account-status rule routed the turn to the blocked slot
+   * and no model call was made (blocked-turn.ts). Absent otherwise.
+   */
+  blocked?: boolean
 }
 
 export function buildTurnContextMetadata(
   resolved: ResolvedTurnPrompt,
-  ctx: Pick<TurnContextTraceContext, 'shadow' | 'parity' | 'comparison'>,
+  ctx: Pick<TurnContextTraceContext, 'shadow' | 'parity' | 'comparison' | 'blocked'>,
 ): Record<string, unknown> {
   return {
     selection: resolved.selection,
@@ -45,6 +50,7 @@ export function buildTurnContextMetadata(
     shadow: ctx.shadow,
     ...(ctx.parity !== undefined ? { parity: ctx.parity } : {}),
     ...(ctx.comparison ? { comparison: ctx.comparison } : {}),
+    ...(ctx.blocked ? { blocked: true, modelCalled: false } : {}),
   }
 }
 

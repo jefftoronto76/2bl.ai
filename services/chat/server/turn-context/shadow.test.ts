@@ -73,7 +73,7 @@ const identicalBlocks = [
 ]
 
 const request: TurnContextRequest = {
-  tenantId: 'tenant-1', sessionId: 'session-1', memberId: 'member-1',
+  tenantId: 'tenant-1', sessionId: 'session-1', memberId: 'member-1', memberStatus: 'active',
   messages: [{ role: 'user', content: 'Hi' }], mode: null, mediaItems: null, correlationId: null,
 }
 const ctx = { tenantId: 'tenant-1', sessionId: 'session-1', memberId: 'member-1', correlationId: 'corr-1' }
