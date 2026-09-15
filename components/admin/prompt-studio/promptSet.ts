@@ -55,13 +55,24 @@ export interface PromptSet {
 
 /**
  * Resolve which set is active given the `?set=` query value.
- * Falls back to the Live set, then the first set, then null (no sets).
+ *
+ * A specific requestedId is either honored or rejected — never silently
+ * swapped for a different set. Returning some OTHER set (e.g. the tenant's
+ * Live set) when the requested one can't be found would make the caller
+ * render that set's data under a URL that still names the one the user
+ * actually asked for, with no indication anything was substituted. The
+ * caller is expected to treat `null` + a non-null requestedId as "not
+ * found" and show that explicitly, rather than falling through to
+ * whatever a null activeSet otherwise means for it (e.g. Blocks' no
+ * prompt_sets-rows-at-all default-slot path).
+ *
+ * Only when no specific id was requested does this fall back to the Live
+ * set, then the first set, then null (no sets at all).
  */
 export function resolveActiveSet(sets: PromptSet[], requestedId: string | null): PromptSet | null {
   if (sets.length === 0) return null
   if (requestedId) {
-    const match = sets.find((s) => s.id === requestedId)
-    if (match) return match
+    return sets.find((s) => s.id === requestedId) ?? null
   }
   return sets.find((s) => String(s.status).toLowerCase() === 'live') ?? sets[0]
 }

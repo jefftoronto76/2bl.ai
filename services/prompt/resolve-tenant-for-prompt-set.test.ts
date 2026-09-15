@@ -38,12 +38,26 @@ describe('resolveTenantForPromptSet', () => {
     expect(result).toEqual({ ok: true, tenantId: 'tenant-own' })
   })
 
-  it('returns the caller\'s own tenant unchanged for an ordinary (non-composer) set, admin or not', async () => {
-    adminHolder.client = makeClient({ tenant_id: 'tenant-other', is_composer_prompt: false })
+  it('returns the caller\'s own tenant unchanged for an ordinary (non-composer) set in the caller\'s own tenant, admin or not', async () => {
+    adminHolder.client = makeClient({ tenant_id: 'tenant-own', is_composer_prompt: false })
     const asAdmin = await resolveTenantForPromptSet('set-1', AUTH_CTX, true)
     const asMember = await resolveTenantForPromptSet('set-1', AUTH_CTX, false)
     expect(asAdmin).toEqual({ ok: true, tenantId: 'tenant-own' })
     expect(asMember).toEqual({ ok: true, tenantId: 'tenant-own' })
+  })
+
+  it('overrides to the real owning tenant for an ordinary (non-composer) set genuinely owned by a different tenant, when the caller is a platform admin', async () => {
+    adminHolder.client = makeClient({ tenant_id: 'tenant-other', is_composer_prompt: false })
+    const result = await resolveTenantForPromptSet('set-1', AUTH_CTX, true)
+    expect(result).toEqual({ ok: true, tenantId: 'tenant-other' })
+  })
+
+  it('403s for an ordinary (non-composer) set genuinely owned by a different tenant, when the caller is not a platform admin', async () => {
+    adminHolder.client = makeClient({ tenant_id: 'tenant-other', is_composer_prompt: false })
+    const result = await resolveTenantForPromptSet('set-1', AUTH_CTX, false)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(403)
   })
 
   it('overrides to the set\'s own tenant for a composer-family set, when the caller is a platform admin', async () => {
@@ -60,15 +74,30 @@ describe('resolveTenantForPromptSet', () => {
     expect(result.status).toBe(403)
   })
 
-  it('falls back to the caller\'s own tenant on a lookup miss (id does not exist)', async () => {
-    adminHolder.client = makeClient(null)
-    const result = await resolveTenantForPromptSet('missing-set', AUTH_CTX, true)
-    expect(result).toEqual({ ok: true, tenantId: 'tenant-own' })
+  it('403s a non-admin for a composer-family set even when it happens to sit in the caller\'s own tenant', async () => {
+    // Composer access is gated on isPlatformAdmin, not on tenant ownership —
+    // a plain member of the SBL tenant itself must not get a pass just
+    // because data.tenant_id === authCtx.tenant_id.
+    adminHolder.client = makeClient({ tenant_id: 'tenant-own', is_composer_prompt: true })
+    const result = await resolveTenantForPromptSet('set-composer', AUTH_CTX, false)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(403)
   })
 
-  it('falls back to the caller\'s own tenant on a query error, rather than failing the request here', async () => {
+  it('reports an explicit 404 on a lookup miss (id does not exist), rather than silently using the caller\'s own tenant', async () => {
+    adminHolder.client = makeClient(null)
+    const result = await resolveTenantForPromptSet('missing-set', AUTH_CTX, true)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(404)
+  })
+
+  it('reports an explicit 500 on a query error, rather than silently using the caller\'s own tenant', async () => {
     adminHolder.client = makeClient(null, { message: 'db down' })
     const result = await resolveTenantForPromptSet('set-1', AUTH_CTX, true)
-    expect(result).toEqual({ ok: true, tenantId: 'tenant-own' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.status).toBe(500)
   })
 })
