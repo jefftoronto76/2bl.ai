@@ -14,7 +14,7 @@ const { getAuthContextMock, getCurrentUserMock, resolveTenantForPromptSetMock, g
 
 vi.mock('@/services/auth', () => ({
   getAuthContext: getAuthContextMock,
-  getCurrentUser: getCurrentUserMock,
+  getCurrentUserTimed: getCurrentUserMock,
 }))
 vi.mock('@/services/prompt', () => ({
   resolveTenantForPromptSet: resolveTenantForPromptSetMock,

@@ -183,6 +183,13 @@ export const AuditAction = {
   // identity values. Written by services/chat/server/turn-context/trace.ts's
   // recordTurnContext; no call site until Phase 2 (shadow).
   CHAT_TURN_CONTEXT_RESOLVED: 'chat.turn_context_resolved',
+  // Auth — getCurrentUser() call timing (September 2026, measurement only —
+  // see services/auth/get-current-user-timed.ts). Logged once per call from
+  // every call site, fire-and-forget, so real latency data accumulates
+  // before any fix/swap to the underlying Clerk currentUser() call is
+  // attempted. metadata: { path, durationMs, source: 'clerk_call' } — no
+  // PII, no identity fields, no behavior change to the wrapped call.
+  AUTH_CURRENT_USER_TIMING: 'auth.current_user_timing',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

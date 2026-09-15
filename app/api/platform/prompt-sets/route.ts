@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, AuditAction } from '@/services/audit'
 import { SBL_TENANT_ID } from '@/services/tenant'
@@ -44,7 +44,7 @@ const SELECT_COLUMNS =
   'id, tenant_id, label, description, status, is_composer_prompt, is_default, prompt_type_id, version, created_at, updated_at, block_count, last_compiled_at, compiled_version'
 
 export async function GET() {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/prompt-sets/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
@@ -92,7 +92,7 @@ type PatchStatus = (typeof VALID_STATUS)[number]
 const isStatus = (v: unknown): v is PatchStatus => typeof v === 'string' && (VALID_STATUS as readonly string[]).includes(v)
 
 export async function PATCH(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/prompt-sets/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

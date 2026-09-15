@@ -1,4 +1,4 @@
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createTenant, type TenantInput } from '@/services/tenant'
 import { logEvent, AuditAction } from '@/services/audit'
@@ -14,7 +14,7 @@ import { logEvent, AuditAction } from '@/services/audit'
 // Tenant Prompts "Add New" tenant picker. Platform-admin only. Returns [{ id, name }]
 // ordered by name. (The cross-tenant create/update/delete surfaces gate the same way.)
 export async function GET() {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/tenants/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -32,7 +32,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/tenants/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

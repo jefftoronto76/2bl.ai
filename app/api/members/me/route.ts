@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser, getTenantFromRequest, HEIRLOOM_TENANT_ID } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 /**
@@ -20,7 +20,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
  * duplication (D2) is exactly the failure mode to avoid.
  */
 export async function GET(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/members/me/route.ts')
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

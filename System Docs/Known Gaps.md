@@ -29,6 +29,23 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   reads through a client that respects RLS) is a separate, unscheduled
   architectural project, not a quick fix.
 
+- **`getCurrentUser()` latency is unmeasured across most of its ~40 call
+  sites — instrumentation-only fix landed 2026-09-15, no fix yet.** Every
+  direct `getCurrentUser()` call (the boundary's one-Clerk-backend-call-plus-
+  a-Supabase-lookup identity resolver — `services/auth/providers/clerk/
+  server.ts`) now goes through `getCurrentUserTimed(path)`
+  (`services/auth/get-current-user-timed.ts`), a same-behavior wrapper that
+  logs one `AuditAction.AUTH_CURRENT_USER_TIMING` row per call
+  (`{ path, durationMs, source: 'clerk_call' }`, no PII — see
+  `Utilities/Audit.md`). This is measurement only: no caching, no fix, no
+  provider swap. **Next step, once real data has accumulated:** query
+  `audit_events` for this action grouped by `metadata.path` to find which
+  call sites are actually slow (the admin/platform layouts, hit on every
+  page nav, are the prime suspects) and decide whether the fix is caching
+  the Supabase `isPlatformAdmin` lookup, caching the whole `AuthUser` per
+  request (React `cache()`/`unstable_cache`), or something else — not
+  decided yet, deliberately, until the data says where the cost actually is.
+
 - **`/join/[token]` missing its middleware host-rewrite exclusion — found
   and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**
   `middleware.ts` has an `isInvitePath` guard (`/invite` or `/invite/*`)

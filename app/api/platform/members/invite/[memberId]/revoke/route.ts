@@ -5,7 +5,7 @@
 // the public redirect route and is rejected by validateMemberToken /
 // acceptInvite. Refuses to revoke an already-accepted invite (409).
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent, logAuthEvent, AuditAction, AuthEventType } from '@/services/audit'
 import { toInviteLink } from '@/app/admin/members/inviteLink'
@@ -15,7 +15,7 @@ interface RouteContext {
 }
 
 export async function POST(req: Request, context: RouteContext) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/members/invite/[memberId]/revoke/route.ts')
   if (!user) {
     console.warn('[platform/members/invite/revoke] 401 — no session')
     void logAuthEvent({

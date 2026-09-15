@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // Platform composer-prompt pointer: which prompt set is currently live as the
@@ -13,7 +13,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 // orphaned AuditAction.PROMPT_SET_MASTER_SET this leaves behind.
 
 async function requirePlatformAdmin() {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/settings/master-prompt/route.ts')
   if (!user) return { error: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
   if (!user.isPlatformAdmin) return { error: Response.json({ error: 'Forbidden' }, { status: 403 }) }
   return { user }

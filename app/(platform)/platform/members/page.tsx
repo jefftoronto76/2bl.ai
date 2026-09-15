@@ -5,7 +5,7 @@
 // Reuses the shared MembersList client component and its associated types.
 
 import type { CSSProperties } from 'react';
-import { getCurrentUser } from '@/services/auth';
+import { getCurrentUserTimed } from '@/services/auth';
 import { redirect } from 'next/navigation';
 import { Box, Stack, Title } from '@mantine/core';
 import { getAdminClient } from '@/services/auth/supabase-admin';
@@ -35,7 +35,7 @@ const SCROLL_AREA_STYLE: CSSProperties = {
 export default async function PlatformMembersPage() {
   // Defense in depth — the (platform) layout already gates platform_admin, but
   // this page runs a privileged service-role read across ALL tenants.
-  const user = await getCurrentUser();
+  const user = await getCurrentUserTimed('app/(platform)/platform/members/page.tsx');
   if (!user) redirect('/secondbrainlabs/sign-in');
   if (!user.isPlatformAdmin) redirect('/admin');
 

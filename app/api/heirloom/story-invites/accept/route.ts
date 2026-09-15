@@ -9,12 +9,12 @@
 // /api/heirloom/invites/accept's acceptInvite — zero shared code path with
 // the single-use admin/member invite mechanism.
 
-import { getCurrentUser, ensureClerkUser } from '@/services/auth'
+import { getCurrentUserTimed, ensureClerkUser } from '@/services/auth'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import { acceptStoryInvite } from '@/services/crm/story-invites'
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/heirloom/story-invites/accept/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

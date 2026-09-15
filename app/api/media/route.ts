@@ -22,7 +22,7 @@
 // chat-scoped list — see services/media/index.ts's MediaSortParam doc
 // comment for why.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { listByChat, listByMember, withDisplayUrl, type MediaItemStatus } from '@/services/media'
@@ -31,7 +31,7 @@ const DEFAULT_PAGE_SIZE = 24
 const MAX_PAGE_SIZE = 100
 
 export async function GET(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/media/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -1,4 +1,4 @@
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { validateMemberToken } from '@/services/members'
 import { streamChat } from '@/services/chat/server'
@@ -11,7 +11,7 @@ async function resolveMemberId(
 ): Promise<string | null> {
   if (!tenantId) return null
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/sage/route.ts')
   if (user) {
     const supabase = getAdminClient()
     const { data: memberRow } = await supabase

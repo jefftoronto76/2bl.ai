@@ -33,7 +33,7 @@ const mockFrom = vi.fn((table: string) => {
 })
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: async () => authHolder.user,
+  getCurrentUserTimed: async () => authHolder.user,
   getTenantFromRequest: async () => 'tenant-heirloom',
   HEIRLOOM_TENANT_ID: 'tenant-heirloom',
 }))

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentUser, claimMembership, ensureClerkUser, HEIRLOOM_TENANT_ID } from '@/services/auth'
+import { getCurrentUserTimed, claimMembership, ensureClerkUser, HEIRLOOM_TENANT_ID } from '@/services/auth'
 import { logEvent, AuditAction } from '@/services/audit'
 
 /**
@@ -12,7 +12,7 @@ import { logEvent, AuditAction } from '@/services/audit'
  * Returns 401 when no Clerk session is present.
  */
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/heirloom/members/claim/route.ts')
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -8,14 +8,14 @@ import { AdminThemeProvider } from '@/components/admin/theme/AdminThemeProvider'
 import type { BrandingForTheme } from '@/components/admin/theme/mantine-theme';
 import { UnifiedAdminShell } from '@/components/admin/shell/UnifiedAdminShell';
 import { AdminUserProvider } from '@/services/auth/admin-user-context';
-import { syncUser, getTenantName, getCurrentUser, getTenantType, getAuthContext } from '@/services/auth';
+import { syncUser, getTenantName, getCurrentUserTimed, getTenantType, getAuthContext } from '@/services/auth';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { ALL_FONTS, type FontEntry } from '@/services/branding/font-registry';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const [supabaseUserId, user, tenantName, tenantType] = await Promise.all([
     syncUser(),
-    getCurrentUser(),
+    getCurrentUserTimed('app/admin/layout.tsx'),
     getTenantName(),
     getTenantType(),
   ])

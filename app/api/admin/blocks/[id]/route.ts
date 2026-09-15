@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { updateBlock, type BlockUpdate } from '@/services/prompt/blocks'
 import { resolveTenantForPromptSet } from '@/services/prompt'
@@ -34,7 +34,7 @@ export async function PATCH(
     .eq('id', id)
     .maybeSingle()
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/admin/blocks/[id]/route.ts')
   const tenantResult = await resolveTenantForPromptSet(
     (blockRow?.prompt_set_id as string | null) ?? null,
     authCtx,

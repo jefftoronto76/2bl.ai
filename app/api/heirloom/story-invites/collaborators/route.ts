@@ -15,13 +15,13 @@
 // getCurrentUserId() for the Supabase user id ownership checks compare
 // against.
 
-import { getCurrentUser, getCurrentUserId } from '@/services/auth'
+import { getCurrentUserTimed, getCurrentUserId } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import { revokeStoryCollaborator } from '@/services/crm/story-invites'
 
 export async function DELETE(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/heirloom/story-invites/collaborators/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

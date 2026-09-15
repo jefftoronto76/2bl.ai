@@ -1,4 +1,4 @@
-import { getAuthContext, getCurrentUser } from '@/services/auth'
+import { getAuthContext, getCurrentUserTimed } from '@/services/auth'
 import { createBlock } from '@/services/prompt/blocks'
 import { resolveTenantForPromptSet } from '@/services/prompt'
 import { logEvent, AuditAction } from '@/services/audit'
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Body is required' }, { status: 400 })
   }
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/admin/blocks/save/route.ts')
   const tenantResult = await resolveTenantForPromptSet(body.prompt_set_id ?? null, authCtx, user?.isPlatformAdmin === true)
   if (!tenantResult.ok) {
     return Response.json({ error: tenantResult.error }, { status: tenantResult.status })

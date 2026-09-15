@@ -32,7 +32,7 @@
 // no reason to make the member click a doomed retry badge first when a real
 // upload can just happen immediately.
 
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMediaItem, findDuplicateMediaItem, isMediaAuditEnabled, logMediaEvent, updateMediaItem, type MediaItemType } from '@/services/media'
@@ -108,7 +108,7 @@ function classifyMimeType(mimeType: string): MediaItemType | null {
 }
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/media/upload-url/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

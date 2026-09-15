@@ -15,7 +15,7 @@
 //
 // Gated by ENABLE_MEDIA_AUDIT_LOGGING (see services/media/index.ts).
 
-import { getCurrentUser, getTenantFromRequest } from '@/services/auth'
+import { getCurrentUserTimed, getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { AuditAction } from '@/services/audit/types'
 import { isMediaAuditEnabled, logMediaEvent } from '@/services/media'
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true })
   }
 
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/events/media/route.ts')
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

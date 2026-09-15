@@ -19,7 +19,7 @@ const { authHolder, syncMemberMock, updateClerkUserFirstNameMock } = vi.hoisted(
 }))
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: async () => authHolder.user,
+  getCurrentUserTimed: async () => authHolder.user,
   syncMember: (input: Record<string, unknown>) => syncMemberMock(input),
   HEIRLOOM_TENANT_ID: 'tenant-heirloom',
   getTenantFromRequest: async () => 'tenant-heirloom',

@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 
 // GET /api/platform/prompt-types?tenant_id=<id>
@@ -27,7 +27,7 @@ function sortPromptTypes(types: PromptType[]): PromptType[] {
 }
 
 export async function GET(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentUserTimed('app/api/platform/prompt-types/route.ts')
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!user.isPlatformAdmin) return Response.json({ error: 'Forbidden' }, { status: 403 })
 

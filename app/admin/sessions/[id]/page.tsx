@@ -1,7 +1,7 @@
 import { Anchor, Card, Stack, Text } from '@mantine/core'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getAuthContext } from '@/services/auth'
-import { getCurrentUser } from '@/services/auth'
+import { getCurrentUserTimed } from '@/services/auth'
 import {
   deriveSessionStatus,
   type SessionStatusThresholds,
@@ -117,7 +117,7 @@ export default async function SessionPage({
   // Debug pills are platform_admin-only (resolved server-side from users.role
   // via the auth boundary). The page itself stays accessible to tenant admins —
   // only the marker debug view is gated.
-  const currentUser = await getCurrentUser()
+  const currentUser = await getCurrentUserTimed('app/admin/sessions/[id]/page.tsx')
   const showDebugMarkers = currentUser?.isPlatformAdmin === true
 
   const supabase = getAdminClient()
