@@ -168,12 +168,78 @@ export interface PromptSelection {
   fallback: boolean
 }
 
+/** A block that survived the runner, in prompt order. `body` is exactly what was joined into `system`. */
+export interface PromptBlock {
+  id: string
+  body: string
+}
+
 export interface ResolvedTurnPrompt {
   /** The finished system prompt — what runChatStream receives. */
   system: string
+  /**
+   * The blocks `system` was joined from. Exposed for the Phase 2 shadow
+   * comparison (per-segment verdicts) and never logged — the decision
+   * record carries hashes and lengths only.
+   */
+  blocks: PromptBlock[]
   selection: PromptSelection
   injections: InjectionDecision[]
   budget: BudgetReport
   isFirstTurn: boolean
   turnIndex: number
+}
+
+// ── Shadow comparison (Phase 2) ─────────────────────────────────────────
+//
+// What the shadow run records about "does resolveTurnPrompt's output match
+// what streamChat actually sent?" — shaped so a mismatch can be triaged from
+// the audit row alone, without re-deriving anything, and without the row
+// ever carrying prompt text. Produced by shadow.ts's compareAssembly.
+
+export type SegmentVerdict = 'match' | 'both-absent' | 'legacy-only' | 'shadow-only' | 'differs'
+
+export interface SegmentSide {
+  present: boolean
+  length: number
+  /** contentHash() of the segment — null when absent. */
+  hash: string | null
+}
+
+export interface SegmentComparison {
+  /** Provider id / legacy segment name — the same six keys on both sides. */
+  id: string
+  verdict: SegmentVerdict
+  legacy: SegmentSide
+  shadow: SegmentSide & { status?: InjectionStatus }
+}
+
+export type ComparisonClassification =
+  | 'identical'
+  | 'whitespace-only'
+  | 'segment-content'
+  | 'segment-presence'
+  | 'ordering'
+  | 'unknown'
+
+export interface ShadowComparison {
+  /** Byte equality of the two whole system strings. The Phase 2 parity signal. */
+  match: boolean
+  legacyLength: number
+  shadowLength: number
+  /** Index of the first differing character, or null when identical. */
+  firstDiffIndex: number | null
+  /** True when the strings are equal after collapsing whitespace runs — a formatting drift, not a content one. */
+  whitespaceOnly: boolean
+  legacyHash: string | null
+  shadowHash: string | null
+  /**
+   * Whether the shadow's own rebuild of the legacy segments joins to the
+   * legacy string streamChat actually used. False means the per-segment
+   * verdicts below are not to be trusted for that turn.
+   */
+  legacyReconstructionMatch: boolean
+  segments: SegmentComparison[]
+  diffSegmentIds: string[]
+  classification: ComparisonClassification
 }

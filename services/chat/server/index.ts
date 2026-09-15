@@ -14,6 +14,7 @@ import { getBookingCardSection } from './booking'
 import { getMemberContext } from './member-context'
 import { getSessionContext } from './session-context'
 import { resolveMediaContext, stripMediaMarkers } from './media-context'
+import { runShadowTurn } from './turn-context/shadow'
 import { handleSessionFinish } from '@/services/crm/session'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
@@ -223,6 +224,34 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
 
   const messagesForModel = stripMediaMarkers(conversationMessages)
 
+  // Traffic Cop Phase 2 — shadow mode (Design Handovers/
+  // traffic_cop_design_2026-09-05.md §7). The traffic cop resolves the same
+  // turn in parallel and records whether its output matches `systemPrompt`
+  // byte-for-byte; `systemPrompt` above is still the only string the model
+  // ever receives. Started here, after the real assembly, so it runs
+  // concurrently with the model stream rather than ahead of it; settled in
+  // onFinish below, after the visitor already has the full reply.
+  // runShadowTurn never rejects and caps itself at SHADOW_TIMEOUT_MS — the
+  // .catch is belt-and-braces so a future edit to it still cannot reach
+  // this turn.
+  const shadow = runShadowTurn({
+    request: {
+      tenantId,
+      sessionId,
+      memberId,
+      messages: req.messages,
+      mode: req.mode ?? null,
+      mediaItems: req.mediaItems ?? null,
+      correlationId: null,
+    },
+    legacySystem: systemPrompt,
+    legacyInputs: { basePrompt, bookingSection, memberContext, sessionContext, mediaContext, questionMode },
+    ctx: { tenantId, sessionId, memberId, correlationId: null },
+  }).catch((err: unknown) => {
+    console.error('[chat] shadow run rejected — contract violation, real turn unaffected:', err)
+    return null
+  })
+
   try {
     return await runChatStream({
       config,
@@ -233,8 +262,13 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
         // Normal completion — the poll never had anything to catch, so it's
         // still running and needs to be told to stop.
         stopPolling()
-        if (!tenantId) return
-        await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText, memberId })
+        if (tenantId) {
+          await handleSessionFinish({ sessionId, tenantId, text, usage, visitorText: lastVisitorText, memberId })
+        }
+        // Settle the shadow run last: the stream has already closed and
+        // session persistence is done, so this can only wait (≤ its own
+        // cap), never delay anything the visitor sees, and never throw.
+        await shadow
       },
     })
   } catch (error) {

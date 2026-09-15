@@ -31,7 +31,10 @@ const mockBooking = vi.fn<(t: string) => Promise<string>>()
 vi.mock('../booking', () => ({ getBookingCardSection: (t: string) => mockBooking(t) }))
 
 const mockMember = vi.fn<(...a: unknown[]) => Promise<string | null>>()
-vi.mock('../member-context', () => ({ getMemberContext: (...a: unknown[]) => mockMember(...a) }))
+vi.mock('../member-context', () => ({
+  MARKER_INSTRUCTION_LEAD: 'On your first reply, silently append',
+  getMemberContext: (...a: unknown[]) => mockMember(...a),
+}))
 
 const mockSession = vi.fn<(...a: unknown[]) => Promise<string | null>>()
 vi.mock('../session-context', () => ({ getSessionContext: (...a: unknown[]) => mockSession(...a) }))
@@ -143,6 +146,7 @@ describe('resolveTurnPrompt — byte parity with streamChat assembly', () => {
     )
     expect(resolved.system).toBe(`${LIVE_PROMPT}\n\nMEMBER CONTEXT:\n${MEMBER_FIRST}`)
     expect(resolved.isFirstTurn).toBe(true)
+    expect(resolved.injections.find(d => d.id === 'member-context')?.meta).toEqual({ firstTurnMarkerInstruction: true })
     expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
   })
 
@@ -160,6 +164,9 @@ describe('resolveTurnPrompt — byte parity with streamChat assembly', () => {
     expect(resolved.system).toBe(`${LIVE_PROMPT}\n\nMEMBER CONTEXT:\n${MEMBER_LATER}\n\n${STORY}\n\n${MEDIA}`)
     expect(resolved.isFirstTurn).toBe(false)
     expect(resolved.turnIndex).toBe(1)
+    // The exposed blocks are exactly what `system` was joined from, in order.
+    expect(resolved.blocks.map(b => b.id)).toEqual(['base-prompt', 'member-context', 'session-context', 'media'])
+    expect(resolved.blocks.map(b => b.body).join('\n\n')).toBe(resolved.system)
     expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', false)
     expect(mockSession).toHaveBeenCalledWith('session-1', 'tenant-1', false)
     expect(mockMedia).toHaveBeenCalledWith(mediaItems, 'tenant-1', 'member-1')

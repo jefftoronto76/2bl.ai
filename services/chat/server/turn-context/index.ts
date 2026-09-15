@@ -32,8 +32,12 @@ export type {
   ContextProvider,
   InjectionDecision,
   InjectionStatus,
+  PromptBlock,
   PromptSelection,
   ResolvedTurnPrompt,
+  SegmentComparison,
+  SegmentVerdict,
+  ShadowComparison,
   TurnContextInput,
   TurnContextRequest,
 } from './types'
@@ -117,6 +121,7 @@ export async function resolveTurnPrompt(
 
   return {
     system: assembleSystem(blocks),
+    blocks: blocks.map(b => ({ id: b.id, body: b.body })),
     selection,
     injections: run.injections,
     budget: run.budget,

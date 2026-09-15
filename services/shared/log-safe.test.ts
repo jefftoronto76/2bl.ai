@@ -1,7 +1,7 @@
 // services/shared/log-safe.test.ts
 
 import { describe, it, expect } from 'vitest'
-import { logSafeIdentity, identityHash } from './log-safe'
+import { logSafeIdentity, identityHash, contentHash } from './log-safe'
 
 describe('logSafeIdentity', () => {
   it('marks null as absent', () => {
@@ -70,5 +70,32 @@ describe('identityHash', () => {
 
   it('produces different hashes for different values', () => {
     expect(identityHash('a@example.com')).not.toBe(identityHash('b@example.com'))
+  })
+})
+
+describe('contentHash', () => {
+  it('returns an 8-hex-char hash of the value exactly as given', () => {
+    expect(contentHash('hello')).toMatch(/^[0-9a-f]{8}$/)
+  })
+
+  it('is deterministic', () => {
+    expect(contentHash('same')).toBe(contentHash('same'))
+  })
+
+  it('does NOT normalize — whitespace and case changes produce different hashes', () => {
+    expect(contentHash('Hello')).not.toBe(contentHash('hello'))
+    expect(contentHash('a b')).not.toBe(contentHash('a  b'))
+    expect(contentHash(' x')).not.toBe(contentHash('x'))
+  })
+
+  it('hashes an empty string (present-but-empty) but returns null for absent', () => {
+    expect(contentHash('')).toMatch(/^[0-9a-f]{8}$/)
+    expect(contentHash(null)).toBeNull()
+    expect(contentHash(undefined)).toBeNull()
+  })
+
+  it('agrees with identityHash only when the value is already trimmed and lowercased', () => {
+    expect(contentHash('abc')).toBe(identityHash('abc'))
+    expect(contentHash('ABC')).not.toBe(identityHash('ABC'))
   })
 })

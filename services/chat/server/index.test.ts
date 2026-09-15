@@ -57,8 +57,17 @@ vi.mock('./media-context', () => ({
   resolveMediaContext: vi.fn(async () => ''),
   stripMediaMarkers: vi.fn((messages: unknown) => messages),
 }))
+const mockHandleSessionFinish = vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined)
 vi.mock('@/services/crm/session', () => ({
-  handleSessionFinish: vi.fn(async () => undefined),
+  handleSessionFinish: (...args: unknown[]) => mockHandleSessionFinish(...args),
+}))
+
+// Traffic Cop Phase 2 shadow. Default: resolves immediately. Individual
+// tests swap in a never-settling or rejecting promise.
+type ShadowParams = import('./turn-context/shadow').ShadowTurnParams
+const mockRunShadowTurn = vi.fn<(p: ShadowParams) => Promise<unknown>>(async () => ({ ok: true }))
+vi.mock('./turn-context/shadow', () => ({
+  runShadowTurn: (p: ShadowParams) => mockRunShadowTurn(p),
 }))
 
 // A stand-in for streamText/runChatStream that behaves like the real thing
@@ -104,6 +113,8 @@ beforeEach(() => {
   mockMaybeSingle.mockResolvedValue({ data: null })
   mockRunChatStream.mockClear()
   mockGetMemberContext.mockClear()
+  mockHandleSessionFinish.mockClear()
+  mockRunShadowTurn.mockReset().mockResolvedValue({ ok: true })
   resolveRunChatStream = null
   runChatStreamOnFinish = null
 })
@@ -262,5 +273,143 @@ describe('streamChat — isFirstTurn computation for MEMBER CONTEXT', () => {
     await responsePromise
 
     expect(mockGetMemberContext).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
+  })
+})
+
+describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
+  const mockRunChatStreamSystem = () =>
+    (mockRunChatStream.mock.calls[0][0] as unknown as { system: string }).system
+
+  it('the model still receives the legacy assembly, and the shadow receives that exact string plus the raw segment inputs', async () => {
+    mockGetMemberContext.mockResolvedValue("Member's name is Sarah.")
+    const responsePromise = streamChat({
+      messages: [{ role: 'user', content: 'Hi' }],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+      mode: 'question',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    const legacy = "system prompt\n\nMEMBER CONTEXT:\nMember's name is Sarah.\n\nquestion mode context"
+    expect(mockRunChatStreamSystem()).toBe(legacy)
+
+    expect(mockRunShadowTurn).toHaveBeenCalledTimes(1)
+    const params = mockRunShadowTurn.mock.calls[0][0]
+    expect(params.legacySystem).toBe(legacy)
+    expect(params.legacyInputs).toEqual({
+      basePrompt: 'system prompt',
+      bookingSection: '',
+      memberContext: "Member's name is Sarah.",
+      sessionContext: null,
+      mediaContext: '',
+      questionMode: true,
+    })
+    expect(params.request).toEqual({
+      tenantId: 'tenant-1',
+      sessionId: 'session-1',
+      memberId: 'member-1',
+      messages: [{ role: 'user', content: 'Hi' }],
+      mode: 'question',
+      mediaItems: null,
+      correlationId: null,
+    })
+    expect(params.ctx).toEqual({ tenantId: 'tenant-1', sessionId: 'session-1', memberId: 'member-1', correlationId: null })
+  })
+
+  it('a shadow that never settles does not delay the Response', async () => {
+    mockRunShadowTurn.mockImplementation(() => new Promise(() => {}))
+    const responsePromise = streamChat({
+      messages: [{ role: 'user', content: 'Hi' }],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mockRunShadowTurn).toHaveBeenCalledTimes(1)
+    resolveRunChatStream?.(new Response('ok'))
+
+    const response = await responsePromise
+    expect(response.status).toBe(200)
+  })
+
+  it('a shadow that rejects (contract violation) affects neither the Response nor onFinish', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockRunShadowTurn.mockRejectedValue(new Error('shadow bug'))
+    const responsePromise = streamChat({
+      messages: [{ role: 'user', content: 'Hi' }],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    const response = await responsePromise
+    expect(response.status).toBe(200)
+
+    await expect(runChatStreamOnFinish?.({ text: 'reply', usage: null })).resolves.toBeUndefined()
+    expect(mockHandleSessionFinish).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('onFinish persists the session first, then settles the shadow', async () => {
+    let releaseShadow: (v: unknown) => void = () => {}
+    mockRunShadowTurn.mockImplementation(() => new Promise(r => { releaseShadow = r }))
+    const responsePromise = streamChat({
+      messages: [{ role: 'user', content: 'Hi' }],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    let finished = false
+    const onFinishPromise = runChatStreamOnFinish?.({ text: 'reply', usage: null })?.then(() => { finished = true })
+    await Promise.resolve(); await Promise.resolve()
+    expect(mockHandleSessionFinish).toHaveBeenCalledTimes(1)
+    expect(finished).toBe(false) // still waiting on the shadow — after persistence, not before
+
+    releaseShadow({ ok: true })
+    await onFinishPromise
+    expect(finished).toBe(true)
+  })
+
+  it('still settles the shadow in onFinish when there is no tenant (no session persistence)', async () => {
+    let releaseShadow: (v: unknown) => void = () => {}
+    mockRunShadowTurn.mockImplementation(() => new Promise(r => { releaseShadow = r }))
+    const responsePromise = streamChat({ messages: [], tenant: { tenantId: null }, sessionId: null })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+
+    let finished = false
+    const onFinishPromise = runChatStreamOnFinish?.({ text: 'reply', usage: null })?.then(() => { finished = true })
+    await Promise.resolve(); await Promise.resolve()
+    expect(mockHandleSessionFinish).not.toHaveBeenCalled()
+    expect(finished).toBe(false)
+    releaseShadow({ ok: true })
+    await onFinishPromise
+    expect(finished).toBe(true)
+  })
+
+  it('is invoked exactly once per turn, after the real assembly, with the same isFirstTurn-relevant messages', async () => {
+    const responsePromise = streamChat({
+      messages: [
+        { role: 'user', content: 'Hi' },
+        { role: 'assistant', content: 'Hello!' },
+        { role: 'user', content: 'More' },
+      ],
+      tenant: { tenantId: 'tenant-1' },
+      sessionId: 'session-1',
+      memberId: 'member-1',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    resolveRunChatStream?.(new Response('ok'))
+    await responsePromise
+    expect(mockRunShadowTurn).toHaveBeenCalledTimes(1)
+    expect(mockRunShadowTurn.mock.calls[0][0].request.messages).toHaveLength(3)
+    // The shadow call is made with the assembled string in hand — i.e. after the legacy assembly.
+    expect(mockRunShadowTurn.mock.calls[0][0].legacySystem).toBe(mockRunChatStreamSystem())
   })
 })

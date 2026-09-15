@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AuditAction } from '@/services/audit/types'
-import type { ResolvedTurnPrompt } from './types'
+import type { ResolvedTurnPrompt, ShadowComparison } from './types'
 
 const mockLogEvent = vi.fn()
 vi.mock('@/services/audit', () => ({ logEvent: (...args: unknown[]) => mockLogEvent(...args) }))
@@ -12,6 +12,10 @@ const PII = { name: 'Sarah Chen', email: 'sarah@example.com', phone: '+155512345
 
 const resolved: ResolvedTurnPrompt = {
   system: `BASE\n\nMEMBER CONTEXT:\nMember's name is ${PII.name}. Email: ${PII.email}. Phone: ${PII.phone}. ${PII.primer}`,
+  blocks: [
+    { id: 'base-prompt', body: 'BASE' },
+    { id: 'member-context', body: `MEMBER CONTEXT:\nMember's name is ${PII.name}. Email: ${PII.email}. Phone: ${PII.phone}. ${PII.primer}` },
+  ],
   selection: { slotKey: 'base', ruleId: 'default-slot', compiledPromptId: 'cp-1', version: 23, fallback: false },
   injections: [
     { id: 'base-prompt', order: 0, priority: 0, status: 'injected', estTokens: 2, ms: 3, meta: { compiledPromptId: 'cp-1', version: 23, fallback: false } },
@@ -63,6 +67,23 @@ describe('recordTurnContext', () => {
 
   it('omits parity when not supplied', () => {
     expect(buildTurnContextMetadata(resolved, { shadow: false })).not.toHaveProperty('parity')
+  })
+
+  it('includes the shadow comparison when supplied, and omits it otherwise', () => {
+    const comparison: ShadowComparison = {
+      match: false, legacyLength: 10, shadowLength: 12, firstDiffIndex: 4, whitespaceOnly: false,
+      legacyHash: 'aaaaaaaa', shadowHash: 'bbbbbbbb', legacyReconstructionMatch: true,
+      segments: [{ id: 'booking', verdict: 'shadow-only', legacy: { present: false, length: 0, hash: null }, shadow: { present: true, length: 2, hash: 'cccccccc', status: 'injected' } }],
+      diffSegmentIds: ['booking'], classification: 'segment-presence',
+    }
+    expect(buildTurnContextMetadata(resolved, { shadow: true, parity: false, comparison })).toMatchObject({ comparison })
+    expect(buildTurnContextMetadata(resolved, { shadow: true, parity: true })).not.toHaveProperty('comparison')
+  })
+
+  it('never includes block bodies even though ResolvedTurnPrompt now carries them', () => {
+    const serialized = JSON.stringify(buildTurnContextMetadata(resolved, { shadow: true }))
+    expect(serialized).not.toContain('BASE')
+    for (const value of Object.values(PII)) expect(serialized).not.toContain(value)
   })
 
   it('never includes block text or raw identity values — only ids, statuses, counts, timings', () => {
