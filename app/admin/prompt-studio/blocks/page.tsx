@@ -87,6 +87,17 @@ export default async function BlocksPage({
   const sets = await getPromptSets(tenantId)
   const activeSet = resolveActiveSet(sets, requestedSet ?? null)
 
+  // A specific ?set= was requested but resolveActiveSet couldn't find it in
+  // this tenant's list — either the id doesn't exist, or it belongs to a
+  // tenant this request isn't scoped to (resolveTenantForPromptSet already
+  // rejected outright the cases it can detect; this catches the rest, e.g. a
+  // stale/typo'd id). Say so explicitly rather than falling through to the
+  // no-sets-at-all branch below, which would silently show the default
+  // slot's blocks under a URL that still names the missing set.
+  if (requestedSet && !activeSet) {
+    return <BlocksFallback message="This prompt set could not be found." />
+  }
+
   // No prompt_sets rows for this tenant at all → activeSet is null and the
   // Blocks query below falls back to the default slot (prompt_set_id IS
   // NULL). getPromptSets' view join can't help here (there's no prompt_sets
