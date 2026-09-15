@@ -649,10 +649,14 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   timeouts are implemented but deliberately unset — today's resolvers have no
   deadline, so any default would create shadow mismatches; the shadow data
   sets the number. (2) `System Docs/Database Schema.md`'s `prompt_types` row
-  still lists a `tenant_id` column and a `(tenant_id, key)` unique constraint
-  that `DB_CHANGELOG.md`'s 2026-06-26 entry says were dropped in favour of
-  `prompt_type_tenants`; the Phase 4 slot-aware read depends on which is true
-  — reconcile the schema doc against Studio before Phase 4. (An earlier
+  listed a `tenant_id` column, an `is_default` column, a `(tenant_id, key)`
+  unique constraint and a tenant index that `DB_CHANGELOG.md`'s 2026-06-26
+  entry says were dropped — **resolved 2026-09-15**: confirmed against the
+  live table (eight columns, primary key only) and the row corrected. Two
+  consequences for the Phase 4 slot-aware read: a slot key resolves to a
+  type via `prompt_type_tenants`/`is_platform`, not a tenant column, and
+  `key` has no DB-level uniqueness, so the read must not assume one row per
+  key. (An earlier
   version of this entry noted a nested duplicate copy of the design doc at
   `Design Handovers/Design Handovers/…` on main; PR #471 removed it. The
   design doc itself is on branch `claude/traffic-cop-prompt-context-czvj9i`,
