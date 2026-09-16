@@ -8,6 +8,7 @@
 import { streamText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { getAdminClient } from '@/services/auth/supabase-admin'
+import type { StreamErrorCode } from './stream-utils'
 import type { ChatMessage, ModelConfig, ModelProvider, TokenUsage } from './types'
 
 // Fallback model defaults. These are the ONLY hardcoded model IDs in the
@@ -102,6 +103,51 @@ export function getModelInstance(provider: ModelProvider, modelId: string) {
   }
 }
 
+/**
+ * Classifies a mid-stream failure into the bounded `StreamErrorCode`
+ * vocabulary, for `toDataStreamResponse`'s `getErrorMessage`.
+ *
+ * Without this the SDK uses its own default, `() => ''`, which "masks error
+ * messages for safety" by emitting a literal `3:""`. Safe, but it tells the
+ * client only that *something* failed — a mid-stream rate-limit, an expired
+ * key, and a genuine provider fault were indistinguishable, so every one of
+ * them surfaced as the same generic interrupted-stream state.
+ *
+ * The fix is not to send the raw message instead. A provider error can carry a
+ * vendor name, a URL, an internal path, or (once tools exist) the arguments a
+ * tool was called with, and none of that belongs in a browser. So this maps to
+ * a fixed vocabulary — the `sanitizeFailureReason` pattern from
+ * `services/media/errorCopy.ts:9-20`, for the same reason stated there: a
+ * bounded set is safe by construction, whereas scrubbing an open-ended string
+ * is only as complete as the patterns someone remembered to write.
+ *
+ * Matching is on `error.name` rather than `instanceof`. The AI SDK's error
+ * classes are re-exported through several packages (`ai`, `@ai-sdk/provider`,
+ * and each provider's own nested copy), so an `instanceof` check can miss a
+ * genuine match when two copies of a class are loaded — the name is stable
+ * across all of them.
+ *
+ * Unrecognised errors fall through to `'upstream_error'` rather than being
+ * guessed at. That is deliberate: a wrong-but-specific code is worse than an
+ * honest generic one.
+ */
+export function describeStreamError(error: unknown): StreamErrorCode {
+  if (typeof error !== 'object' || error === null) return 'upstream_error'
+
+  const { name, statusCode } = error as { name?: unknown; statusCode?: unknown }
+
+  if (name === 'AbortError') return 'aborted'
+  if (name === 'AI_NoSuchToolError') return 'unknown_tool'
+  if (name === 'AI_InvalidToolArgumentsError') return 'invalid_tool_arguments'
+
+  if (name === 'AI_APICallError' && typeof statusCode === 'number') {
+    if (statusCode === 429) return 'rate_limited'
+    if (statusCode === 401 || statusCode === 403) return 'auth_error'
+  }
+
+  return 'upstream_error'
+}
+
 export interface RunChatStreamParams {
   config: ModelConfig
   system: string
@@ -143,5 +189,10 @@ export async function runChatStream(params: RunChatStreamParams): Promise<Respon
         }
       : undefined,
   })
-  return result.toDataStreamResponse()
+  // `getErrorMessage` replaces the SDK's default `() => ''` masking, so an
+  // error that happens after the 200 has been committed reaches the client as
+  // a classified `3:"<code>"` instead of an uninformative `3:""`. See
+  // describeStreamError above for why it is a fixed vocabulary and not the
+  // raw message.
+  return result.toDataStreamResponse({ getErrorMessage: describeStreamError })
 }
