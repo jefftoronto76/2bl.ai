@@ -1,8 +1,18 @@
 # Design — generic tool calling for the chat service
 
-**Status:** Investigation + design. **No code written.** Nothing here is
-scheduled to be built — see §7.3.
-**Date:** 2026-09-15
+**Status:** Revision 2 — design, plus one verification actually run.
+**Date:** 2026-09-15; revised 2026-09-16.
+
+**What changed in revision 2.** Two things, and only one of them is a technical
+finding:
+1. **§9 row 1 is closed, passing.** The provider-version risk — the one open
+   item that could have invalidated §2 and §3 — was probed against a live
+   preview deployment on 2026-09-16 and came back clean. §0.3's F1 finding was
+   reproduced live in the same run, and a cost figure in §3.6 is now measured
+   rather than estimated.
+2. **Jeff has decided to build Memory and Story as real tool use cases now**,
+   ahead of the eval loop. That supersedes §7.3's "build nothing yet." It is a
+   sequencing decision, not a consequence of the probe — recorded in §7.4.
 **Pattern precedents:** `Design Handovers/traffic_cop_design_2026-09-05.md`,
 `Design Handovers/identity_reconciliation_design_2026-08-16.md`
 **Builds on:** `System Docs/Utilities/Chat Server.md` (turn-context / Traffic
@@ -118,6 +128,20 @@ onFinish: async ({ text, steps, usage }) => {
 **This is a gate, not a follow-up.** It must land in the same change as the
 first `maxSteps > 1` call, or the first tool ships a silent regression in
 contact capture. §7.2 sequences it.
+
+> **Confirmed live, 2026-09-16 (rev 2).** This was originally derived by reading
+> the SDK source. It has now been reproduced against `claude-sonnet-4-6` on a
+> preview deployment (§9 row 1). A two-step tool turn returned:
+>
+> ```
+> stepTexts:    ["I'll fetch the system status token right away!",
+>                "The system status token is **PROBE_OK**."]
+> onFinish text: "The system status token is **PROBE_OK**."
+> ```
+>
+> Step 1's prose is absent from what `onFinish` resolves. Had it carried a
+> `[NAME:]` marker, `handleSessionFinish` would never have seen it. The finding
+> is no longer inferred — it is observed, in production-shaped traffic.
 
 ### 0.4 Every tool-layer failure is a visitor-visible chat error today
 
@@ -358,9 +382,12 @@ tool call" — and that remains the right call. **A tool would buy nothing there
 
 A tool earns its cost only when the model is *blocked* without the answer: a
 lookup it must read before replying, a computation, an availability check, a
-write whose success or failure changes what it should say next. No current
-feature is in that shape, which is precisely why §7.3 recommends building
-nothing yet.
+write whose success or failure changes what it should say next.
+
+At the time of writing, no shipped feature was in that shape, which is why §7.3
+recommended building nothing yet. **That is superseded: Memory and Story are now
+confirmed use cases (§7.4).** The test above does not change — it is what each of
+their tool shapes still has to be argued against, one at a time.
 
 ### 3.2 The `ToolDefinition` contract
 
@@ -449,7 +476,10 @@ Two ordering rules, both stated so they are decisions and not accidents:
   available this turn," not to a failed chat.
 - **An empty resolved set means `tools` is omitted entirely**, not passed as
   `{}`. This keeps the request byte-identical to today's for every tenant with
-  no tools assigned — which, at ship time, is all of them.
+  no tools assigned — which, at ship time, is all of them. Rev 2 puts a price on
+  this: attaching even one trivial tool costs ~620–700 prompt tokens per model
+  call (§3.6), so this rule is worth real money on every turn of every tenant
+  that has no tools, not just tidiness.
 
 `listToolKeysForTenant` is one indexed read and is a natural sixth entry in
 `streamChat`'s existing `Promise.all` (`index.ts:182`), so it costs no
@@ -504,6 +534,29 @@ What it costs, against `CLAUDE.md`'s Performance Is a Feature targets:
 | First token < 1s | **Unaffected when the model answers directly.** A turn that opens with a tool call delays the *visible* prose by the tool's latency plus a second model round trip. Measure before promising. |
 | Anthropic cost per session | **Up to 2× the model calls on a tool turn**, and the second call re-sends the whole conversation plus the tool result. Real, and the reason `maxSteps` is 2 rather than 5. |
 | Per-tenant rate limiting | `rateLimitRequestsPerHour` is resolved by `resolveModelConfig` (`stream.ts:68`) and **not enforced anywhere today** — a pre-existing gap that multi-step makes more expensive, not one this design creates. Flagged, not in scope. |
+
+**Measured, 2026-09-16 (rev 2).** The §9 row 1 probe gives real numbers, and they
+are worse than the "up to 2× the model calls" framing above suggests:
+
+| Call | `promptTokens` |
+|---|---|
+| No tools attached (control) | **14** |
+| One trivial tool, forced `tool_choice`, 1 step | **714** |
+| One trivial tool, auto, step 1 | **631** |
+| One trivial tool, auto, step 2 | **717** |
+
+The prompts were near-identical in length, so **~620–700 prompt tokens is fixed
+overhead the moment any tool is attached** — most plausibly Anthropic's tool-use
+system-prompt injection plus the schema, though the probe did not confirm the
+mechanism and this design does not depend on which it is. It is charged **per
+step**, so a two-step turn pays it twice: the measured turn cost 1,348 prompt
+tokens in total.
+
+Two consequences. It sharpens §3.4's "omit `tools` entirely when the set is
+empty" from hygiene into a real per-turn saving. And it means the cost of a tool
+is dominated by *having* it available, not by the model choosing to call it — so
+the thing to keep small is the per-tenant assigned set, which is precisely what
+§4's `tool_tenants` gives an admin control over.
 
 ### 3.7 Abort, stop, and the 500 ms poll
 
@@ -780,7 +833,11 @@ before calling a tool silently drops that prose from `handleSessionFinish`'s
 marker scan, which is a breach of a `CLAUDE.md` non-negotiable. It ships in the
 same change or the tool does not ship.
 
-### 7.3 Recommendation: build nothing yet
+### 7.3 Recommendation: build nothing yet — SUPERSEDED, see §7.4
+
+> **Superseded 2026-09-16 by Jeff's decision (§7.4).** Left in full rather than
+> rewritten: the reasoning below is still the reasoning, and it is worth knowing
+> what the trade was when the call went the other way.
 
 `CLAUDE.md`: *"We do not abstract for hypotheticals."* The test it sets is
 whether a decision closes a real door — and not building this closes none. Every
@@ -801,13 +858,43 @@ about a survey response changes what the model says next) and anything that need
 a real lookup mid-conversation, which is where §8's product-knowledge work could
 eventually land.
 
+### 7.4 Decision (Jeff, 2026-09-16): build Memory and Story as real use cases now
+
+**This is a sequencing decision by Jeff, recorded as such — not a technical
+finding, and not a conclusion this document's analysis reached.** Nothing in §0
+through §6 changed to prompt it, and the §9 row 1 probe did not cause it; the
+probe closed a risk, it did not identify a use case.
+
+The decision: **Memory and Story are confirmed tool use cases and are to be
+built now, ahead of the eval loop.** §7.3's "file this and wait for a use case to
+arrive" is superseded — the use cases have been named rather than waited for, and
+the sequencing is deliberate.
+
+What that does and does not settle:
+
+- **It settles §11.1.** The answer is "build now," not "file and wait."
+- **It does not define the tool shapes.** What a Memory tool or a Story tool
+  actually takes, returns, and is called for is not specified anywhere in this
+  document, and is not assumed here. Each still has to be argued against §3.1's
+  test — *does the model need the result before it can keep talking?* — because
+  that test is what separates a tool from a marker, and §3.1 records that
+  Heirloom's existing memory auto-save is correctly a marker today. A confirmed
+  use case is not the same as a confirmed tool.
+- **It does not move the gates.** §7.1 (tool instructions in the prompt break
+  shadow parity until Traffic Cop Phase 3a) and §7.2 (the §0.3 fix ships with
+  the first `maxSteps > 1` call) are unchanged, and are now the binding
+  constraints on when the first tool can actually land.
+- **It does not settle §11.2–§11.6.** Those decisions are still open, and
+  §11.2 — server-executed tools only — is the one that most directly shapes what
+  a Memory or Story tool is allowed to be.
+
 ---
 
 ## 8. Risks and how each is held
 
 | Risk | Held by |
 |---|---|
-| `@ai-sdk/anthropic@0.0.39` throws on a 2026-model content block | §9 row 1 — one flagged preview probe before anything else; this is the gate |
+| ~~`@ai-sdk/anthropic@0.0.39` throws on a 2026-model content block~~ | **Closed 2026-09-16.** Probed against a live preview; the provider handles a `claude-sonnet-4-6` tool turn correctly. §9 row 1 |
 | A tool failure shows the visitor an error mid-turn (§0.4) | §3.5 — runner-owned never-reject wrapper + bounded reasons; not left to tool authors |
 | Contact-capture markers silently lost on multi-step turns (§0.3) | §7.2 — gated, ships in the same change |
 | Shadow parity destroyed, Phase 3a blocked (§0.5) | §7.1 — sequencing, tool instructions land after 3a |
@@ -826,13 +913,59 @@ eventually land.
 
 | Claim | Confidence | How to verify |
 |---|---|---|
-| `@ai-sdk/anthropic@0.0.39` handles a **tool** turn from `claude-sonnet-4-6` without throwing | **Low — the largest open risk.** The provider predates Claude 3.7/4; its stream transform throws on any unrecognized content-block or delta type (§1.3). Tool mapping itself is present and correct | One preview deploy, one trivial echo tool behind a flag, on a throwaway tenant. Do this **first** — a failure here invalidates §2 and §3 and turns the question into "which provider version," not "which design" |
+| ~~`@ai-sdk/anthropic@0.0.39` handles a **tool** turn from `claude-sonnet-4-6` without throwing~~ | **CONFIRMED PASSING — 2026-09-16.** Was the largest open risk; no longer open. See the run record below the table | Done. Preview deploy, trivial `ping` tool, four scenarios, triggered manually by Jeff |
 | Raising `maxSteps` does not break the abort path | Medium — `abortSignal` is forwarded to `execute`, but between-step abort is untested | Preview: Stop mid-tool-execution; check `chat_sessions.server_abort_confirmed_at` and whether an error chunk reaches the client |
 | First-token latency on a tool turn | Unmeasured | Preview, against the <1s target in `CLAUDE.md`; a tool turn's first *visible* token is after the tool runs |
-| Per-turn cost delta | Unmeasured | The §5.2 audit record's `steps` plus existing `persistTokenUsage` rows |
-| Every SDK claim in §1 and §2 | High — read from the published tarballs at the exact lockfile-resolved versions | `pnpm install`, re-read `node_modules/ai/dist/index.d.ts` and `node_modules/@ai-sdk/anthropic/dist/index.mjs` |
+| Per-turn cost delta **in real traffic** | Partly measured — §3.6 now has the controlled figure (~620–700 prompt tokens of fixed overhead per call, charged per step). What that costs against real conversations, with real prompts and a real assigned tool set, is still unmeasured | The §5.2 audit record's `steps` plus existing `persistTokenUsage` rows |
+| ~~Every SDK claim in §1 and §2~~ | **Resolved 2026-09-16.** `npm install` was run and every claim re-read from the installed tree, not the tarballs: `ai@3.4.33`, `@ai-sdk/anthropic@0.0.39`, `zod@3.25.76`, with §0.3's `fullStepText` line at `node_modules/ai/dist/index.mjs:4286` and the `tool-call-delta` mapping at `node_modules/@ai-sdk/anthropic/dist/index.mjs:440` | Done |
 | Whether `3:""` (empty masked error) is distinguishable from a real one by the current client | High — it is not; `useChatTurn.ts:123` tests `!== null`, not truthiness | Read `stream-utils.ts:42-49` with `useChatTurn.ts:114-125` |
 | Live `prompt_type_tenants` assignment counts (whether the union-read path has ever had more than the SBL rows) | Unknown | Jeff, Supabase Studio |
+
+### 9.1 Run record — §9 row 1, 2026-09-16
+
+A temporary route (`app/api/probe/tool-call`, since deleted, never merged to
+`main`) called `getModelInstance('anthropic', 'claude-sonnet-4-6')` — the real
+production resolver — on a Vercel preview deployment. Four scenarios, each fully
+caught. Triggered manually by Jeff. All four returned `ok: true`; no throw, no
+unrecognized content-block or delta error.
+
+| | Scenario | Result |
+|---|---|---|
+| S0 | no tools, text only (control) | `["text-delta","step-finish","finish"]`, `finishReason: "stop"` |
+| S1 | forced `tool_choice`, `maxSteps: 1` | `["tool-call","tool-result","step-finish","finish"]`, `finishReason: "tool-calls"`, `stepTexts: [""]` |
+| S2 | auto `tool_choice`, `maxSteps: 2` | `stepTypes: ["initial","tool-result"]`, `finishReason: "stop"`, tool executed and result fed back |
+| S3 | S2 drained via `toDataStreamResponse()` | part codes `0, 9, a, e, d` |
+
+S3's literal bytes, which confirm §2.2 exactly — `9:` and `a:` present, no
+`b:`/`c:` (tool-call streaming stays off per §2.4), and one `e:` per step:
+
+```
+0:"I"
+0:"'ll fetch"
+0:" the system status token right"
+0:" away!"
+9:{"toolCallId":"toolu_…","toolName":"ping","args":{"label":"probe"}}
+a:{"toolCallId":"toolu_…","result":{"token":"PROBE_OK","label":"probe"}}
+e:{"finishReason":"tool-calls","usage":{"promptTokens":631,"completionTokens":62},"isContinued":false}
+0:"The system status token is **"
+0:"PROBE_OK**."
+e:{"finishReason":"stop","usage":{"promptTokens":717,"completionTokens":14},"isContinued":false}
+d:{"finishReason":"stop","usage":{"promptTokens":1348,"completionTokens":76}}
+```
+
+Three things the probe settled beyond its own question:
+
+1. **§0.3's F1 reproduced live** — see the confirmation block in §0.3.
+2. **The ~620–700-token per-call tool overhead** — see §3.6.
+3. **A forced `tool_choice` returns no text at all** (S1's `stepTexts` is
+   `[""]`). That corroborates `vision-tool.ts:42-46` — "the model has no
+   free-text channel available to wrap or pad anything with" — from the
+   opposite direction, and is a further argument for §3.8 D: forcing a tool is
+   correct for a structured-output job and wrong inside a conversation.
+
+**What the probe did not test**, and is still open: abort across a step boundary
+(row 2 above), first-token latency on a tool turn (row 3), tenant-scoped tool
+resolution, and every failure path in §3.5 — the `ping` tool always succeeded.
 
 ---
 
@@ -873,7 +1006,12 @@ so rather than silently skipping them, per the preamble of `CLAUDE.md`.
 
 ## 11. Decisions needed from Jeff
 
-### 11.1 Build now, or file and wait?
+### 11.1 Build now, or file and wait? — ANSWERED 2026-09-16: build now
+> **Decided.** Jeff has confirmed Memory and Story as real use cases and
+> sequenced them ahead of the eval loop — §7.4. The middle option below (run the
+> probe only) was also taken, on 2026-09-16, and it passed: §9.1. Original text
+> kept for the record.
+
 §7.3 recommends **file and wait**, on `CLAUDE.md` grounds, and apply §3.1's test
 to the next few features instead. The counter-argument is that §9 row 1 — the
 provider-version risk — is worth retiring early, cheaply, because it could
@@ -959,11 +1097,13 @@ Flagged, not fixed — out of scope for this document, and Jeff's call (§11.6).
 
 ## Appendix B — unverifiable from the repo (stated, not guessed)
 
-- **How `claude-sonnet-4-6` actually behaves through `@ai-sdk/anthropic@0.0.39`
-  with tools.** Requires a live call. §9 row 1.
-- **Whether `node_modules` matches the lockfiles on Vercel.** Everything in §1
-  and §2 is read from npm tarballs at the lockfile-resolved versions, which is
-  strong evidence but not the deployed tree.
+- ~~**How `claude-sonnet-4-6` actually behaves through
+  `@ai-sdk/anthropic@0.0.39` with tools.**~~ **Resolved 2026-09-16** — it was a
+  live call in the end, on a preview deployment. §9.1.
+- ~~**Whether `node_modules` matches the lockfiles on Vercel.**~~ **Resolved
+  2026-09-16** on both halves: `npm install` locally confirmed the installed
+  tree matches the lockfiles, and the probe ran on a real Vercel preview build
+  of the same commit.
 - **Anthropic's current tool-use API surface** beyond what provider 0.0.39
   implements — a newer provider may map things this one cannot, which would
   change §1.4's "no upgrade needed" if §9 row 1 fails.
