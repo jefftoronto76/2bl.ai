@@ -1,5 +1,108 @@
 # DB Changelog
 
+## 2026-09-16 — Restore tenant ownership to `prompt_types`
+
+**Status: LIVE once Jeff runs this in Studio; PR ships code assuming it has.**
+Third act in one table's one-day history: created with a global
+`UNIQUE (tenant_id, key)` (2026-06-18) → `tenant_id`/`is_default` dropped for
+the `prompt_type_tenants` join-table model, no key uniqueness at all
+(2026-06-26) → a blunt, tenant-blind `UNIQUE (key)` added undocumented in
+Studio the morning of 2026-09-16 (no entry here — see the corresponding
+`System Docs/Known Gaps.md` note) → this entry, which restores `tenant_id`
+properly and replaces that blunt constraint with two ownership-scoped ones.
+
+### Add `tenant_id` back to `prompt_types`; replace `UNIQUE (key)` with two partial indexes
+
+**Type:** Schema change
+**Executed by:** Jeff in Supabase Studio
+
+**SQL to run:**
+
+```sql
+-- Drop this morning's blunt constraint — tenant_id + the two partial
+-- indexes below replace it; don't leave both in place.
+ALTER TABLE prompt_types DROP CONSTRAINT prompt_types_key_key;
+
+ALTER TABLE prompt_types
+  ADD COLUMN tenant_id uuid REFERENCES tenants(id);
+-- nullable — NULL = platform-shared, non-null = owned by that one tenant
+
+-- Platform-shared case: every row being compared has the same absent
+-- (NULL) tenant_id, so SQL's NULL <> NULL never defeats this one.
+CREATE UNIQUE INDEX prompt_types_platform_key_unique
+  ON prompt_types (key) WHERE tenant_id IS NULL;
+
+-- Tenant-owned case: tenant_id is never null on these rows, so the
+-- composite key behaves like an ordinary unique constraint — no
+-- null-comparison gotcha here either.
+CREATE UNIQUE INDEX prompt_types_tenant_key_unique
+  ON prompt_types (key, tenant_id) WHERE tenant_id IS NOT NULL;
+
+-- Deterministic backfill: every live row on 2026-09-16 had exactly one
+-- prompt_type_tenants assignee (confirmed by direct query before writing
+-- this migration — no row had zero or multiple), so a straight join sets
+-- the right value with no ambiguity. is_platform = true rows are left
+-- alone — tenant_id stays NULL, the column default.
+UPDATE prompt_types pt
+SET tenant_id = ptt.tenant_id
+FROM prompt_type_tenants ptt
+WHERE ptt.prompt_type_id = pt.id
+  AND pt.is_platform = false;
+```
+
+**Verification queries, run after the migration:**
+
+```sql
+-- Expect 0 — the invariant (is_platform implies null tenant_id) held by the
+-- backfill and is now enforced going forward by application code
+-- (app/api/admin/prompt-types/route.ts's find-or-create and promote paths).
+SELECT count(*) FROM prompt_types WHERE is_platform AND tenant_id IS NOT NULL;
+
+-- Expect: base/sales/onboarding/editor -> tenant_id NULL;
+-- another_test_type/test_july -> the tenant they were solely assigned to;
+-- blocked -> the Heirloom tenant.
+SELECT key, is_platform, tenant_id FROM prompt_types ORDER BY key;
+```
+
+**Purpose:** The 2026-06-26 refactor's principle — "a type is a definition,
+not a possession; tenant assignment lives in `prompt_type_tenants`" — was
+right for *visibility* but left no way to express *ownership*: who is allowed
+to mint or reuse a definition for a given `key`. Without it,
+`POST /api/admin/prompt-types`'s find-or-create took "the first existing row
+matching this key, regardless of owner" — any tenant could silently adopt
+(and, via the promote-to-platform path, even publish) another tenant's
+private prompt type. `tenant_id` restores ownership without reopening the
+2026-06-26 problem (a type still isn't duplicated per assignment — assignment
+still lives in `prompt_type_tenants`), and the two partial indexes enforce it
+at the DB layer instead of leaving it to application code alone.
+
+**Notes:**
+- **Supersedes two prior states, both now closed by this entry:** the
+  2026-06-26 drop of the original `UNIQUE (tenant_id, key)` (that
+  refactor's *lack* of ownership is exactly what this reintroduces, in a
+  form that survives the join-table model), and the undocumented
+  `prompt_types_key_key UNIQUE (key)` added in Studio the same morning as
+  this entry (blunt — no tenant awareness at all, would have collided the
+  moment two tenants picked the same slugified name).
+- `services/prompt/select.ts`'s `selectCompiledPrompt` needed **no code
+  change** — it already resolves a slot key to every matching id via
+  `.in()` rather than assuming one row, and tenant isolation there has
+  always lived in `compiled_prompts.tenant_id`, not `prompt_types` at all
+  — proven with an explicit test as part of this change (`services/prompt/select.test.ts`),
+  not just asserted.
+- `app/api/admin/prompt-types/route.ts`'s find-or-create was rewritten to
+  scope its lookup by `tenant_id` (platform request → `tenant_id IS NULL`
+  only; tenant-owned request → that tenant's own rows only) instead of
+  "first row for this key." Promoting a found row to platform now sets
+  `tenant_id: null` in the same update as `is_platform: true`, so the
+  invariant holds by construction going forward, not just at backfill time.
+- `System Docs/Database Schema.md`'s `prompt_types` and `prompt_type_tenants`
+  rows are updated to match; `System Docs/Known Gaps.md`'s prompt_types
+  entry (deliberately left stale as of the previous PR, pending this exact
+  change) is corrected in the same PR.
+
+---
+
 ## Undated (backfilled 2026-09-16) — `members.clerk_id` uniqueness moved from global to tenant-scoped
 
 ### Backfill — document `members_tenant_clerk_unique`, replacing `members_clerk_user_id_key`
