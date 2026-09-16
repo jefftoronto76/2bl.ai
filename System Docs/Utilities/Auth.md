@@ -21,6 +21,7 @@ Entry points (four, one per runtime context — the server barrel never exports
 | Entry point | Exports | Consumed by |
 |-------------|---------|-------------|
 | `services/auth/index.ts` (server) | `getSession()` (cheap JWT presence — `AppSession { providerUserId }`), `getCurrentUser()` (one provider backend call — normalized `AuthUser { providerUserId, email?, phone?, name?, imageUrl?, isPlatformAdmin }`), `requirePlatformAdmin()` (null unless signed-in admin), `deleteClerkUser(clerkUserId)` (irreversible — deletes the Clerk identity/sessions; caller writes the audit record and handles Supabase deletion separately), types, errors, + re-exports of the existing helpers below | API routes, server components/layouts |
+| `services/auth/get-current-user-timed.ts` (server) | `getCurrentUserTimed(path)` — added 2026-09-15, PR #482. Same-behavior wrapper over `getCurrentUser()` above: identical return value and error behavior, no caching, no retry, no fallback — measurement only. Fires one fire-and-forget `AuditAction.AUTH_CURRENT_USER_TIMING` (`'auth.current_user_timing'`) per call, `metadata: { path, durationMs, source: 'clerk_call' }` — `path` is a caller-supplied static file label, never request data, so this is PII-free by construction. ~40 call sites across `app/` (layouts, route handlers, page server components) were switched from bare `getCurrentUser()` to this wrapper the same day; see `System Docs/Known Gaps.md` for the "next step, once real data has accumulated" plan. | Same call sites as `getCurrentUser()` above — now the primary way most of them resolve identity |
 | `services/auth/client.ts` (`'use client'`) | `useAuthUser()` (mirrors the provider tri-state — `isSignedIn` stays `undefined` until `isLoaded`; **never coerce while loading**, chatStore's recovery gates depend on it), `useAuthActions()` (`signOut`, `openSignIn`, `openSignUp`, `openUserProfile` — appearance passed as opaque `AuthAppearance`) | Client components (chatStore, ChatHeader, GateView, LandingNav, MessageList, MagicLinkCard, prompt-builder) |
 | `services/auth/ui.tsx` (no directive — pure re-exports preserve the provider's SSR boundary markers) | `AuthProvider` (root-layout mount, stays inside `<body>`), `UserButton`, `SignInPanel`, `CaptchaSlot` (`<div id="clerk-captcha">`) | `app/layout.tsx`, admin shells, SBL sign-in page, MagicLinkCard |
 | `services/auth/middleware.ts` (edge-safe leaf — never imports the index barrel) | `createAuthMiddleware` (typed passthrough; provider middleware stays outermost), `createRouteMatcher` | repo-root `middleware.ts` (whose `config.matcher` must stay a **literal** array — Next.js static analysis) |
@@ -146,7 +147,9 @@ data.last_name].filter(Boolean).join(' ') || null` — and passes it to
 both, the same const it already passed to its own `syncMember` call (row
 above) before this fix. `acceptStoryInvite`'s other caller,
 `POST /api/heirloom/story-invites/accept`, passes `user.name ?? null` from
-`getCurrentUser()` instead — already Clerk-mapped via the shared
+`getCurrentUserTimed('app/api/heirloom/story-invites/accept/route.ts')`
+(drop-in wrapper as of 2026-09-15, PR #482 — see this file's entry-points
+table above) instead — already Clerk-mapped via the shared
 `mapClerkUser` boundary function (`[user.firstName, user.lastName]
 .filter(Boolean).join(' ') || undefined`), same derivation by a different
 route.

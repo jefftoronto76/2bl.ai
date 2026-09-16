@@ -234,6 +234,12 @@ MEMBER CONTEXT — the one surface that feeds the AI on every single turn — us
 > which constrain any reconciliation function) rather than trusting this
 > section to already reflect them. **This section commits us to nothing** —
 > the full reconciliation redesign is parked as a separate, later decision.
+>
+> **§0.1's `clerk_id` finding closed, 2026-09-16.** `members.clerk_id`
+> uniqueness is now tenant-scoped (`members_tenant_clerk_unique`), not global
+> — see `System Docs/DB_CHANGELOG.md`'s backfilled entry. `users.email` is
+> still globally unique and still constrains any reconciliation function as
+> described.
 
 ### 3.1 Direction
 
@@ -296,8 +302,8 @@ level; this constraint extends it to the *data* level.
 
 | Location | Violation | Severity |
 |---|---|---|
-| `app/api/sage/route.ts:8-32` | `resolveMemberId` runs a `members.clerk_id = user.providerUserId` lookup **on every chat turn** | Highest — hot path, per-turn DB round trip on an auth identifier |
-| `services/auth/sync-member.ts:96` | `onConflict: 'clerk_id'` — makes `clerk_id` the primary identity key for `members` | Structural |
+| `app/api/sage/route.ts:22-` (renamed from `resolveMemberId` to `resolveMember` by the 2026-09-15 account-status PR #480; now returns `{ id, status }` and calls `getCurrentUserTimed`, not bare `getCurrentUser`) | Runs a `members.clerk_id = user.providerUserId` lookup **on every chat turn** | Highest — hot path, per-turn DB round trip on an auth identifier |
+| `services/auth/sync-member.ts:148` (`:96` before PR #474, 2026-09-14) | `onConflict: 'tenant_id,clerk_id'` on the `members` upsert — `clerk_id` is still the effective primary identity key for `members`, now tenant-scoped rather than global (see `System Docs/DB_CHANGELOG.md`); the `users` upsert (`:99`) separately and correctly still targets bare `onConflict: 'clerk_id'` | Structural |
 | `app/api/webhooks/clerk/route.ts:246` | `clerk_id` used as the soft-delete selector | Structural |
 | `services/crm/story-invites.ts:551-556` | `clerk_id` lookup on invite accept | Moderate |
 | `services/auth/claim-membership.ts:32-35` | `clerk_id` lookup for the existence check | Moderate (path near-dead — D6) |

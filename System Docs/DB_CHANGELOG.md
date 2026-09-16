@@ -1,5 +1,58 @@
 # DB Changelog
 
+## Undated (backfilled 2026-09-16) — `members.clerk_id` uniqueness moved from global to tenant-scoped
+
+### Backfill — document `members_tenant_clerk_unique`, replacing `members_clerk_user_id_key`
+**Type:** Schema change (documentation backfill — the change itself predates
+this entry)
+**Executed by:** Jeff in Supabase Studio, on or before 2026-09-14 (exact date
+unknown — Studio SQL Editor history unavailable). Proposed as a Phase 0
+prerequisite in `Design Handovers/identity_reconciliation_design_2026-08-16.md`
+§2.3; discovered already live, undocumented, while grounding PR #474
+(2026-09-14, "Fix members upsert conflict target after tenant-scoped unique
+index migration") against current schema state — that PR's own title is the
+first place this migration is named anywhere in the repo.
+
+**SQL run:** Confirmed live 2026-09-16 via direct query
+(`pg_constraint`/`pg_indexes` on `members`) — matches the design doc's
+proposed shape exactly:
+```sql
+ALTER TABLE members DROP CONSTRAINT members_clerk_user_id_key;
+CREATE UNIQUE INDEX members_tenant_clerk_unique
+  ON members (tenant_id, clerk_id)
+  WHERE clerk_id IS NOT NULL;
+```
+Confirmed current state: `members` carries no unique *constraint* on
+`clerk_id` alone (only `members_token_key UNIQUE (token)` remains a formal
+constraint); `members_tenant_clerk_unique` is a unique *index* (Postgres
+`ON CONFLICT` can target either), and a separate non-unique
+`members_clerk_user_id_idx` btree on `clerk_id` alone still exists for
+lookup performance.
+
+**Purpose:** One Clerk user could otherwise hold at most one `members` row
+across the *entire platform*, not one per tenant it authenticates against —
+the identity_reconciliation_design_2026-08-16.md §0.1 finding. Constrains
+uniqueness to `(tenant_id, clerk_id)` instead, so the same Clerk user can hold
+independent memberships across tenants.
+
+**Notes:**
+- **This migration silently broke `services/auth/sync-member.ts`'s `members`
+  upsert for 9 days**, until PR #474 fixed it — see
+  `System Docs/Known Gaps.md`'s Auth, Members & Security section. Postgres's
+  `ON CONFLICT` requires naming every column of the arbiter it targets; the
+  upsert's `onConflict: 'clerk_id'` stopped matching any constraint/index the
+  moment this ran, so every `syncMember` write to `members` raised `42P10`
+  until the target was corrected to `onConflict: 'tenant_id,clerk_id'`. That
+  the underlying schema change was never logged here is exactly why the break
+  went unexplained for as long as it did — this entry exists to close that
+  gap for the next one.
+- `System Docs/Database Schema.md`'s `members` row is updated to match.
+- Does **not** touch `users.clerk_id`, which is a separate table and remains
+  correctly globally unique (`users_clerk_id_key`) — `sync-member.ts`'s
+  `users` upsert still correctly targets bare `onConflict: 'clerk_id'`.
+
+---
+
 ## 2026-08-14 — chat_session_context (generic session-scoped prompt context)
 
 **Status: LIVE.** Run by Jeff in Supabase Studio. Originally reported by CC

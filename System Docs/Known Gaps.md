@@ -341,6 +341,43 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `MEMBER_LINK_UPDATE_FAILED` path). `GateView`'s Clerk-modal bypass
   itself is unrelated to this fix and untouched.
 
+- **`acceptInvite`/`linkInvitedMember` still raced on a SELECT-then-UPDATE,
+  even after the fixes above — found and closed 2026-09-14 (PR #477).** The
+  entries above close specific *name-loss* bugs on these two functions; this
+  is a different, structural race in the same two functions, closed the same
+  day as the `onConflict` regression below. Both functions read a row by
+  `token`/`id`, then updated it by that same id in a second statement — a
+  window in which the client's own accept call and the Clerk `user.created`
+  webhook (which can call the same path, see the `acceptStoryInvite`
+  webhook-race entry above for the analogous Story Invites case) could
+  interleave with no lock deciding the winner. Replaced with a single atomic
+  conditional `UPDATE ... WHERE token/id AND tenant AND used_at IS NULL`, so
+  a Postgres row lock — not app code racing a stale read — decides between
+  callers. A zero-rows claim (the other caller won) is treated as success,
+  recorded via `metadata.claimed_by_concurrent_call: true` rather than as a
+  failure; a `23505` from an orphan reappearing mid-claim gets one bounded
+  retry. `linkInvitedMember` also gained the orphan cleanup `acceptInvite`
+  already had (the fix described just above), which it had never had before.
+
+- **`sync-member.ts`'s `members` upsert raised `42P10` on every call for 9
+  days — found and fixed 2026-09-14 (PR #474, commit `8aee43b`).** Not a code
+  regression in the usual sense: the upsert's `onConflict: 'clerk_id'` was
+  correct when written, but the arbiter it targeted was replaced — silently,
+  and undocumented at the time — by a tenant-scoped unique index,
+  `members_tenant_clerk_unique` on `(tenant_id, clerk_id)` (see
+  `System Docs/DB_CHANGELOG.md`'s backfilled entry and
+  `System Docs/Database Schema.md`'s `members` row). Postgres requires
+  `ON CONFLICT` to name every column of the arbiter it targets, so from the
+  moment that migration ran, `onConflict: 'clerk_id'` matched nothing —
+  **every `syncMember` write to `members` failed with `42P10`, for as long as
+  9 days, with zero successful writes**, until this PR retargeted the string
+  to `onConflict: 'tenant_id,clerk_id'`. The separate `users` upsert in the
+  same file (`:99`) was unaffected — `users.clerk_id` is still correctly
+  globally unique, so its own `onConflict: 'clerk_id'` never broke. The gap
+  this closes: had the schema migration been logged in `DB_CHANGELOG.md` when
+  it ran, this break would have been immediately explicable instead of
+  presenting as an unexplained upsert failure.
+
 - **Admin invite email/phone/name only ever reached the greeting text, not
   the sign-up form itself — found and fixed 2026-08-14 (PR #372).**
   `createMemberInvite` already accepted all three, and `invited_name`
@@ -688,6 +725,25 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   design doc itself is on branch `claude/traffic-cop-prompt-context-czvj9i`,
   not yet on main.)
 
+- **The Blocks page silently substituted the Live prompt set for a real,
+  not-found one — found and fixed 2026-09-15 (PR #481, commit `69c42fc`).**
+  `resolveActiveSet()` fell back to the tenant's Live prompt set, with no
+  indication of substitution, whenever a requested `?set=` id either didn't
+  resolve or errored — including a real, existing set that simply belonged to
+  a *different* tenant than the caller's session. Root cause was narrower
+  than it looked: `resolveTenantForPromptSet` only overrode tenant scoping
+  for composer-family sets, so an ordinary set's lookup ran against the wrong
+  tenant — a genuine `tenant_id` mismatch, not RLS or view lag, despite an
+  existing code comment claiming "let it fail naturally downstream." **Fixed:**
+  the cross-tenant override generalized to ordinary sets (platform-admin
+  gated, matching how composer-family sets already worked); a lookup
+  miss/error now surfaces explicitly (404/500) instead of falling through;
+  `resolveActiveSet` returns `null` instead of substituting Live when a
+  specific id isn't found, and the Blocks page shows an explicit
+  "could not be found" state rather than silently rendering different content
+  than what was requested. Files: `services/prompt/resolve-tenant-for-prompt-set.ts`,
+  `components/admin/prompt-studio/promptSet.ts`, `app/admin/prompt-studio/blocks/page.tsx`.
+
 - **`getSystemPrompt` filters by `status='live'` (2026-07-28) but is still not
   type-aware — single-live-per-type (2026-07-27) constrains Publish but not
   fully the runtime read.** `services/prompt/compiler.ts`'s `getSystemPrompt`
@@ -777,6 +833,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 *Cross-reference: the `primer` (member/story-invite free text injected into the system prompt with no delineation) gap is tracked in the `Auth, Members & Security` section, since the data source is member/invite-supplied text, not prompt-compiler internals.*
 
 ## Chat UI
+
+- **The client could not distinguish a masked in-stream error from a real
+  one — found during the tool-calling infrastructure design pass, fixed the
+  same session (2026-09-15/16, PR #486).** `runChatStream` called
+  `toDataStreamResponse()` with no options, so the AI SDK's default
+  `getErrorMessage: () => ''` masked every post-200 stream failure to a
+  literal `3:""`; `useChatTurn` only tested presence of an error, not its
+  content, so a mid-stream rate limit, an expired key, and a genuine
+  provider fault all collapsed to the same generic `stream_interrupted`.
+  Never shipped as a standalone open gap — found and closed within the same
+  design pass that surfaced it. **Fixed:** `describeStreamError` classifies
+  into a bounded vocabulary now passed as `getErrorMessage`; the client's
+  `classifyStreamFailure` reads it. See `System Docs/Utilities/Chat Server.md`'s
+  stream-error-classification section for the mechanism.
 
 - **No visual distinction between closing the chat drawer and closing the
   memory panel — found during Stage C live-preview review, 2026-08-08.**
