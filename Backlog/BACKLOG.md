@@ -1,3 +1,32 @@
+# Traffic Cop — blocked member response, Sept 15-16 2026
+
+Suspension/deletion currently only blocks the chat endpoint (app/api/sage).
+A suspended or deleted member can still view existing stories and memories,
+and everything else in the app functions normally. Confirmed, not a bug —
+just the current, narrow scope. Whether account suspension should restrict
+more than chat is an open product question, not yet decided.
+
+Discovered: September 15, 2026
+
+---
+
+Bug: blocked-member message has no actionable contact method
+
+The live 'blocked' slot content tells the member to "contact support" but
+provides no actual way to do so — no email, no link. A real dead end for
+the reader. A contact address does exist elsewhere in the app (hello@2bl.ai,
+used in the landing page footer) but isn't referenced in this message.
+
+Fix direction: either reference that address directly in the blocked-member
+copy, or decide blocked members shouldn't be told to "contact support" at
+all if there's no real dedicated support channel behind it yet — needs a
+product decision, not just a copy edit.
+
+Priority: low — low-traffic path (suspension/deletion is rare), not urgent.
+Discovered: September 15, 2026
+
+
+
 ## Branding system — known issues (found during CLAUDE.md audit, Aug 4 2026)
 
 - custom_css only injects on Heirloom's layout; jefflougheed/SBL admins can save
