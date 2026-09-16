@@ -53,6 +53,7 @@ const hand = Caveat({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://heirloom.2bl.ai'),
   title: 'Heirloom — Every life deserves to be a book.',
   description:
     'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
@@ -69,12 +70,21 @@ export const metadata: Metadata = {
     title: 'Heirloom — Every life deserves to be a book.',
     description:
       'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
+    images: [
+      {
+        url: '/heirloom/heirloom-your-story-matters.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Heirloom — a physical keepsake book of life stories, open to sample story pages',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Heirloom — Every life deserves to be a book.',
     description:
       'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
+    images: ['/heirloom/heirloom-your-story-matters.jpg'],
   },
 };
 
