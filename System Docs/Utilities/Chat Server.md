@@ -332,8 +332,12 @@ one `audit_events` row per turn (`target_type: 'chat_session'`,
 dropped_budget`, `estTokens`, `ms`, truncated infra error, provider `meta`),
 `budget`, `isFirstTurn`, `turnIndex`, `systemLength`, and `shadow`/`parity`
 flags for Phase 2. Content-free by contract: never block text, never a raw
-identity value (`trace.test.ts` asserts this against PII fixtures). Not
-called by anything yet.
+identity value (`trace.test.ts` asserts this against PII fixtures). **Live
+since Phase 2 (2026-09-14)** — called by `shadow.ts`'s `runShadowTurn` on
+every real turn (see Shadow Mode, immediately below) and by `blocked-turn.ts`
+on every blocked turn (`selection.ruleId = 'account-status'`, see the
+account-status rule above); this paragraph previously said "not called by
+anything yet," which stopped being true the moment Phase 2 shipped.
 
 **Shadow mode — `shadow.ts` (Phase 2, 2026-09-14).** `runShadowTurn(params)`
 is called by `streamChat()` immediately after `systemPrompt` is built, so it
@@ -437,3 +441,48 @@ no-tenant fallback, and provider-failure scenarios. No test asserted the
 six-segment assembly order before this file; if the recipe in `index.ts`
 changes, this test must change with it, and that diff is the review signal.
 It is also the Phase 2 parity oracle in test form.
+
+### Chat server — mid-stream error classification (`services/chat/server/stream.ts`, 2026-09-16)
+
+Separate from the turn-context/Traffic Cop material above — this is about
+what happens when the model call itself fails *after* the response has
+already started streaming as a 200, not about prompt assembly. Wire format
+is unaffected: `readDataStream` (`services/chat/server/stream-utils.ts`)
+still parses only `0:` text and `3:` error parts, and every other part code
+is still silently ignored (forward-compatible with the `9:`/`a:` tool parts a
+future tool-calling turn would add — see
+`Design Handovers/september_2026/tool_calling_infrastructure_design_2026-09-15.md`
+§2).
+
+Before this, `runChatStream` called `toDataStreamResponse()` with no
+options, so the AI SDK's default `getErrorMessage: () => ''` masked every
+in-stream failure to a literal `3:""` — a mid-stream rate limit, an expired
+key, and a genuine provider fault were wire-indistinguishable, and
+`useChatTurn` collapsed all three to the same generic `stream_interrupted`.
+
+**`describeStreamError` (`stream.ts`)** is now passed as `getErrorMessage`.
+It classifies into a bounded vocabulary (`StreamErrorCode`,
+`stream-utils.ts`) — never the raw error text, same discipline as
+`sanitizeFailureReason` (`services/media/errorCopy.ts`) and for the same
+reason: a provider error can carry a vendor name, a URL, an internal path, or
+(once tools exist) tool-call arguments, none of which belongs on the wire to
+a browser. Matches on `error.name`, not `instanceof` (the SDK's error classes
+are re-exported through several packages, so an identity check can miss a
+genuine match). Codes: `rate_limited`, `auth_error`, `unknown_tool`,
+`invalid_tool_arguments` (the latter two unreachable until tool calling
+ships), `aborted`, `upstream_error` (the fallback for anything unrecognized —
+deliberately generic rather than guessed).
+
+**Client: `classifyStreamFailure` (`services/chat/ui/v1/streamError.ts`)**
+maps the code onto `ChatErrorType`. Only two codes change visitor-facing
+behavior — `rate_limited` and `auth_error` now reach their real
+`ChatErrorType`, replacing the generic `stream_interrupted` those cases
+used to get. Everything else, including a `3:""` from a deployment that
+predates this and any code a newer server might send that this client
+doesn't yet know, keeps exactly `stream_interrupted` — the pre-existing
+behavior. `ChatTurnError.detail` (`useChatTurn.ts`) carries the raw code for
+diagnostics only; `errorType` remains the sole input to UI copy and to
+`chat_sessions.last_error_type`, so this cannot widen what gets persisted —
+`rate_limited`/`auth_error` are already members of the set
+`updateSession` accepts for that column
+(`services/crm/sessions.ts` — see `VALID_ERROR_TYPES`).
