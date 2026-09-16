@@ -16,6 +16,8 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { readDataStream } from '@/services/chat/server/stream-utils'
+import type { StreamErrorCode } from '@/services/chat/server/stream-utils'
+import { classifyStreamFailure } from './streamError'
 import type { ChatMessage, ChatMode, MediaAttachmentInput } from '@/services/chat/server/types'
 import type { ChatErrorType, UseChatTurnOptions, UseChatTurnReturn } from './types'
 import { toModelMessages } from './message'
@@ -26,8 +28,18 @@ import { toModelMessages } from './message'
 // isAbortError() branches in send/sendHidden/retry/regenerate keep handling
 // it as a client-initiated cancellation, not a failure.
 class ChatTurnError extends Error {
-  constructor(public readonly errorType: ChatErrorType) {
-    super(errorType)
+  /**
+   * `detail` carries the server's `StreamErrorCode` when the failure arrived
+   * as an in-stream `3:` part and the server classified it. It is diagnostic
+   * only — `errorType` remains the single input to UI copy and to the
+   * persisted `chat_sessions.last_error_type`, so nothing here can widen what
+   * that column receives.
+   */
+  constructor(
+    public readonly errorType: ChatErrorType,
+    public readonly detail?: StreamErrorCode,
+  ) {
+    super(detail ? `${errorType} (${detail})` : errorType)
   }
 }
 
@@ -111,17 +123,28 @@ async function streamTurn(
   // the AI SDK surfaces an upstream/provider error as an in-stream `3:"..."`
   // part rather than a different HTTP status, since headers are already
   // committed by the time the failure happens.
-  let streamErrorMessage: string | null = null
+  //
+  // Held on an object rather than a bare `let` so the assignment inside the
+  // callback is visible to the check below — TypeScript's control-flow
+  // analysis does not track writes made from inside a closure, and would
+  // otherwise narrow the variable to `null` at the comparison.
+  const streamError: { message: string | null } = { message: null }
   try {
     await readDataStream(response, onChunk, message => {
-      streamErrorMessage = message
+      streamError.message = message
     })
   } catch (err) {
     if (isAbortError(err)) throw err
     throw new ChatTurnError('stream_interrupted')
   }
-  if (streamErrorMessage !== null) {
-    throw new ChatTurnError('stream_interrupted')
+  if (streamError.message !== null) {
+    // Presence alone used to be the whole signal; the message was read and
+    // thrown away. Now the server classifies the failure (describeStreamError,
+    // services/chat/server/stream.ts) and classifyStreamFailure decides what
+    // that means here — see ./streamError.ts for why only two codes map to
+    // anything other than today's behaviour.
+    const { errorType, detail } = classifyStreamFailure(streamError.message)
+    throw new ChatTurnError(errorType, detail)
   }
 }
 
