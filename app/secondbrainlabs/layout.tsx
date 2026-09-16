@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Newsreader, Manrope } from "next/font/google";
 import "./globals.css";
+import { buildTenantMetadata } from '@/services/branding/build-tenant-metadata';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
@@ -22,17 +23,15 @@ const sans = Manrope({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  icons: {
-    icon: [
-      { url: "/2bl/favicons/favicon.ico", sizes: "any" },
-      { url: "/2bl/favicons/favicon.svg", type: "image/svg+xml" },
-      { url: "/2bl/favicons/favicon-96x96.png", type: "image/png", sizes: "96x96" },
-    ],
-    apple: { url: "/2bl/favicons/apple-touch-icon.png" },
-  },
-  manifest: "/2bl/favicons/site.webmanifest",
-};
+export const metadata: Metadata = buildTenantMetadata({
+  domain: '2bl.ai',
+  title: 'Second Brain Labs — Software people actually want to use.',
+  description:
+    'AI changes how software gets built and how people experience it. Second Brain Labs is putting that shift to work.',
+  faviconBasePath: '/2bl/favicons',
+  // No imagePath/imageAlt — no real share image exists yet (only a vector
+  // logo in public/2bl/). Jeff's task, same as jefflougheed.ca.
+});
 
 export default async function SBLLayout({ children }: { children: React.ReactNode }) {
   const branding = await getTenantBranding(SBL_TENANT_ID);

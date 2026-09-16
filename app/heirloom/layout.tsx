@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Caveat, Cormorant_Garamond, DM_Mono, DM_Sans } from 'next/font/google';
 import './globals.css';
+import { buildTenantMetadata } from '@/services/branding/build-tenant-metadata';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
@@ -52,41 +53,15 @@ const hand = Caveat({
   display: 'swap',
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL('https://heirloom.2bl.ai'),
+export const metadata: Metadata = buildTenantMetadata({
+  domain: 'heirloom.2bl.ai',
   title: 'Heirloom — Every life deserves to be a book.',
   description:
     'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
-  icons: {
-    icon: [
-      { url: '/heirloom/favicons/favicon.ico', sizes: 'any' },
-      { url: '/heirloom/favicons/favicon.svg', type: 'image/svg+xml' },
-      { url: '/heirloom/favicons/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
-    ],
-    apple: { url: '/heirloom/favicons/apple-touch-icon.png' },
-  },
-  manifest: '/heirloom/favicons/site.webmanifest',
-  openGraph: {
-    title: 'Heirloom — Every life deserves to be a book.',
-    description:
-      'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
-    images: [
-      {
-        url: '/heirloom/heirloom-your-story-matters.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Heirloom — a physical keepsake book of life stories, open to sample story pages',
-      },
-    ],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'Heirloom — Every life deserves to be a book.',
-    description:
-      'An AI-guided biography platform that helps people capture, shape, and publish their life story.',
-    images: ['/heirloom/heirloom-your-story-matters.jpg'],
-  },
-};
+  faviconBasePath: '/heirloom/favicons',
+  imagePath: '/heirloom/heirloom-your-story-matters.jpg',
+  imageAlt: 'Heirloom — a physical keepsake book of life stories, open to sample story pages',
+});
 
 export default async function HeirloomLayout({ children }: { children: React.ReactNode }) {
   const branding = await getTenantBranding(HEIRLOOM_TENANT_ID);

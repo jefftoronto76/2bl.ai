@@ -9,11 +9,11 @@ and `hex-utils.ts` are pure and safe on the client too. Imported by
 path (`@/services/branding/<file>`), not through a barrel — there is no
 `index.ts` in this service.
 
-Consumed by all four root layouts (`app/admin/layout.tsx`,
+Consumed by all five root layouts (`app/admin/layout.tsx`,
 `app/(jefflougheed)/layout.tsx`, `app/(platform)/layout.tsx`,
-`app/heirloom/layout.tsx`), the admin Mantine theme
-(`components/admin/theme/mantine-theme.ts`), the admin Appearance settings
-page, and `app/api/admin/appearance/route.ts`.
+`app/heirloom/layout.tsx`, `app/secondbrainlabs/layout.tsx`), the admin
+Mantine theme (`components/admin/theme/mantine-theme.ts`), the admin
+Appearance settings page, and `app/api/admin/appearance/route.ts`.
 
 Two Heirloom-layout specifics worth knowing (recorded 2026-09-07):
 `app/heirloom/layout.tsx` fire-and-forget-inserts three `branding_logs` rows
@@ -27,6 +27,7 @@ leaves the lander's Caveat hand-lettered accents (`HeroSection.tsx`,
 
 | File | Exports | Purpose |
 |------|---------|---------|
+| `build-tenant-metadata.ts` | `TenantMetadataConfig` (type), `buildTenantMetadata(config)` | Pure function centralizing the `export const metadata: Metadata` block for `app/heirloom/layout.tsx`, `app/(jefflougheed)/layout.tsx`, and `app/secondbrainlabs/layout.tsx` — title, description, icons, manifest, `metadataBase`, and `openGraph`/`twitter` (always `summary_large_image`), built from a small per-tenant config (`domain`, `title`, `description`, `faviconBasePath`). `imagePath`/`imageAlt` are a discriminated union — a share image is optional, but alt text is mandatory once one is supplied; when omitted, `openGraph.images`/`twitter.images` are left out entirely rather than falling back to a placeholder. No DB, no fetch — not to be confused with `get-tenant-branding.ts` below. |
 | `get-tenant-branding.ts` | `TenantBranding` (interface), `getTenantBranding(tenantId, target?)` | Fetches the `tenant_branding` row for a tenant and `target` (`'storefront'` — default — or `'admin'`, so one tenant can brand its storefront and its admin differently). Service-role read via `getAdminClient()`, wrapped in `unstable_noStore()` so branding is never baked into a static render. **Returns `null` on miss, DB error, or throw** — never raises; callers fall back to their own CSS defaults. The 21 selected columns are the full `TenantBranding` shape: palette (`background`, `accent`, `accent_hover`, `accent_rgb`, `lede`, `heading`, `body`, `sidebar_bg`, `sidebar_text`, `muted`, `border`), typography (`font_primary`, `font_secondary`, `font_mono`), and behavior flags (`paper_effect`, `accent_buttons`, `use_db_branding`, `favicon_base_path`, `custom_css`). Every field is nullable. |
 | `paper-stack.ts` | `PaperStack` (interface), `derivePaperStack`, `deriveSurface`, `resolvePaperStack`, `paperStackVars` | Derives raised/sunken surfaces and the hairline from the single tenant-chosen `background`, rather than storing five hand-tuned creams a user could desync. **The two derivation strategies are a deliberate per-tenant fork — do not collapse them** (the file says so itself): `derivePaperStack` is the amber stack, SBL only, stepping toward `#c8a87e` at 10/20/42% to fill SBL's three surface levels (`--color-paper-2`, `--color-paper-3`, `--color-line`); `deriveSurface` is the white lift for Heirloom and jefflougheed, stepping one surface 40% toward white, because those palettes gain luminance on elevated elements rather than warmth. `paperEffect` gates both — off collapses surfaces to the background with a faint neutral hairline tinted from `FLAT_LINE_INK`. `paperStackVars` maps a `PaperStack` onto the `--color-paper*` / `--color-line` custom properties defined in `app/secondbrainlabs/globals.css`. |
 | `font-registry.ts` | `FontEntry` (type), `DISPLAY_FONTS`, `BODY_FONTS`, `MONO_FONTS`, `ALL_FONTS` | The allowed font list, one entry per face (`label`, `value`, optional `googleFamily`). Backs the Appearance settings pickers and the layouts' Google Fonts link construction. `ALL_FONTS` is the flattened concatenation of the three categories. |
