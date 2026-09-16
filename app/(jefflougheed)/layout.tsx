@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import './globals.css'
+import { buildTenantMetadata } from '@/services/branding/build-tenant-metadata';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { isValidHex, hexToRgbTriplet } from '@/services/branding/hex-utils';
 import { ALL_FONTS } from '@/services/branding/font-registry';
@@ -8,21 +9,15 @@ import { deriveSurface } from '@/services/branding/paper-stack';
 
 const JEFF_TENANT_ID = 'e07334a0-2afd-4544-898b-edb124d2dd33';
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildTenantMetadata({
+  domain: 'jefflougheed.ca',
   title: 'JL',
   description:
     'Performance-driven, heart-led coaching and embedded execution support. Better close rates, deeper relationships, revenue growth made easier.',
-  metadataBase: new URL('https://jefflougheed.ca'),
-  icons: {
-    icon: [
-      { url: '/sage/jefflougheed/favicons/favicon.ico', sizes: 'any' },
-      { url: '/sage/jefflougheed/favicons/favicon.svg', type: 'image/svg+xml' },
-      { url: '/sage/jefflougheed/favicons/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
-    ],
-    apple: { url: '/sage/jefflougheed/favicons/apple-touch-icon.png' },
-  },
-  manifest: '/sage/jefflougheed/favicons/site.webmanifest',
-}
+  faviconBasePath: '/sage/jefflougheed/favicons',
+  // No imagePath/imageAlt — no real 1200x630 share image exists yet.
+  // Jeff's task: push the approved image, then add imagePath/imageAlt here.
+})
 
 export default async function JeffLougheedLayout({ children }: { children: React.ReactNode }) {
   const branding = await getTenantBranding(JEFF_TENANT_ID);
