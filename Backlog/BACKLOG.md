@@ -1,3 +1,16 @@
+# Tenant-managed share images, Sept 16 2026
+
+Idea: let a tenant owner set/change their own social share image without a
+code change (currently: hardcoded imagePath in each layout.tsx via
+buildTenantMetadata). Explored three options (new public storage bucket +
+upload widget / plain text URL field / paste externally-hosted URL) —
+decided not worth building yet. Only Jeff manages tenants today; revisit if
+a real non-technical tenant owner ever needs this.
+
+Discovered: September 16, 2026
+
+
+
 # Traffic Cop — blocked member response, Sept 15-16 2026
 
 Suspension/deletion currently only blocks the chat endpoint (app/api/sage).
