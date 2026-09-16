@@ -58,6 +58,35 @@ describe('selectCompiledPrompt', () => {
     expect(has(cpCalls, 'limit', 1)).toBe(true)
   })
 
+  it('isolation is entirely compiled_prompts.tenant_id — prompt_types.tenant_id (restored 2026-09-16) is never read here', async () => {
+    // Two prompt_types rows share the key 'blocked': one platform-shared
+    // (tenant_id null), one privately owned by a different tenant. This
+    // function's own read path (services/prompt/select.ts) never selects or
+    // filters on prompt_types.tenant_id — it resolves every matching id,
+    // regardless of ownership, and leaves tenant isolation entirely to
+    // compiled_prompts's own .eq('tenant_id', tenantId). Restoring
+    // prompt_types.tenant_id must not change this function at all.
+    const client = makeClient({
+      prompt_types: { data: [{ id: 'pt-platform' }, { id: 'pt-other-tenant' }], error: null },
+      compiled_prompts: { data: { id: 'cp-1', version: 1, content: 'CALLER TENANT TEXT', prompt_type_id: 'pt-platform' }, error: null },
+    })
+    adminHolder.client = client
+
+    const result = await selectCompiledPrompt('caller-tenant', 'blocked')
+    expect(result?.content).toBe('CALLER TENANT TEXT')
+
+    const typeCalls = (client.__queries.prompt_types as { __calls: Call[] }).__calls
+    // Every filter this query sends is on `key` — never `tenant_id`.
+    expect(typeCalls.every(c => c.fn !== 'eq' || c.args[0] !== 'tenant_id')).toBe(true)
+    expect(has(typeCalls, 'eq', 'key', 'blocked')).toBe(true)
+
+    const cpCalls = (client.__queries.compiled_prompts as { __calls: Call[] }).__calls
+    // Both ids (platform's and the other tenant's private type) go into the
+    // .in() — isolation happens only on the compiled_prompts side.
+    expect(has(cpCalls, 'in', 'prompt_type_id', ['pt-platform', 'pt-other-tenant'])).toBe(true)
+    expect(has(cpCalls, 'eq', 'tenant_id', 'caller-tenant')).toBe(true)
+  })
+
   it.each([
     ['no tenant', null, 'blocked', {}],
     ['empty slot key', 'tenant-1', '', {}],

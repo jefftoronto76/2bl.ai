@@ -714,12 +714,26 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   sets the number. (2) `System Docs/Database Schema.md`'s `prompt_types` row
   listed a `tenant_id` column, an `is_default` column, a `(tenant_id, key)`
   unique constraint and a tenant index that `DB_CHANGELOG.md`'s 2026-06-26
-  entry says were dropped — **resolved 2026-09-15**: confirmed against the
-  live table (eight columns, primary key only) and the row corrected. Two
-  consequences for the Phase 4 slot-aware read: a slot key resolves to a
-  type via `prompt_type_tenants`/`is_platform`, not a tenant column, and
-  `key` has no DB-level uniqueness, so the read must not assume one row per
-  key. (An earlier
+  entry says were dropped — **resolved 2026-09-15, and superseded again
+  2026-09-16 by a real restoration, so read this pointer, not the two dates
+  as a final state:** the 2026-09-15 pass confirmed the live table then had
+  eight columns, primary key only, `key` with no DB-level uniqueness at all.
+  That held for about one day. `tenant_id` is back as of 2026-09-16 (nullable
+  — null means platform-shared), backed by two partial unique indexes
+  (`prompt_types_platform_key_unique` / `_tenant_key_unique`) rather than one
+  global constraint, replacing a blunt, undocumented `UNIQUE (key)` that had
+  been added in Studio that same morning and was deliberately left
+  uncorrected here pending exactly this redesign — see
+  `System Docs/Database Schema.md`'s `prompt_types` row for the full
+  four-revision history and `System Docs/DB_CHANGELOG.md`'s 2026-09-16 entry
+  for the DDL. Consequence for the Phase 4 slot-aware read: `key` still has
+  no *global* uniqueness — only per-ownership-scope — so
+  `services/prompt/select.ts`'s `.in()`-over-every-matching-id read (never
+  assuming one row per key) is still correct and needed no change; what
+  changed is that `app/api/admin/prompt-types/route.ts`'s find-or-create,
+  which previously reused "the first existing row" for a key regardless of
+  owner, is now scoped by `tenant_id` so one tenant can never adopt another
+  tenant's private type. (An earlier
   version of this entry noted a nested duplicate copy of the design doc at
   `Design Handovers/Design Handovers/…` on main; PR #471 removed it. The
   design doc itself is on branch `claude/traffic-cop-prompt-context-czvj9i`,

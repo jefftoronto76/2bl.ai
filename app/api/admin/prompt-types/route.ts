@@ -120,15 +120,24 @@ export async function POST(req: Request) {
   const supabase = getAdminClient()
 
   // A prompt type is a shared definition (prompt_types) assigned to tenants via
-  // prompt_type_tenants. Find-or-create the definition by key (keys are NOT unique —
-  // take the first existing row), then assign it to this tenant.
-  const { data: existing, error: lookupErr } = await supabase
+  // prompt_type_tenants. Find-or-create the definition by key, scoped by
+  // ownership (prompt_types.tenant_id — null = platform-shared, non-null =
+  // owned by that one tenant, restored 2026-09-16 alongside the partial
+  // unique indexes prompt_types_platform_key_unique / _tenant_key_unique —
+  // see System Docs/Database Schema.md). A platform-type request may only
+  // find-and-reuse an existing platform row; a tenant-owned request may only
+  // find-and-reuse a row this same tenant already owns. Never the other
+  // tenant's private row for the same key — the query itself excludes it,
+  // not a check after the fact. Not found in the caller's own scope → create.
+  const lookupQuery = supabase
     .from('prompt_types')
     .select('id, key, name, description, sort_order, is_platform')
     .eq('key', key)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+  const { data: existing, error: lookupErr } = await (
+    wantsPlatform
+      ? lookupQuery.is('tenant_id', null)
+      : lookupQuery.eq('tenant_id', authCtx.tenant_id)
+  ).maybeSingle()
 
   if (lookupErr) {
     console.error('[prompt-types] lookup failed:', lookupErr.message)
@@ -139,11 +148,14 @@ export async function POST(req: Request) {
   if (existing) {
     promptType = { id: existing.id, key: existing.key, name: existing.name, description: existing.description, sort_order: existing.sort_order }
     // Promote a found-by-key type to platform-wide when requested and authorized —
-    // "created/found" both go through the same is_platform gate.
+    // "created/found" both go through the same is_platform gate. Also nulls
+    // tenant_id in the same update: is_platform implies no single owner, and
+    // leaving a stale tenant_id would violate that invariant even though no
+    // constraint enforces it directly.
     if (wantsPlatform && !existing.is_platform) {
       const { data: updated, error: updateErr } = await supabase
         .from('prompt_types')
-        .update({ is_platform: true })
+        .update({ is_platform: true, tenant_id: null })
         .eq('id', existing.id)
         .select('id, key, name, description, sort_order')
         .single()
@@ -157,7 +169,14 @@ export async function POST(req: Request) {
     const now = new Date().toISOString()
     const { data: created, error: insertErr } = await supabase
       .from('prompt_types')
-      .insert({ key, name, created_at: now, updated_at: now, is_platform: wantsPlatform })
+      .insert({
+        key,
+        name,
+        created_at: now,
+        updated_at: now,
+        is_platform: wantsPlatform,
+        tenant_id: wantsPlatform ? null : authCtx.tenant_id,
+      })
       .select('id, key, name, description, sort_order')
       .single()
     if (insertErr) {
