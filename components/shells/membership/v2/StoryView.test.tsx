@@ -124,7 +124,7 @@ describe('StoryView', () => {
     render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
     await screen.findByText('Second');
 
-    const titles = screen.getAllByRole('listitem').map((li) => li.textContent);
+    const titles = screen.getAllByTestId('deck-memory-row').map((li) => li.textContent);
     expect(titles[0]).toContain('Second');
     expect(titles[1]).toContain('First');
   });
@@ -258,7 +258,7 @@ describe('StoryView — reorder (real-story-view-1c-reorder)', () => {
       body: JSON.stringify({ memoryId: 'mem-a', direction: 'down' }),
     });
 
-    const titles = screen.getAllByRole('listitem').map((li) => li.textContent);
+    const titles = screen.getAllByTestId('deck-memory-row').map((li) => li.textContent);
     expect(titles[0]).toContain('B'); // server's new order reflected, not a client-side guess
   });
 
@@ -328,7 +328,7 @@ describe('StoryView — desktop drag-and-drop reorder (Phase 2)', () => {
     render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
     await screen.findByText('A');
 
-    const rows = screen.getAllByRole('listitem');
+    const rows = screen.getAllByTestId('deck-memory-row');
     fireEvent.dragStart(rows[0]); // A
     fireEvent.dragEnter(rows[2]); // over C
     fireEvent.drop(rows[2]);
@@ -345,7 +345,7 @@ describe('StoryView — desktop drag-and-drop reorder (Phase 2)', () => {
       body: JSON.stringify({ memoryId: 'mem-a', direction: 'down' }),
     });
 
-    const titles = screen.getAllByRole('listitem').map((li) => li.textContent);
+    const titles = screen.getAllByTestId('deck-memory-row').map((li) => li.textContent);
     expect(titles[2]).toContain('A'); // server's new order reflected
   });
 
@@ -356,7 +356,7 @@ describe('StoryView — desktop drag-and-drop reorder (Phase 2)', () => {
     render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
     await screen.findByText('A');
 
-    const rows = screen.getAllByRole('listitem');
+    const rows = screen.getAllByTestId('deck-memory-row');
     fireEvent.dragStart(rows[0]);
     fireEvent.drop(rows[0]);
 
@@ -496,5 +496,124 @@ describe('StoryView — List/Grid toggle, persisted per-story (Phase 3)', () => 
         width: 1024,
       });
     }
+  });
+});
+
+describe('StoryView — Share stub (Phase 4)', () => {
+  it('renders a disabled Share button that does nothing on click', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    const shareButton = screen.getByRole('button', { name: 'Share this story — coming soon' });
+    expect(shareButton).toBeDisabled();
+  });
+});
+
+describe('StoryView — Add menu (Phase 4)', () => {
+  it('opens to show Memory (disabled), Cover page, and Back page', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+
+    expect(screen.getByRole('menuitem', { name: /Memory/ })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Cover page' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Back page' })).toBeInTheDocument();
+  });
+});
+
+describe('StoryView — Cover/Back stub, list view (Phase 4)', () => {
+  it('shows "Not added yet" placeholders for both cover and back before anything is saved', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    expect(screen.getAllByText('Not added yet')).toHaveLength(2); // cover + back
+  });
+
+  it('Add > Cover page opens the panel; saving renders the cover row and flips the menu label to "Edit cover page"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cover page' }));
+
+    expect(screen.getByRole('dialog', { name: 'Cover page' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'A Life in Full' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Cover page' })).not.toBeInTheDocument();
+    expect(screen.getByText('A Life in Full', { selector: 'p' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    expect(screen.getByRole('menuitem', { name: 'Edit cover page' })).toBeInTheDocument();
+  });
+
+  it('removing a saved back page reverts it to "Not added yet"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Back page' }));
+    fireEvent.change(screen.getByLabelText('Heading'), { target: { value: 'With love, always' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByText('With love, always', { selector: 'p' })).toBeInTheDocument();
+
+    // Re-open to remove it.
+    const backRowButtons = screen.getAllByRole('button', { name: /With love, always/ });
+    fireEvent.click(backRowButtons[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove back page' }));
+
+    expect(screen.queryByText('With love, always')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Not added yet')).toHaveLength(2); // cover + back, both empty again
+  });
+
+  it('switching to a different story resets the stub cover/back — nothing leaks across stories', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    const { rerender } = render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cover page' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'A Life in Full' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('A Life in Full', { selector: 'p' })).toBeInTheDocument();
+
+    rerender(<StoryView story={collaboratorStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('The Bell Family');
+
+    expect(screen.queryByText('A Life in Full')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Not added yet')).toHaveLength(2);
+  });
+});
+
+describe('StoryView — Cover/Back stub, grid view (Phase 4)', () => {
+  it('renders cover and back as end tiles pinned first/last', async () => {
+    const gridStory: Story = { ...story, viewMode: 'grid' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [{ id: 'mem-1', session_id: 'sess-1', title: 'A', body: '', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }],
+        }),
+      ),
+    );
+
+    render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    const endTiles = screen.getAllByTestId('deck-end-row');
+    expect(endTiles).toHaveLength(2);
   });
 });
