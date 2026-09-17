@@ -126,6 +126,32 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   string matched against `tenants.slug`, so the alias values `sbl` and
   `jefflougheed` only resolve if a tenant carries that exact slug.
 
+- **`PREVIEW_TENANT_ID` trailing whitespace silently 400s every tenant-scoped
+  query on preview — found and fixed 2026-09-17 (Story Deck & Memory Panel).**
+  A Vercel Preview-environment value for `PREVIEW_TENANT_ID` had picked up a
+  trailing whitespace character at some point (root cause: a hand-paste into
+  Vercel's dashboard, not app code — the stored `tenants.id` UUID this value
+  should mirror is clean). `previewTenantFallback()` returned it unvalidated
+  into `tenantId`, which every `.eq('tenant_id', tenantId)` Supabase call then
+  serializes into its query string — a trailing space serializes as a literal
+  `+` (form-urlencoding), producing an invalid-UUID filter and a 400 from
+  PostgREST. Confirmed directly against Supabase's edge logs: the exact same
+  tenant ID appeared clean in a succeeding request and with a trailing `+` in
+  a failing one made moments apart, both hitting `hasStoryAccess`'s story-row
+  query (`services/crm/story-containments.ts`) — this is what actually
+  produced `StoryView`'s "Could not load this story's memories" error on a
+  real, correctly-owned story on preview; the read-path code and data were
+  both fine. Only bites `*.vercel.app` preview hosts (where domain-match
+  fails over to this fallback) — a real custom-domain request never touches
+  it. Fixed by trimming the env var's value in `previewTenantFallback()`
+  (`services/auth/get-tenant-from-request.ts`) — the one place a raw,
+  hand-typed string enters `tenantId` unvalidated; the domain-match and
+  `x-preview-tenant`/slug-match paths both already resolve from clean DB
+  columns. **Lesson:** trim any config value read directly from
+  `process.env` before it flows into a query filter — a copy-paste artifact
+  a human would never notice reading the dashboard becomes an opaque 400
+  three query-builder layers downstream.
+
 - **`ChatState.isMember` means signed-in, not role.** `isMember`
   (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk sign-in state,
   so it is true for **every** signed-in role (`owner`, `admin`, `member`,
