@@ -88,9 +88,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { BookOpen, ChevronDown, ChevronUp, GripVertical, LayoutGrid, List, Loader2, X } from 'lucide-react';
+import { BookOpen, Bookmark, ChevronDown, ChevronUp, GripVertical, LayoutGrid, List, Loader2, Plus, Upload, X } from 'lucide-react';
 import type { Story } from './types';
 import { memoryKindOf, KIND_ICONS } from '../memory/memoryKinds';
+import { CoverBackPanel, type CoverBackData } from './CoverBackPanel';
 
 export interface StoryViewProps {
   story: Story;
@@ -149,6 +150,7 @@ function DeckRow({
   const isLast = drag.index === total - 1;
   return (
     <li
+      data-testid="deck-memory-row"
       draggable={!drag.isMobile && drag.moving === null}
       onDragStart={drag.onDragStart}
       onDragEnter={drag.onDragEnter}
@@ -224,6 +226,7 @@ function DeckGridTile({
   const hasThumbnail = kind.media === 'still' || kind.media === 'video';
   return (
     <li
+      data-testid="deck-memory-row"
       draggable={!drag.isMobile && drag.moving === null}
       onDragStart={drag.onDragStart}
       onDragEnter={drag.onDragEnter}
@@ -258,6 +261,170 @@ function DeckGridTile({
   );
 }
 
+/** Cover/back's list-view row (Phase 4, Story Deck & Memory Panel handover,
+ *  2026-09) — a distinct dashed-border row, pinned first (cover) or last
+ *  (back) via render order in StoryView, not a flag on this component.
+ *  Never draggable — it isn't a memory, it isn't reorderable. Stub only:
+ *  `data` is StoryView's own local state, never persisted (see
+ *  CoverBackPanel.tsx's header comment). */
+function DeckEndRow({
+  kind,
+  data,
+  onEdit,
+  onRemove,
+}: {
+  kind: 'cover' | 'back';
+  data: CoverBackData | null;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const label = kind === 'cover' ? 'Cover' : 'Back page';
+  return (
+    <li data-testid="deck-end-row" draggable={false} className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex items-center gap-3 h-24 flex-1 min-w-0 text-left rounded-2xl border-[1.5px] border-dashed border-border bg-surface-2 px-3 hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <span className="flex-shrink-0 w-10 h-10 rounded-full bg-background border border-border flex items-center justify-center text-text-muted">
+          {kind === 'cover' ? <BookOpen size={16} aria-hidden /> : <Bookmark size={16} aria-hidden />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</p>
+          <p className="font-display text-[15px] font-medium text-text-primary truncate mt-0.5">
+            {data ? data.heading || 'Untitled' : 'Not added yet'}
+          </p>
+          <p className="font-body text-xs text-text-muted mt-0.5">{data ? 'Tap to edit' : 'Tap to choose a template'}</p>
+        </div>
+      </button>
+      {data && (
+        <button
+          type="button"
+          aria-label={`Remove ${label}`}
+          onClick={onRemove}
+          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <X size={15} aria-hidden />
+        </button>
+      )}
+    </li>
+  );
+}
+
+/** Grid-view counterpart to DeckEndRow — sized like DeckGridTile so cover/
+ *  back scale with the same column width rather than spanning full width. */
+function DeckEndTile({
+  kind,
+  data,
+  onEdit,
+  onRemove,
+}: {
+  kind: 'cover' | 'back';
+  data: CoverBackData | null;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const label = kind === 'cover' ? 'Cover' : 'Back page';
+  return (
+    <li data-testid="deck-end-row" draggable={false} className="list-none">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="w-full text-left rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 overflow-hidden hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <span className="relative flex aspect-[16/10] items-center justify-center bg-background text-text-muted">
+          {kind === 'cover' ? <BookOpen size={22} aria-hidden /> : <Bookmark size={22} aria-hidden />}
+          {data && (
+            <span
+              role="button"
+              aria-label={`Remove ${label}`}
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onRemove(); } }}
+              className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-md bg-black/55 text-white cursor-pointer"
+            >
+              <X size={13} aria-hidden />
+            </span>
+          )}
+        </span>
+        <span className="block p-3">
+          <span className="block font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</span>
+          <span className="block font-display text-sm font-medium text-text-primary truncate mt-0.5">
+            {data ? data.heading || 'Untitled' : 'Not added yet'}
+          </span>
+          <span className="block font-body text-[11px] text-text-muted mt-0.5">{data ? 'Tap to edit' : 'Tap to choose a template'}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** Header "Add" menu (Phase 4) — Memory / Cover page / Back page. Closes on
+ *  outside click via the fixed full-screen backdrop, same pattern
+ *  SourceMenu.tsx's popover variant uses for its own relative-positioned
+ *  dropdown. "Memory" is disabled: no real "add an existing memory to this
+ *  story" picker exists in production yet (traced before building this —
+ *  the only real memory<->story attachment path today is the reverse
+ *  direction, a memory's own StoryPicker) — stubbing a fake connection here
+ *  would be worse than being upfront that it's not built. */
+function AddMenu({
+  hasCover,
+  hasBack,
+  onPick,
+}: {
+  hasCover: boolean;
+  hasBack: boolean;
+  onPick: (kind: 'cover' | 'back') => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const item =
+    'flex items-center gap-2.5 w-full text-left px-3 py-2.5 rounded-lg font-body text-[13.5px] text-text-primary ' +
+    'hover:bg-text-primary/[0.07] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+  return (
+    <div className="relative flex-shrink-0">
+      <button
+        type="button"
+        aria-label="Add to this story"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Plus size={16} aria-hidden />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} className="fixed inset-0 z-40" aria-hidden="true" />
+          <div role="menu" aria-label="Add to this story" className="absolute top-full right-0 mt-1.5 z-50 w-52 rounded-xl bg-surface border border-border shadow-[0_18px_50px_-16px_rgba(0,0,0,0.55)] p-1.5">
+            <button type="button" role="menuitem" disabled className={`${item} opacity-40 cursor-not-allowed`} title="Coming soon">
+              <Bookmark size={15} className="flex-shrink-0 text-accent" aria-hidden />
+              Memory
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onPick('cover'); }}
+              className={item}
+            >
+              <BookOpen size={15} className="flex-shrink-0 text-accent" aria-hidden />
+              {hasCover ? 'Edit cover page' : 'Cover page'}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onPick('back'); }}
+              className={item}
+            >
+              <Bookmark size={15} className="flex-shrink-0 text-accent" aria-hidden />
+              {hasBack ? 'Edit back page' : 'Back page'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewProps) {
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
   const [memories, setMemories] = useState<StoryMemoryRow[]>([]);
@@ -274,12 +441,23 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(story.viewMode ?? 'list');
+  // Cover/back pages (Phase 4) — STUB ONLY, local state, never persisted:
+  // no schema/API work this round (see CoverBackPanel.tsx's header
+  // comment). `editingEnd` is which panel is open, if any; `null` means
+  // closed.
+  const [cover, setCover] = useState<CoverBackData | null>(null);
+  const [backPage, setBackPage] = useState<CoverBackData | null>(null);
+  const [editingEnd, setEditingEnd] = useState<'cover' | 'back' | null>(null);
 
   // Re-syncs when a different story is opened — this component doesn't
   // remount on story switch (ChatHero.tsx passes no `key`), so without this
-  // the previous story's view mode would leak into the next one.
+  // the previous story's view mode AND cover/back stub state would leak
+  // into the next one.
   useEffect(() => {
     setViewMode(story.viewMode ?? 'list');
+    setCover(null);
+    setBackPage(null);
+    setEditingEnd(null);
   }, [story.id, story.viewMode]);
 
   /** Returns the fresh list on success, or null on any failure — never
@@ -386,7 +564,7 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   const countLabel = `${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}`;
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="relative flex flex-col h-full bg-background">
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border flex-shrink-0">
         <div className="min-w-0 flex items-center gap-2.5">
           <BookOpen size={16} className="text-accent flex-shrink-0" aria-hidden />
@@ -398,6 +576,7 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
             </p>
           </div>
         </div>
+        <AddMenu hasCover={!!cover} hasBack={!!backPage} onPick={(kind) => setEditingEnd(kind)} />
         {!isMobile && (
           <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
             <button
@@ -426,6 +605,15 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
         )}
         <button
           type="button"
+          aria-label="Share this story — coming soon"
+          title="Sharing is coming soon"
+          disabled
+          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted opacity-40 cursor-not-allowed flex-shrink-0"
+        >
+          <Upload size={15} aria-hidden />
+        </button>
+        <button
+          type="button"
           aria-label="Close story"
           onClick={onClose}
           className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -441,56 +629,82 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
           </div>
         ) : loadError ? (
           <p className="font-body text-sm text-text-muted">Could not load this story&rsquo;s memories.</p>
-        ) : memories.length === 0 ? (
-          <p className="font-body text-sm italic text-text-muted">
-            No memories in this story yet. New memories will show up here as they&rsquo;re kept.
-          </p>
-        ) : viewMode === 'grid' && !isMobile ? (
-          <ol className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-            {memories.map((memory, index) => (
-              <DeckGridTile
-                key={memory.id}
-                memory={memory}
-                onOpen={() => onOpenMemory(memory.id, memory.session_id)}
-                drag={{
-                  index,
-                  isMobile,
-                  moving,
-                  dragIndex,
-                  overIndex,
-                  onDragStart: () => setDragIndex(index),
-                  onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
-                  onDrop: () => handleDrop(index),
-                  onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
-                }}
-              />
-            ))}
-          </ol>
         ) : (
-          <ol className="flex flex-col">
-            {memories.map((memory, index) => (
-              <DeckRow
-                key={memory.id}
-                memory={memory}
-                total={memories.length}
-                onOpen={() => onOpenMemory(memory.id, memory.session_id)}
-                onMove={(direction) => handleMove(memory.id, direction)}
-                drag={{
-                  index,
-                  isMobile,
-                  moving,
-                  dragIndex,
-                  overIndex,
-                  onDragStart: () => setDragIndex(index),
-                  onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
-                  onDrop: () => handleDrop(index),
-                  onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
-                }}
-              />
-            ))}
-          </ol>
+          <>
+            {viewMode === 'grid' && !isMobile ? (
+              <ol className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+                <DeckEndTile kind="cover" data={cover} onEdit={() => setEditingEnd('cover')} onRemove={() => setCover(null)} />
+                {memories.map((memory, index) => (
+                  <DeckGridTile
+                    key={memory.id}
+                    memory={memory}
+                    onOpen={() => onOpenMemory(memory.id, memory.session_id)}
+                    drag={{
+                      index,
+                      isMobile,
+                      moving,
+                      dragIndex,
+                      overIndex,
+                      onDragStart: () => setDragIndex(index),
+                      onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
+                      onDrop: () => handleDrop(index),
+                      onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
+                    }}
+                  />
+                ))}
+                <DeckEndTile kind="back" data={backPage} onEdit={() => setEditingEnd('back')} onRemove={() => setBackPage(null)} />
+              </ol>
+            ) : (
+              <ol className="flex flex-col gap-2">
+                <DeckEndRow kind="cover" data={cover} onEdit={() => setEditingEnd('cover')} onRemove={() => setCover(null)} />
+                {memories.map((memory, index) => (
+                  <DeckRow
+                    key={memory.id}
+                    memory={memory}
+                    total={memories.length}
+                    onOpen={() => onOpenMemory(memory.id, memory.session_id)}
+                    onMove={(direction) => handleMove(memory.id, direction)}
+                    drag={{
+                      index,
+                      isMobile,
+                      moving,
+                      dragIndex,
+                      overIndex,
+                      onDragStart: () => setDragIndex(index),
+                      onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
+                      onDrop: () => handleDrop(index),
+                      onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
+                    }}
+                  />
+                ))}
+                <DeckEndRow kind="back" data={backPage} onEdit={() => setEditingEnd('back')} onRemove={() => setBackPage(null)} />
+              </ol>
+            )}
+            {memories.length === 0 && (
+              <p className="font-body text-sm italic text-text-muted mt-4">
+                No memories in this story yet. New memories will show up here as they&rsquo;re kept.
+              </p>
+            )}
+          </>
         )}
       </div>
+
+      <CoverBackPanel
+        kind={editingEnd ?? 'cover'}
+        open={editingEnd !== null}
+        initial={editingEnd === 'cover' ? cover : editingEnd === 'back' ? backPage : null}
+        onClose={() => setEditingEnd(null)}
+        onSave={(data) => {
+          if (editingEnd === 'cover') setCover(data);
+          else if (editingEnd === 'back') setBackPage(data);
+          setEditingEnd(null);
+        }}
+        onRemove={() => {
+          if (editingEnd === 'cover') setCover(null);
+          else if (editingEnd === 'back') setBackPage(null);
+          setEditingEnd(null);
+        }}
+      />
     </div>
   );
 }
