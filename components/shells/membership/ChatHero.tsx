@@ -1446,13 +1446,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {storyViewStory && storyMemory && (
-              <StoryMemoryEditor
-                memoryId={storyMemory.id}
-                sessionId={storyMemory.sessionId}
-                stories={stories}
-                onClose={handleCloseStoryMemory}
-                onFlash={showToast}
-              />
+              // Slides in from the right (Story Deck & Memory Panel handover,
+              // 2026-09) rather than mounting instantly — the key re-triggers
+              // the animation every time a different deck row is opened, not
+              // just the first. Every other panel/pane swap in this wrapper
+              // keeps its existing (lack of) transition; this is the one
+              // handover called out for a new one.
+              <div key={storyMemory.id} className="h-full hl-animate-slide-right">
+                <StoryMemoryEditor
+                  memoryId={storyMemory.id}
+                  sessionId={storyMemory.sessionId}
+                  stories={stories}
+                  onClose={handleCloseStoryMemory}
+                  onFlash={showToast}
+                />
+              </div>
             )}
             {storyViewStory && !storyMemory && (
               <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />

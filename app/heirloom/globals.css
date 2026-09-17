@@ -77,6 +77,13 @@
 @keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Opening a memory card from the Story Deck (StoryView -> StoryMemoryEditor,
+   desktop third-pane swap) — Story Deck & Memory Panel handover, 2026-09.
+   Same timing/easing as hl-animate-sheet-left, mirrored horizontally: this
+   content is entering from the right, not the left. */
+@keyframes hl-slide-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+.hl-animate-slide-right { animation: hl-slide-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 /* Exit half of the mobile sidebar drawer. The element is conditionally
    rendered, so it needs useAnimatedPresence to hold the unmount for the same
    0.24s this runs for — keep the two in step (the hook's duration is a
@@ -111,6 +118,7 @@
   .hl-animate-sheet,
   .hl-animate-sheet-left,
   .hl-animate-sheet-left-out,
+  .hl-animate-slide-right,
   .hl-animate-fade,
   .hl-animate-modal { animation: none !important; }
   .reveal, .reveal.in { opacity: 1 !important; animation: none !important; transform: none !important; }

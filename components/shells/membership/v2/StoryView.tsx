@@ -29,6 +29,17 @@
 // a story's memory can't generally be opened through ChatHero's own
 // currently-active-chat-scoped memory hook.
 //
+// Row layout (Phase 1e, Story Deck & Memory Panel handover, 2026-09):
+// uniform row height regardless of content — a fixed h-24 + centered
+// content, rather than letting a body-less memory collapse to a shorter
+// row than its neighbors. The kind icon box is conditional on
+// `kind.media` ('still' | 'video' only) — text/audio/document memories
+// show title/passage/date with no icon box, matching the handover's "a
+// thumbnail only renders when the memory actually has photo/video
+// content" rule. No `mem.kinds` (plural, mixed-content) handling here —
+// that concept doesn't exist anywhere in production yet (confirmed
+// repo-wide), so this stays on the existing single `source_kind`.
+//
 // Reorder (Phase 1c, real-story-view-1c-reorder): up/down move buttons per
 // row, not drag-and-drop — deliberately simpler for this pass. Sibling
 // buttons alongside the row's own open-editor button, not nested inside it
@@ -181,6 +192,7 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
             {memories.map((memory, index) => {
               const kind = memoryKindOf(memory.source_kind);
               const Icon = KIND_ICONS[kind.icon] ?? BookOpen;
+              const hasThumbnail = kind.media === 'still' || kind.media === 'video';
               const isFirst = index === 0;
               const isLast = index === memories.length - 1;
               return (
@@ -188,11 +200,13 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
                   <button
                     type="button"
                     onClick={() => onOpenMemory(memory.id, memory.session_id)}
-                    className="flex items-start gap-3 py-3 flex-1 min-w-0 text-left rounded-lg -mx-1 px-1 hover:bg-text-primary/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    className="flex items-center gap-3 h-24 flex-1 min-w-0 text-left rounded-lg -mx-1 px-1 hover:bg-text-primary/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    <span className="flex-shrink-0 w-8 h-8 mt-0.5 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
-                      <Icon size={14} aria-hidden />
-                    </span>
+                    {hasThumbnail && (
+                      <span data-testid="memory-thumbnail" className="flex-shrink-0 w-10 h-10 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
+                        <Icon size={16} aria-hidden />
+                      </span>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="font-body text-sm font-semibold text-text-primary truncate">{memory.title}</p>
                       {memory.body && (
