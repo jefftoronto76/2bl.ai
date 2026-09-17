@@ -5,7 +5,7 @@
 // header comment).
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 import { StoryView } from './StoryView';
 import type { Story } from './types';
@@ -615,5 +615,99 @@ describe('StoryView — Cover/Back stub, grid view (Phase 4)', () => {
 
     const endTiles = screen.getAllByTestId('deck-end-row');
     expect(endTiles).toHaveLength(2);
+  });
+});
+
+describe('StoryView — Preview entry point (Phase 5)', () => {
+  it('clicking "Preview this story" opens the reader, showing the story name in its header', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [{ id: 'mem-1', session_id: 'sess-1', title: 'The Lake House', body: 'A quiet summer.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('The Lake House');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Preview A Life in Full' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('A quiet summer.')).toBeInTheDocument();
+  });
+
+  it('closing the reader and reopening it returns to page 1', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', session_id: 'sess-1', title: 'First', body: 'First page.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', session_id: 'sess-1', title: 'Second', body: 'Second page.', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('First');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(within(screen.getByRole('dialog', { name: /Preview/ })).getByText('Second page.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+    expect(screen.queryByRole('dialog', { name: /Preview/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+    expect(within(screen.getByRole('dialog', { name: /Preview/ })).getByText('First page.')).toBeInTheDocument();
+  });
+
+  it('Preview includes the stub cover/back pages when they exist', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cover page' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'A Life in Full, Remembered' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+
+    expect(screen.getByRole('heading', { name: 'A Life in Full, Remembered' })).toBeInTheDocument();
+  });
+
+  it('paginates a long memory body across multiple reader pages — 620-word chunks past the first page', async () => {
+    // No media on a 'conversation' memory -> first-page limit is 620 words,
+    // same as every later page, so exactly 1300 words makes 3 pages
+    // (620 + 620 + 60), not 2.
+    const longBody = Array.from({ length: 1300 }, (_, i) => `word${i}`).join(' ');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [{ id: 'mem-1', session_id: 'sess-1', title: 'A Long One', body: longBody, source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A Long One');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: /Preview/ });
+    expect(dialog.textContent).toContain('word0 ');
+    expect(dialog.textContent).not.toContain('word620 ');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('2 / 3')).toBeInTheDocument();
+    expect(dialog.textContent).toContain('word620 ');
   });
 });
