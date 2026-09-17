@@ -17,10 +17,11 @@
 // opening this) is deliberately Phase 6's job, not built here, per the
 // staged plan's own phasing.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Upload, X } from 'lucide-react';
 import type { CoverBackData } from './CoverBackPanel';
 import { memoryKindOf } from '../memory/memoryKinds';
+import { useModalA11y } from './useModalA11y';
 
 export interface PreviewMemory {
   id: string;
@@ -96,22 +97,29 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
   const pages = readerPages(cover, memories, backPage);
   const total = pages.length;
   const current = pages[Math.min(page, total - 1)];
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Back to page 1 every time the modal opens fresh.
   useEffect(() => {
     if (open) setPage(0);
   }, [open]);
 
+  // Focus in on open, Tab trap, focus restore on close, Escape (capture) —
+  // same a11y baseline every other modal in this codebase gets. Escape is
+  // NOT handled in the page-navigation listener below; the hook already
+  // owns it.
+  useModalA11y(open, dialogRef, onClose, closeButtonRef);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowRight') setPage((p) => Math.min(total - 1, p + 1));
+      if (e.key === 'ArrowRight') setPage((p) => Math.min(total - 1, p + 1));
       else if (e.key === 'ArrowLeft') setPage((p) => Math.max(0, p - 1));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, total, onClose]);
+  }, [open, total]);
 
   if (!open) return null;
 
@@ -127,11 +135,13 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={`Preview ${storyName}`}
       onClick={onClose}
-      className="fixed inset-0 z-[92] flex flex-col bg-black/[0.86] backdrop-blur-md"
+      className="fixed inset-0 z-[92] flex flex-col bg-black/[0.86] backdrop-blur-md focus:outline-none"
     >
       <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0 flex items-center justify-between flex-wrap gap-2.5 px-4 py-3.5 sm:px-5 sm:py-4">
         <span className="font-display text-[15px] sm:text-base font-medium text-white">{storyName} — preview</span>
@@ -161,6 +171,7 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
             <Upload size={16} aria-hidden />
           </button>
           <button
+            ref={closeButtonRef}
             type="button"
             aria-label="Close preview"
             onClick={onClose}

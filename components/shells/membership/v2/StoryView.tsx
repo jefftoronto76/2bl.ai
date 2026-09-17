@@ -327,26 +327,14 @@ function DeckEndTile({
 }) {
   const label = kind === 'cover' ? 'Cover' : 'Back page';
   return (
-    <li data-testid="deck-end-row" draggable={false} className="list-none">
+    <li data-testid="deck-end-row" draggable={false} className="relative list-none">
       <button
         type="button"
         onClick={onEdit}
         className="w-full text-left rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 overflow-hidden hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <span className="relative flex aspect-[16/10] items-center justify-center bg-background text-text-muted">
+        <span className="flex aspect-[16/10] items-center justify-center bg-background text-text-muted">
           {kind === 'cover' ? <BookOpen size={22} aria-hidden /> : <Bookmark size={22} aria-hidden />}
-          {data && (
-            <span
-              role="button"
-              aria-label={`Remove ${label}`}
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onRemove(); } }}
-              className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-md bg-black/55 text-white cursor-pointer"
-            >
-              <X size={13} aria-hidden />
-            </span>
-          )}
         </span>
         <span className="block p-3">
           <span className="block font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</span>
@@ -356,6 +344,18 @@ function DeckEndTile({
           <span className="block font-body text-[11px] text-text-muted mt-0.5">{data ? 'Tap to edit' : 'Tap to choose a template'}</span>
         </span>
       </button>
+      {data && (
+        // Sibling of the tile button, not nested inside it — a <button>
+        // can't validly contain another focusable/interactive element.
+        <button
+          type="button"
+          aria-label={`Remove ${label}`}
+          onClick={onRemove}
+          className="absolute top-2 right-2 grid place-items-center w-6 h-6 rounded-md bg-black/55 text-white cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <X size={13} aria-hidden />
+        </button>
+      )}
     </li>
   );
 }
@@ -516,6 +516,14 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
         if (!res.ok) {
           console.error('[StoryView] move failed:', res.status);
           onFlash('Could not move memory');
+          // A multi-step drag (steps > 1) can fail partway through — an
+          // earlier step in this same loop may have already persisted.
+          // Refetch so local state reflects the server's real order rather
+          // than staying on the pre-move order, which would make the next
+          // drag/nudge compute its target from indices that no longer
+          // match what's actually persisted.
+          const partial = await loadMemories();
+          if (partial !== null) setMemories(partial);
           return;
         }
       }

@@ -282,10 +282,11 @@ describe('StoryView — reorder (real-story-view-1c-reorder)', () => {
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Move up' })[1]).not.toBeDisabled());
   });
 
-  it('flashes an error and does not crash when the PATCH fails', async () => {
+  it('flashes an error and does not crash when the PATCH fails, refetching to confirm local state matches the server', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES }))
-      .mockResolvedValueOnce(jsonResponse({ error: 'Already at the top of the list' }, false, 400));
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })) // initial GET
+      .mockResolvedValueOnce(jsonResponse({ error: 'Already at the top of the list' }, false, 400)) // failing PATCH
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })); // refetch after failure
     vi.stubGlobal('fetch', fetchMock);
     const onFlash = vi.fn();
 
@@ -295,8 +296,34 @@ describe('StoryView — reorder (real-story-view-1c-reorder)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Move down' })[0]);
 
     await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Could not move memory'));
-    // Local state is untouched — still the original order, not corrupted.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    // Local state matches what the server actually has — still the
+    // original order here, but via a real refetch, not an assumption that
+    // nothing changed (a multi-step drag can partially succeed before a
+    // later step fails).
     expect(screen.getAllByText(/^[ABC]$/)[0]).toHaveTextContent('A');
+  });
+
+  it('a multi-step move that fails partway refetches so local state reflects the partially-applied server order', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })) // initial GET
+      .mockResolvedValueOnce(jsonResponse({ ok: true })) // PATCH 1 (A -> down) succeeds
+      .mockResolvedValueOnce(jsonResponse({ error: 'conflict' }, false, 409)) // PATCH 2 fails
+      .mockResolvedValueOnce(jsonResponse({ memories: [THREE_MEMORIES[1], THREE_MEMORIES[0], THREE_MEMORIES[2]] })); // refetch reflects the one step that DID persist
+    vi.stubGlobal('fetch', fetchMock);
+    const onFlash = vi.fn();
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={onFlash} />);
+    await screen.findByText('A');
+
+    const rows = screen.getAllByTestId('deck-memory-row');
+    fireEvent.dragStart(rows[0]); // A
+    fireEvent.drop(rows[2]); // dropped 2 positions down -> 2 PATCH steps
+
+    await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Could not move memory'));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    const titles = screen.getAllByTestId('deck-memory-row').map((li) => li.textContent);
+    expect(titles[0]).toContain('B'); // reflects the server's real order, not the stale pre-drag one
   });
 
   it('flashes an error when the move throws (network failure)', async () => {
