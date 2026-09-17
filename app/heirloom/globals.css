@@ -77,12 +77,23 @@
 @keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
-/* Opening a memory card from the Story Deck (StoryView -> StoryMemoryEditor,
-   desktop third-pane swap) — Story Deck & Memory Panel handover, 2026-09.
-   Same timing/easing as hl-animate-sheet-left, mirrored horizontally: this
-   content is entering from the right, not the left. */
+/* Opening a memory card from the Story Deck (StoryView -> StoryMemoryEditor
+   swap, both the desktop third pane and the mobile full-screen overlay) —
+   Story Deck & Memory Panel handover, 2026-09. Same timing/easing as
+   hl-animate-sheet-left, mirrored horizontally: this content is entering
+   from the right, not the left.
+
+   Deliberately NOT `both` (unlike every other .hl-animate-* above): a
+   lingering `transform: translateX(0)` after the animation ends still
+   establishes a CSS containing block for absolutely-positioned descendants
+   (StoryMemoryEditor renders its own ConfirmDeleteModal, `absolute
+   inset-0`, meant to cover the whole drawer/overlay) — the scrim would get
+   clipped to this wrapper's own box instead. Omitting the fill-mode lets
+   the element revert to the ordinary cascade (no transform property at
+   all, same visual end state) once the animation completes, so nothing
+   downstream of it gets a surprise containing block. */
 @keyframes hl-slide-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
-.hl-animate-slide-right { animation: hl-slide-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hl-animate-slide-right { animation: hl-slide-right 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* Exit half of the mobile sidebar drawer. The element is conditionally
    rendered, so it needs useAnimatedPresence to hold the unmount for the same

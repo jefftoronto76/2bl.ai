@@ -1298,13 +1298,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
             <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
               {storyMemory ? (
-                <StoryMemoryEditor
-                  memoryId={storyMemory.id}
-                  sessionId={storyMemory.sessionId}
-                  stories={stories}
-                  onClose={handleCloseStoryMemory}
-                  onFlash={showToast}
-                />
+                // Slides in from the right (Story Deck & Memory Panel
+                // handover, 2026-09), same as the desktop branch below —
+                // the outer hl-animate-sheet above only plays once, when
+                // this whole overlay first mounts, and doesn't retrigger on
+                // the StoryView -> StoryMemoryEditor swap inside it without
+                // this. Keyed by memory id so a different row re-triggers it.
+                <div key={storyMemory.id} className="h-full hl-animate-slide-right">
+                  <StoryMemoryEditor
+                    memoryId={storyMemory.id}
+                    sessionId={storyMemory.sessionId}
+                    stories={stories}
+                    onClose={handleCloseStoryMemory}
+                    onFlash={showToast}
+                  />
+                </div>
               ) : (
                 <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
               )}
