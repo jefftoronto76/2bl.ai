@@ -28,6 +28,7 @@ import {
   listStories,
   discardStory,
   updateStoryDescription,
+  updateStoryViewMode,
   getStoryById,
   STORY_ACCOUNT_REQUIRED_ERROR,
 } from './stories'
@@ -538,5 +539,84 @@ describe('updateStoryDescription', () => {
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)
+  })
+})
+
+describe('updateStoryViewMode', () => {
+  it('writes into artifacts.metadata.viewPrefs.deckView, scoped by id + tenant + user, replacing the whole metadata value', async () => {
+    const { client, updateCalls } = makeClient({
+      updateResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now', metadata: { viewPrefs: { deckView: 'grid' } } },
+        error: null,
+      },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.data.viewMode).toBe('grid')
+      expect(result.data.id).toBe('story-1')
+    }
+    expect(updateCalls[0]).toEqual({ metadata: { viewPrefs: { deckView: 'grid' } } })
+    // Only metadata is touched — title/body are left alone.
+    expect(updateCalls[0]).not.toHaveProperty('title')
+    expect(updateCalls[0]).not.toHaveProperty('body')
+  })
+
+  it('404s when no row matches id + tenant + user (not found, or not owned by this user)', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: null } })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'nope', 'grid')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Story not found')
+    }
+  })
+
+  it('500s when the update itself errors', async () => {
+    const { client } = makeClient({ updateResult: { data: null, error: { message: 'db down' } } })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+})
+
+describe('StoryRow.viewMode (toStoryRow)', () => {
+  it('defaults to "list" when metadata has no saved preference yet', async () => {
+    const { client } = makeClient({
+      updateResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now' },
+        error: null,
+      },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryDescription('tenant-1', 'user-1', 'story-1', 'New text')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.viewMode).toBe('list')
+  })
+
+  it('reads "grid" back from an existing metadata.viewPrefs.deckView value', async () => {
+    const { client } = makeClient({
+      updateResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now', metadata: { viewPrefs: { deckView: 'grid' } } },
+        error: null,
+      },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryDescription('tenant-1', 'user-1', 'story-1', 'New text')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.viewMode).toBe('grid')
   })
 })

@@ -64,11 +64,23 @@ export interface StoryRow {
    *  default) — listStories below is the only place that computes a real
    *  value, same batched-not-per-row shape as hasActiveInviteOrSubscribers. */
   memoryCount: number
+  /** The Deck's List/Grid toggle (Story Deck & Memory Panel handover, Phase
+   *  3, 2026-09) — per-story, not global, per product decision. Read from
+   *  artifacts.metadata.viewPrefs.deckView (a live, previously-unused jsonb
+   *  column — no Studio migration needed, see updateStoryViewMode's own doc
+   *  comment). Defaults to 'list' when metadata has no value yet, matching
+   *  StoryView.tsx's pre-Phase-3 behavior (list was the only view). */
+  viewMode: 'list' | 'grid'
 }
 
 const ARTIFACT_TYPE = 'story' as const
 
-const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at, user_id'
+const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at, user_id, metadata'
+
+function viewModeFromMetadata(metadata: unknown): 'list' | 'grid' {
+  const deckView = (metadata as { viewPrefs?: { deckView?: unknown } } | null)?.viewPrefs?.deckView
+  return deckView === 'grid' ? 'grid' : 'list'
+}
 
 function toStoryRow(row: Record<string, unknown>): StoryRow {
   return {
@@ -80,6 +92,7 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
     hasActiveInviteOrSubscribers: false,
     isOwner: false,
     memoryCount: 0,
+    viewMode: viewModeFromMetadata(row.metadata),
   }
 }
 
@@ -403,6 +416,56 @@ export async function updateStoryDescription(
   }
 
   console.log('[stories] description updated:', storyId)
+  return { ok: true, data: toStoryRow(data) }
+}
+
+/**
+ * Updates the Deck's List/Grid view preference (Story Deck & Memory Panel
+ * handover, Phase 3, 2026-09) — per-story, not global (product decision).
+ * Writes into artifacts.metadata.viewPrefs.deckView, a live jsonb column
+ * that was completely unused by any story or memory code before this —
+ * confirmed repo-wide — so this needed zero Studio migration, unlike a new
+ * column would have.
+ *
+ * This REPLACES the whole metadata value rather than merging into it
+ * (`.update({ metadata: { viewPrefs: { deckView } } })`, not a read-modify-
+ * write). Safe today because nothing else writes to a story's metadata yet
+ * (also confirmed repo-wide) — if that ever changes, this needs to become a
+ * merge instead of a blind overwrite, or it will silently clobber whatever
+ * else lives there.
+ *
+ * Owner-scoped and 404-shaped identically to updateStoryDescription above —
+ * same tenant_id + user_id + type='story' scoping, same non-leaking 404 for
+ * both "no such story" and "not yours."
+ */
+export async function updateStoryViewMode(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+  viewMode: 'list' | 'grid',
+): Promise<StoryResult<StoryRow>> {
+  const supabase = getAdminClient()
+
+  const { data, error } = await supabase
+    .from('artifacts')
+    .update({ metadata: { viewPrefs: { deckView: viewMode } } })
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .select(STORY_ROW_COLUMNS)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[stories] update view mode error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    console.warn('[stories] no story matched id + tenant + user for view mode update:', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  console.log('[stories] view mode updated:', storyId, viewMode)
   return { ok: true, data: toStoryRow(data) }
 }
 

@@ -31,6 +31,7 @@ export async function GET(req: Request) {
       hasActiveInviteOrSubscribers: s.hasActiveInviteOrSubscribers,
       isOwner: s.isOwner,
       memoryCount: s.memoryCount,
+      viewMode: s.viewMode,
     })),
   })
 }
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
       hasActiveInviteOrSubscribers: result.data.hasActiveInviteOrSubscribers,
       isOwner: result.data.isOwner,
       memoryCount: result.data.memoryCount,
+      viewMode: result.data.viewMode,
     },
   })
 }

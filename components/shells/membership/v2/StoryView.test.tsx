@@ -385,3 +385,116 @@ describe('StoryView — desktop drag-and-drop reorder (Phase 2)', () => {
     }
   });
 });
+
+describe('StoryView — List/Grid toggle, persisted per-story (Phase 3)', () => {
+  it('defaults to list view when the story has no saved preference', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    expect(screen.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('opens straight into grid view when the story\'s saved preference is grid', async () => {
+    const gridStory: Story = { ...story, viewMode: 'grid' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES })));
+
+    render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking "Grid view" switches layout immediately and PATCHes the preference in the background', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })) // initial GET
+      .mockResolvedValueOnce(jsonResponse({ story: { id: 'story-1', name: 'A Life in Full', viewMode: 'grid' } })); // PATCH
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+
+    expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/stories/story-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ view_mode: 'grid' }),
+    });
+  });
+
+  it('reverts to the previous view and flashes an error when the PATCH fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES }))
+      .mockResolvedValueOnce(jsonResponse({ error: 'nope' }, false, 500));
+    vi.stubGlobal('fetch', fetchMock);
+    const onFlash = vi.fn();
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={onFlash} />);
+    await screen.findByText('A');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+
+    await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Could not save view preference'));
+    expect(screen.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('clicking the already-active view does nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // just the initial GET, no PATCH
+  });
+
+  it('grid view has no up/down buttons but keeps the thumbnail rule and opens memories the same way', async () => {
+    const gridStory: Story = { ...story, viewMode: 'grid' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', session_id: 'sess-1', title: 'A photo', body: '', source_kind: 'photo', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', session_id: 'sess-1', title: 'Written up', body: '', source_kind: 'conversation', created_at: '2026-08-02T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+    const onOpenMemory = vi.fn();
+
+    render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={onOpenMemory} onFlash={vi.fn()} />);
+    await screen.findByText('A photo');
+
+    expect(screen.queryByRole('button', { name: 'Move up' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /A photo/ }));
+    expect(onOpenMemory).toHaveBeenCalledWith('mem-1', 'sess-1');
+  });
+
+  it('mobile always renders list, with no Deck-layout toggle at all, even when the saved preference is grid', async () => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+    try {
+      const gridStory: Story = { ...story, viewMode: 'grid' };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES })));
+
+      render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+      await screen.findByText('A');
+
+      expect(screen.queryByRole('group', { name: 'Deck layout' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Move down' })[0]).toBeInTheDocument(); // still the list view
+    } finally {
+      (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+        width: 1024,
+      });
+    }
+  });
+});

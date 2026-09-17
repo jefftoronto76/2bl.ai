@@ -147,6 +147,12 @@ export const AuditAction = {
   // logged by the PATCH /api/stories/[id] route, same placement convention
   // as STORY_DISCARDED (route logs, service function itself doesn't).
   STORY_DESCRIPTION_UPDATED: 'story.description_updated',
+  // Deck List/Grid view preference (Story Deck & Memory Panel handover,
+  // Phase 3, 2026-09) — logged by the PATCH /api/stories/[id] route, same
+  // placement convention as STORY_DESCRIPTION_UPDATED above. Persisted into
+  // artifacts.metadata (services/crm/stories.ts's updateStoryViewMode), not
+  // a new column — see that function's own doc comment.
+  STORY_VIEW_MODE_UPDATED: 'story.view_mode_updated',
   // Story invite links (reusable-story-invite-links, 2026-08-10) — a
   // deliberately separate mechanism from the member.invite_* single-use
   // admin/member invite actions above; see services/crm/story-invites.ts.

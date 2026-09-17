@@ -70,10 +70,25 @@
 // the existing up/down buttons are already mobile's real fallback, per
 // the handover's own "drag becomes chevrons on mobile" note (already true
 // here since this view never had drag to fall back FROM until now).
+//
+// List/Grid toggle, persisted per-story (Phase 3, Story Deck & Memory
+// Panel handover, 2026-09): a segmented control in the header. Grid uses a
+// CSS grid with fixed-width tracks (grid-cols-[repeat(auto-fill,
+// minmax(220px,1fr))]) rather than flex-wrap, per the handover's own note
+// that flex-grow stretches tiles in a short trailing row. This view manages
+// its view mode itself (self-contained, same posture as its own memory
+// fetch above) rather than threading a callback through ChatHero.tsx —
+// nothing outside this view renders it. Persisted via PATCH
+// /api/stories/[id] ({ view_mode }) into artifacts.metadata — per-story,
+// not global, not merely local state (product decision) — with an
+// optimistic update that reverts on failure. DeckRow/DeckGridTile below
+// share the same drag-and-drop handlers from Phase 2 (same names as the
+// design handover's own prototype components, `story-canvas-panel.jsx`,
+// for easy cross-reference) so reordering works identically in both views.
 
 import { useCallback, useEffect, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { BookOpen, ChevronDown, ChevronUp, GripVertical, Loader2, X } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, GripVertical, LayoutGrid, List, Loader2, X } from 'lucide-react';
 import type { Story } from './types';
 import { memoryKindOf, KIND_ICONS } from '../memory/memoryKinds';
 
@@ -100,6 +115,149 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Shared by both DeckRow and DeckGridTile below — everything the drag
+ *  gesture itself needs, independent of which view is rendering it. */
+interface DeckDragProps {
+  index: number;
+  isMobile: boolean;
+  moving: string | null;
+  dragIndex: number | null;
+  overIndex: number | null;
+  onDragStart: () => void;
+  onDragEnter: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+}
+
+function DeckRow({
+  memory,
+  total,
+  onOpen,
+  onMove,
+  drag,
+}: {
+  memory: StoryMemoryRow;
+  total: number;
+  onOpen: () => void;
+  onMove: (direction: 'up' | 'down') => void;
+  drag: DeckDragProps;
+}) {
+  const kind = memoryKindOf(memory.source_kind);
+  const Icon = KIND_ICONS[kind.icon] ?? BookOpen;
+  const hasThumbnail = kind.media === 'still' || kind.media === 'video';
+  const isFirst = drag.index === 0;
+  const isLast = drag.index === total - 1;
+  return (
+    <li
+      draggable={!drag.isMobile && drag.moving === null}
+      onDragStart={drag.onDragStart}
+      onDragEnter={drag.onDragEnter}
+      onDragOver={(e) => { if (drag.dragIndex !== null) e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); drag.onDrop(); }}
+      onDragEnd={drag.onDragEnd}
+      className={`flex items-center gap-1 border-b border-border last:border-b-0 transition-opacity ${
+        drag.dragIndex === drag.index ? 'opacity-40' : ''
+      } ${drag.overIndex === drag.index && drag.dragIndex !== null && drag.dragIndex !== drag.index ? 'bg-accent/5' : ''}`}
+    >
+      {!drag.isMobile && (
+        <span aria-hidden="true" className="flex-shrink-0 w-5 flex items-center justify-center text-text-muted/40 cursor-grab">
+          <GripVertical size={14} />
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-center gap-3 h-24 flex-1 min-w-0 text-left rounded-lg -mx-1 px-1 hover:bg-text-primary/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        {hasThumbnail && (
+          <span data-testid="memory-thumbnail" className="flex-shrink-0 w-10 h-10 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
+            <Icon size={16} aria-hidden />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-body text-sm font-semibold text-text-primary truncate">{memory.title}</p>
+          {memory.body && (
+            <p className="font-body text-[13px] text-text-muted line-clamp-2 mt-0.5">{memory.body}</p>
+          )}
+          <p className="font-mono text-[10.5px] text-text-muted mt-1">{formatDate(memory.created_at)}</p>
+        </div>
+      </button>
+      <div className="flex flex-col flex-shrink-0">
+        <button
+          type="button"
+          aria-label="Move up"
+          disabled={isFirst || drag.moving !== null}
+          onClick={() => onMove('up')}
+          className="grid place-items-center w-6 h-6 rounded text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <ChevronUp size={14} aria-hidden />
+        </button>
+        <button
+          type="button"
+          aria-label="Move down"
+          disabled={isLast || drag.moving !== null}
+          onClick={() => onMove('down')}
+          className="grid place-items-center w-6 h-6 rounded text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <ChevronDown size={14} aria-hidden />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+/** Grid-view counterpart to DeckRow — same drag-and-drop, same thumbnail
+ *  rule, no up/down buttons (a tile has no natural place for them the way
+ *  a full-width row does; drag plus the row view's buttons already cover
+ *  both pointer and keyboard reordering). */
+function DeckGridTile({
+  memory,
+  onOpen,
+  drag,
+}: {
+  memory: StoryMemoryRow;
+  onOpen: () => void;
+  drag: DeckDragProps;
+}) {
+  const kind = memoryKindOf(memory.source_kind);
+  const Icon = KIND_ICONS[kind.icon] ?? BookOpen;
+  const hasThumbnail = kind.media === 'still' || kind.media === 'video';
+  return (
+    <li
+      draggable={!drag.isMobile && drag.moving === null}
+      onDragStart={drag.onDragStart}
+      onDragEnter={drag.onDragEnter}
+      onDragOver={(e) => { if (drag.dragIndex !== null) e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); drag.onDrop(); }}
+      onDragEnd={drag.onDragEnd}
+      className={`list-none transition-opacity ${drag.dragIndex === drag.index ? 'opacity-40' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`w-full text-left rounded-xl border overflow-hidden bg-surface hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+          drag.overIndex === drag.index && drag.dragIndex !== null && drag.dragIndex !== drag.index ? 'border-accent' : 'border-border'
+        }`}
+      >
+        {hasThumbnail && (
+          <span className="flex aspect-[16/10] items-center justify-center bg-accent/15 text-accent">
+            <Icon size={22} aria-hidden />
+          </span>
+        )}
+        <span className="block p-3">
+          <span className="block font-body text-sm font-semibold text-text-primary truncate">{memory.title}</span>
+          {memory.body && (
+            <span className={`block font-body text-[12.5px] text-text-muted mt-1 ${hasThumbnail ? 'line-clamp-2' : 'line-clamp-4'}`}>
+              {memory.body}
+            </span>
+          )}
+          <span className="block font-mono text-[10px] text-text-muted mt-2">{formatDate(memory.created_at)}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewProps) {
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
   const [memories, setMemories] = useState<StoryMemoryRow[]>([]);
@@ -115,6 +273,14 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   // move only happens on drop, via the same PATCH endpoint the buttons use.
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(story.viewMode ?? 'list');
+
+  // Re-syncs when a different story is opened — this component doesn't
+  // remount on story switch (ChatHero.tsx passes no `key`), so without this
+  // the previous story's view mode would leak into the next one.
+  useEffect(() => {
+    setViewMode(story.viewMode ?? 'list');
+  }, [story.id, story.viewMode]);
 
   /** Returns the fresh list on success, or null on any failure — never
    *  throws, matching this component's existing silent-log-and-degrade
@@ -192,11 +358,36 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
     void handleMove(dragged.id, direction, steps);
   };
 
+  /** Optimistic — flips immediately, PATCHes in the background, reverts on
+   *  failure. A no-op if it's already the current mode (avoids a pointless
+   *  request when the segmented control re-fires its own active state). */
+  const handleSetViewMode = async (mode: 'list' | 'grid') => {
+    if (mode === viewMode) return;
+    const previous = viewMode;
+    setViewMode(mode);
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(story.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ view_mode: mode }),
+      });
+      if (!res.ok) {
+        console.error('[StoryView] view mode update failed:', res.status);
+        setViewMode(previous);
+        onFlash('Could not save view preference');
+      }
+    } catch (err) {
+      console.error('[StoryView] view mode update threw:', err);
+      setViewMode(previous);
+      onFlash('Could not save view preference');
+    }
+  };
+
   const countLabel = `${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}`;
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border flex-shrink-0">
         <div className="min-w-0 flex items-center gap-2.5">
           <BookOpen size={16} className="text-accent flex-shrink-0" aria-hidden />
           <div className="min-w-0">
@@ -207,6 +398,32 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
             </p>
           </div>
         </div>
+        {!isMobile && (
+          <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
+            <button
+              type="button"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              onClick={() => handleSetViewMode('list')}
+              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <List size={14} aria-hidden />
+            </button>
+            <button
+              type="button"
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
+              onClick={() => handleSetViewMode('grid')}
+              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <LayoutGrid size={14} aria-hidden />
+            </button>
+          </div>
+        )}
         <button
           type="button"
           aria-label="Close story"
@@ -228,73 +445,49 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
           <p className="font-body text-sm italic text-text-muted">
             No memories in this story yet. New memories will show up here as they&rsquo;re kept.
           </p>
+        ) : viewMode === 'grid' && !isMobile ? (
+          <ol className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+            {memories.map((memory, index) => (
+              <DeckGridTile
+                key={memory.id}
+                memory={memory}
+                onOpen={() => onOpenMemory(memory.id, memory.session_id)}
+                drag={{
+                  index,
+                  isMobile,
+                  moving,
+                  dragIndex,
+                  overIndex,
+                  onDragStart: () => setDragIndex(index),
+                  onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
+                  onDrop: () => handleDrop(index),
+                  onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
+                }}
+              />
+            ))}
+          </ol>
         ) : (
           <ol className="flex flex-col">
-            {memories.map((memory, index) => {
-              const kind = memoryKindOf(memory.source_kind);
-              const Icon = KIND_ICONS[kind.icon] ?? BookOpen;
-              const hasThumbnail = kind.media === 'still' || kind.media === 'video';
-              const isFirst = index === 0;
-              const isLast = index === memories.length - 1;
-              return (
-                <li
-                  key={memory.id}
-                  draggable={!isMobile && moving === null}
-                  onDragStart={() => setDragIndex(index)}
-                  onDragEnter={() => { if (dragIndex !== null) setOverIndex(index); }}
-                  onDragOver={(e) => { if (dragIndex !== null) e.preventDefault(); }}
-                  onDrop={(e) => { e.preventDefault(); handleDrop(index); }}
-                  onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
-                  className={`flex items-center gap-1 border-b border-border last:border-b-0 transition-opacity ${
-                    dragIndex === index ? 'opacity-40' : ''
-                  } ${overIndex === index && dragIndex !== null && dragIndex !== index ? 'bg-accent/5' : ''}`}
-                >
-                  {!isMobile && (
-                    <span aria-hidden="true" className="flex-shrink-0 w-5 flex items-center justify-center text-text-muted/40 cursor-grab">
-                      <GripVertical size={14} />
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onOpenMemory(memory.id, memory.session_id)}
-                    className="flex items-center gap-3 h-24 flex-1 min-w-0 text-left rounded-lg -mx-1 px-1 hover:bg-text-primary/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                  >
-                    {hasThumbnail && (
-                      <span data-testid="memory-thumbnail" className="flex-shrink-0 w-10 h-10 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">
-                        <Icon size={16} aria-hidden />
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-body text-sm font-semibold text-text-primary truncate">{memory.title}</p>
-                      {memory.body && (
-                        <p className="font-body text-[13px] text-text-muted line-clamp-2 mt-0.5">{memory.body}</p>
-                      )}
-                      <p className="font-mono text-[10.5px] text-text-muted mt-1">{formatDate(memory.created_at)}</p>
-                    </div>
-                  </button>
-                  <div className="flex flex-col flex-shrink-0">
-                    <button
-                      type="button"
-                      aria-label="Move up"
-                      disabled={isFirst || moving !== null}
-                      onClick={() => handleMove(memory.id, 'up')}
-                      className="grid place-items-center w-6 h-6 rounded text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      <ChevronUp size={14} aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Move down"
-                      disabled={isLast || moving !== null}
-                      onClick={() => handleMove(memory.id, 'down')}
-                      className="grid place-items-center w-6 h-6 rounded text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      <ChevronDown size={14} aria-hidden />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
+            {memories.map((memory, index) => (
+              <DeckRow
+                key={memory.id}
+                memory={memory}
+                total={memories.length}
+                onOpen={() => onOpenMemory(memory.id, memory.session_id)}
+                onMove={(direction) => handleMove(memory.id, direction)}
+                drag={{
+                  index,
+                  isMobile,
+                  moving,
+                  dragIndex,
+                  overIndex,
+                  onDragStart: () => setDragIndex(index),
+                  onDragEnter: () => { if (dragIndex !== null) setOverIndex(index); },
+                  onDrop: () => handleDrop(index),
+                  onDragEnd: () => { setDragIndex(null); setOverIndex(null); },
+                }}
+              />
+            ))}
           </ol>
         )}
       </div>
