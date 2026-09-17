@@ -1,0 +1,1544 @@
+'use client';
+
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMediaQuery, useReducedMotion } from '@mantine/hooks';
+import { Check } from 'lucide-react';
+import { SidebarV2 } from './v2/SidebarV2';
+import { BeginStoryModal } from './v2/BeginStoryModal';
+import { InviteCollaboratorsModal } from './v2/InviteCollaboratorsModal';
+import { ConfirmDeleteModal } from './v2/ConfirmDeleteModal';
+import { ShareHeirloomModal } from './v2/ShareHeirloomModal';
+import type { Collaborator, RowAction, RowTarget, Story, WritingPrompt } from './v2/types';
+import { ChatHeader } from './ChatHeader';
+import { ChatInput } from './ChatInput';
+import { MessageList } from './MessageList';
+import { useChatStore } from './chatStore';
+import { useMemories, type MemoryRow } from '@/services/chat/ui/v1/useMemories';
+import { useKeyboardViewport } from '@/services/chat/ui/v1/core/useKeyboardViewport';
+import { SaveChatCTA } from './SaveChatCTA';
+import { GateView } from './GateView';
+import { NameCompletionGate } from './NameCompletionGate';
+import { MemoryPanelDivider } from './MemoryPanelDivider';
+import { MemoryCardView } from './memory/MemoryCardView';
+import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
+import { MediaGallery } from './MediaGallery';
+import { MediaPage } from './MediaPage';
+import { StoryAdminPanel } from './v2/StoryAdminPanel';
+import { StoryView } from './v2/StoryView';
+import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
+import type { SessionImage } from './memory/BlockCanvas';
+import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
+import { useAnimatedPresence } from './useAnimatedPresence';
+
+// How long the mobile drawer stays mounted after it is closed, so its exit
+// animation can play. Must match .hl-animate-sheet-left-out's 0.24s in
+// app/heirloom/globals.css — the class and this constant are two halves of
+// one timing and drift silently if changed apart.
+const SIDEBAR_EXIT_MS = 240;
+
+// Static client-side prompt set — Writing Prompts have no backend yet (the
+// sidebar's other story affordances are stubbed for the same reason). Copy is
+// placeholder-grade: review before launch.
+const WRITING_PROMPTS: WritingPrompt[] = [
+  { id: 'wp-1', text: 'What’s a smell that takes you straight back to childhood?' },
+  { id: 'wp-2', text: 'Tell me about a meal you’ll never forget.' },
+  { id: 'wp-3', text: 'What did your first home look like?' },
+  { id: 'wp-4', text: 'Who taught you something you still carry?' },
+];
+
+// Media pane has no drag-resize (unlike the memory panel), but it does reuse
+// the memory panel's clamp math (memoryPanelWidth.ts) so its preferred width
+// below never exceeds what the row actually has room for — see the
+// mediaPanelWidth state near panelWidth.
+const MEDIA_PANEL_WIDTH = 400;
+
+function EmptyState() {
+  const { invitedName, hasInviteToken } = useChatStore();
+  const personalized = hasInviteToken && invitedName;
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center px-4 select-none">
+      {personalized ? (
+        <>
+          <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-3 text-center">
+            Welcome, {invitedName}.
+          </h1>
+          <p className="text-text-muted text-base md:text-lg text-center">
+            What&apos;s a story worth keeping?
+          </p>
+        </>
+      ) : (
+        <h1 className="font-display font-light text-text-primary text-3xl md:text-4xl tracking-tight mb-8 text-center">
+          What&apos;s a story worth keeping?
+        </h1>
+      )}
+    </div>
+  );
+}
+
+export interface ChatHeroProps {
+  /** Drawer width state — passed through to ChatHeader's expand toggle. */
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
+}
+
+export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
+  const { state, dispatch, errorType, isGated, sendMessage, recentSessions, starSession, renameSession, deleteSession, bumpMemoryCount, mediaItems, joinedStoryConfirmation, newChat, setSessionContextToAttach } = useChatStore();
+
+  // The memory panel's image-block picker (BlockCanvas.tsx, via
+  // MemoryCardView) only ever offers photos already uploaded in THIS
+  // session, already fetched for the composer's own inline thumbnails —
+  // no separate fetch for the panel. `status: 'ready'` and a resolved `url`
+  // both matter: a still-processing/failed item has nothing to attach, and
+  // `url` (the batch-fetched signed download URL, services/media/display-url.ts)
+  // is what the picker's thumbnail and the committed block's <img> actually render.
+  const sessionImages: SessionImage[] = useMemo(
+    () =>
+      mediaItems
+        .filter((item) => item.type === 'image' && item.status === 'ready' && !!item.url)
+        .map((item) => ({ id: item.id, url: item.url as string, filename: item.original_filename })),
+    [mediaItems],
+  );
+
+  // V2 sidebar wiring. Stories are real now (2026-08-09) — artifacts rows,
+  // type='story' (services/crm/stories.ts), a sibling to memories'
+  // type='memory' rows, not a dedicated table. Created via POST /api/stories
+  // (handleCreateStory below) and fetched on mount via GET /api/stories
+  // (below) rather than living only in this local state, though this state
+  // remains the source of truth SidebarV2 (and InviteCollaboratorsModal's
+  // story picker) render from — the create/fetch/delete paths just keep it
+  // in sync with the DB. Row select is real now too (Phase 1d,
+  // real-story-view-1d-entry-point — see handleSelectStory below);
+  // moveToChapter/removeFromChapter remain deliberate no-ops. Uploads /
+  // Share / Search are stubbed per the integration decisions. Invite is
+  // real (invites-collaboration-modal,
+  // 2026-08-10) — see handleInviteStory below — and now picks from this
+  // same real `stories` list, though createMemberInvite itself still only
+  // bridges the chosen story_id through audit-event metadata, not a real
+  // column/relationship (services/members/members.ts's own doc comment —
+  // unchanged by this merge, still accurate: that's Stage 2 schema work
+  // Real Stories didn't include).
+  const [beginStoryOpen, setBeginStoryOpen] = useState(false);
+  const [stories, setStories] = useState<Story[]>([]);
+
+  // Fetch/refresh hydration, mirroring chatStore.tsx's own GET /api/sessions
+  // recovery effect (recentSessions) in shape: cancelled-flag guard, silent
+  // console.error on failure (no error UI — matches this file's existing
+  // silent-fail posture for kebab/memory-panel network calls elsewhere).
+  // Unconditional (not gated on isSignedIn the way chatStore's session
+  // recovery is) — GET /api/stories itself returns an empty list for an
+  // anonymous/unresolvable-tenant request rather than erroring, so there's
+  // nothing this component needs to gate on client-side. Extracted to a
+  // stable callback so the joinedStoryConfirmation effect below can reuse it
+  // to pick up a newly-granted story invite without a page reload, not just
+  // the mount effect.
+  const refreshStories = useCallback(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/stories');
+        if (!res.ok || cancelled) return;
+        const data: { stories?: Story[] } = await res.json();
+        if (cancelled) return;
+        setStories(Array.isArray(data.stories) ? data.stories : []);
+      } catch (err) {
+        console.error('[ChatHero] stories fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => refreshStories(), [refreshStories]);
+
+  // One useMemories(sessionId) instance, owned here and passed down to
+  // MessageList (own prop, CardView chrome pass, 2026-08-08) — not one per
+  // consumer. The panel (below) and the transcript's own MemorySavedReceipt
+  // rows both read/write the same memory, so a rename or a remove from the
+  // panel has to be visible in the transcript immediately, not just after a
+  // reload; two independent hook instances would each hold their own stale
+  // copy of the same server state.
+  const memories = useMemories(state.sessionId);
+
+  // SessionMemoriesPanel's own list — filtered to the ACTIVE session, not
+  // memories.memories verbatim. useMemories doesn't clear its array when
+  // sessionId changes (it only resets loadedForSessionId, see that hook's
+  // own doc comment on isLoaded) — so switching sessions, or hitting New
+  // Chat (sessionId -> null), would otherwise leave the previous session's
+  // rows on screen under "this session" until the new fetch resolves, or
+  // indefinitely for a brand-new chat with no sessionId to ever fetch for.
+  // Every MemoryRow carries its own session_id, so filtering here is a pure
+  // client-side guard against that race — no extra fetch, no extra state.
+  const currentSessionMemories = useMemo(
+    () => memories.memories.filter((m) => m.session_id === state.sessionId),
+    [memories.memories, state.sessionId],
+  );
+
+  // Memory panel (memory-panel-layout plan, Stages A-E desktop; Stage F
+  // 2026-08-09 adds mobile as a full-screen overlay — see the render guards
+  // below). `openMemory` is which anchor is open (kept even if the
+  // underlying row hasn't loaded yet); `liveOpenMemory` re-derives the
+  // actual row to render from the shared `memories` list on every render,
+  // so a title rename made through the panel itself (below) shows up
+  // immediately without a second sync step.
+  const [openMemory, setOpenMemory] = useState<MemoryRow | null>(null);
+  const liveOpenMemory = openMemory
+    ? memories.memories.find(m => m.id === openMemory.id) ?? openMemory
+    : null;
+
+  // In-chat Media panel — no "which item" concept (MediaGallery fetches its
+  // own list scoped to state.sessionId), so a plain boolean is enough here,
+  // unlike openMemory's MemoryRow | null. Mutually exclusive with the memory
+  // panel via the wrapping handlers below, not a shared enum — keeps this
+  // additive rather than touching openMemory's existing call sites. Opened
+  // via ChatHeader's own icon (Stage 1, media_stages_08_2026) — the sidebar's
+  // "Media" row no longer opens this surface, see mediaPageOpen below.
+  const [mediaOpen, setMediaOpen] = useState(false);
+
+  // "Share Heirloom" — a self-contained modal (ShareHeirloomModal.tsx: copy
+  // link + social/email intents, no store, no API), so a plain boolean is all
+  // this needs, same as mediaOpen. Deliberately NOT part of the third-pane
+  // reciprocal-close wiring below: it's a centered modal layered over the
+  // whole drawer (z-[80], alongside BeginStory/InviteCollaborators), not a
+  // pane competing for the same slot, so it doesn't close — or get closed by —
+  // anything else. Two entry points share it: ChatHeader's icon and
+  // SidebarV2's nav row.
+  const [shareHeirloomOpen, setShareHeirloomOpen] = useState(false);
+
+  const handleOpenMedia = useCallback(() => {
+    setMediaOpen(true);
+    setOpenMemory(null);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+    setStoryViewId(null);
+    setStoryMemory(null);
+  }, []);
+
+  // Standalone top-level Media page (MediaPage.tsx) — independent of any
+  // chat session, shows every account file. Separate state from mediaOpen
+  // (it's a different surface entirely, not the third-pane/bottom-sheet
+  // mediaOpen drives), but still closes openMemory/mediaOpen on open: on
+  // mobile both the memory full-screen overlay and MediaPage itself render
+  // at the same absolute-inset-0 z-40 layer (see MediaPage.tsx's own comment
+  // on why it can't be position:fixed here), so leaving one of those open
+  // underneath would either stack two interactive full-screen dialogs or
+  // silently strand the covered one — closing them is what "Media is a
+  // top-level page, not a chat-scoped view" actually requires in practice.
+  const [mediaPageOpen, setMediaPageOpen] = useState(false);
+
+  const handleOpenMediaPage = useCallback(() => {
+    setMediaPageOpen(true);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+    setStoryViewId(null);
+    setStoryMemory(null);
+  }, []);
+
+  const handleOpenMemory = useCallback((row: MemoryRow | null) => {
+    setOpenMemory(row);
+    if (row) {
+      setMediaOpen(false);
+      setMediaPageOpen(false);
+      setAdminStoryId(null);
+      setSessionMemoriesOpen(false);
+      setStoryViewId(null);
+      setStoryMemory(null);
+    }
+  }, []);
+
+  // Session memories panel (session_memories_panel handover, 2026-08-14) —
+  // lists every memory (draft + published) kept during the active session,
+  // opened from ChatHeader's new icon. No "which item" concept of its own
+  // (SessionMemoriesPanel reads the shared `memories` list below), so a
+  // plain boolean is enough here, same as mediaOpen. Mutually exclusive
+  // with the memory/media/admin panes via the wrapping handlers, same
+  // reciprocal-close pattern those already use against each other.
+  const [sessionMemoriesOpen, setSessionMemoriesOpen] = useState(false);
+
+  const handleOpenSessionMemories = useCallback(() => {
+    setSessionMemoriesOpen(true);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
+    setStoryViewId(null);
+    setStoryMemory(null);
+  }, []);
+
+  // Panel drag-resize (Stage C). panelWidth is seeded fresh every time
+  // openMemory transitions from null to a memory (the effect below) — a
+  // drag from a previous open never carries over stale. panelRowRef reads
+  // the row's real clientWidth for the clamp math; isDraggingPanel
+  // suppresses the panel's own open/close CSS transition only while a drag
+  // is actually live, so a resize tracks the cursor instead of animating
+  // 300ms behind it.
+  const panelRowRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState(MIN_PANEL_WIDTH);
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const wasMemoryOpenRef = useRef(false);
+
+  // Single reseed path (Stage E): the panel-open effect below and the
+  // divider's Home/double-click reset both call this — not two copies of
+  // the same math. Always reads the row's CURRENT clientWidth, never a
+  // frozen value, so a reset after the browser's been resized reflects the
+  // new size, not whatever it was when the panel first opened.
+  const resetPanelWidth = useCallback(() => {
+    const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+    setPanelWidth(seedPanelWidth(total));
+  }, []);
+
+  useEffect(() => {
+    const isOpen = !!openMemory;
+    if (isOpen && !wasMemoryOpenRef.current) {
+      resetPanelWidth();
+    }
+    wasMemoryOpenRef.current = isOpen;
+  }, [openMemory, resetPanelWidth]);
+
+  // Kebab action state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    target: RowTarget;
+    id: string;
+    title?: string;
+    hasActiveInviteOrSubscribers?: boolean;
+  } | null>(null);
+  // Story kebab's "Admin" action (Updated Story Kebabs handover, 2026-08-13)
+  // — the story id StoryAdminPanel (below) renders for, non-null while it
+  // should be open. Mutually exclusive with openMemory/mediaOpen via the
+  // wrapping handlers (handleOpenMedia/handleOpenMemory above, this state's
+  // own setter in handleRowAction below) — same pattern mediaOpen already
+  // uses against openMemory, not a shared enum, so this stays additive.
+  const [adminStoryId, setAdminStoryId] = useState<string | null>(null);
+  // Re-derived from `stories` on every render (liveOpenMemory's own pattern
+  // above) so a description edit committed through the open panel itself
+  // shows up immediately once handleUpdateStoryDescription's setStories call
+  // resolves, without a second sync step.
+  const adminStory = adminStoryId ? stories.find(s => s.id === adminStoryId) ?? null : null;
+
+  // Real Story View — Phase 1a (real-story-view-1a-static-list). Same
+  // mutually-exclusive third-pane pattern as adminStoryId above; re-derived
+  // from `stories` on every render for the same reason (isOwner/name stay
+  // live if `stories` refreshes while the pane is open).
+  const [storyViewId, setStoryViewId] = useState<string | null>(null);
+  const storyViewStory = storyViewId ? stories.find(s => s.id === storyViewId) ?? null : null;
+
+  const handleOpenStoryView = useCallback((storyId: string) => {
+    setStoryViewId(storyId);
+    setStoryMemory(null);
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+  }, []);
+
+  // Closes the WHOLE story pane (both the list and, if open, a memory
+  // swapped in from it) — used by every real "leave the story" affordance
+  // (its own close button, another panel opening over it). Distinct from
+  // handleCloseStoryMemory below, which only backs out of the memory editor
+  // to the list, keeping the story pane itself open.
+  const closeStoryPane = useCallback(() => {
+    setStoryViewId(null);
+    setStoryMemory(null);
+  }, []);
+
+  // Row-tap-to-editor (Phase 1b, real-story-view-1b-row-tap-editor).
+  // `storyMemory` tracks which memory (if any) is swapped in for the list
+  // within the SAME third-pane slot — storyViewId itself stays set the
+  // whole time, so closing the editor returns to the list rather than
+  // closing the pane entirely. Both id AND sessionId are needed: see
+  // StoryMemoryEditor.tsx's own doc comment for why a story's memory can't
+  // be opened through this component's own session-scoped `memories` hook.
+  const [storyMemory, setStoryMemory] = useState<{ id: string; sessionId: string } | null>(null);
+
+  const handleOpenStoryMemory = useCallback((memoryId: string, sessionId: string) => {
+    setStoryMemory({ id: memoryId, sessionId });
+  }, []);
+
+  const handleCloseStoryMemory = useCallback(() => {
+    setStoryMemory(null);
+  }, []);
+
+  // Real entry point (Phase 1d, real-story-view-1d-entry-point) — the
+  // sidebar Stories-list row's own click, replacing the temporary
+  // ?storyView=<id> query param Phases 1a-1c used to verify the pane
+  // before this landed. Branches on whether the story has any memories
+  // yet: there is no memoryCount/contentCount field on Story anywhere in
+  // this codebase (confirmed absent from services/crm/stories.ts's
+  // listStories — that field only ever existed on the discarded story-
+  // click-routing branch), so this checks for real via the same
+  // GET /api/stories/[id]/memories StoryView itself already fetches —
+  // simplest option that needs no new field/schema and adds no coupling;
+  // StoryView refetches independently once opened, the extra request on
+  // the non-empty path is a single small GET, not a hot path.
+  //
+  //   - Non-empty: open the real StoryView (handleOpenStoryView).
+  //   - Empty: start a fresh chat scoped to this story — newChat(), then
+  //     setSessionContextToAttach (the real session-context service,
+  //     merged 2026-08-13/14) so the story's name/description/owner gets
+  //     folded into the system prompt on every turn once the session is
+  //     actually created (services/chat/server/session-context.ts). NOT
+  //     the discarded story-click-routing branch's one-time
+  //     injectAssistantMessage approach — that mechanism was deliberately
+  //     replaced by the session-context service.
+  //
+  // `hasMemories` defaults true (routes to the safe StoryView-open branch)
+  // on any fetch failure or non-OK response — a real error (network,
+  // 401, 404) should surface via StoryView's own already-built error
+  // state, not silently start an unrelated new chat the member never
+  // asked for. Also closes every other pane on the empty branch, matching
+  // every other handleOpenX function in this file — a fresh chat becomes
+  // the primary view, not something layered under a stale pane.
+  //
+  // Non-empty branch also dispatches SET_SIDEBAR:false (what closeMobileSidebar
+  // below does — inlined rather than referencing that callback, which is
+  // declared later in this component and would be a forward reference).
+  // StoryView renders as a focus-trapped full-screen dialog, the same
+  // pattern as Media/Share, both of which close the mobile sidebar first for
+  // exactly this reason: a nav drawer mounted under a focus-trapped dialog
+  // is dead weight. The empty branch is a plain content swap behind the
+  // still-open sidebar (same as selecting a session row) and must NOT close
+  // it — which is why this dispatches only on the branch that actually opens
+  // StoryView, not unconditionally for every story tap. On desktop this
+  // dispatch is inert: nothing here reads state.isSidebarExpanded.
+  const handleSelectStory = useCallback(async (storyId: string) => {
+    let hasMemories = true;
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/memories`);
+      if (res.ok) {
+        const data: { memories?: unknown[] } = await res.json();
+        hasMemories = Array.isArray(data.memories) && data.memories.length > 0;
+      }
+    } catch (err) {
+      console.error('[ChatHero] select story — memory check failed, opening story view as a fallback:', err);
+    }
+
+    if (hasMemories) {
+      dispatch({ type: 'SET_SIDEBAR', payload: false });
+      handleOpenStoryView(storyId);
+      return;
+    }
+
+    setOpenMemory(null);
+    setMediaOpen(false);
+    setMediaPageOpen(false);
+    setAdminStoryId(null);
+    setSessionMemoriesOpen(false);
+    setStoryViewId(null);
+    setStoryMemory(null);
+    newChat();
+    setSessionContextToAttach({ contextType: 'story', contextRefId: storyId, contextFrequency: 'every_turn' });
+  }, [dispatch, handleOpenStoryView, newChat, setSessionContextToAttach]);
+
+  // Media/admin pane width (fix for close-button-clipped-offscreen bug):
+  // MEDIA_PANEL_WIDTH is a preferred width, not a guarantee — at narrower
+  // desktop widths, 48px rail + 260px chat floor + a rigid 400px pane can
+  // exceed the drawer's own 680px floor, and the row's overflow-hidden then
+  // clips the pane's right edge (and with it MediaGallery's close button).
+  // Reuses the memory panel's clamp math, recomputed on the same
+  // open-transition-only cadence panelWidth already uses above.
+  const [mediaPanelWidth, setMediaPanelWidth] = useState(MEDIA_PANEL_WIDTH);
+  const wasMediaOpenRef = useRef(false);
+
+  useEffect(() => {
+    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen || !!storyViewStory;
+    if (isOpen && !wasMediaOpenRef.current) {
+      const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+      setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+    }
+    wasMediaOpenRef.current = isOpen;
+  }, [mediaOpen, adminStory, sessionMemoriesOpen, storyViewStory]);
+
+  const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
+  const toastKeyRef = useRef(0);
+
+  // Auto-dismiss toast after 2.2s
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const showToast = useCallback((message: string) => {
+    setToast({ message, key: ++toastKeyRef.current });
+  }, []);
+
+  // Story-invite acceptance confirmation (reusable-story-invite-links,
+  // 2026-08-10) — same toast weight as "Deleted"/"Starred", fired once per
+  // distinct joinedStoryConfirmation object (chatStore.tsx only ever sets
+  // it once, guarded by storyInviteAcceptFiredRef). Serves both the
+  // brand-new-signup moment and the already-a-member moment identically —
+  // see chatStore.tsx's own doc comment for why one field covers both.
+  // Also re-fetches stories — the newly-granted story otherwise doesn't
+  // appear in the sidebar until a manual page reload, since stories was
+  // previously only ever fetched once on mount.
+  useEffect(() => {
+    if (joinedStoryConfirmation) {
+      showToast(`You've joined "${joinedStoryConfirmation.title}"`);
+      refreshStories();
+    }
+  }, [joinedStoryConfirmation, showToast, refreshStories]);
+
+  // Re-fetch stories on the anonymous->signed-in transition. stories was
+  // fetched once on mount (see refreshStories above), which is correctly
+  // empty for an anonymous visitor — but claimAllSessions/claimSessionsOnly
+  // (chatStore.tsx) link the visitor's local sessions to their account on
+  // sign-in without ever telling this component, so the sidebar kept
+  // showing that stale empty list until a manual page reload even though
+  // the visitor's stories were, by then, correctly attached in the DB.
+  // isMember covers every sign-in entry point uniformly (custom OTP,
+  // magic-link, story/member invite) since it derives straight from Clerk,
+  // so this doesn't need to hook into any one claim function directly.
+  // Mirrors chatStore.tsx's own wasSignedInRef false->true guard.
+  const wasMemberRef = useRef(state.isMember);
+  useEffect(() => {
+    if (state.isMember && !wasMemberRef.current) {
+      refreshStories();
+    }
+    wasMemberRef.current = state.isMember;
+  }, [state.isMember, refreshStories]);
+
+  const starredIds = recentSessions.filter(s => s.starred).map(s => s.id);
+
+  const handleRenameCommit = useCallback((id: string, newTitle: string) => {
+    setRenamingId(null);
+    const trimmed = newTitle.trim();
+    if (!trimmed) return; // Escape or empty — cancel
+    void renameSession(id, trimmed);
+    showToast('Renamed');
+  }, [renameSession, showToast]);
+
+  const handleRowAction = useCallback((target: RowTarget, id: string, action: RowAction) => {
+    // Delete always opens the confirmation dialog, regardless of target.
+    if (action === 'delete') {
+      const title =
+        target === 'conversation'
+          ? recentSessions.find(s => s.id === id)?.title
+          : stories.find(s => s.id === id)?.name;
+      const hasActiveInviteOrSubscribers =
+        target === 'story' ? stories.find(s => s.id === id)?.hasActiveInviteOrSubscribers ?? false : false;
+      setPendingDelete({ target, id, title, hasActiveInviteOrSubscribers });
+      return;
+    }
+    // Admin is story-only (SidebarV2's MENU_ITEMS already gates it via
+    // `targets`, so target should always be 'story' here — the check is
+    // defensive, not load-bearing). Opens StoryAdminPanel as the third pane,
+    // closing the memory/media panes the same way handleOpenMedia/
+    // handleOpenMemory close each other and this one — including the
+    // standalone Media page (mediaPageOpen), added when merging main's
+    // StoryAdminPanel work into the media_stages_08_2026 branch: without
+    // this, opening Admin while the standalone page was open would leave it
+    // stranded underneath instead of replaced, the same stacking problem
+    // handleOpenMediaPage/handleOpenMemory already guard against elsewhere.
+    if (action === 'admin') {
+      if (target === 'story') {
+        setAdminStoryId(id);
+        setOpenMemory(null);
+        setMediaOpen(false);
+        setMediaPageOpen(false);
+        setSessionMemoriesOpen(false);
+        setStoryViewId(null);
+        setStoryMemory(null);
+      }
+      return;
+    }
+    // Story actions and chapter/invite actions are deferred — no-op
+    if (target !== 'conversation') return;
+    switch (action) {
+      case 'star': {
+        const session = recentSessions.find(s => s.id === id);
+        void starSession(id);
+        showToast(session?.starred ? 'Star removed' : 'Starred');
+        break;
+      }
+      case 'rename':
+        setRenamingId(id);
+        break;
+      // moveToChapter, removeFromChapter, invite: deferred — deliberate no-op
+    }
+  }, [recentSessions, stories, starSession, showToast]);
+
+  // CardView chrome (memory-panel-layout, 2026-08-08) — Remove is the one
+  // footer action with real backend support (discardMemory via the shared
+  // memories.discard, same PATCH .../memories/[memoryId] action: 'discard'
+  // the draft card's own Discard already uses). Fires the count decrement
+  // unconditionally alongside the discard call, mirroring MessageList.tsx's
+  // onKeep (which bumps +1 the same way, without waiting on the response) —
+  // this is the first path that can ever discard a PUBLISHED memory (the
+  // draft card's Discard only ever targets a draft, which was never counted
+  // toward the total), so without this the sidebar's memory badge would
+  // drift upward every time Remove is used. Closes the panel unconditionally
+  // once the call settles, matching this hook's existing silent-fail posture
+  // for keep/discard/rename elsewhere in this feature — no error UI exists
+  // for those today either.
+  const handleRemoveMemory = useCallback(async (memory: MemoryRow) => {
+    await memories.discard(memory);
+    if (memory.status === 'published') bumpMemoryCount(memory.session_id, -1);
+    setOpenMemory(null);
+  }, [memories, bumpMemoryCount]);
+
+  // "Talk about this" / "Use as a base" — neither has any backend
+  // implementation in this codebase yet (see MemoryCardView.tsx's own doc
+  // comment). Same shared toast every other not-yet-built type-specific
+  // memory action already uses (MemoryCard.tsx's kind.extra buttons) —
+  // visible, non-silent feedback rather than a button that looks live but
+  // does nothing. ("+" used to share this stub too — now real, see
+  // handleAssignMemoryToStory below.)
+  const handleMemoryStub = useCallback((message: string) => {
+    showToast(message);
+  }, [showToast]);
+
+  // "+" on MemoryCardView AND MemorySavedReceipt (the in-transcript receipt,
+  // wired 2026-08-14) — real now (assign-memory-to-story, 2026-08-13):
+  // PATCH .../memories/[memoryId] action: 'assign_story'
+  // (assignMemoryToStory, services/crm/story-containments.ts) via
+  // memories.assignToStory. Shared as-is between both call sites — the
+  // receipt renders inside THIS session's own transcript (MessageList.tsx),
+  // same `memories` instance (useMemories(state.sessionId)) the panel
+  // already uses, so no second scoped handler is needed the way
+  // StoryMemoryEditor.tsx needed its own. Toast copy distinguishes first
+  // assignment ("Added to X") from reassignment ("Moved to X") using the
+  // memory's own PRIOR storyId, captured before the await — re-picking the
+  // story a memory is already in never reaches this handler at all
+  // (StoryPicker's own no-op guard skips calling onAssignStory in that case).
+  const handleAssignMemoryToStory = useCallback(async (memory: MemoryRow, storyId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const wasAlreadyInAStory = !!memory.storyId;
+    await memories.assignToStory(memory.id, storyId);
+    showToast(wasAlreadyInAStory ? `Moved to ${story?.name ?? 'story'}` : `Added to ${story?.name ?? 'story'}`);
+  }, [stories, memories, showToast]);
+
+  // "Remove from '[Story]'" on StoryPicker — remove-memory-from-story,
+  // 2026-08-14: PATCH .../memories/[memoryId] action: 'remove_story'
+  // (removeMemoryFromStory, services/crm/story-containments.ts) via
+  // memories.removeFromStory. Shared as-is across every StoryPicker caller —
+  // MemoryCardView's two ChatHero render sites, StoryMemoryEditor.tsx (its
+  // own scoped instance), and now MemorySavedReceipt (the in-transcript
+  // receipt, wired the same pass as its own onAssignStory wiring above) —
+  // same posture as handleAssignMemoryToStory. Toast names the story being
+  // left, captured before the await (memories.removeFromStory's own
+  // optimistic update clears memory.storyId locally as soon as it resolves).
+  const handleRemoveMemoryFromStory = useCallback(async (memory: MemoryRow) => {
+    const story = stories.find((s) => s.id === memory.storyId);
+    await memories.removeFromStory(memory.id);
+    showToast(`Removed from ${story?.name ?? 'story'}`);
+  }, [stories, memories, showToast]);
+
+  // Real persistence (2026-08-09) — POST /api/stories (services/crm/
+  // stories.ts's createStory, an artifacts insert type='story'), replacing
+  // the local-only crypto.randomUUID() row this used to build. On success,
+  // prepends the server's own row (its real id, not a client-guessed one) to
+  // local state rather than refetching the whole list. Leaves the modal open
+  // on failure — BeginStoryModal only resets its fields when `open` next
+  // transitions to true, so the member's typed name/description survive a
+  // failed attempt to retry.
+  const handleCreateStory = async (name: string, description: string) => {
+    try {
+      const res = await fetch('/api/stories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.story) {
+        console.error('[ChatHero] create story failed:', res.status);
+        showToast('Could not create story');
+        return;
+      }
+      setStories((prev) => [data.story as Story, ...prev]);
+      setBeginStoryOpen(false);
+    } catch (err) {
+      console.error('[ChatHero] create story threw:', err);
+      showToast('Could not create story');
+    }
+  };
+
+  // Real persistence (2026-08-09) — DELETE /api/stories/[id] (services/crm/
+  // stories.ts's discardStory, stamping discarded_at on the same artifacts
+  // row), replacing the local-only filter this used to do. Fire-and-forget
+  // from ConfirmDeleteModal's onConfirm below (matching handleRemoveMemory's
+  // own not-awaited-inline call there) — the dialog closes immediately;
+  // failure only reverts local state and toasts, it doesn't reopen anything.
+  const handleDeleteStory = useCallback(async (storyId: string) => {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        console.error('[ChatHero] delete story failed:', res.status);
+        showToast('Could not delete story');
+        return;
+      }
+      setStories(prev => prev.filter(s => s.id !== storyId));
+      showToast('Deleted');
+    } catch (err) {
+      console.error('[ChatHero] delete story threw:', err);
+      showToast('Could not delete story');
+    }
+  }, [showToast]);
+
+  // StoryAdminPanel's description field (story-admin-panel, 2026-08-13) —
+  // real persistence via PATCH /api/stories/[id] (services/crm/stories.ts's
+  // updateStoryDescription). StoryAdminPanel only calls this when the
+  // trimmed value actually changed, so no extra guard needed here. Updates
+  // the matching row in `stories` in place on success so the fresh
+  // description flows back down to the open panel AND anywhere else a
+  // story's description is shown (SidebarV2's row tooltip). Silent-fail
+  // posture matches handleCreateStory/handleDeleteStory above — toast only,
+  // no revert (the panel's own textarea already holds what the member typed
+  // either way).
+  const handleUpdateStoryDescription = useCallback(async (storyId: string, description: string) => {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.story) {
+        console.error('[ChatHero] update story description failed:', res.status);
+        showToast('Could not save description');
+        return;
+      }
+      const updated = data.story as Story;
+      setStories(prev => prev.map(s => (s.id === storyId ? { ...s, description: updated.description } : s)));
+    } catch (err) {
+      console.error('[ChatHero] update story description threw:', err);
+      showToast('Could not save description');
+    }
+  }, [showToast]);
+
+  // Invite collaborators (Phase 5 create/copy-flow + invalidation warning,
+  // 2026-08-10, on top of reusable-story-invite-links the same day).
+  // `invite` tracks which story row triggered the modal; `inviteLink` holds
+  // the durable, reusable link once one has actually been created.
+  // Opening the modal (handleInviteStory below) no longer creates or
+  // fetches anything — InviteCollaboratorsModal's magicLink prop is
+  // optional now, and renders its own "Not created yet" / Create state
+  // until the member deliberately clicks Create (handleCreateInviteLink).
+  // "Reset link" rotates an existing link (reset:true — revokes the old
+  // row, inserts a fresh one) via the same createInviteLink call. Changing
+  // the story picker or the primer while a link exists goes through
+  // InviteCollaboratorsModal's own pendingEdit warning first; only once
+  // Continue is clicked does the change reach handleInviteStoryChange /
+  // handleInvitePrimerChange below, which apply it AND invalidate the old
+  // link (DELETE /api/heirloom/story-invites) without minting a
+  // replacement — the next Create/Reset click does that.
+  const [invite, setInvite] = useState<{ storyId: string } | null>(null);
+  const [invitePrimer, setInvitePrimer] = useState('');
+  const [inviteLink, setInviteLink] = useState<{ token: string; url: string } | null>(null);
+  const [inviteCollaborators, setInviteCollaborators] = useState<Collaborator[]>([]);
+
+  const createInviteLink = useCallback(async (primer: string, storyId: string, reset: boolean) => {
+    try {
+      const res = await fetch('/api/heirloom/story-invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story_id: storyId, primer, reset }),
+      });
+      if (!res.ok) throw new Error('Could not create invite link');
+      const data = (await res.json()) as { token: string; primer?: string; invite_url: string | null };
+      const url = data.invite_url ?? `${window.location.origin}/join/${data.token}`;
+      setInviteLink({ token: data.token, url });
+      // Fetch-or-create returns the EXISTING link's stored primer on a
+      // non-reset create — reflect it so a story that already had an active
+      // link (created in another session) doesn't show a blank field once
+      // its real link surfaces. Reset intentionally skips this: invitePrimer
+      // already holds whatever the member just typed, which is what the new
+      // link is being created with.
+      if (!reset) setInvitePrimer(data.primer ?? '');
+    } catch {
+      showToast('Could not create invite link');
+    }
+  }, [showToast]);
+
+  // Fire-and-forget — revokes the story's active link server-side without
+  // creating a replacement. Failure is non-fatal to the edit the member just
+  // made (the field still updates); it only means a since-invalidated link
+  // could theoretically still be redeemed server-side, so it's logged, not
+  // swallowed silently.
+  const invalidateInviteLink = useCallback(async (storyId: string) => {
+    try {
+      const res = await fetch('/api/heirloom/story-invites', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story_id: storyId }),
+      });
+      if (!res.ok) console.error('[ChatHero] invalidate invite link failed:', res.status);
+    } catch (err) {
+      console.error('[ChatHero] invalidate invite link threw:', err);
+    }
+  }, []);
+
+  const handleInviteStory = useCallback((storyId: string) => {
+    setInvite({ storyId });
+    setInvitePrimer('');
+    setInviteLink(null);
+  }, []);
+
+  const handleCreateInviteLink = useCallback(() => {
+    if (!invite) return;
+    void createInviteLink(invitePrimer, invite.storyId, false);
+  }, [invite, invitePrimer, createInviteLink]);
+
+  const handleResetInviteLink = useCallback(() => {
+    if (!invite) return;
+    void createInviteLink(invitePrimer, invite.storyId, true);
+  }, [invite, invitePrimer, createInviteLink]);
+
+  // Reached only once InviteCollaboratorsModal decides an edit should
+  // actually apply — instantly (no link yet) or via its own pendingEdit
+  // warning's Continue (a link exists). A live link means the edit
+  // invalidates it: drop back to "Not created yet" locally and revoke it
+  // server-side, matching the warning's own promise to the member.
+  const handleInviteStoryChange = useCallback((storyId: string) => {
+    const priorStoryId = invite?.storyId;
+    setInvite({ storyId });
+    if (inviteLink && priorStoryId) {
+      setInviteLink(null);
+      void invalidateInviteLink(priorStoryId);
+    }
+  }, [invite, inviteLink, invalidateInviteLink]);
+
+  const handleInvitePrimerChange = useCallback((value: string) => {
+    setInvitePrimer(value);
+    if (inviteLink && invite) {
+      setInviteLink(null);
+      void invalidateInviteLink(invite.storyId);
+    }
+  }, [invite, inviteLink, invalidateInviteLink]);
+
+  // "Existing members" roster — refetched whenever the modal's story
+  // changes (including via the invalidation warning), not on every primer
+  // keystroke. Silent-fail on error, matching this file's existing posture
+  // for the stories/mediaItems fetch-on-mount effects above. The same
+  // response also carries the story's active invite link (if any) — used
+  // to restore invitePrimer/inviteLink to their real values on open rather
+  // than leaving handleInviteStory's blank/null reset in place when a link
+  // already exists (invite-modal-restore-on-open, 2026-08-11).
+  useEffect(() => {
+    const storyId = invite?.storyId;
+    if (!storyId) {
+      setInviteCollaborators([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/heirloom/story-invites?story_id=${encodeURIComponent(storyId)}`);
+        if (!res.ok || cancelled) return;
+        const data: {
+          collaborators?: Array<{ name: string | null; email: string | null; joinedAt: string }>;
+          active_link?: { token: string; primer: string; invite_url: string | null } | null;
+        } = await res.json();
+        if (cancelled) return;
+        setInviteCollaborators(
+          (data.collaborators ?? []).map((c) => ({
+            name: c.name ?? c.email ?? 'Member',
+            status: 'joined' as const,
+            joinedDate: new Date(c.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          })),
+        );
+        if (data.active_link) {
+          setInvitePrimer(data.active_link.primer);
+          const url = data.active_link.invite_url ?? `${window.location.origin}/join/${data.active_link.token}`;
+          setInviteLink({ token: data.active_link.token, url });
+        }
+      } catch (err) {
+        console.error('[ChatHero] story collaborators fetch failed:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invite?.storyId]);
+
+  const closeInvite = useCallback(() => {
+    setInvite(null);
+    setInviteLink(null);
+  }, []);
+
+  const handleSelectPrompt = (prompt: WritingPrompt) => {
+    // Gated visitors see GateView instead of the conversation — a prompt send
+    // would vanish behind it. Streaming guard matches ChatInput's.
+    if (isGated || state.isLoading) return;
+    void sendMessage(prompt.text);
+  };
+
+  // iOS keyboard handling. While the chat panel is open it's a modal overlay,
+  // so we lock body scroll (the landing page behind must not scroll) and pin the
+  // surface to the visual viewport. Under the scroll-lock iOS can't shift the
+  // page, so visualViewport.offsetTop stays 0 and the keyboard simply shrinks
+  // the viewport from the bottom — shrinking the surface from h-full to vv.height
+  // lifts the composer to sit directly above the keyboard. Inert on desktop
+  // (vv.height never drops below the threshold) and while the panel is closed.
+  const { keyboardOpen, height } = useKeyboardViewport({
+    active: state.isChatOpen,
+    lockBodyScroll: true,
+  });
+  const surfaceStyle: CSSProperties | undefined =
+    keyboardOpen && height != null ? { height: `${height}px` } : undefined;
+
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
+
+  // Mobile chat header (2026-08-16 redesign). Desktop is untouched — it keeps
+  // Media, Memories, Share and Fullscreen exactly as they were. On mobile the
+  // header narrows to hamburger, brand icon, whatever this session actually
+  // holds, profile, and Close: Share and Fullscreen come off entirely (Share
+  // still has SidebarV2's own nav row as its entry point; Fullscreen has no
+  // meaning at drawer-is-the-viewport widths), and Media/Memories become
+  // count-gated so neither can open an empty pane on a phone.
+  //
+  // Both counts reuse state this component ALREADY holds — no new fetch, no
+  // new endpoint, no count column:
+  //   - `mediaItems` is the store's session-scoped list (chatStore.tsx: catch-
+  //     up GET /api/media?chat_id= on session load, Realtime UPDATEs, the
+  //     pending-item poll, and an optimistic addMediaItem the moment an upload
+  //     starts). It's already destructured above for sessionImages, and the
+  //     store clears it on every session switch / New Chat, so it can't carry
+  //     a previous conversation's count forward.
+  //   - `currentSessionMemories` is the exact array SessionMemoriesPanel
+  //     renders, already filtered to state.sessionId above — so "the icon is
+  //     there" and "the panel has rows" are the same fact by construction,
+  //     not two sources that can drift.
+  //
+  // The same two lengths back ChatHeader's mediaCount/memoriesCount corner
+  // badges below (chat-header-count-badges, 2026-08-17) — booleans here for
+  // mobile's show/hide gate, raw counts passed through separately for the
+  // badge, both derived from the same arrays so they can't disagree.
+  const hasSessionMedia = mediaItems.length > 0;
+  const hasSessionMemories = currentSessionMemories.length > 0;
+
+  // ── Mobile sidebar open/close ─────────────────────────────────────────────
+  // ONE mechanism for closing, not a delay taught to each trigger. Every
+  // deliberate close path — scrim tap, Close-X, Escape, hamburger toggle,
+  // Media, Share, and (see handleSelectStory above) a story selection that
+  // opens StoryView — calls closeMobileSidebar (or dispatches the same
+  // SET_SIDEBAR:false action directly), and useAnimatedPresence below is the
+  // only thing that knows an animation is involved at all. The rule: opening
+  // a focus-trapped full-screen surface closes the sidebar first, since a nav
+  // drawer mounted underneath one is dead weight. A plain content swap behind
+  // the still-open sidebar does not — session row selection, and story
+  // selection on the empty-story/fresh-chat branch, are both that case, and
+  // must not close it: closing must be a deliberate user action or a
+  // consequence of a full-screen surface opening, never a side effect of a
+  // plain selection.
+  //
+  // SET_SIDEBAR rather than the TOGGLE_SIDEBAR these all used before: closing
+  // is now idempotent. That matters more than it looks — a second close while
+  // one is already in flight used to flip the drawer back OPEN mid-exit, and
+  // Media/Share/story-select fire it alongside other work (opening their own
+  // surface).
+  const openMobileSidebar = useCallback(() => {
+    dispatch({ type: 'SET_SIDEBAR', payload: true });
+  }, [dispatch]);
+  const closeMobileSidebar = useCallback(() => {
+    dispatch({ type: 'SET_SIDEBAR', payload: false });
+  }, [dispatch]);
+
+  // Under reduced motion that stylesheet already forces `animation: none`, so
+  // holding the node for 240ms would just be a delay with nothing to show for
+  // it — 0 unmounts on the next macrotask instead.
+  const prefersReducedMotion = useReducedMotion() ?? false;
+  const { isPresent: isMobileSidebarPresent, isExiting: isMobileSidebarExiting } =
+    useAnimatedPresence(state.isSidebarExpanded, prefersReducedMotion ? 0 : SIDEBAR_EXIT_MS);
+
+  // "Push" — the content column visibly shifts right as the drawer slides in,
+  // instead of the drawer merely sliding over a static background. Applied to
+  // ChatHeader and the chat column (MessageList + ChatInput) as two separately
+  // transformed elements rather than one shared wrapper, since ChatHeader sits
+  // outside panelRowRef (it spans the full drawer width, above sidebar|chat|
+  // panel — see the comment where it renders). Both use this same class
+  // string, computed once, so they move in exact lockstep — same trigger, same
+  // duration, same curve, same target — which reads as one cohesive unit even
+  // though they're not physically nested together.
+  //
+  // Driven directly by state.isSidebarExpanded (not isMobileSidebarPresent/
+  // isMobileSidebarExiting): unlike the drawer, neither ChatHeader nor the
+  // chat column ever unmounts, so a plain CSS transition on transform — not a
+  // keyframe pair — is enough. A transition also handles rapid re-open mid-
+  // close for free: the browser interpolates from wherever the transform
+  // currently sits toward the new target, rather than needing the drawer's
+  // useAnimatedPresence machinery (built specifically to cover a conditionally
+  // -mounted element, which this isn't).
+  //
+  // 240ms matches SIDEBAR_EXIT_MS so the push and the drawer's own slide run
+  // for the same duration. translate-x-[30%] (of the pushed element's own
+  // width, so it scales with viewport rather than a fixed px): dramatic enough
+  // to read clearly as a push, but the sidebar already overlays on top (z-30)
+  // regardless of how far content shifts, so the push doesn't need to match
+  // its 86% width to look connected — 30% keeps the message list mostly on
+  // screen and legible instead of shoving it out of view.
+  //
+  // ease-in-out, not the drawer's own exit curve (cubic-bezier(0.64,0,0.78,0)):
+  // that curve stays nearly flat then accelerates hard all the way to the
+  // boundary with no deceleration at the end — right for a sheet leaving the
+  // screen (nothing is there to see it stop), wrong for content that stays on
+  // screen and has to visibly settle into its new position. Tailwind's
+  // ease-in-out (cubic-bezier(0.4,0,0.2,1)) eases into the motion and back out
+  // of it symmetrically at both ends, which is what "gentle" means here.
+  //
+  // duration-0 under reduced motion (mirroring prefersReducedMotion above):
+  // the push still reaches its final position, just without an animated
+  // transition — collapses to instant per the existing prefers-reduced-motion
+  // contract (app/heirloom/globals.css) rather than adding a second contract.
+  const mobileSidebarPushClass = isMobile
+    ? `transition-transform ${prefersReducedMotion ? 'duration-0' : 'duration-[240ms]'} ease-in-out ${
+        state.isSidebarExpanded ? 'translate-x-[30%]' : 'translate-x-0'
+      }`
+    : '';
+
+  // Header-only addition on top of the shared push class above (mobile sign-in
+  // bug, 2026-08-18): `transform` — present here even at rest, translate-x-0 is
+  // still a non-none value — makes both push-wrapper divs establish their own
+  // stacking context. With neither wrapper otherwise positioned, they compare
+  // as equal-level (0) stacking contexts and paint in DOM order, so the chat
+  // column wrapper (declared after this one, below) paints OVER this entire
+  // header stacking context wherever they visually overlap — which is exactly
+  // where the Account dropdown extends (`absolute top-full`, z-50): its z-50
+  // only wins inside this wrapper's own now-isolated context, not against the
+  // chat column outside it. The dropdown still looks correct — nothing is
+  // visually wrong — but every tap on it (Sign in included) lands on the
+  // transparent chat column underneath instead, verified with
+  // elementFromPoint against a minimal repro of this exact structure.
+  // `relative z-10` restores the header's whole stacking context above the
+  // chat column's (still z-index:auto/0), while staying under the mobile
+  // sidebar drawer's z-30 and its z-20 tap-catcher/scrim, so both continue to
+  // cover the header while open exactly as before. `relative` is required
+  // here even though `transform` alone establishes the stacking context —
+  // Chromium leaves the computed `position` at `static`, and a `static`
+  // element's `z-index` has no effect on paint order, confirmed the same way.
+  const chatHeaderStackingFixClass = isMobile ? ' relative z-10' : '';
+
+  // On mobile, close the overlay when Esc is pressed (capture phase so it runs
+  // before any modal Esc handlers that would also stop propagation).
+  useEffect(() => {
+    if (!isMobile || !state.isSidebarExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMobileSidebar();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [isMobile, state.isSidebarExpanded, closeMobileSidebar]);
+
+  return (
+    <section
+      style={surfaceStyle}
+      className="h-full w-full min-w-0 flex flex-col bg-background overflow-hidden"
+    >
+      {/* Spans the full drawer width, above sidebar|chat|panel — not nested
+          inside the chat column. It always rendered inside the chat column
+          before the memory panel existed, which was invisible then (chat
+          WAS the whole remaining width) but became visibly wrong once the
+          panel became a sibling pane: this bar has to sit above the whole
+          row, matching the Story Canvas reference the panel-layout handoff
+          cites as source of truth, not scoped to one pane. */}
+      {/* Wrapped (rather than a className prop on ChatHeader itself) so the
+          push transform lives entirely in ChatHero, next to the chat column's
+          matching class below, instead of adding a layout concern to
+          ChatHeader's public props. */}
+      <div
+        data-testid="chat-header-push-wrapper"
+        className={`${mobileSidebarPushClass}${chatHeaderStackingFixClass}`}
+      >
+        <ChatHeader
+          isFullScreen={isFullScreen}
+          onToggleFullScreen={isMobile ? undefined : onToggleFullScreen}
+          // The header sits above the drawer, so this button stays reachable
+          // while the drawer is open and has always doubled as a close. It keeps
+          // that, but the closing half now routes through the same animated path
+          // as every other trigger instead of dropping the node instantly.
+          onMenuOpen={
+            isMobile
+              ? (state.isSidebarExpanded ? closeMobileSidebar : openMobileSidebar)
+              : undefined
+          }
+          onOpenMedia={!isMobile || hasSessionMedia ? handleOpenMedia : undefined}
+          mediaCount={mediaItems.length}
+          onOpenSessionMemories={!isMobile || hasSessionMemories ? handleOpenSessionMemories : undefined}
+          memoriesCount={currentSessionMemories.length}
+          onShareHeirloom={isMobile ? undefined : () => setShareHeirloomOpen(true)}
+        />
+      </div>
+
+      {/* min-w-0 here (not just on the outer <section>) is load-bearing:
+          ChatHero mounts inside ChatDrawerV2, a drawer capped at
+          clamp(680px,50vw,1120px) — not the full viewport — with no
+          overflow-hidden of its own anywhere in its ancestry. Without
+          min-w-0 on every level between this row and that cap, a flex
+          item's default min-width:auto lets it grow to fit its content's
+          minimum (sidebar + chat's own floor + panel's own floor) even past
+          w-full, and with nothing upstream to clip it, that overflow
+          rendered past the drawer's right edge — off the visible viewport
+          entirely, not just visually cramped. */}
+      <div
+        ref={panelRowRef}
+        data-testid="memory-panel-row"
+        className="flex flex-1 min-h-0 min-w-0 overflow-hidden"
+      >
+        {/* Desktop: docked sidebar. forceCollapsed shuts it to its existing
+            48px icon rail while the panel is open — reusing SidebarV2's own
+            already-built collapsed rendering and its existing
+            transition-all duration-300 (no new rail, no new animation code
+            needed here) rather than the handoff's invented 60px rail. */}
+        {!isMobile && (
+          <SidebarV2
+            stories={stories}
+            writingPrompts={WRITING_PROMPTS}
+            onCreateStory={() => setBeginStoryOpen(true)}
+            onInviteStory={handleInviteStory}
+            onSelectStory={handleSelectStory}
+            onSelectPrompt={handleSelectPrompt}
+            onRowAction={handleRowAction}
+            starredConversationIds={starredIds}
+            renamingId={renamingId ?? undefined}
+            onRenameCommit={handleRenameCommit}
+            onMedia={handleOpenMediaPage}
+            onShareHeirloom={() => setShareHeirloomOpen(true)}
+            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId}
+            activeStoryId={storyViewId ?? undefined}
+          />
+        )}
+
+        {/* Mobile: overlay drawer — absolute resolves to ChatDrawerV2's relative body */}
+        {/* isMobileSidebarPresent, not state.isSidebarExpanded: the store flips
+            to closed immediately, and presence lags it by the exit animation's
+            length so the drawer can play hl-animate-sheet-left-out on the way
+            out. Still gated on isMobile as well — a resize to desktop hands
+            over to the docked sidebar, and animating this overlay out on a
+            viewport it no longer belongs to would be noise. */}
+        {isMobile && isMobileSidebarPresent && (
+          <>
+            {/* Tap-outside-to-close catcher — deliberately INVISIBLE (no
+                bg, no fade). sidebar_uploads_scrim_stories_2006 removed this
+                drawer's old `bg-black/40` scrim on purpose: on mobile this
+                drawer reads as a wider panel sitting on the chat, not a
+                modal, so it gets no dimming. That handover flagged, rather
+                than resolved, the side effect — the deleted scrim was also
+                the tap-outside target, and it named "a different, invisible
+                tap-catcher" as the way to get dismissal back without the
+                dimming. This is that catcher, so tap-outside works like any
+                standard drawer while the no-dim decision stands. Restoring a
+                visible scrim is a one-class change here if the app later
+                standardizes the other way (that scrim-everywhere vs
+                scrim-nowhere question is still open — see the handover).
+                z-20 keeps it under the drawer's own z-30, so the drawer
+                itself stays fully interactive. aria-hidden + no button role
+                matches the app's other scrims: this is the pointer
+                affordance, not a control — keyboard dismissal is the Escape
+                handler above, which already closes this same overlay. */}
+            <div
+              data-testid="mobile-sidebar-scrim"
+              className={`absolute inset-0 z-20 ${isMobileSidebarExiting ? 'pointer-events-none' : ''}`}
+              aria-hidden="true"
+              onClick={closeMobileSidebar}
+            />
+            {/* Mobile drawer width lives HERE, not on SidebarV2's own base
+                class: the docked desktop sidebar's w-64 is correct — it's a
+                persistent column beside the chat — while this overlay sits ON
+                the chat and should cover most of the screen like any standard
+                mobile drawer. Before this, both shared w-64, so the drawer
+                covered a 256px sliver of a ~390px viewport.
+
+                86% (not a fixed px width) keeps the uncovered strip
+                proportional across phone widths, and the strip is the whole
+                reason it isn't 100%: the invisible tap-catcher above sits at
+                z-20 UNDER this z-30 drawer, so tap-outside-to-close only works
+                if a real strip of it stays reachable. 14% is ≥44px (the
+                minimum touch target) at any viewport ≥315px — 54.6px at
+                390px, 94px at the 672px drawer cap — so the catcher always
+                has room to receive a tap.
+
+                The width is on this wrapper rather than passed straight to the
+                aside because the wrapper is absolutely positioned with `left-0`
+                and no `right`: a percentage on its child would resolve against
+                a shrink-to-fit parent. A definite width here also gives the
+                hl-animate-sheet-left translateX(-100%) slide something exact to
+                animate from. SidebarV2 then fills it via w-full. */}
+            {/* pointer-events-none for the duration of the exit: the drawer is
+                still on screen and still hit-testable while it slides away, so
+                without it a tap aimed at the closing drawer could load a
+                session the user is in the middle of dismissing. */}
+            <div
+              data-testid="mobile-sidebar-drawer"
+              className={`${
+                isMobileSidebarExiting
+                  ? 'hl-animate-sheet-left-out pointer-events-none'
+                  : 'hl-animate-sheet-left'
+              } absolute inset-y-0 left-0 z-30 w-[86%]`}
+            >
+              <SidebarV2
+                expandedWidthClassName="w-full"
+                stories={stories}
+                writingPrompts={WRITING_PROMPTS}
+                onCreateStory={() => setBeginStoryOpen(true)}
+                onInviteStory={handleInviteStory}
+                onSelectStory={(storyId) => { void handleSelectStory(storyId); }}
+                onSelectPrompt={handleSelectPrompt}
+                onRowAction={handleRowAction}
+                starredConversationIds={starredIds}
+                renamingId={renamingId ?? undefined}
+                onRenameCommit={handleRenameCommit}
+                onClose={closeMobileSidebar}
+                onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
+                // Closes the drawer on the way, same as onMedia above and as
+                // handleSelectStory's own non-empty-story branch: unlike a
+                // plain content-swap selection (a session row, or an
+                // empty-story fresh chat), this opens a focus-trapped dialog
+                // (z-[80] vs the drawer's z-30) that would render fine either
+                // way, but leaving a full-height nav drawer mounted under a
+                // focus-trapped dialog is exactly what every other mobile
+                // sidebar action already avoids.
+                onShareHeirloom={() => { closeMobileSidebar(); setShareHeirloomOpen(true); }}
+                activeStoryId={storyViewId ?? undefined}
+              />
+            </div>
+          </>
+        )}
+
+        {/* Mobile: Media opens as a bottom sheet — no third-pane host exists
+            on mobile (unlike desktop), so this reuses the same hl-animate-sheet
+            bottom-sheet pattern already used by SourceMenu/SaveChatCTA rather
+            than inventing a new mechanism. z-40 clears the drawer's own
+            z-20/z-30 in case its close animation is still resolving. */}
+        {isMobile && mediaOpen && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Media from this chat">
+            <div
+              className="hl-animate-fade absolute inset-0 bg-black/45"
+              aria-hidden="true"
+              onClick={() => setMediaOpen(false)}
+            />
+            <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: session memories panel is a bottom sheet, same treatment
+            as Media above — a browsable list, not a single-item editor
+            (that's what openMemory's own full-screen overlay below is for).
+            Tapping a row calls handleOpenMemory, which closes this sheet
+            (setSessionMemoriesOpen(false)) and opens that overlay instead —
+            same handoff Media/Memory already have on desktop. */}
+        {isMobile && sessionMemoriesOpen && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Memories from this chat">
+            <div
+              className="hl-animate-fade absolute inset-0 bg-black/45"
+              aria-hidden="true"
+              onClick={() => setSessionMemoriesOpen(false)}
+            />
+            <div className="hl-animate-sheet absolute left-0 right-0 bottom-0 h-[85vh] rounded-t-2xl border-t border-border overflow-hidden">
+              <SessionMemoriesPanel
+                memories={currentSessionMemories}
+                stories={stories}
+                onClose={() => setSessionMemoriesOpen(false)}
+                onOpen={handleOpenMemory}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: memory panel is a full-screen overlay (Stage F,
+            2026-08-09) — distinct from Media's partial sheet above.
+            inset-0/h-[100dvh], no rounding, no border-t: unlike Media's
+            85vh sheet there's no exposed background around the edges to
+            dim or round off. No scrim either, for the same reason — a
+            fully opaque inset-0 overlay leaves nothing behind it to dim or
+            catch a dismiss-tap on (Media's scrim earns its keep on the
+            visible strip above its 85vh sheet; this has no such strip).
+            Reuses hl-animate-sheet as-is rather than a slower one-off
+            duration, keeping one motion system app-wide. */}
+        {isMobile && openMemory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Memory">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              {liveOpenMemory && (
+                <MemoryCardView
+                  memory={liveOpenMemory}
+                  onClose={() => setOpenMemory(null)}
+                  onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
+                  onRemove={() => setPendingDelete({ target: 'memory', id: liveOpenMemory.id, title: liveOpenMemory.title })}
+                  onStub={handleMemoryStub}
+                  onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
+                  sessionImages={sessionImages}
+                  stories={stories}
+                  onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
+                  onRemoveFromStory={() => handleRemoveMemoryFromStory(liveOpenMemory)}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: admin panel is a full-screen overlay — same treatment as
+            the memory panel above (inset-0/h-[100dvh], no scrim, no
+            rounding), not Media's partial sheet. */}
+        {isMobile && adminStory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story admin">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              <StoryAdminPanel
+                story={adminStory}
+                onClose={() => setAdminStoryId(null)}
+                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: story view is a full-screen overlay — same treatment as
+            the admin panel above (inset-0/h-[100dvh], no scrim, no
+            rounding). Reached via a real tap on a Stories-list row (Phase
+            1d, handleSelectStory) when the story has memories — an empty
+            story starts a fresh scoped chat instead, never opening this
+            overlay at all. Swaps to StoryMemoryEditor in the same slot
+            once a row's been tapped (Phase 1b) — storyViewId itself stays
+            set, so the editor's own close returns to the list rather than
+            closing this overlay. */}
+        {isMobile && storyViewStory && (
+          <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
+            <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
+              {storyMemory ? (
+                <StoryMemoryEditor
+                  memoryId={storyMemory.id}
+                  sessionId={storyMemory.sessionId}
+                  stories={stories}
+                  onClose={handleCloseStoryMemory}
+                  onFlash={showToast}
+                />
+              ) : (
+                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Always flex-1 now (Stage C) — the panel claims an explicit pixel
+            width of its own (below), so chat just gets whatever's left; it
+            no longer needs a matching ratio to divide against. Floored at
+            260px on desktop (not the plan's original 380px — that number
+            protected ChatHeader's icon cluster, which no longer lives in
+            this column now that ChatHeader spans the full drawer). Verified
+            safe against the drawer's own 680px floor — see
+            memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
+            mobile — chat is always flex-1 there, unaffected by any of this. */}
+        <div
+          data-testid="chat-column-push-wrapper"
+          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'} ${mobileSidebarPushClass}`}
+        >
+          <div className="flex flex-col flex-1 min-h-0">
+            {isGated ? (
+              <GateView />
+            ) : (
+              <NameCompletionGate>
+                {state.hasStarted ? (
+                  <MessageList
+                    messages={state.messages}
+                    isLoading={state.isLoading}
+                    errorType={errorType}
+                    onOpenMemory={handleOpenMemory}
+                    memories={memories}
+                    onStub={handleMemoryStub}
+                    sessionImages={sessionImages}
+                    stories={stories}
+                    onAssignStory={handleAssignMemoryToStory}
+                    onRemoveFromStory={handleRemoveMemoryFromStory}
+                  />
+                ) : (
+                  <EmptyState />
+                )}
+
+                <div className="pb-4">
+                  <ChatInput />
+                  <SaveChatCTA />
+                </div>
+              </NameCompletionGate>
+            )}
+          </div>
+        </div>
+
+        {/* Chat/panel divider — Stage C. Only mounted while the panel is
+            open (nothing to drag otherwise). Its own border-l is what was
+            the panel container's border below — one seam, not two. */}
+        {!isMobile && openMemory && (
+          <MemoryPanelDivider
+            label="Resize the memory panel"
+            onStart={() => panelWidth}
+            onMove={(base, delta) => {
+              const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
+              setPanelWidth(clampWidth(base - delta, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+            }}
+            onReset={resetPanelWidth}
+            onDragStateChange={setIsDraggingPanel}
+          />
+        )}
+
+        {/* Memory panel / media pane / admin panel / session memories panel /
+            story view — shared third-pane wrapper since openMemory,
+            mediaOpen, adminStoryId, sessionMemoriesOpen, and storyViewId are
+            mutually exclusive by construction (handleOpenMedia/
+            handleOpenMemory/handleOpenSessionMemories above, adminStoryId's
+            own setter in handleRowAction, and handleOpenStoryView). Real
+            drag-resizable pixel width now (Stage C) for memory; media,
+            admin, session memories, and story view all get the same clamped
+            mediaPanelWidth instead (none of them need resize — the admin
+            panel's own spec calls for a fixed width, same 400px media
+            prefers, and session memories/story view (Phase 1a) both follow
+            the same precedent rather than inventing their own — but all
+            four are clamped down via mediaPanelWidth, above, when the row
+            doesn't have 400px to spare) — flexBasis is inline style either
+            way since Tailwind can't express a runtime-computed value as a
+            static class; min-w-[280px] stays a class-based floor, redundant
+            with the JS clamp on purpose (defense in depth, costs nothing).
+            Transition suppressed while actively dragging so a live resize
+            tracks the cursor instead of animating 300ms behind it. The
+            wrapper stays mounted whenever !isMobile so open/close can still
+            transition; content itself only renders while a memory, media,
+            admin, session-memories, or story pane is open. Desktop only —
+            mobile media/memory/admin/session-memories/story (Stage F) all
+            use their own full-screen/sheet overlays above instead of this
+            shared resizable wrapper. */}
+        {!isMobile && (
+          <div
+            data-testid="third-pane-panel"
+            className={`h-full overflow-hidden ${isDraggingPanel ? '' : 'transition-[flex-basis,opacity] duration-300 ease-in-out'} ${
+              openMemory || mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
+                ? 'min-w-[280px] opacity-100'
+                : 'flex-[0] min-w-0 opacity-0'
+            } ${mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory ? 'border-l border-border' : ''}`}
+            style={
+              openMemory
+                ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
+                : mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
+                ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
+                : undefined
+            }
+          >
+            {liveOpenMemory && (
+              <MemoryCardView
+                memory={liveOpenMemory}
+                onClose={() => setOpenMemory(null)}
+                onRetitle={(title) => memories.rename(liveOpenMemory.id, title)}
+                onRemove={() => setPendingDelete({ target: 'memory', id: liveOpenMemory.id, title: liveOpenMemory.title })}
+                onStub={handleMemoryStub}
+                onReviseBlocks={(blocks) => memories.reviseBlocks(liveOpenMemory.id, blocks)}
+                sessionImages={sessionImages}
+                stories={stories}
+                onAssignStory={(storyId) => handleAssignMemoryToStory(liveOpenMemory, storyId)}
+                onRemoveFromStory={() => handleRemoveMemoryFromStory(liveOpenMemory)}
+              />
+            )}
+            {mediaOpen && (
+              <MediaGallery onClose={() => setMediaOpen(false)} sessionId={state.sessionId} onFlash={showToast} />
+            )}
+            {adminStory && (
+              <StoryAdminPanel
+                story={adminStory}
+                onClose={() => setAdminStoryId(null)}
+                onDescriptionCommit={(description) => handleUpdateStoryDescription(adminStory.id, description)}
+              />
+            )}
+            {sessionMemoriesOpen && (
+              <SessionMemoriesPanel
+                memories={currentSessionMemories}
+                stories={stories}
+                onClose={() => setSessionMemoriesOpen(false)}
+                onOpen={handleOpenMemory}
+              />
+            )}
+            {storyViewStory && storyMemory && (
+              <StoryMemoryEditor
+                memoryId={storyMemory.id}
+                sessionId={storyMemory.sessionId}
+                stories={stories}
+                onClose={handleCloseStoryMemory}
+                onFlash={showToast}
+              />
+            )}
+            {storyViewStory && !storyMemory && (
+              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Standalone Media page (Stage 1, media_stages_08_2026) — same
+          absolute-inset-0-resolves-to-the-drawer's-relative-body pattern as
+          the modals below and the mobile Media/memory overlays above, just
+          mounted unconditionally (not gated on isMobile) since this surface
+          is identical across viewport sizes. Always rendered so its
+          translate-x transition can animate; `open` controls visibility. */}
+      <MediaPage open={mediaPageOpen} onClose={() => setMediaPageOpen(false)} onFlash={showToast} isMember={state.isMember} />
+
+      {/* absolute inset-0 — resolves to the drawer's relative body (this
+          section is static), so modals overlay the whole drawer. */}
+      <BeginStoryModal
+        open={beginStoryOpen}
+        onClose={() => setBeginStoryOpen(false)}
+        onCreate={handleCreateStory}
+      />
+      <InviteCollaboratorsModal
+        open={!!invite}
+        onClose={closeInvite}
+        magicLink={inviteLink ? inviteLink.url.replace(/^https?:\/\//, '') : undefined}
+        expiresLabel="Expires in 7 days"
+        collaborators={inviteCollaborators}
+        stories={stories}
+        storyId={invite?.storyId}
+        onStoryChange={handleInviteStoryChange}
+        primer={invitePrimer}
+        onPrimerChange={handleInvitePrimerChange}
+        onCreateLink={handleCreateInviteLink}
+        onResetLink={handleResetInviteLink}
+      />
+      <ConfirmDeleteModal
+        item={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          if (pendingDelete.target === 'memory') {
+            // Same discard call the panel's Remove button used to fire
+            // directly (memories.discard + count decrement + panel close) —
+            // this dialog only adds the confirmation gate every other
+            // delete in this file already has, not a new mutation path.
+            // liveOpenMemory, not pendingDelete's own id/title-only shape:
+            // handleRemoveMemory needs the full MemoryRow (status,
+            // session_id), and the confirm dialog's scrim blocks every way
+            // to change which memory is open while it's up, so this is
+            // still the same memory pendingDelete was opened for.
+            if (liveOpenMemory) void handleRemoveMemory(liveOpenMemory);
+          } else if (pendingDelete.target === 'story') {
+            // Real delete now (2026-08-09) — see handleDeleteStory above.
+            void handleDeleteStory(pendingDelete.id);
+          } else {
+            void deleteSession(pendingDelete.id);
+            showToast('Deleted');
+          }
+          setPendingDelete(null);
+        }}
+      />
+      {/* Same z-[80] modal layer as BeginStory/InviteCollaborators above —
+          clears every overlay it can coexist with (mobile sheets and
+          MediaPage at z-40, the mobile sidebar at z-30). The only things
+          above it are ConfirmDeleteModal (z-[85]) and the toast (z-[100]),
+          neither of which can be up at the same time as this. Defaults on
+          shareUrl/shareMessage/channels — no per-tenant customization yet. */}
+      <ShareHeirloomModal
+        open={shareHeirloomOpen}
+        onClose={() => setShareHeirloomOpen(false)}
+      />
+
+      {/* Kebab action confirmation toast — fixed bottom-center, auto-dismiss 2.2s */}
+      {toast && (
+        <div
+          key={toast.key}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border shadow-lg pointer-events-none select-none"
+        >
+          <Check size={13} className="text-accent flex-shrink-0" />
+          <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-text-primary">
+            {toast.message}
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
