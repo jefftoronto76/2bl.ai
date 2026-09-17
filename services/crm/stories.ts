@@ -427,16 +427,22 @@ export async function updateStoryDescription(
  * confirmed repo-wide — so this needed zero Studio migration, unlike a new
  * column would have.
  *
- * This REPLACES the whole metadata value rather than merging into it
- * (`.update({ metadata: { viewPrefs: { deckView } } })`, not a read-modify-
- * write). Safe today because nothing else writes to a story's metadata yet
- * (also confirmed repo-wide) — if that ever changes, this needs to become a
- * merge instead of a blind overwrite, or it will silently clobber whatever
- * else lives there.
+ * This MERGES into the existing metadata value — reads the current row's
+ * metadata first, spreads it forward, and only overwrites viewPrefs.deckView
+ * — rather than a blind `.update({ metadata: { viewPrefs: { deckView } } })`
+ * replace (an earlier version of this function did exactly that; caught in
+ * review since nothing else writes a story's metadata YET, but the first
+ * future feature that does would get silently clobbered on the next List/
+ * Grid toggle). No existing jsonb-merge helper elsewhere in the codebase to
+ * reuse (checked services/media/index.ts's `...params.metadata` spread —
+ * that builds a fresh object before an insert, not a read-modify-write
+ * against an existing row) — a plain read-then-write is proportionate here
+ * (a low-stakes UI preference, not a financial/transactional write), not a
+ * `jsonb_set` RPC.
  *
  * Owner-scoped and 404-shaped identically to updateStoryDescription above —
- * same tenant_id + user_id + type='story' scoping, same non-leaking 404 for
- * both "no such story" and "not yours."
+ * same tenant_id + user_id + type='story' scoping on both the read and the
+ * write, same non-leaking 404 for both "no such story" and "not yours."
  */
 export async function updateStoryViewMode(
   tenantId: string,
@@ -446,9 +452,31 @@ export async function updateStoryViewMode(
 ): Promise<StoryResult<StoryRow>> {
   const supabase = getAdminClient()
 
+  const { data: existing, error: readError } = await supabase
+    .from('artifacts')
+    .select('metadata')
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .maybeSingle()
+
+  if (readError) {
+    console.error('[stories] view mode metadata read error:', JSON.stringify(readError))
+    return { ok: false, status: 500, error: readError.message }
+  }
+  if (!existing) {
+    console.warn('[stories] no story matched id + tenant + user for view mode update:', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const currentMetadata = (existing.metadata as Record<string, unknown> | null) ?? {}
+  const currentViewPrefs = (currentMetadata.viewPrefs as Record<string, unknown> | null) ?? {}
+  const mergedMetadata = { ...currentMetadata, viewPrefs: { ...currentViewPrefs, deckView: viewMode } }
+
   const { data, error } = await supabase
     .from('artifacts')
-    .update({ metadata: { viewPrefs: { deckView: viewMode } } })
+    .update({ metadata: mergedMetadata })
     .eq('id', storyId)
     .eq('tenant_id', tenantId)
     .eq('user_id', userId)
@@ -461,7 +489,10 @@ export async function updateStoryViewMode(
     return { ok: false, status: 500, error: error.message }
   }
   if (!data) {
-    console.warn('[stories] no story matched id + tenant + user for view mode update:', { storyId, tenantId, userId })
+    // The row existed for the read above but not for this write — a
+    // genuine race (discarded/reassigned between the two calls), not the
+    // ordinary "not found" case, but the same 404 shape is still correct.
+    console.warn('[stories] story matched on read but not on write for view mode update (race):', { storyId, tenantId, userId })
     return { ok: false, status: 404, error: 'Story not found' }
   }
 
