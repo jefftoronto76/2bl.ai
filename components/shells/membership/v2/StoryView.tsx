@@ -566,6 +566,21 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
     }
   };
 
+  /** Mobile Preview gating (Phase 6) — the button stays visible everywhere
+   *  (removing it entirely was the brief's other allowed option, but this
+   *  round picked the message, per the handover's own Known-unknowns note),
+   *  but tapping it on a small screen surfaces a toast instead of opening
+   *  the reader — no mobile-optimized book-reading experience was designed
+   *  this round. Reuses the shared `onFlash` toast, same one every other
+   *  failure message in this file already goes through. */
+  const handleOpenPreview = () => {
+    if (isMobile) {
+      onFlash('Preview looks best on a bigger screen — open Heirloom on your computer to see the finished book.');
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
   const countLabel = `${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}`;
 
   return (
@@ -612,7 +627,7 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
           type="button"
           aria-label="Preview this story"
           title="Preview this story"
-          onClick={() => setPreviewOpen(true)}
+          onClick={handleOpenPreview}
           className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <Eye size={15} aria-hidden />

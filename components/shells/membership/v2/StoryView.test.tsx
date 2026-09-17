@@ -711,3 +711,60 @@ describe('StoryView — Preview entry point (Phase 5)', () => {
     expect(dialog.textContent).toContain('word620 ');
   });
 });
+
+describe('StoryView — mobile Preview gating (Phase 6)', () => {
+  it('tapping Preview at mobile widths flashes a toast instead of opening the reader', async () => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+      const onFlash = vi.fn();
+
+      render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={onFlash} />);
+      await screen.findByText(/0 memories/);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+
+      expect(onFlash).toHaveBeenCalledWith(
+        'Preview looks best on a bigger screen — open Heirloom on your computer to see the finished book.',
+      );
+      expect(screen.queryByRole('dialog', { name: /Preview/ })).not.toBeInTheDocument();
+    } finally {
+      (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+        width: 1024,
+      });
+    }
+  });
+
+  it('the Preview button itself still renders on mobile — only its click behavior changes', async () => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+      render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+      await screen.findByText(/0 memories/);
+
+      expect(screen.getByRole('button', { name: 'Preview this story' })).toBeInTheDocument();
+    } finally {
+      (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+        width: 1024,
+      });
+    }
+  });
+
+  it('desktop is unaffected — tapping Preview still opens the reader, no toast', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+    const onFlash = vi.fn();
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={onFlash} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview this story' }));
+
+    expect(screen.getByRole('dialog', { name: /Preview/ })).toBeInTheDocument();
+    expect(onFlash).not.toHaveBeenCalled();
+  });
+});
