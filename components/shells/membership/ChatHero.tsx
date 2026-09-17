@@ -1340,13 +1340,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             mobile — chat is always flex-1 there, unaffected by any of this.
 
             Desktop + storyViewStory (Deck panel width bug, 2026-09) is the
-            one exception: collapses to zero width AND stops rendering its
-            content, rather than just shrinking — Deck takes over as the
-            drawer's main content, so the transcript underneath isn't meant
-            to still be reachable (an invisible-but-mounted ChatInput would
-            stay in the tab order otherwise). Mirrors the third-pane wrapper
-            below's own established pattern: stay mounted for the flex
-            transition, but only render content while actually shown. */}
+            one exception: collapses to zero width while Deck takes over as
+            the drawer's main content. The inner content div stays MOUNTED
+            (native `hidden` attribute, not a conditional-render) rather
+            than unmounting — ChatInput owns its draft text/attachments in
+            local useState (see ChatInput.tsx), so unmounting it on every
+            Deck open/close silently lost whatever the member had typed but
+            not sent. `hidden` resolves to `display:none`, which drops the
+            subtree from the tab order/accessibility tree the same as a
+            true unmount would, without destroying component state — same
+            principle the mobile overlays above already use (they cover the
+            still-mounted chat column rather than unmounting it). */}
         <div
           data-testid="chat-column-push-wrapper"
           className={`flex flex-col h-full min-h-0 ${
@@ -1357,37 +1361,38 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               : 'flex-1 min-w-[260px]'
           } ${mobileSidebarPushClass}`}
         >
-          {!(!isMobile && storyViewStory) && (
-            <div className="flex flex-col flex-1 min-h-0">
-              {isGated ? (
-                <GateView />
-              ) : (
-                <NameCompletionGate>
-                  {state.hasStarted ? (
-                    <MessageList
-                      messages={state.messages}
-                      isLoading={state.isLoading}
-                      errorType={errorType}
-                      onOpenMemory={handleOpenMemory}
-                      memories={memories}
-                      onStub={handleMemoryStub}
-                      sessionImages={sessionImages}
-                      stories={stories}
-                      onAssignStory={handleAssignMemoryToStory}
-                      onRemoveFromStory={handleRemoveMemoryFromStory}
-                    />
-                  ) : (
-                    <EmptyState />
-                  )}
+          <div
+            className={!isMobile && storyViewStory ? 'hidden' : 'flex flex-col flex-1 min-h-0'}
+            hidden={!isMobile && !!storyViewStory}
+          >
+            {isGated ? (
+              <GateView />
+            ) : (
+              <NameCompletionGate>
+                {state.hasStarted ? (
+                  <MessageList
+                    messages={state.messages}
+                    isLoading={state.isLoading}
+                    errorType={errorType}
+                    onOpenMemory={handleOpenMemory}
+                    memories={memories}
+                    onStub={handleMemoryStub}
+                    sessionImages={sessionImages}
+                    stories={stories}
+                    onAssignStory={handleAssignMemoryToStory}
+                    onRemoveFromStory={handleRemoveMemoryFromStory}
+                  />
+                ) : (
+                  <EmptyState />
+                )}
 
-                  <div className="pb-4">
-                    <ChatInput />
-                    <SaveChatCTA />
-                  </div>
-                </NameCompletionGate>
-              )}
-            </div>
-          )}
+                <div className="pb-4">
+                  <ChatInput />
+                  <SaveChatCTA />
+                </div>
+              </NameCompletionGate>
+            )}
+          </div>
         </div>
 
         {/* Chat/panel divider — Stage C. Only mounted while the panel is
