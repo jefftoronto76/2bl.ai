@@ -315,3 +315,73 @@ describe('StoryView — reorder (real-story-view-1c-reorder)', () => {
     await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Could not move memory'));
   });
 });
+
+describe('StoryView — desktop drag-and-drop reorder (Phase 2)', () => {
+  it('dragging row A onto row C (2 positions down) PATCHes "down" twice, then refetches once', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })) // initial GET
+      .mockResolvedValueOnce(jsonResponse({ ok: true })) // PATCH 1
+      .mockResolvedValueOnce(jsonResponse({ ok: true })) // PATCH 2
+      .mockResolvedValueOnce(jsonResponse({ memories: [THREE_MEMORIES[1], THREE_MEMORIES[2], THREE_MEMORIES[0]] })); // refetch
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    const rows = screen.getAllByRole('listitem');
+    fireEvent.dragStart(rows[0]); // A
+    fireEvent.dragEnter(rows[2]); // over C
+    fireEvent.drop(rows[2]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/stories/story-1/memories', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memoryId: 'mem-a', direction: 'down' }),
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/stories/story-1/memories', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memoryId: 'mem-a', direction: 'down' }),
+    });
+
+    const titles = screen.getAllByRole('listitem').map((li) => li.textContent);
+    expect(titles[2]).toContain('A'); // server's new order reflected
+  });
+
+  it('dropping a row on itself does nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    const rows = screen.getAllByRole('listitem');
+    fireEvent.dragStart(rows[0]);
+    fireEvent.drop(rows[0]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // just the initial GET
+  });
+
+  it('rows are not draggable at mobile widths — the existing up/down buttons remain the only affordance', async () => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: THREE_MEMORIES })));
+
+      render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+      await screen.findByText('A');
+
+      screen.getAllByRole('listitem').forEach((li) => {
+        expect(li).toHaveAttribute('draggable', 'false');
+      });
+      // The up/down buttons are still there and enabled where applicable.
+      expect(screen.getAllByRole('button', { name: 'Move down' })[0]).not.toBeDisabled();
+    } finally {
+      (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+        width: 1024,
+      });
+    }
+  });
+});
