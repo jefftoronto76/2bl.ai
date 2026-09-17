@@ -56,6 +56,13 @@ export interface Story {
    *  Sessions header total. Undefined only for a story object built outside
    *  that fetch path — SidebarV2 treats it the same as 0 (no badge). */
   memoryCount?: number;
+  /** The Deck's List/Grid toggle (Story Deck & Memory Panel handover, Phase
+   *  3) — persisted per-story via PATCH /api/stories/[id] into
+   *  artifacts.metadata (services/crm/stories.ts's updateStoryViewMode), not
+   *  global and not merely local component state. Undefined only for a
+   *  story object built outside the GET/POST /api/stories fetch path —
+   *  StoryView.tsx treats that the same as 'list' (its pre-Phase-3 default). */
+  viewMode?: 'list' | 'grid';
 }
 
 export interface WritingPrompt {

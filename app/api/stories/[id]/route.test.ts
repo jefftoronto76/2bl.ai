@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockGetTenantFromRequest = vi.fn()
 const mockGetCurrentUserId = vi.fn()
 const mockUpdateStoryDescription = vi.fn()
+const mockUpdateStoryViewMode = vi.fn()
 const mockDiscardStory = vi.fn()
 const mockLogEvent = vi.fn()
 
@@ -22,6 +23,7 @@ vi.mock('@/services/auth', () => ({
 vi.mock('@/services/crm/stories', () => ({
   discardStory: (...args: unknown[]) => mockDiscardStory(...args),
   updateStoryDescription: (...args: unknown[]) => mockUpdateStoryDescription(...args),
+  updateStoryViewMode: (...args: unknown[]) => mockUpdateStoryViewMode(...args),
 }))
 
 vi.mock('@/services/audit', () => ({
@@ -48,6 +50,7 @@ beforeEach(() => {
   mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockUpdateStoryDescription.mockReset()
+  mockUpdateStoryViewMode.mockReset()
   mockDiscardStory.mockReset()
   mockLogEvent.mockReset()
 })
@@ -106,6 +109,40 @@ describe('PATCH /api/stories/[id]', () => {
     mockUpdateStoryDescription.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
 
     const res = await PATCH(makeRequest({ description: 'New text' }), makeParams('nope'))
+
+    expect(res.status).toBe(404)
+    expect(mockLogEvent).not.toHaveBeenCalled()
+  })
+
+  it('400s when view_mode is neither "list" nor "grid"', async () => {
+    const res = await PATCH(makeRequest({ view_mode: 'timeline' }), makeParams('story-1'))
+
+    expect(res.status).toBe(400)
+    expect(mockUpdateStoryViewMode).not.toHaveBeenCalled()
+  })
+
+  it('calls updateStoryViewMode and logs STORY_VIEW_MODE_UPDATED on success (Phase 3, Story Deck & Memory Panel)', async () => {
+    mockUpdateStoryViewMode.mockResolvedValue({
+      ok: true,
+      data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now', hasActiveInviteOrSubscribers: false, isOwner: true, memoryCount: 0, viewMode: 'grid' },
+    })
+
+    const res = await PATCH(makeRequest({ view_mode: 'grid' }), makeParams('story-1'))
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body).toEqual({ story: { id: 'story-1', name: 'A Life in Full', description: undefined, viewMode: 'grid' } })
+    expect(mockUpdateStoryViewMode).toHaveBeenCalledWith('tenant-1', 'user-1', 'story-1', 'grid')
+    expect(mockUpdateStoryDescription).not.toHaveBeenCalled()
+    expect(mockLogEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ target_id: 'story-1', target_type: 'story', outcome: 'success', metadata: { view_mode: 'grid' } }),
+    )
+  })
+
+  it('propagates a service-layer 404 from the view_mode path too', async () => {
+    mockUpdateStoryViewMode.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
+
+    const res = await PATCH(makeRequest({ view_mode: 'list' }), makeParams('nope'))
 
     expect(res.status).toBe(404)
     expect(mockLogEvent).not.toHaveBeenCalled()
