@@ -117,16 +117,20 @@ async function openStoryView() {
 }
 
 describe('Deck panel width (desktop) — StoryView takes over from the chat column', () => {
-  it('collapses the chat column to zero width and stops rendering its content', async () => {
+  it('collapses the chat column to zero width and hides its content — but keeps it mounted, not unmounted', async () => {
     await openStoryView();
 
     const chatColumn = screen.getByTestId('chat-column-push-wrapper');
     expect(chatColumn.className).toContain('w-0');
     expect(chatColumn.className).toContain('flex-[0]');
     expect(chatColumn.className).not.toContain('min-w-[260px]');
-    // Not just visually hidden — unmounted, so an invisible ChatInput can't
-    // still be reached by keyboard (Tab) while Deck is open.
-    expect(screen.queryByPlaceholderText('Share a memory, or ask your guide anything')).not.toBeInTheDocument();
+    // Hidden (display:none via the `hidden` attribute — out of the tab
+    // order/accessibility tree, same as a real unmount), but still IN the
+    // DOM: a real unmount would reset ChatInput's own local draft/attachment
+    // state (see the draft-preservation test below) every time Deck opens.
+    const textarea = screen.getByPlaceholderText('Share a memory, or ask your guide anything');
+    expect(textarea).toBeInTheDocument();
+    expect(textarea).not.toBeVisible();
   });
 
   it('gives the third pane flexGrow:1 instead of the fixed ~400px media/admin/session-memories width', async () => {
@@ -137,12 +141,36 @@ describe('Deck panel width (desktop) — StoryView takes over from the chat colu
     expect(panel.style.flexBasis).toBe('0px');
   });
 
+  it('preserves an unsent draft across opening and closing StoryView', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: STORY_FULL.name })).toBeInTheDocument());
+    // Waits for the session to finish hydrating first — ChatInput resets its
+    // own draft whenever state.sessionId changes (a real, separate, existing
+    // behavior: see its own doc comment), which otherwise fires async right
+    // after mount as the initial session loads and would wipe a draft typed
+    // too early, unrelated to anything StoryView does.
+    await screen.findByText(/It sounds like a beautiful memory/);
+    const textarea = screen.getByPlaceholderText('Share a memory, or ask your guide anything');
+    fireEvent.change(textarea, { target: { value: 'A draft I have not sent yet' } });
+
+    fireEvent.click(screen.getByRole('button', { name: STORY_FULL.name }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close story' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close story' }));
+    await waitFor(() => expect(screen.getByPlaceholderText('Share a memory, or ask your guide anything')).toBeVisible());
+    expect(screen.getByPlaceholderText('Share a memory, or ask your guide anything')).toHaveValue('A draft I have not sent yet');
+  });
+
   it('closing the story restores the chat column and its content', async () => {
     await openStoryView();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close story' }));
 
-    await waitFor(() => expect(screen.getByPlaceholderText('Share a memory, or ask your guide anything')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText('Share a memory, or ask your guide anything')).toBeVisible());
     const chatColumn = screen.getByTestId('chat-column-push-wrapper');
     expect(chatColumn.className).toContain('min-w-[260px]');
     expect(chatColumn.className).not.toContain('w-0');
