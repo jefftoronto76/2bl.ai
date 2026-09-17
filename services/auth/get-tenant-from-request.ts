@@ -71,7 +71,11 @@ function previewTenantFallback(): string | null {
   const id = process.env.PREVIEW_TENANT_ID
   if (!id) return null
   if (process.env.VERCEL_ENV === 'production') return null
-  return id
+  // A hand-pasted Vercel dashboard value is the one unvalidated string that
+  // reaches tenantId on this path (domain/slug matches both come from clean
+  // DB columns) — a stray trailing space here silently 400s every Supabase
+  // query on preview (PostgREST rejects the resulting malformed UUID filter).
+  return id.trim()
 }
 
 /**

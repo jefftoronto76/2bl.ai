@@ -440,17 +440,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // clips the pane's right edge (and with it MediaGallery's close button).
   // Reuses the memory panel's clamp math, recomputed on the same
   // open-transition-only cadence panelWidth already uses above.
+  //
+  // storyViewStory deliberately does NOT participate here (Deck panel width
+  // bug, 2026-09) — this clamp exists to protect a 260px chat floor next to
+  // the panel, but Deck is meant to REPLACE the chat column as the drawer's
+  // main content when open (full width, sidebar collapsed to its rail), not
+  // sit beside a still-visible transcript the way Media/admin/session
+  // memories do. See the chat-column-push-wrapper and third-pane-panel
+  // below for the other half of this — chat collapses to nothing and the
+  // third pane claims the rest via flexGrow instead of this fixed width.
   const [mediaPanelWidth, setMediaPanelWidth] = useState(MEDIA_PANEL_WIDTH);
   const wasMediaOpenRef = useRef(false);
 
   useEffect(() => {
-    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen || !!storyViewStory;
+    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen;
     if (isOpen && !wasMediaOpenRef.current) {
       const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
       setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
     }
     wasMediaOpenRef.current = isOpen;
-  }, [mediaOpen, adminStory, sessionMemoriesOpen, storyViewStory]);
+  }, [mediaOpen, adminStory, sessionMemoriesOpen]);
 
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -1298,13 +1307,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
             <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
               {storyMemory ? (
-                <StoryMemoryEditor
-                  memoryId={storyMemory.id}
-                  sessionId={storyMemory.sessionId}
-                  stories={stories}
-                  onClose={handleCloseStoryMemory}
-                  onFlash={showToast}
-                />
+                // Slides in from the right (Story Deck & Memory Panel
+                // handover, 2026-09), same as the desktop branch below —
+                // the outer hl-animate-sheet above only plays once, when
+                // this whole overlay first mounts, and doesn't retrigger on
+                // the StoryView -> StoryMemoryEditor swap inside it without
+                // this. Keyed by memory id so a different row re-triggers it.
+                <div key={storyMemory.id} className="h-full hl-animate-slide-right">
+                  <StoryMemoryEditor
+                    memoryId={storyMemory.id}
+                    sessionId={storyMemory.sessionId}
+                    stories={stories}
+                    onClose={handleCloseStoryMemory}
+                    onFlash={showToast}
+                  />
+                </div>
               ) : (
                 <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
               )}
@@ -1320,12 +1337,34 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             this column now that ChatHeader spans the full drawer). Verified
             safe against the drawer's own 680px floor — see
             memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
-            mobile — chat is always flex-1 there, unaffected by any of this. */}
+            mobile — chat is always flex-1 there, unaffected by any of this.
+
+            Desktop + storyViewStory (Deck panel width bug, 2026-09) is the
+            one exception: collapses to zero width while Deck takes over as
+            the drawer's main content. The inner content div stays MOUNTED
+            (native `hidden` attribute, not a conditional-render) rather
+            than unmounting — ChatInput owns its draft text/attachments in
+            local useState (see ChatInput.tsx), so unmounting it on every
+            Deck open/close silently lost whatever the member had typed but
+            not sent. `hidden` resolves to `display:none`, which drops the
+            subtree from the tab order/accessibility tree the same as a
+            true unmount would, without destroying component state — same
+            principle the mobile overlays above already use (they cover the
+            still-mounted chat column rather than unmounting it). */}
         <div
           data-testid="chat-column-push-wrapper"
-          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'} ${mobileSidebarPushClass}`}
+          className={`flex flex-col h-full min-h-0 ${
+            !isMobile && storyViewStory
+              ? 'flex-[0] min-w-0 w-0 overflow-hidden'
+              : isMobile
+              ? 'flex-1 min-w-0'
+              : 'flex-1 min-w-[260px]'
+          } ${mobileSidebarPushClass}`}
         >
-          <div className="flex flex-col flex-1 min-h-0">
+          <div
+            className={!isMobile && storyViewStory ? 'hidden' : 'flex flex-col flex-1 min-h-0'}
+            hidden={!isMobile && !!storyViewStory}
+          >
             {isGated ? (
               <GateView />
             ) : (
@@ -1379,16 +1418,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             handleOpenMemory/handleOpenSessionMemories above, adminStoryId's
             own setter in handleRowAction, and handleOpenStoryView). Real
             drag-resizable pixel width now (Stage C) for memory; media,
-            admin, session memories, and story view all get the same clamped
+            admin, and session memories all get the same clamped
             mediaPanelWidth instead (none of them need resize — the admin
             panel's own spec calls for a fixed width, same 400px media
-            prefers, and session memories/story view (Phase 1a) both follow
-            the same precedent rather than inventing their own — but all
-            four are clamped down via mediaPanelWidth, above, when the row
-            doesn't have 400px to spare) — flexBasis is inline style either
-            way since Tailwind can't express a runtime-computed value as a
-            static class; min-w-[280px] stays a class-based floor, redundant
-            with the JS clamp on purpose (defense in depth, costs nothing).
+            prefers, and session memories follows the same precedent rather
+            than inventing its own — but all three are clamped down via
+            mediaPanelWidth, above, when the row doesn't have 400px to
+            spare) — flexBasis is inline style either way since Tailwind
+            can't express a runtime-computed value as a static class;
+            min-w-[280px] stays a class-based floor, redundant with the JS
+            clamp on purpose (defense in depth, costs nothing).
+
+            story view is deliberately NOT part of that clamped group (Deck
+            panel width bug, 2026-09) — it gets flexGrow:1 instead of a
+            fixed flexBasis, claiming the whole width the (now-collapsed)
+            chat column vacated above, since Deck replaces the transcript as
+            the drawer's main content rather than sitting beside it.
+
             Transition suppressed while actively dragging so a live resize
             tracks the cursor instead of animating 300ms behind it. The
             wrapper stays mounted whenever !isMobile so open/close can still
@@ -1408,7 +1454,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
+                : storyViewStory
+                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0 }
+                : mediaOpen || adminStory || sessionMemoriesOpen
                 ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -1446,13 +1494,21 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {storyViewStory && storyMemory && (
-              <StoryMemoryEditor
-                memoryId={storyMemory.id}
-                sessionId={storyMemory.sessionId}
-                stories={stories}
-                onClose={handleCloseStoryMemory}
-                onFlash={showToast}
-              />
+              // Slides in from the right (Story Deck & Memory Panel handover,
+              // 2026-09) rather than mounting instantly — the key re-triggers
+              // the animation every time a different deck row is opened, not
+              // just the first. Every other panel/pane swap in this wrapper
+              // keeps its existing (lack of) transition; this is the one
+              // handover called out for a new one.
+              <div key={storyMemory.id} className="h-full hl-animate-slide-right">
+                <StoryMemoryEditor
+                  memoryId={storyMemory.id}
+                  sessionId={storyMemory.sessionId}
+                  stories={stories}
+                  onClose={handleCloseStoryMemory}
+                  onFlash={showToast}
+                />
+              </div>
             )}
             {storyViewStory && !storyMemory && (
               <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
