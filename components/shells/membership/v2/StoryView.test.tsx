@@ -141,6 +141,48 @@ describe('StoryView', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a thumbnail box only for photo/video memories — not text, audio, or document (Phase 1, row layout parity)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', title: 'Written up', body: '', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', title: 'A photo', body: '', source_kind: 'photo', created_at: '2026-08-02T00:00:00Z' },
+            { id: 'mem-3', title: 'A video', body: '', source_kind: 'video', created_at: '2026-08-03T00:00:00Z' },
+            { id: 'mem-4', title: 'A recording', body: '', source_kind: 'audio', created_at: '2026-08-04T00:00:00Z' },
+            { id: 'mem-5', title: 'A document', body: '', source_kind: 'document', created_at: '2026-08-05T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('Written up');
+
+    expect(screen.queryAllByTestId('memory-thumbnail')).toHaveLength(2); // photo + video only
+  });
+
+  it('gives every row the same height regardless of whether it has a thumbnail or a body line (Phase 1)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', title: 'No body, no thumbnail', body: '', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', title: 'Has both', body: 'Some passage text.', source_kind: 'photo', created_at: '2026-08-02T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('No body, no thumbnail');
+
+    const rowButtons = screen.getAllByRole('button', { name: /No body, no thumbnail|Has both/ });
+    rowButtons.forEach((btn) => expect(btn.className).toContain('h-24'));
+  });
+
   it('tapping a row calls onOpenMemory with that memory\'s id AND its own session_id — not any other session', async () => {
     vi.stubGlobal(
       'fetch',
