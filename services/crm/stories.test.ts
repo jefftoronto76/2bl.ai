@@ -77,6 +77,12 @@ function makeClient(opts: {
   subscriberStoryIdsResult?: ListResult
   /** getStoryById's own single-row artifacts lookup (id/title/body/user_id). */
   storyByIdResult?: SelectResult
+  /** updateStoryViewMode's own pre-write read of the row's current metadata
+   *  (`.select('metadata')...maybeSingle()`) — kept separate from
+   *  storyByIdResult (a different column list) so a test can configure the
+   *  "metadata already has something else in it" case independently of
+   *  getStoryById's own shape. */
+  viewModeMetadataReadResult?: SelectResult
   /** getMemoryCountsForStories' containment-rows lookup — artifact_containments
    *  .in('parent_artifact_id', ...). Defaults to empty (no memories on any
    *  returned story), matching every listStories test that doesn't care
@@ -114,7 +120,7 @@ function makeClient(opts: {
       }
       if (table === 'artifacts') {
         return {
-          select: () => {
+          select: (columns?: string) => {
             const chain: Record<string, unknown> = {
               eq: () => chain,
               is: () => chain,
@@ -129,9 +135,14 @@ function makeClient(opts: {
               // maybeSingle() below.
               in: () => makeChain(opts.memoryValidityResult ?? { data: [], error: null }),
               order: () => opts.listResult ?? { data: [], error: null },
-              // getStoryById's single-row lookup — a distinct terminal from
-              // listStories' order()/then(), sharing the same eq/is chain.
-              maybeSingle: async () => opts.storyByIdResult ?? { data: null, error: null },
+              // getStoryById's single-row lookup and updateStoryViewMode's
+              // pre-write metadata read both terminate on .maybeSingle() —
+              // distinguished by their own distinct column-list argument
+              // (updateStoryViewMode always selects exactly 'metadata').
+              maybeSingle: async () =>
+                columns === 'metadata'
+                  ? opts.viewModeMetadataReadResult ?? { data: null, error: null }
+                  : opts.storyByIdResult ?? { data: null, error: null },
               then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
                 Promise.resolve(opts.listResult ?? { data: [], error: null }).then(resolve, reject),
             }
@@ -543,8 +554,9 @@ describe('updateStoryDescription', () => {
 })
 
 describe('updateStoryViewMode', () => {
-  it('writes into artifacts.metadata.viewPrefs.deckView, scoped by id + tenant + user, replacing the whole metadata value', async () => {
+  it('writes into artifacts.metadata.viewPrefs.deckView, scoped by id + tenant + user, when metadata was previously empty', async () => {
     const { client, updateCalls } = makeClient({
+      viewModeMetadataReadResult: { data: { metadata: null }, error: null },
       updateResult: {
         data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now', metadata: { viewPrefs: { deckView: 'grid' } } },
         error: null,
@@ -565,8 +577,32 @@ describe('updateStoryViewMode', () => {
     expect(updateCalls[0]).not.toHaveProperty('body')
   })
 
-  it('404s when no row matches id + tenant + user (not found, or not owned by this user)', async () => {
-    const { client } = makeClient({ updateResult: { data: null, error: null } })
+  it('merges into existing metadata rather than replacing it — an unrelated key and an existing viewPrefs field both survive', async () => {
+    const { client, updateCalls } = makeClient({
+      viewModeMetadataReadResult: {
+        data: { metadata: { someOtherFeature: { flag: true }, viewPrefs: { deckView: 'list', somethingElse: 'kept' } } },
+        error: null,
+      },
+      updateResult: {
+        data: { id: 'story-1', title: 'A Life in Full', body: null, created_at: 'now', updated_at: 'now', metadata: { someOtherFeature: { flag: true }, viewPrefs: { deckView: 'grid', somethingElse: 'kept' } } },
+        error: null,
+      },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.data.viewMode).toBe('grid')
+    // The write carries forward the unrelated key AND the unrelated
+    // viewPrefs field untouched — only deckView actually changed.
+    expect(updateCalls[0]).toEqual({
+      metadata: { someOtherFeature: { flag: true }, viewPrefs: { deckView: 'grid', somethingElse: 'kept' } },
+    })
+  })
+
+  it('404s when no row matches id + tenant + user on the pre-write read (not found, or not owned by this user)', async () => {
+    const { client, updateCalls } = makeClient({ viewModeMetadataReadResult: { data: null, error: null } })
     adminHolder.client = client
 
     const result = await updateStoryViewMode('tenant-1', 'user-1', 'nope', 'grid')
@@ -576,16 +612,47 @@ describe('updateStoryViewMode', () => {
       expect(result.status).toBe(404)
       expect(result.error).toBe('Story not found')
     }
+    // Never reaches the write — nothing to merge into.
+    expect(updateCalls).toHaveLength(0)
   })
 
-  it('500s when the update itself errors', async () => {
-    const { client } = makeClient({ updateResult: { data: null, error: { message: 'db down' } } })
+  it('500s when the pre-write metadata read itself errors', async () => {
+    const { client } = makeClient({ viewModeMetadataReadResult: { data: null, error: { message: 'db down' } } })
     adminHolder.client = client
 
     const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
 
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('500s when the update itself errors', async () => {
+    const { client } = makeClient({
+      viewModeMetadataReadResult: { data: { metadata: null }, error: null },
+      updateResult: { data: null, error: { message: 'db down' } },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(500)
+  })
+
+  it('404s when the row existed on read but not on write (a race, not the ordinary not-found case)', async () => {
+    const { client } = makeClient({
+      viewModeMetadataReadResult: { data: { metadata: null }, error: null },
+      updateResult: { data: null, error: null },
+    })
+    adminHolder.client = client
+
+    const result = await updateStoryViewMode('tenant-1', 'user-1', 'story-1', 'grid')
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.status).toBe(404)
+      expect(result.error).toBe('Story not found')
+    }
   })
 })
 
