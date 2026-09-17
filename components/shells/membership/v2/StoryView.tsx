@@ -52,9 +52,28 @@
 // ANY move is in flight, not just the moved row's — a second click on a
 // different row before the first move's round trip + refetch resolves
 // could otherwise race against a server order the client hasn't seen yet.
+//
+// Desktop drag-and-drop (Phase 2, Story Deck & Memory Panel handover,
+// 2026-09): ADDS a drag handle alongside the up/down buttons — it doesn't
+// replace them. The buttons stay exactly as built (keyboard/screen-reader
+// accessible, already tested); drag is a pointer-only convenience on top,
+// matching CLAUDE.md's accessibility rule (no regression for non-pointer
+// users) and the "one change at a time" principle (adding a capability,
+// not restructuring the existing one). No new endpoint: a drop is a
+// same-direction repeat of the existing single-step PATCH, once per
+// position crossed (handleMove's `steps` param), then one refetch at the
+// end — the server recomputes its own order on every call, so the client
+// never needs to track an intermediate order between steps. `isMobile`
+// (same 768px breakpoint ChatHero.tsx uses via @mantine/hooks) hides the
+// grip and disables `draggable`: native HTML5 drag doesn't fire from touch
+// input, so showing a non-functional handle there would be misleading —
+// the existing up/down buttons are already mobile's real fallback, per
+// the handover's own "drag becomes chevrons on mobile" note (already true
+// here since this view never had drag to fall back FROM until now).
 
 import { useCallback, useEffect, useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
+import { useMediaQuery } from '@mantine/hooks';
+import { BookOpen, ChevronDown, ChevronUp, GripVertical, Loader2, X } from 'lucide-react';
 import type { Story } from './types';
 import { memoryKindOf, KIND_ICONS } from '../memory/memoryKinds';
 
@@ -82,6 +101,7 @@ function formatDate(iso: string): string {
 }
 
 export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewProps) {
+  const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
   const [memories, setMemories] = useState<StoryMemoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -89,6 +109,12 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   // moved memory's own id, though every row's buttons disable while it's
   // set (see this file's own header comment for why).
   const [moving, setMoving] = useState<string | null>(null);
+  // Drag-and-drop (desktop only) — the source row's index while a drag is
+  // active, and the row currently under the pointer, purely for the visual
+  // opacity/highlight below. Neither drives reordering directly: the actual
+  // move only happens on drop, via the same PATCH endpoint the buttons use.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   /** Returns the fresh list on success, or null on any failure — never
    *  throws, matching this component's existing silent-log-and-degrade
@@ -124,18 +150,25 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
     };
   }, [loadMemories]);
 
-  const handleMove = async (memoryId: string, direction: 'up' | 'down') => {
+  /** `steps` > 1 backs a drag-and-drop drop that crossed more than one row:
+   *  the endpoint only ever moves one position, so this repeats the same
+   *  single-step PATCH `steps` times (each one recomputed server-side off
+   *  its own persisted order, never off a client-held order) and refetches
+   *  once at the end, not after every step. */
+  const handleMove = async (memoryId: string, direction: 'up' | 'down', steps = 1) => {
     setMoving(memoryId);
     try {
-      const res = await fetch(`/api/stories/${encodeURIComponent(story.id)}/memories`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memoryId, direction }),
-      });
-      if (!res.ok) {
-        console.error('[StoryView] move failed:', res.status);
-        onFlash('Could not move memory');
-        return;
+      for (let i = 0; i < steps; i++) {
+        const res = await fetch(`/api/stories/${encodeURIComponent(story.id)}/memories`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memoryId, direction }),
+        });
+        if (!res.ok) {
+          console.error('[StoryView] move failed:', res.status);
+          onFlash('Could not move memory');
+          return;
+        }
       }
       const result = await loadMemories();
       if (result === null) {
@@ -149,6 +182,14 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
     } finally {
       setMoving(null);
     }
+  };
+
+  const handleDrop = (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex || moving !== null) return;
+    const dragged = memories[dragIndex];
+    const steps = Math.abs(targetIndex - dragIndex);
+    const direction = targetIndex > dragIndex ? 'down' : 'up';
+    void handleMove(dragged.id, direction, steps);
   };
 
   const countLabel = `${memories.length} ${memories.length === 1 ? 'memory' : 'memories'}`;
@@ -196,7 +237,23 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
               const isFirst = index === 0;
               const isLast = index === memories.length - 1;
               return (
-                <li key={memory.id} className="flex items-center gap-1 border-b border-border last:border-b-0">
+                <li
+                  key={memory.id}
+                  draggable={!isMobile && moving === null}
+                  onDragStart={() => setDragIndex(index)}
+                  onDragEnter={() => { if (dragIndex !== null) setOverIndex(index); }}
+                  onDragOver={(e) => { if (dragIndex !== null) e.preventDefault(); }}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(index); }}
+                  onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+                  className={`flex items-center gap-1 border-b border-border last:border-b-0 transition-opacity ${
+                    dragIndex === index ? 'opacity-40' : ''
+                  } ${overIndex === index && dragIndex !== null && dragIndex !== index ? 'bg-accent/5' : ''}`}
+                >
+                  {!isMobile && (
+                    <span aria-hidden="true" className="flex-shrink-0 w-5 flex items-center justify-center text-text-muted/40 cursor-grab">
+                      <GripVertical size={14} />
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => onOpenMemory(memory.id, memory.session_id)}
