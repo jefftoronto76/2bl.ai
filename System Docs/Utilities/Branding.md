@@ -43,6 +43,13 @@ layout.tsx` and `app/secondbrainlabs/layout.tsx` omit `imagePath`/`imageAlt`
 entirely — no approved image exists for either domain yet, so per the
 discriminated-union config, `openGraph.images`/`twitter.images` are absent
 (not a placeholder) on both, and their link previews currently render with no
+image. **`app/legacy/layout.tsx` (the live `legacy.2bl.ai` storefront —
+middleware-routed the same way as Heirloom/jefflougheed/secondbrainlabs, see
+`System Docs/App Structure and Routing.md`) has the identical gap** — its
+`openGraph`/`twitter` blocks define no image either — but it is hand-rolled,
+not on `buildTenantMetadata` at all: PR #489 deliberately left it untouched,
+since it wasn't one of the "three current products" that PR named in scope.
+So four live tenants, not three, are missing a real share image today; only
 image. See `System Docs/Known Gaps.md`'s Services section for the open item.
 
 See `System Docs/Design System.md` for the tokens and palettes these values
