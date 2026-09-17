@@ -88,10 +88,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { BookOpen, Bookmark, ChevronDown, ChevronUp, GripVertical, LayoutGrid, List, Loader2, Plus, Upload, X } from 'lucide-react';
+import { BookOpen, Bookmark, ChevronDown, ChevronUp, Eye, GripVertical, LayoutGrid, List, Loader2, Plus, Upload, X } from 'lucide-react';
 import type { Story } from './types';
 import { memoryKindOf, KIND_ICONS } from '../memory/memoryKinds';
 import { CoverBackPanel, type CoverBackData } from './CoverBackPanel';
+import { PreviewModal } from './PreviewModal';
 
 export interface StoryViewProps {
   story: Story;
@@ -448,6 +449,9 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   const [cover, setCover] = useState<CoverBackData | null>(null);
   const [backPage, setBackPage] = useState<CoverBackData | null>(null);
   const [editingEnd, setEditingEnd] = useState<'cover' | 'back' | null>(null);
+  // Preview reader (Phase 5) — view-only, reads whatever's already in this
+  // component's own state (memories/cover/backPage), no fetch of its own.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Re-syncs when a different story is opened — this component doesn't
   // remount on story switch (ChatHero.tsx passes no `key`), so without this
@@ -458,6 +462,7 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
     setCover(null);
     setBackPage(null);
     setEditingEnd(null);
+    setPreviewOpen(false);
   }, [story.id, story.viewMode]);
 
   /** Returns the fresh list on success, or null on any failure — never
@@ -605,6 +610,15 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
         )}
         <button
           type="button"
+          aria-label="Preview this story"
+          title="Preview this story"
+          onClick={() => setPreviewOpen(true)}
+          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Eye size={15} aria-hidden />
+        </button>
+        <button
+          type="button"
           aria-label="Share this story — coming soon"
           title="Sharing is coming soon"
           disabled
@@ -704,6 +718,15 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
           else if (editingEnd === 'back') setBackPage(null);
           setEditingEnd(null);
         }}
+      />
+
+      <PreviewModal
+        open={previewOpen}
+        storyName={story.name}
+        cover={cover}
+        backPage={backPage}
+        memories={memories}
+        onClose={() => setPreviewOpen(false)}
       />
     </div>
   );
