@@ -13,7 +13,7 @@
 // the Clerk session, then a direct `members` lookup by clerk_id — never
 // getAuthContext() (the admin/tenant_users boundary).
 
-import { getCurrentUserTimed, getCurrentUserId } from '@/services/auth'
+import { getSession, getCurrentUserId } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import {
@@ -27,7 +27,7 @@ import {
 const PRIMER_MAX_LENGTH = 500
 
 export async function POST(req: Request) {
-  const user = await getCurrentUserTimed('app/api/heirloom/story-invites/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
 // 2026-08-10) — see services/crm/story-invites.ts's listStoryCollaborators
 // for the artifact_subscribers + members query and why it's owner-scoped.
 export async function GET(req: Request) {
-  const user = await getCurrentUserTimed('app/api/heirloom/story-invites/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -225,7 +225,7 @@ export async function GET(req: Request) {
 // explicit Create/Reset). Distinct from POST's reset:true, which revokes
 // AND immediately inserts a fresh row.
 export async function DELETE(req: Request) {
-  const user = await getCurrentUserTimed('app/api/heirloom/story-invites/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

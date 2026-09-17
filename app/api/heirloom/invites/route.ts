@@ -18,7 +18,7 @@
 // — there is no `stories` table yet, so this is recorded only in the
 // resulting audit event's metadata, not persisted as a real relationship.
 
-import { getCurrentUserTimed, getCurrentUserId } from '@/services/auth'
+import { getSession, getCurrentUserId } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { createMemberInvite, HEIRLOOM_TENANT_ID } from '@/services/members'
 import { logEvent, AuditAction } from '@/services/audit'
@@ -27,7 +27,7 @@ import { inviteUrlFor } from '@/app/admin/members/inviteLink'
 const PRIMER_MAX_LENGTH = 500
 
 export async function POST(req: Request) {
-  const user = await getCurrentUserTimed('app/api/heirloom/invites/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

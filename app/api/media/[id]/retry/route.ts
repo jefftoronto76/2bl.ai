@@ -21,7 +21,7 @@
 // only fires (and is only handled) on INSERT, so this route's UPDATE would
 // never be picked up through that path.
 
-import { getCurrentUserTimed } from '@/services/auth'
+import { getSession } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import {
@@ -41,7 +41,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getCurrentUserTimed('app/api/media/[id]/retry/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetCurrentUserId = vi.fn()
 const mockMembersMaybeSingle = vi.fn()
 const mockArtifactsMaybeSingle = vi.fn()
@@ -19,7 +19,7 @@ const mockRevokeStoryInviteLink = vi.fn()
 const mockGetActiveStoryInviteLink = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 
@@ -96,7 +96,7 @@ function makeDeleteRequest(body?: unknown): Request {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset()
+  mockGetSession.mockReset()
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockMembersMaybeSingle.mockReset()
   mockArtifactsMaybeSingle.mockReset()
@@ -108,7 +108,7 @@ beforeEach(() => {
 
 describe('GET /api/heirloom/story-invites', () => {
   it('401s when signed out', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
 
     const res = await GET(makeGetRequest('https://x/api/heirloom/story-invites?story_id=story-1'))
 
@@ -116,7 +116,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it("403s when the signed-in Clerk user has no Heirloom members row", async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: null, error: null })
 
     const res = await GET(makeGetRequest('https://x/api/heirloom/story-invites?story_id=story-1'))
@@ -125,7 +125,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it('400s when story_id is missing', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
 
     const res = await GET(makeGetRequest('https://x/api/heirloom/story-invites'))
@@ -134,7 +134,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it('returns the roster listStoryCollaborators resolves, scoped to the caller as owner', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockListStoryCollaborators.mockResolvedValue({
       ok: true,
@@ -153,7 +153,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it('includes the story active invite link when one exists, restoring token/primer/url', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockListStoryCollaborators.mockResolvedValue({ ok: true, data: [] })
     mockGetActiveStoryInviteLink.mockResolvedValue({
@@ -177,7 +177,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it('a story with no active link still returns active_link: null', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockListStoryCollaborators.mockResolvedValue({ ok: true, data: [] })
     mockGetActiveStoryInviteLink.mockResolvedValue({ ok: true, data: null })
@@ -191,7 +191,7 @@ describe('GET /api/heirloom/story-invites', () => {
   })
 
   it('propagates a not-found story as 404', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockListStoryCollaborators.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
 
@@ -203,7 +203,7 @@ describe('GET /api/heirloom/story-invites', () => {
 
 describe('DELETE /api/heirloom/story-invites', () => {
   it('401s when signed out', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
 
     const res = await DELETE(makeDeleteRequest({ story_id: 'story-1' }))
 
@@ -211,7 +211,7 @@ describe('DELETE /api/heirloom/story-invites', () => {
   })
 
   it('400s when story_id is missing', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
 
     const res = await DELETE(makeDeleteRequest({}))
@@ -220,7 +220,7 @@ describe('DELETE /api/heirloom/story-invites', () => {
   })
 
   it("404s when the story isn't owned by the caller", async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockArtifactsMaybeSingle.mockResolvedValue({ data: null, error: null })
 
@@ -231,7 +231,7 @@ describe('DELETE /api/heirloom/story-invites', () => {
   })
 
   it('revokes the active link without minting a replacement, once ownership is confirmed', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockArtifactsMaybeSingle.mockResolvedValue({ data: { id: 'story-1' }, error: null })
     mockRevokeStoryInviteLink.mockResolvedValue({ ok: true, data: null })
@@ -247,7 +247,7 @@ describe('DELETE /api/heirloom/story-invites', () => {
   })
 
   it('surfaces a revoke failure as its own status', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockArtifactsMaybeSingle.mockResolvedValue({ data: { id: 'story-1' }, error: null })
     mockRevokeStoryInviteLink.mockResolvedValue({ ok: false, status: 500, error: 'db down' })

@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetCurrentUserId = vi.fn()
 const mockCreateMemberInvite = vi.fn()
 const mockLogEvent = vi.fn()
@@ -14,7 +14,7 @@ const mockMembersMaybeSingle = vi.fn()
 const mockTenantsMaybeSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 
@@ -73,7 +73,7 @@ function makeRequest(body?: unknown): Request {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset()
+  mockGetSession.mockReset()
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockCreateMemberInvite.mockReset()
   mockLogEvent.mockReset()
@@ -86,7 +86,7 @@ beforeEach(() => {
 
 describe('POST /api/heirloom/invites', () => {
   it('401s when there is no Clerk session', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
 
     const res = await POST(makeRequest({}))
 
@@ -95,7 +95,7 @@ describe('POST /api/heirloom/invites', () => {
   })
 
   it('403s when the caller has no members row for the Heirloom tenant', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: null, error: null })
 
     const res = await POST(makeRequest({}))
@@ -105,7 +105,7 @@ describe('POST /api/heirloom/invites', () => {
   })
 
   it('creates an invite with the supplied primer + story_id and returns the link', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockCreateMemberInvite.mockResolvedValue({
       ok: true,
@@ -134,7 +134,7 @@ describe('POST /api/heirloom/invites', () => {
   })
 
   it('falls back to the tenant default_primer when no primer is supplied', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockCreateMemberInvite.mockResolvedValue({
       ok: true,
@@ -156,7 +156,7 @@ describe('POST /api/heirloom/invites', () => {
   })
 
   it('passes story_id through as null when omitted', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockCreateMemberInvite.mockResolvedValue({
       ok: true,
@@ -178,7 +178,7 @@ describe('POST /api/heirloom/invites', () => {
   })
 
   it('propagates a createMemberInvite failure as the same status/error', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
     mockCreateMemberInvite.mockResolvedValue({ ok: false, status: 500, error: 'insert failed' })
 

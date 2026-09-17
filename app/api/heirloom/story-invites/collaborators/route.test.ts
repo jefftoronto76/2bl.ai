@@ -8,13 +8,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetCurrentUserId = vi.fn()
 const mockMembersMaybeSingle = vi.fn()
 const mockRevokeStoryCollaborator = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 
@@ -57,7 +57,7 @@ function makeDeleteRequest(body?: unknown): Request {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset()
+  mockGetSession.mockReset()
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockMembersMaybeSingle.mockReset()
   mockRevokeStoryCollaborator.mockReset()
@@ -65,7 +65,7 @@ beforeEach(() => {
 
 describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   it('401s when signed out', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
 
     const res = await DELETE(makeDeleteRequest({ story_id: 'story-1', member_id: 'member-1' }))
 
@@ -74,7 +74,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it("403s when the signed-in Clerk user has no Heirloom members row", async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: null, error: null })
 
     const res = await DELETE(makeDeleteRequest({ story_id: 'story-1', member_id: 'member-1' }))
@@ -83,7 +83,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it('400s when story_id is missing', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-caller' }, error: null })
 
     const res = await DELETE(makeDeleteRequest({ member_id: 'member-1' }))
@@ -93,7 +93,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it('400s when member_id is missing', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-caller' }, error: null })
 
     const res = await DELETE(makeDeleteRequest({ story_id: 'story-1' }))
@@ -103,7 +103,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it('removes the collaborator once ownership is confirmed by the service layer', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-caller' }, error: null })
     mockRevokeStoryCollaborator.mockResolvedValue({ ok: true, data: null })
 
@@ -118,7 +118,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it("404s when the acting user isn't the story's owner (service-layer rejection surfaces as-is)", async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-caller' }, error: null })
     mockRevokeStoryCollaborator.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
 
@@ -128,7 +128,7 @@ describe('DELETE /api/heirloom/story-invites/collaborators', () => {
   })
 
   it('surfaces a not-found grant as a clean error, not a 500', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
     mockMembersMaybeSingle.mockResolvedValue({ data: { id: 'member-caller' }, error: null })
     mockRevokeStoryCollaborator.mockResolvedValue({ ok: false, status: 404, error: 'Collaborator not found' })
 

@@ -6,10 +6,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const mockGetCurrentUser = vi.fn<(...a: unknown[]) => Promise<unknown>>()
+const mockGetSession = vi.fn<(...a: unknown[]) => Promise<unknown>>()
 const mockGetTenantFromRequest = vi.fn<(...a: unknown[]) => Promise<string | null>>()
 vi.mock('@/services/auth', () => ({
-  getCurrentUser: (...a: unknown[]) => mockGetCurrentUser(...a),
+  getSession: (...a: unknown[]) => mockGetSession(...a),
   getTenantFromRequest: (...a: unknown[]) => mockGetTenantFromRequest(...a),
 }))
 
@@ -64,7 +64,7 @@ const turn = { messages: [{ role: 'user', content: 'Hi' }], session_id: 'session
 beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = 'test-key'
   mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
-  mockGetCurrentUser.mockReset().mockResolvedValue(null)
+  mockGetSession.mockReset().mockResolvedValue(null)
   mockValidateMemberToken.mockReset().mockResolvedValue(null)
   mockStreamChat.mockClear()
   mockMembersSelect.mockClear()
@@ -75,7 +75,7 @@ beforeEach(() => {
 
 describe('POST /api/sage — account-status gate', () => {
   it('active signed-in member: reaches streamChat with memberId and memberStatus', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'user_1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'user_1' })
     memberRow = { id: 'member-1', status: 'active' }
 
     const response = await POST(post(turn))
@@ -87,7 +87,7 @@ describe('POST /api/sage — account-status gate', () => {
   })
 
   it.each(['suspended', 'deleted'])('%s signed-in member: blocked before any model call — streamChat never runs', async status => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'user_1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'user_1' })
     memberRow = { id: 'member-1', status }
 
     const response = await POST(post(turn))
@@ -125,7 +125,7 @@ describe('POST /api/sage — account-status gate', () => {
   })
 
   it('blocked reply uses the editable slot copy when the tenant has published one', async () => {
-    mockGetCurrentUser.mockResolvedValue({ providerUserId: 'user_1' })
+    mockGetSession.mockResolvedValue({ providerUserId: 'user_1' })
     memberRow = { id: 'member-1', status: 'deleted' }
     mockSelectCompiledPrompt.mockResolvedValue({
       content: '<identity>\nEditable copy from the admin UI.\n</identity>',

@@ -4,14 +4,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetTenantFromRequest = vi.fn()
 const mockGetMediaItem = vi.fn()
 const mockGenerateSignedDownloadUrl = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
 }))
 
@@ -71,7 +71,7 @@ function makeParams(id: string) {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset().mockResolvedValue({ providerUserId: 'clerk-1' })
+  mockGetSession.mockReset().mockResolvedValue({ providerUserId: 'clerk-1' })
   mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
   mockGetMediaItem.mockReset().mockResolvedValue(makeItem())
   mockGenerateSignedDownloadUrl.mockReset().mockResolvedValue('https://signed.example/dog.jpg')
@@ -80,7 +80,7 @@ beforeEach(() => {
 
 describe('GET /api/media/[id]/url', () => {
   it('returns 401 when there is no authenticated user', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
     const res = await GET(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(401)
   })

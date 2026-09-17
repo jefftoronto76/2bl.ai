@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetTenantFromRequest = vi.fn()
 const mockSingle = vi.fn()
 const mockListByChat = vi.fn()
@@ -23,7 +23,7 @@ const mockListByMember = vi.fn()
 const mockGenerateSignedDownloadUrl = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
 }))
 
@@ -84,14 +84,14 @@ function makeItems(n: number, prefix: string): MediaItem[] {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset()
+  mockGetSession.mockReset()
   mockGetTenantFromRequest.mockReset()
   mockSingle.mockReset()
   mockListByChat.mockReset()
   mockListByMember.mockReset()
   mockGenerateSignedDownloadUrl.mockReset()
 
-  mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+  mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
   mockGetTenantFromRequest.mockResolvedValue('tenant-1')
   mockSingle.mockResolvedValue({ data: { id: 'member-1' } })
   mockGenerateSignedDownloadUrl.mockImplementation(async (path: string) => `https://signed.example/${path}`)
