@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
 import { AuditAction } from '@/services/audit/types'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetTenantFromRequest = vi.fn()
 const mockCreateMediaItem = vi.fn()
 const mockFindDuplicateMediaItem = vi.fn()
@@ -25,7 +25,7 @@ const mockObjectExists = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
 }))
 
@@ -109,7 +109,7 @@ const HASH = 'a'.repeat(64)
 const FIXED_UUID = '11111111-1111-4111-8111-111111111111' as `${string}-${string}-${string}-${string}-${string}`
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset().mockResolvedValue({ providerUserId: 'clerk-1' })
+  mockGetSession.mockReset().mockResolvedValue({ providerUserId: 'clerk-1' })
   mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
   mockSingle.mockReset().mockResolvedValue({ data: { id: 'member-1' }, error: null })
   mockCreateMediaItem.mockReset().mockResolvedValue({ id: FIXED_UUID })
@@ -126,7 +126,7 @@ beforeEach(() => {
 
 describe('POST /api/media/upload-url — existing validation, unaffected by dedup', () => {
   it('returns 401 when there is no authenticated user, and logs nothing (out of scope for MEDIA_UPLOAD_REJECTED)', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
     const res = await POST(makeRequest(validBody))
     expect(res.status).toBe(401)
     expect(mockLogEvent).not.toHaveBeenCalled()

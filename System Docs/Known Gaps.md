@@ -29,22 +29,52 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   reads through a client that respects RLS) is a separate, unscheduled
   architectural project, not a quick fix.
 
-- **`getCurrentUser()` latency is unmeasured across most of its ~40 call
-  sites — instrumentation-only fix landed 2026-09-15, no fix yet.** Every
-  direct `getCurrentUser()` call (the boundary's one-Clerk-backend-call-plus-
-  a-Supabase-lookup identity resolver — `services/auth/providers/clerk/
-  server.ts`) now goes through `getCurrentUserTimed(path)`
-  (`services/auth/get-current-user-timed.ts`), a same-behavior wrapper that
-  logs one `AuditAction.AUTH_CURRENT_USER_TIMING` row per call
-  (`{ path, durationMs, source: 'clerk_call' }`, no PII — see
-  `Utilities/Audit.md`). This is measurement only: no caching, no fix, no
-  provider swap. **Next step, once real data has accumulated:** query
-  `audit_events` for this action grouped by `metadata.path` to find which
-  call sites are actually slow (the admin/platform layouts, hit on every
-  page nav, are the prime suspects) and decide whether the fix is caching
-  the Supabase `isPlatformAdmin` lookup, caching the whole `AuthUser` per
-  request (React `cache()`/`unstable_cache`), or something else — not
-  decided yet, deliberately, until the data says where the cost actually is.
+- **`getCurrentUser()` latency — 10 of ~40 call sites moved to the cheap
+  `getSession()` path 2026-09-17; the other ~30 are a separate, unsolved
+  problem.** Instrumentation landed 2026-09-15 (`getCurrentUserTimed(path)`,
+  `services/auth/get-current-user-timed.ts`, logs `AuditAction.
+  AUTH_CURRENT_USER_TIMING` per call — measurement only, see `Utilities/
+  Audit.md`). First real data (152 rows over 2 days) showed
+  `app/api/media/[id]/url/route.ts` averaging 466ms (p95 901ms, max 972ms,
+  n=4) and `app/api/media/route.ts` averaging 391ms (p95 631ms, n=3) — thin
+  samples, directional not statistically solid, but the mechanism is sound
+  and independently confirmed in code: `components/shells/membership/
+  chatStore.tsx` polls `app/api/media/route.ts` every 3 seconds for the
+  entire duration of a photo upload, compounding the cost.
+  **Root cause:** `getCurrentUser()` (`services/auth/providers/clerk/
+  server.ts`) does two sequential network calls — Clerk's `currentUser()`
+  (a Backend API round trip) plus a Supabase lookup for `isPlatformAdmin`.
+  **Fix applied:** a cheaper primitive already existed and was already
+  proven in production — `getSession()` (same file), backed by Clerk's
+  `auth()`, reads verified JWT session claims with no backend call, and
+  returns `{ providerUserId }` only (no `email`/`phone`/`name`/`imageUrl`/
+  `isPlatformAdmin`). Auditing all 40 call sites by which `AuthUser` fields
+  they actually read found 10 that touch only `providerUserId` — both
+  measured-slow routes, the exact route the 3-second poll hits, and 7
+  others (`app/api/media/[id]/retry`, `/start-processing`, `/upload-url`,
+  `app/api/sage/route.ts`, `app/api/members/me/route.ts`,
+  `app/api/heirloom/invites/route.ts`, `app/api/heirloom/story-invites/
+  route.ts` and its `collaborators` sibling) — all 10 now call
+  `getSession()` instead of `getCurrentUserTimed()`. No Clerk/Supabase
+  changes, no schema touch; call-site diffs were import + one line each
+  since both types expose `providerUserId` under the same name. Known
+  trade-off: `getSession()` only proves the JWT is valid, not that the
+  Clerk user still exists — a user deleted directly in Clerk's dashboard
+  would still pass until their session token expires, unlike
+  `getCurrentUser()`. Edge case, not currently mitigated.
+  **Still open, deliberately not touched by this fix:** 25 of the 40 sites
+  need `isPlatformAdmin` (the admin/platform layouts hit on every page nav
+  among them) and 3 need real profile fields for member-identity writes
+  (`app/api/heirloom/story-invites/accept`, `/invites/accept`,
+  `app/api/heirloom/members/claim`, `app/api/members/sync`) — none of these
+  can drop to `getSession()`, since `isPlatformAdmin` is resolved from
+  Supabase `users.role`, not the Clerk JWT (see this file's `server.ts`
+  comment, dated 2026-06-11, on why that's a deliberate DB-not-token
+  design — not something to revisit lightly). None of these 28 were in the
+  measured-slow set. **Next step, if they turn out to be slow too:** cache
+  `resolveIsPlatformAdminFromDb`'s result per-request (React `cache()`/
+  `unstable_cache`) rather than reaching for a JWT-only check that
+  structurally can't carry that fact.
 
 - **`/join/[token]` missing its middleware host-rewrite exclusion — found
   and fixed in post-merge doc review, 2026-08-10 (reusable-story-invite-links).**

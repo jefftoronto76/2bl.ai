@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { MediaItem } from '@/services/media'
 import { AuditAction } from '@/services/audit/types'
 
-const mockGetCurrentUser = vi.fn()
+const mockGetSession = vi.fn()
 const mockGetTenantFromRequest = vi.fn()
 const mockGetMediaItem = vi.fn()
 const mockIsMediaAuditEnabled = vi.fn()
@@ -17,7 +17,7 @@ const mockProcessMediaItem = vi.fn()
 const mockSingle = vi.fn()
 
 vi.mock('@/services/auth', () => ({
-  getCurrentUserTimed: (...args: unknown[]) => mockGetCurrentUser(...args),
+  getSession: (...args: unknown[]) => mockGetSession(...args),
   getTenantFromRequest: (...args: unknown[]) => mockGetTenantFromRequest(...args),
 }))
 
@@ -86,7 +86,7 @@ function makeParams(id: string) {
 }
 
 beforeEach(() => {
-  mockGetCurrentUser.mockReset()
+  mockGetSession.mockReset()
   mockGetTenantFromRequest.mockReset()
   mockGetMediaItem.mockReset()
   mockIsMediaAuditEnabled.mockReset().mockReturnValue(true)
@@ -94,14 +94,14 @@ beforeEach(() => {
   mockProcessMediaItem.mockReset().mockResolvedValue(undefined)
   mockSingle.mockReset()
 
-  mockGetCurrentUser.mockResolvedValue({ providerUserId: 'clerk-1' })
+  mockGetSession.mockResolvedValue({ providerUserId: 'clerk-1' })
   mockGetTenantFromRequest.mockResolvedValue('tenant-1')
   mockSingle.mockResolvedValue({ data: { id: 'member-1' }, error: null })
 })
 
 describe('POST /api/media/[id]/start-processing', () => {
   it('returns 401 when there is no authenticated user', async () => {
-    mockGetCurrentUser.mockResolvedValue(null)
+    mockGetSession.mockResolvedValue(null)
     const res = await POST(makeRequest(), makeParams('item-1'))
     expect(res.status).toBe(401)
     expect(mockProcessMediaItem).not.toHaveBeenCalled()

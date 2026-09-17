@@ -2,7 +2,7 @@
 // Returns a short-lived signed download URL (60s) for member-facing access
 // to a media item. The client uses this to display or download the file.
 
-import { getCurrentUserTimed } from '@/services/auth'
+import { getSession } from '@/services/auth'
 import { getTenantFromRequest } from '@/services/auth'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { getMediaItem } from '@/services/media'
@@ -12,7 +12,7 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await getCurrentUserTimed('app/api/media/[id]/url/route.ts')
+  const user = await getSession()
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
