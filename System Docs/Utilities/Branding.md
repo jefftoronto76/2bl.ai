@@ -33,5 +33,17 @@ leaves the lander's Caveat hand-lettered accents (`HeroSection.tsx`,
 | `font-registry.ts` | `FontEntry` (type), `DISPLAY_FONTS`, `BODY_FONTS`, `MONO_FONTS`, `ALL_FONTS` | The allowed font list, one entry per face (`label`, `value`, optional `googleFamily`). Backs the Appearance settings pickers and the layouts' Google Fonts link construction. `ALL_FONTS` is the flattened concatenation of the three categories. |
 | `hex-utils.ts` | `isValidHex(s)`, `hexToRgbTriplet(hex)` | `isValidHex` is a type guard for 6-digit `#RRGGBB` strings — the validation gate on `app/api/admin/appearance/route.ts` writes. `hexToRgbTriplet` converts `#RRGGBB` to a space-separated `"R G B"` triplet, the form CSS custom properties need to be usable inside `rgb(var(--x) / <alpha>)`; returns `null` on unparseable input. |
 
+**Share-image state, per tenant (recorded 2026-09-16):** Heirloom is the only
+tenant with a real 1200×630 share image wired in —
+`public/heirloom/heirloom-your-story-matters.jpg`, added directly to
+`app/heirloom/layout.tsx`'s metadata in PR #488, then carried through
+`build-tenant-metadata.ts`'s `imagePath`/`imageAlt` config when PR #489
+refactored all three layouts onto the shared utility. `app/(jefflougheed)/
+layout.tsx` and `app/secondbrainlabs/layout.tsx` omit `imagePath`/`imageAlt`
+entirely — no approved image exists for either domain yet, so per the
+discriminated-union config, `openGraph.images`/`twitter.images` are absent
+(not a placeholder) on both, and their link previews currently render with no
+image. See `System Docs/Known Gaps.md`'s Services section for the open item.
+
 See `System Docs/Design System.md` for the tokens and palettes these values
 feed, and `System Docs/Database Schema.md` for the `tenant_branding` table.

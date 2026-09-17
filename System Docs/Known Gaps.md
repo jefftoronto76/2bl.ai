@@ -3063,6 +3063,22 @@ numbered because CLAUDE.md and other docs cross-reference them.
   `body` — Deepgram's own response text, unbounded and not currently
   truncated.
 
+- **jefflougheed.ca and secondbrainlabs have no real social/link-preview share
+  image — open since 2026-09-16 (`buildTenantMetadata` rollout, PR #489).**
+  Only Heirloom has a real 1200×630 asset
+  (`public/heirloom/heirloom-your-story-matters.jpg`, added PR #488).
+  `services/branding/build-tenant-metadata.ts`'s `imagePath`/`imageAlt` config
+  is a discriminated union — a share image is optional, but when omitted,
+  `openGraph.images`/`twitter.images` are left out entirely rather than
+  falling back to a placeholder — so link previews for jefflougheed.ca and
+  secondbrainlabs currently render with no image at all. Closing this needs an
+  approved 1200×630 image for each domain pushed to `public/`, then a one-line
+  `imagePath`/`imageAlt` addition to that tenant's `layout.tsx` (same
+  mechanical pattern as the Heirloom PR). **Not the same gap as**
+  `Backlog/BACKLOG.md`'s "Tenant-managed share images" entry, which is about a
+  future self-serve upload mechanism for tenant owners — a separate, deferred
+  problem from simply supplying the two missing assets now.
+
 ## jefflougheed Legacy Widget
 
 - **`.stage.engaged .composer-wrap`'s `margin-top` resolves by CSS
