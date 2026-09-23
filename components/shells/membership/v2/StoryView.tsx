@@ -502,14 +502,22 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash, onViewModeCom
   // Re-syncs when a different story is opened — this component doesn't
   // remount on story switch (ChatHero.tsx passes no `key`), so without this
   // the previous story's view mode AND cover/back stub state would leak
-  // into the next one.
+  // into the next one. Deliberately keyed on story.id ONLY (found in
+  // review, 2026-09-23): a successful view-mode save now flows back into
+  // `story.viewMode` via ChatHero's onViewModeCommit mirror (a new `story`
+  // object, same id), and this effect used to also key on story.viewMode —
+  // so saving List/Grid for the SAME story re-ran this same reset and
+  // silently wiped the member's in-progress cover/back-page edits. No
+  // separate re-sync of viewMode is needed here either: handleSetViewMode
+  // already sets it optimistically before onViewModeCommit ever fires.
   useEffect(() => {
     setViewMode(story.viewMode ?? 'list');
     setCover(null);
     setBackPage(null);
     setEditingEnd(null);
     setPreviewOpen(false);
-  }, [story.id, story.viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
 
   /** Returns the fresh list on success, or null on any failure — never
    *  throws, matching this component's existing silent-log-and-degrade

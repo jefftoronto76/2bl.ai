@@ -672,6 +672,28 @@ describe('StoryView — Cover/Back stub, list view (Phase 4)', () => {
     expect(screen.queryByText('A Life in Full')).not.toBeInTheDocument();
     expect(screen.getAllByText('Not added yet')).toHaveLength(2);
   });
+
+  it('a view-mode save for the SAME story does not wipe the stub cover/back (found in review, 2026-09-23)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    const { rerender } = render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to this story' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cover page' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'A Life in Full' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('A Life in Full', { selector: 'p' })).toBeInTheDocument();
+
+    // Same id, but a NEW object reference with a different viewMode — exactly
+    // what ChatHero's onViewModeCommit mirror produces (setStories creates a
+    // fresh story object on a successful save; story.id never changes). The
+    // reset effect used to also key on story.viewMode, so this re-fired it
+    // and wiped the cover the member had just saved.
+    rerender(<StoryView story={{ ...story, viewMode: 'grid' }} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+
+    expect(screen.getByText('A Life in Full', { selector: 'p' })).toBeInTheDocument();
+  });
 });
 
 describe('StoryView — Cover/Back stub, grid view (Phase 4)', () => {
