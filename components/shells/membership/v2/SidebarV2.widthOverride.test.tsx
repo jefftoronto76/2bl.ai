@@ -116,3 +116,23 @@ describe('SidebarV2 — Expand/Collapse toggle stays available under forceCollap
     expect(sidebar().className).not.toContain('w-12');
   });
 });
+
+// Preview-vs-nav stacking fix, 2026-09 — PreviewModal is a `fixed inset-0
+// z-[92]` overlay that painted over the (unpositioned) sidebar entirely,
+// since a static element's z-index is inert regardless of value. happy-dom
+// can't assert real paint order, so this pins the class contract the fix
+// depends on instead — a real browser check happens on the Vercel preview.
+describe('SidebarV2 — stacks above PreviewModal (z-[92]) and below the kebab-delete toast (z-[100])', () => {
+  it('is a positioned element with z-[93], both desktop-docked and mobile-overlay', () => {
+    render(<SidebarV2 stories={[]} writingPrompts={[]} />);
+    expect(sidebar().className).toContain('relative');
+    expect(sidebar().className).toContain('z-[93]');
+    cleanup();
+
+    // Mobile overlay usage (onClose provided, no forceCollapsed) is the same
+    // <aside> — confirms the bump isn't accidentally scoped to one caller.
+    render(<SidebarV2 stories={[]} writingPrompts={[]} onClose={vi.fn()} expandedWidthClassName="w-full" />);
+    expect(sidebar().className).toContain('relative');
+    expect(sidebar().className).toContain('z-[93]');
+  });
+});

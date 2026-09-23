@@ -644,7 +644,21 @@ export function SidebarV2({
 
   return (
     <aside
-      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
+      // relative + z-[93] (Preview-vs-nav stacking fix, 2026-09): this
+      // element has no position of its own otherwise, so a static element's
+      // z-index is inert regardless of value — PreviewModal (fixed inset-0
+      // z-[92]) always painted over it, sidenav toggle included, since both
+      // share ChatDrawerV2's one stacking context with nothing isolating
+      // them. z-[93] is the first free slot above z-[92] and below the
+      // z-[100] kebab-delete toast (ChatHero.tsx) — confirmed against every
+      // z-index in components/shells/membership/. This also incidentally
+      // fixes the identical (previously unnoticed) case with MediaPage
+      // (absolute inset-0 z-40), which already covered this sidebar today
+      // for the same reason. Applied unconditionally since the mobile
+      // overlay usage already sits inside its own positioned z-30 wrapper —
+      // this only affects paint order among that wrapper's own children
+      // (there are none), so it's inert there.
+      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
