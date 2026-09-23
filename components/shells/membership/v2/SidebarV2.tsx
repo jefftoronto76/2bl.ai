@@ -650,36 +650,39 @@ export function SidebarV2({
     >
       {/* Header row — search + collapse (desktop) or Close-X (mobile, when
           onClose is provided), combined (Aug 2026 Search and Collapse Bar).
-          The toggle/close button is hidden while forced, same as the old
-          standalone collapse row — nothing meaningful to toggle to while
-          forceCollapsed overrides the rendered width regardless of the
-          user's own preference. Search itself keeps rendering (degraded to
-          its icon-only form) since forceCollapsed only ever affects width,
-          not whether search should exist. */}
+          The toggle/close button stays rendered (and clickable) regardless
+          of forceCollapsed — see the sidenav-toggle fix, 2026-09: the Sept
+          2026 handover's own items 9/43 are explicit that "manually
+          re-expand" must keep working no matter what panel is open, not
+          just be hidden as a stand-in for "broken". Clicking it here only
+          ever touches `expanded` (below); `isExpanded`'s existing formula
+          already defers the visual effect until forceCollapsed clears, so
+          nothing about that formula needed to change — only removing this
+          gate. Search itself keeps rendering (degraded to its icon-only
+          form) since forceCollapsed only ever affects width, not whether
+          search should exist. */}
       <div
         className={`flex mb-2 pt-2 ${
           isExpanded ? 'items-center gap-2 px-3' : 'flex-col items-center gap-1.5 px-1.5'
         }`}
       >
         <SearchField expanded={isExpanded} revealed value={query} onSearch={handleSearch} />
-        {!forceCollapsed && (
-          onClose ? (
-            <IconButton
-              label="Close menu"
-              onClick={onClose}
-              className="relative flex-shrink-0 before:absolute before:inset-[-4px] before:content-['']"
-            >
-              <X size={18} />
-            </IconButton>
-          ) : (
-            <IconButton
-              label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              onClick={() => setExpanded((v) => !v)}
-              className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
-            >
-              <ChevronRight size={16} />
-            </IconButton>
-          )
+        {onClose ? (
+          <IconButton
+            label="Close menu"
+            onClick={onClose}
+            className="relative flex-shrink-0 before:absolute before:inset-[-4px] before:content-['']"
+          >
+            <X size={18} />
+          </IconButton>
+        ) : (
+          <IconButton
+            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setExpanded((v) => !v)}
+            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
         )}
       </div>
 

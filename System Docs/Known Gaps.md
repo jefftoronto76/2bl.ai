@@ -1730,35 +1730,31 @@ numbered because CLAUDE.md and other docs cross-reference them.
 
 ## Memory Panel & Stories
 
-- **Sidenav "hard-locked to 60px" bug, checked against the Sept 2026 Story
-  Deck & Memory Panel handover — does not reproduce in current code
-  (2026-09-17).** The handover (`Design Handovers/september_2026/Story Deck &
-  Memory Panel (Sept 2026)/README.md`, item 9) describes a bug carried over
-  from its own prototype file (`chat-widget-canvas.jsx`): the sidebar hard-
-  forced to a 60px collapsed width whenever the memory panel is open
-  (`width: panelOpen ? 60 : sideW`), silently breaking the sidebar's own
-  "Expand menu" toggle. That pattern is real in the prototype file, but real
-  production (`SidebarV2.tsx`/`ChatHero.tsx`) never used it — it uses a
-  `forceCollapsed` boolean prop instead, wired from `ChatHero.tsx`
-  (`forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId ||
-  sessionMemoriesOpen || !!storyViewId}`) — with an inline comment at
-  `ChatHero.tsx` (~line 1080) already explicitly rejecting the prototype's
-  60px-rail approach in favor of this one. `SidebarV2.tsx` (~line 494) reads
-  `isExpanded = forceCollapsed ? false : expanded` — the user's own `expanded`
-  preference is never mutated by `forceCollapsed`, only the rendered width is
-  overridden, so it's correct again the moment the panel closes. The toggle
-  button itself is conditionally unrendered while forced (~line 665,
-  `{!forceCollapsed && (...)}`) rather than rendered-but-broken — no dead
-  click target. `RAIL_WIDTH = 48` in `memoryPanelWidth.ts` (the memory panel's
-  own width-clamp constant) matches this fixed rail exactly, not a stale
-  guess, since the sidebar truly is always exactly 48px (`w-12`) in this
-  state — there is no "live" sidebar width to read instead. Confirmed via
-  `SidebarV2.widthOverride.test.tsx` (4/4 passing, including "leaves the
-  collapsed rail at w-12 under forceCollapsed too") and
-  `ChatHero.sessionMemoriesPanel.test.tsx` (8/8 passing) run directly against
-  this codebase. **No code change made or needed** — this Known Gaps entry
-  exists so the handover's item 9 isn't mistaken for outstanding work in a
-  future pass.
+- **Sidenav Expand toggle removed from the DOM under `forceCollapsed` — found
+  and fixed 2026-09-22.** A prior pass (2026-09-17, see git history on this
+  entry) checked the Sept 2026 Story Deck & Memory Panel handover's item 9
+  ("sidebar hard-locked to 60px, breaking Expand menu") against real
+  production code and concluded no fix was needed: `SidebarV2.tsx`/
+  `ChatHero.tsx` use a `forceCollapsed` boolean (not the prototype's
+  hardcoded-60 pattern), and `isExpanded = forceCollapsed ? false : expanded`
+  correctly restores the user's own preference the moment a panel closes.
+  **That conclusion was wrong** — it verified the auto-collapse-to-rail
+  behavior (correct, never in question) but never checked whether the toggle
+  itself stayed available *while* collapsed, which is what the handover's
+  item 43 actually promises ("only the ability to manually re-expand
+  afterward was broken and is now fixed" — i.e. the toggle must keep working
+  throughout, not just resolve correctly on next open). `SidebarV2.tsx`
+  (~line 665) had `{!forceCollapsed && (...)}` around the toggle/close
+  button, removing it from the DOM entirely — for every `forceCollapsed`
+  caller (Media, Memory, Admin, Session Memories, Story View — the full
+  OR-list in `ChatHero.tsx`), not a Stories-specific gap. Fixed by rendering
+  the existing `onClose ? Close : Toggle` ternary unconditionally — no change
+  needed to `isExpanded`'s formula, since clicking the toggle only ever
+  touches `expanded`, and that formula already defers the visual effect
+  until `forceCollapsed` clears; the only bug was that there was nothing to
+  click. **Lesson:** "the state resolves correctly on the far side" and "the
+  control that changes that state is actually available" are two different
+  claims — verifying one doesn't verify the other.
 
 - **Memory panel width doesn't reseed if the whole chat drawer closes while
   a memory is still open — found during Stage C live-preview review,

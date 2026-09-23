@@ -65,3 +65,54 @@ describe('SidebarV2 — expandedWidthClassName', () => {
     expect(sidebar().className).not.toContain('w-full');
   });
 });
+
+// Sidenav Expand toggle fix, 2026-09-22 — see Known Gaps.md's corrected
+// entry. A prior pass concluded the toggle was correctly hidden while
+// forceCollapsed; that was wrong per the Sept 2026 handover's own item 43
+// ("manually re-expand" must keep working throughout, not just resolve
+// correctly once the panel closes). These pin the corrected behavior.
+describe('SidebarV2 — Expand/Collapse toggle stays available under forceCollapsed', () => {
+  it('renders and is clickable while forceCollapsed is true', () => {
+    render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+
+    // Label reflects the member's own `expanded` preference (default true),
+    // not the panel's visual override — same as the still-w-64-under-the-
+    // hood behavior `isExpanded`'s formula already relied on.
+    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toBeEnabled();
+  });
+
+  it('clicking the toggle while forceCollapsed does not change the rendered width — the panel still wins visually', () => {
+    render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+
+    expect(sidebar().className).toContain('w-12');
+    expect(sidebar().className).not.toContain('w-64');
+  });
+
+  it('a manual re-expand clicked while forceCollapsed takes effect the moment forceCollapsed clears', () => {
+    // `expanded` is internal state (defaults to true), not a prop — so this
+    // first collapses it via the toggle itself (a real "Collapse sidebar"
+    // click, same as a member would do before any panel ever opens), THEN
+    // forces the panel open, confirming the toggle is still there and
+    // reflects the member's own last choice, then manually re-expands it
+    // (the handover's item 43 scenario) and confirms that choice is honored
+    // the instant the panel closes — not stuck at whatever it was when the
+    // panel opened.
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(sidebar().className).toContain('w-12');
+
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    expect(sidebar().className).toContain('w-12');
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    // Still visually collapsed — the panel's override wins while it's open.
+    expect(sidebar().className).toContain('w-12');
+
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} />);
+    expect(sidebar().className).toContain('w-64');
+    expect(sidebar().className).not.toContain('w-12');
+  });
+});
