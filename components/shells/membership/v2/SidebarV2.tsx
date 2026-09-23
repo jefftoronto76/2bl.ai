@@ -51,7 +51,7 @@
 // doesn't also fire the row's own tap-to-select (#25a) or get closed by
 // RowMenu's own outside-click listener the instant it opens.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -98,11 +98,11 @@ export interface SidebarV2Props {
    *  header. The section stays visible. Default false. */
   storiesDisabled?: boolean;
   /** The story id whose StoryView pane is currently open (ChatHero's
-   *  `storyViewId`, real-story-view Phase 1a/1b) — moved to the top of the
-   *  Stories list, same spirit as the active session. Unlike `sessionId`
-   *  this isn't chat-store state (a story pane isn't a chat session), so it
-   *  arrives as a prop rather than being read off useChatStore() the way
-   *  orderedSessions reads state.sessionId below. Undefined when no story
+   *  `storyViewId`, real-story-view Phase 1a/1b) — highlighted in place in
+   *  the Stories list (aria-current + bg), same treatment as the active
+   *  session row; never reordered. Unlike `sessionId` this isn't chat-store
+   *  state (a story pane isn't a chat session), so it arrives as a prop
+   *  rather than being read off useChatStore(). Undefined when no story
    *  pane is open. */
   activeStoryId?: string;
 
@@ -443,39 +443,6 @@ export function SidebarV2({
   // keeps pure hover.
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
 
-  // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
-  // by updated_at DESC (services/crm/sessions.ts) and just switching to an
-  // older session (no new message sent) never touches updated_at, so without
-  // this the active row stays wherever it naturally falls instead of
-  // surfacing at the top. Derived, not mutated in place — recentSessions
-  // itself stays server-order; only totalMemoryCount below reads it directly,
-  // and a sum doesn't care about order. filteredSessions (search+collapse
-  // redesign, merged same day) is derived from orderedSessions, not
-  // recentSessions, specifically so the active row stays first under a live
-  // search too — see that definition below. No match (or already first)
-  // returns the original array as-is, so nothing downstream that relies on
-  // referential stability sees a needless new array.
-  const orderedSessions = useMemo(() => {
-    const activeIndex = recentSessions.findIndex((s) => s.id === state.sessionId);
-    if (activeIndex <= 0) return recentSessions;
-    const active = recentSessions[activeIndex];
-    return [active, ...recentSessions.slice(0, activeIndex), ...recentSessions.slice(activeIndex + 1)];
-  }, [recentSessions, state.sessionId]);
-
-  // Active-story-to-top (2026-08-14, closing the other half of
-  // active_item_to_top) — same pattern as orderedSessions above: derived,
-  // not a mutation of the `stories` prop, stable sort, no-op (same array
-  // reference) when there's no active story or it's already first.
-  // `activeStoryId` is a prop (ChatHero's storyViewId) rather than store
-  // state, since a story pane isn't a chat session the way sessionId is.
-  const orderedStories = useMemo(() => {
-    if (!activeStoryId) return stories;
-    const activeIndex = stories.findIndex((s) => s.id === activeStoryId);
-    if (activeIndex <= 0) return stories;
-    const active = stories[activeIndex];
-    return [active, ...stories.slice(0, activeIndex), ...stories.slice(activeIndex + 1)];
-  }, [stories, activeStoryId]);
-
   // Whether this docked/overlay instance shows full labels + lists
   // (expandedWidthClassName, w-64 by default) or just the icon rail (w-12).
   // Deliberately NOT state.isSidebarExpanded —
@@ -510,20 +477,16 @@ export function SidebarV2({
     onSearch?.(q);
   }, [onSearch]);
   const trimmedQuery = query.trim().toLowerCase();
-  // Filters orderedSessions (active-first), not recentSessions directly —
-  // Array.filter preserves relative order, so the active session (already
-  // moved to front by orderedSessions above) stays at the front of the
-  // filtered results too when it matches the query, instead of the
-  // pre-reorder server order resurfacing under search.
+  // Filters in server/prop order — the active session/story is highlighted
+  // in place (aria-current + bg), never moved (2026-09: the old
+  // active-to-top reorder was dropped as distracting; search covers finding
+  // a specific older row).
   const filteredSessions = trimmedQuery
-    ? orderedSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
-    : orderedSessions;
-  // Filters orderedStories (active-first), not stories directly — same
-  // ordering of operations as filteredSessions above (sort, then filter) so
-  // the active story stays first among search results too.
+    ? recentSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
+    : recentSessions;
   const filteredStories = trimmedQuery
-    ? orderedStories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
-    : orderedStories;
+    ? stories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
+    : stories;
 
   // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
   // its window listener on every SidebarV2 render.
@@ -944,7 +907,12 @@ export function SidebarV2({
                           onSelectStory?.(story.id);
                         }}
                         disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
+                        aria-current={activeStoryId === story.id ? 'true' : undefined}
+                        className={`flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent ${
+                          activeStoryId === story.id
+                            ? 'bg-text-primary/10'
+                            : '[@media(hover:hover)]:hover:bg-text-primary/[0.05]'
+                        }`}
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
                         <span className="flex-1 min-w-0 font-display text-lg truncate">
