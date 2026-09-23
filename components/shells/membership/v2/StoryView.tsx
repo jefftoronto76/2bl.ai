@@ -117,6 +117,37 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Collapsed Deck rail (Story-to-memory rail collapse, 2026-09, desktop
+ *  only) — rendered by ChatHero.tsx alongside StoryMemoryEditor instead of
+ *  fully unmounting this whole view, so opening a memory doesn't lose the
+ *  Deck's place entirely. A new, small, dedicated component rather than a
+ *  `collapsed` mode on StoryView itself: StoryView's header alone carries
+ *  six interactive elements plus full list/grid rendering, drag state, and
+ *  two modals — threading a collapsed branch through all of that would be
+ *  far messier than this, and StoryView already fully unmounts on this same
+ *  transition today (no state to preserve). 48px/w-12, icon-only, matches
+ *  the nav's own collapsed-rail convention (SidebarV2.tsx) rather than
+ *  inventing rotated/truncated text — no cover-thumbnail field exists on
+ *  Story to show instead, and BookOpen is already this view's own header
+ *  icon. One real <button> covering the whole rail (not a small icon in a
+ *  decorative column) — this file's own header comment already states the
+ *  "real <button>, not a decorative div" rule per CLAUDE.md's accessibility
+ *  principle, and there's no click-anywhere-on-a-div precedent anywhere in
+ *  this component family to depart from that for. */
+export function DeckRail({ story, onExpand }: { story: Story; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Expand ${story.name}`}
+      title={story.name}
+      onClick={onExpand}
+      className="flex-shrink-0 w-12 h-full flex items-center justify-center border-r border-border bg-background hover:bg-text-primary/[0.04] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <BookOpen size={18} className="text-accent" aria-hidden />
+    </button>
+  );
+}
+
 /** Shared by both DeckRow and DeckGridTile below — everything the drag
  *  gesture itself needs, independent of which view is rendering it. */
 interface DeckDragProps {

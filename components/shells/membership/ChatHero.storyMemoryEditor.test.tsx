@@ -159,3 +159,66 @@ describe('Story view row-tap-to-editor — through the real ChatHero stack', () 
     expect(screen.queryByRole('textbox', { name: 'Memory title' })).not.toBeInTheDocument();
   });
 });
+
+// Story-to-memory rail collapse (2026-09, desktop only) — opening a memory
+// from the Deck no longer fully unmounts it; the Deck collapses to a 48px
+// DeckRail instead, rendered alongside the editor.
+describe('Deck rail collapse — desktop', () => {
+  it('the full Deck is showing, not the rail, before a memory is opened', async () => {
+    await openStoryPane();
+
+    expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument();
+  });
+
+  it('opening a memory collapses the Deck to the rail, alongside the editor', async () => {
+    await openStoryPane();
+
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Expand A Life in Full' })).toBeInTheDocument();
+  });
+
+  it('clicking the rail returns to the full Deck, same as the editor\'s own close button', async () => {
+    await openStoryPane();
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Expand A Life in Full' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand A Life in Full' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument());
+    expect(screen.getByText('From another conversation')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Memory title' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Deck rail collapse — mobile (390px) stays a full swap, no rail', () => {
+  beforeEach(() => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+  });
+
+  afterEach(() => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 1024,
+    });
+  });
+
+  it('opening a memory on mobile swaps fully, with no DeckRail present', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await screen.findByRole('button', { name: 'A Life in Full' });
+    fireEvent.click(screen.getByRole('button', { name: 'A Life in Full' }));
+    await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument();
+  });
+});

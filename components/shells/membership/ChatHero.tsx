@@ -24,7 +24,7 @@ import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
 import { MediaGallery } from './MediaGallery';
 import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
-import { StoryView } from './v2/StoryView';
+import { StoryView, DeckRail } from './v2/StoryView';
 import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
@@ -1494,20 +1494,27 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {storyViewStory && storyMemory && (
-              // Slides in from the right (Story Deck & Memory Panel handover,
-              // 2026-09) rather than mounting instantly — the key re-triggers
-              // the animation every time a different deck row is opened, not
-              // just the first. Every other panel/pane swap in this wrapper
-              // keeps its existing (lack of) transition; this is the one
-              // handover called out for a new one.
-              <div key={storyMemory.id} className="h-full hl-animate-slide-right">
-                <StoryMemoryEditor
-                  memoryId={storyMemory.id}
-                  sessionId={storyMemory.sessionId}
-                  stories={stories}
-                  onClose={handleCloseStoryMemory}
-                  onFlash={showToast}
-                />
+              // Story-to-memory rail collapse (2026-09, desktop only — the
+              // mobile dialog below stays a full swap, no room concept
+              // there): the Deck collapses to DeckRail's 48px rail instead
+              // of fully unmounting, so its place doesn't disappear entirely
+              // while a memory is open. onExpand reuses handleCloseStoryMemory
+              // verbatim — it already means exactly "go back to the full
+              // Deck without closing the whole pane", already wired as
+              // StoryMemoryEditor's own onClose below. The rail itself
+              // doesn't slide — only the editor keeps its existing
+              // slide-from-right treatment.
+              <div className="flex h-full min-w-0">
+                <DeckRail story={storyViewStory} onExpand={handleCloseStoryMemory} />
+                <div key={storyMemory.id} className="flex-1 min-w-0 hl-animate-slide-right">
+                  <StoryMemoryEditor
+                    memoryId={storyMemory.id}
+                    sessionId={storyMemory.sessionId}
+                    stories={stories}
+                    onClose={handleCloseStoryMemory}
+                    onFlash={showToast}
+                  />
+                </div>
               </div>
             )}
             {storyViewStory && !storyMemory && (
