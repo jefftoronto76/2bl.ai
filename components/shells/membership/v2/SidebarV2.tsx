@@ -644,42 +644,67 @@ export function SidebarV2({
 
   return (
     <aside
-      className={`flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
+      // relative + z-[93] (Preview-vs-nav stacking fix, 2026-09): this
+      // element has no position of its own otherwise, so a static element's
+      // z-index is inert regardless of value — PreviewModal (fixed inset-0
+      // z-[92]) always painted over it, sidenav toggle included, since both
+      // share ChatDrawerV2's one stacking context with nothing isolating
+      // them. z-[93] is the first free slot above z-[92]. This also
+      // incidentally fixes the identical (previously unnoticed) case with
+      // MediaPage (absolute inset-0 z-40), which already covered this
+      // sidebar today for the same reason. Applied unconditionally since
+      // the mobile overlay usage already sits inside its own positioned
+      // z-30 wrapper — this only affects paint order among that wrapper's
+      // own children (there are none), so it's inert there.
+      //
+      // NOTE (found in review, corrected same day): this bump also floated
+      // the sidebar above the "centered modal blocks the whole drawer"
+      // tier (BeginStoryModal/ShareHeirloomModal/InviteCollaboratorsModal/
+      // CoverBackPanel, ConfirmDeleteModal) — those are genuinely blocking
+      // dialogs, not panel-replacement surfaces like Preview/MediaPage, so
+      // the nav should NOT be reachable over them. That tier was bumped to
+      // z-[94]/z-[96]/z-[98] (see each file) to sit back above z-[93] and
+      // restore that invariant — z-[93] here is correct precisely because
+      // it's ABOVE panel-replacement overlays and BELOW blocking dialogs.
+      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
       {/* Header row — search + collapse (desktop) or Close-X (mobile, when
           onClose is provided), combined (Aug 2026 Search and Collapse Bar).
-          The toggle/close button is hidden while forced, same as the old
-          standalone collapse row — nothing meaningful to toggle to while
-          forceCollapsed overrides the rendered width regardless of the
-          user's own preference. Search itself keeps rendering (degraded to
-          its icon-only form) since forceCollapsed only ever affects width,
-          not whether search should exist. */}
+          The toggle/close button stays rendered (and clickable) regardless
+          of forceCollapsed — see the sidenav-toggle fix, 2026-09: the Sept
+          2026 handover's own items 9/43 are explicit that "manually
+          re-expand" must keep working no matter what panel is open, not
+          just be hidden as a stand-in for "broken". Clicking it here only
+          ever touches `expanded` (below); `isExpanded`'s existing formula
+          already defers the visual effect until forceCollapsed clears, so
+          nothing about that formula needed to change — only removing this
+          gate. Search itself keeps rendering (degraded to its icon-only
+          form) since forceCollapsed only ever affects width, not whether
+          search should exist. */}
       <div
         className={`flex mb-2 pt-2 ${
           isExpanded ? 'items-center gap-2 px-3' : 'flex-col items-center gap-1.5 px-1.5'
         }`}
       >
         <SearchField expanded={isExpanded} revealed value={query} onSearch={handleSearch} />
-        {!forceCollapsed && (
-          onClose ? (
-            <IconButton
-              label="Close menu"
-              onClick={onClose}
-              className="relative flex-shrink-0 before:absolute before:inset-[-4px] before:content-['']"
-            >
-              <X size={18} />
-            </IconButton>
-          ) : (
-            <IconButton
-              label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              onClick={() => setExpanded((v) => !v)}
-              className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
-            >
-              <ChevronRight size={16} />
-            </IconButton>
-          )
+        {onClose ? (
+          <IconButton
+            label="Close menu"
+            onClick={onClose}
+            className="relative flex-shrink-0 before:absolute before:inset-[-4px] before:content-['']"
+          >
+            <X size={18} />
+          </IconButton>
+        ) : (
+          <IconButton
+            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setExpanded((v) => !v)}
+            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
         )}
       </div>
 

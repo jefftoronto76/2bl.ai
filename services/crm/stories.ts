@@ -64,11 +64,23 @@ export interface StoryRow {
    *  default) — listStories below is the only place that computes a real
    *  value, same batched-not-per-row shape as hasActiveInviteOrSubscribers. */
   memoryCount: number
+  /** The Deck's List/Grid toggle (Story Deck & Memory Panel handover, Phase
+   *  3, 2026-09) — per-story, not global, per product decision. Read from
+   *  artifacts.metadata.viewPrefs.deckView (a live, previously-unused jsonb
+   *  column — no Studio migration needed, see updateStoryViewMode's own doc
+   *  comment). Defaults to 'list' when metadata has no value yet, matching
+   *  StoryView.tsx's pre-Phase-3 behavior (list was the only view). */
+  viewMode: 'list' | 'grid'
 }
 
 const ARTIFACT_TYPE = 'story' as const
 
-const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at, user_id'
+const STORY_ROW_COLUMNS = 'id, title, body, created_at, updated_at, user_id, metadata'
+
+function viewModeFromMetadata(metadata: unknown): 'list' | 'grid' {
+  const deckView = (metadata as { viewPrefs?: { deckView?: unknown } } | null)?.viewPrefs?.deckView
+  return deckView === 'grid' ? 'grid' : 'list'
+}
 
 function toStoryRow(row: Record<string, unknown>): StoryRow {
   return {
@@ -80,6 +92,7 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
     hasActiveInviteOrSubscribers: false,
     isOwner: false,
     memoryCount: 0,
+    viewMode: viewModeFromMetadata(row.metadata),
   }
 }
 
@@ -403,6 +416,87 @@ export async function updateStoryDescription(
   }
 
   console.log('[stories] description updated:', storyId)
+  return { ok: true, data: toStoryRow(data) }
+}
+
+/**
+ * Updates the Deck's List/Grid view preference (Story Deck & Memory Panel
+ * handover, Phase 3, 2026-09) — per-story, not global (product decision).
+ * Writes into artifacts.metadata.viewPrefs.deckView, a live jsonb column
+ * that was completely unused by any story or memory code before this —
+ * confirmed repo-wide — so this needed zero Studio migration, unlike a new
+ * column would have.
+ *
+ * This MERGES into the existing metadata value — reads the current row's
+ * metadata first, spreads it forward, and only overwrites viewPrefs.deckView
+ * — rather than a blind `.update({ metadata: { viewPrefs: { deckView } } })`
+ * replace (an earlier version of this function did exactly that; caught in
+ * review since nothing else writes a story's metadata YET, but the first
+ * future feature that does would get silently clobbered on the next List/
+ * Grid toggle). No existing jsonb-merge helper elsewhere in the codebase to
+ * reuse (checked services/media/index.ts's `...params.metadata` spread —
+ * that builds a fresh object before an insert, not a read-modify-write
+ * against an existing row) — a plain read-then-write is proportionate here
+ * (a low-stakes UI preference, not a financial/transactional write), not a
+ * `jsonb_set` RPC.
+ *
+ * Owner-scoped and 404-shaped identically to updateStoryDescription above —
+ * same tenant_id + user_id + type='story' scoping on both the read and the
+ * write, same non-leaking 404 for both "no such story" and "not yours."
+ */
+export async function updateStoryViewMode(
+  tenantId: string,
+  userId: string,
+  storyId: string,
+  viewMode: 'list' | 'grid',
+): Promise<StoryResult<StoryRow>> {
+  const supabase = getAdminClient()
+
+  const { data: existing, error: readError } = await supabase
+    .from('artifacts')
+    .select('metadata')
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .maybeSingle()
+
+  if (readError) {
+    console.error('[stories] view mode metadata read error:', JSON.stringify(readError))
+    return { ok: false, status: 500, error: readError.message }
+  }
+  if (!existing) {
+    console.warn('[stories] no story matched id + tenant + user for view mode update:', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  const currentMetadata = (existing.metadata as Record<string, unknown> | null) ?? {}
+  const currentViewPrefs = (currentMetadata.viewPrefs as Record<string, unknown> | null) ?? {}
+  const mergedMetadata = { ...currentMetadata, viewPrefs: { ...currentViewPrefs, deckView: viewMode } }
+
+  const { data, error } = await supabase
+    .from('artifacts')
+    .update({ metadata: mergedMetadata })
+    .eq('id', storyId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('type', ARTIFACT_TYPE)
+    .select(STORY_ROW_COLUMNS)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[stories] update view mode error:', JSON.stringify(error))
+    return { ok: false, status: 500, error: error.message }
+  }
+  if (!data) {
+    // The row existed for the read above but not for this write — a
+    // genuine race (discarded/reassigned between the two calls), not the
+    // ordinary "not found" case, but the same 404 shape is still correct.
+    console.warn('[stories] story matched on read but not on write for view mode update (race):', { storyId, tenantId, userId })
+    return { ok: false, status: 404, error: 'Story not found' }
+  }
+
+  console.log('[stories] view mode updated:', storyId, viewMode)
   return { ok: true, data: toStoryRow(data) }
 }
 

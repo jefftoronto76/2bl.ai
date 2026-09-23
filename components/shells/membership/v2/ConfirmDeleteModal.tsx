@@ -83,7 +83,7 @@ export function ConfirmDeleteModal({ item, onClose, onConfirm, heading, body, co
     <div
       onClick={onClose}
       role="presentation"
-      className="absolute inset-0 z-[85] flex items-center justify-center p-5 bg-black/55 backdrop-blur-[3px] hl-animate-fade"
+      className="absolute inset-0 z-[96] flex items-center justify-center p-5 bg-black/55 backdrop-blur-[3px] hl-animate-fade"
     >
       <div
         ref={dialogRef}

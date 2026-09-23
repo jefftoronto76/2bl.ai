@@ -86,6 +86,10 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
   if (url === '/api/stories/story-1/memories' && method === 'GET') {
     return jsonResponse({ memories: [{ id: CROSS_SESSION_MEMORY.id, session_id: CROSS_SESSION_MEMORY.session_id, title: CROSS_SESSION_MEMORY.title, body: CROSS_SESSION_MEMORY.body, source_kind: CROSS_SESSION_MEMORY.source_kind, created_at: CROSS_SESSION_MEMORY.created_at }] });
   }
+  if (url === '/api/stories/story-1' && method === 'PATCH') {
+    const body = init?.body ? JSON.parse(init.body as string) : {};
+    return jsonResponse({ story: { id: 'story-1', name: 'A Life in Full', viewMode: body.view_mode } });
+  }
   if (url === '/api/sessions/sess-current/memories' && method === 'GET') return jsonResponse({ memories: [] });
   if (url === '/api/sessions/sess-other/memories' && method === 'GET') return jsonResponse({ memories: [CROSS_SESSION_MEMORY] });
   if (url.includes('/feedback')) return jsonResponse({ feedback: [] });
@@ -157,5 +161,89 @@ describe('Story view row-tap-to-editor — through the real ChatHero stack', () 
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument());
     expect(screen.queryByRole('textbox', { name: 'Memory title' })).not.toBeInTheDocument();
+  });
+});
+
+// Found in review: StoryView's view-mode PATCH only ever updated its own
+// local state — ChatHero's `stories` (which supplies story.viewMode to
+// every fresh StoryView mount) never learned a save happened, so closing
+// and reopening the Deck silently reverted to the stale mode.
+describe('Deck view-mode persists across closing and reopening the pane', () => {
+  it('a saved Grid preference survives closing the Deck and reopening it', async () => {
+    await openStoryPane();
+    expect(screen.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/stories/story-1', expect.objectContaining({ method: 'PATCH' })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close story' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'A Life in Full' }));
+    await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+// Story-to-memory rail collapse (2026-09, desktop only) — opening a memory
+// from the Deck no longer fully unmounts it; the Deck collapses to a 48px
+// DeckRail instead, rendered alongside the editor.
+describe('Deck rail collapse — desktop', () => {
+  it('the full Deck is showing, not the rail, before a memory is opened', async () => {
+    await openStoryPane();
+
+    expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument();
+  });
+
+  it('opening a memory collapses the Deck to the rail, alongside the editor', async () => {
+    await openStoryPane();
+
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Expand A Life in Full' })).toBeInTheDocument();
+  });
+
+  it('clicking the rail returns to the full Deck, same as the editor\'s own close button', async () => {
+    await openStoryPane();
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Expand A Life in Full' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand A Life in Full' }));
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument());
+    expect(screen.getByText('From another conversation')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Memory title' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Deck rail collapse — mobile (390px) stays a full swap, no rail', () => {
+  beforeEach(() => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 390,
+    });
+  });
+
+  afterEach(() => {
+    (window as unknown as { happyDOM: { setViewport: (v: { width: number }) => void } }).happyDOM.setViewport({
+      width: 1024,
+    });
+  });
+
+  it('opening a memory on mobile swaps fully, with no DeckRail present', async () => {
+    render(
+      <ChatProvider>
+        <ChatHero />
+      </ChatProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await screen.findByRole('button', { name: 'A Life in Full' });
+    fireEvent.click(screen.getByRole('button', { name: 'A Life in Full' }));
+    await waitFor(() => expect(screen.getByText('From another conversation')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /From another conversation/ }));
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Memory title' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Expand A Life in Full' })).not.toBeInTheDocument();
   });
 });

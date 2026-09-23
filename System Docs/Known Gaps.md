@@ -126,6 +126,32 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   string matched against `tenants.slug`, so the alias values `sbl` and
   `jefflougheed` only resolve if a tenant carries that exact slug.
 
+- **`PREVIEW_TENANT_ID` trailing whitespace silently 400s every tenant-scoped
+  query on preview — found and fixed 2026-09-17 (Story Deck & Memory Panel).**
+  A Vercel Preview-environment value for `PREVIEW_TENANT_ID` had picked up a
+  trailing whitespace character at some point (root cause: a hand-paste into
+  Vercel's dashboard, not app code — the stored `tenants.id` UUID this value
+  should mirror is clean). `previewTenantFallback()` returned it unvalidated
+  into `tenantId`, which every `.eq('tenant_id', tenantId)` Supabase call then
+  serializes into its query string — a trailing space serializes as a literal
+  `+` (form-urlencoding), producing an invalid-UUID filter and a 400 from
+  PostgREST. Confirmed directly against Supabase's edge logs: the exact same
+  tenant ID appeared clean in a succeeding request and with a trailing `+` in
+  a failing one made moments apart, both hitting `hasStoryAccess`'s story-row
+  query (`services/crm/story-containments.ts`) — this is what actually
+  produced `StoryView`'s "Could not load this story's memories" error on a
+  real, correctly-owned story on preview; the read-path code and data were
+  both fine. Only bites `*.vercel.app` preview hosts (where domain-match
+  fails over to this fallback) — a real custom-domain request never touches
+  it. Fixed by trimming the env var's value in `previewTenantFallback()`
+  (`services/auth/get-tenant-from-request.ts`) — the one place a raw,
+  hand-typed string enters `tenantId` unvalidated; the domain-match and
+  `x-preview-tenant`/slug-match paths both already resolve from clean DB
+  columns. **Lesson:** trim any config value read directly from
+  `process.env` before it flows into a query filter — a copy-paste artifact
+  a human would never notice reading the dashboard becomes an opaque 400
+  three query-builder layers downstream.
+
 - **`ChatState.isMember` means signed-in, not role.** `isMember`
   (`chatStore.tsx`) is `isLoaded && !!isSignedIn` — pure Clerk sign-in state,
   so it is true for **every** signed-in role (`owner`, `admin`, `member`,
@@ -1703,6 +1729,32 @@ numbered because CLAUDE.md and other docs cross-reference them.
     the 2026-09-07 docs PR or its companion code-hygiene PR.
 
 ## Memory Panel & Stories
+
+- **Sidenav Expand toggle removed from the DOM under `forceCollapsed` — found
+  and fixed 2026-09-22.** A prior pass (2026-09-17, see git history on this
+  entry) checked the Sept 2026 Story Deck & Memory Panel handover's item 9
+  ("sidebar hard-locked to 60px, breaking Expand menu") against real
+  production code and concluded no fix was needed: `SidebarV2.tsx`/
+  `ChatHero.tsx` use a `forceCollapsed` boolean (not the prototype's
+  hardcoded-60 pattern), and `isExpanded = forceCollapsed ? false : expanded`
+  correctly restores the user's own preference the moment a panel closes.
+  **That conclusion was wrong** — it verified the auto-collapse-to-rail
+  behavior (correct, never in question) but never checked whether the toggle
+  itself stayed available *while* collapsed, which is what the handover's
+  item 43 actually promises ("only the ability to manually re-expand
+  afterward was broken and is now fixed" — i.e. the toggle must keep working
+  throughout, not just resolve correctly on next open). `SidebarV2.tsx`
+  (~line 665) had `{!forceCollapsed && (...)}` around the toggle/close
+  button, removing it from the DOM entirely — for every `forceCollapsed`
+  caller (Media, Memory, Admin, Session Memories, Story View — the full
+  OR-list in `ChatHero.tsx`), not a Stories-specific gap. Fixed by rendering
+  the existing `onClose ? Close : Toggle` ternary unconditionally — no change
+  needed to `isExpanded`'s formula, since clicking the toggle only ever
+  touches `expanded`, and that formula already defers the visual effect
+  until `forceCollapsed` clears; the only bug was that there was nothing to
+  click. **Lesson:** "the state resolves correctly on the far side" and "the
+  control that changes that state is actually available" are two different
+  claims — verifying one doesn't verify the other.
 
 - **Memory panel width doesn't reseed if the whole chat drawer closes while
   a memory is still open — found during Stage C live-preview review,

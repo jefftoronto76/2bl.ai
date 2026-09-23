@@ -70,4 +70,12 @@ describe('getTenantFromRequest — PREVIEW_TENANT_ID fallback', () => {
     const id = await getTenantFromRequest(reqWithHost('2blai-git-branch-team.vercel.app'))
     expect(id).toBeNull()
   })
+
+  it('trims stray whitespace from a hand-pasted PREVIEW_TENANT_ID — a trailing space silently 400s every preview query otherwise', async () => {
+    process.env.PREVIEW_TENANT_ID = `${HEIRLOOM_ID} \n`
+    process.env.VERCEL_ENV = 'preview'
+    inMock.mockResolvedValue({ data: [], error: null })
+    const id = await getTenantFromRequest(reqWithHost('2blai-git-branch-team.vercel.app'))
+    expect(id).toBe(HEIRLOOM_ID)
+  })
 })

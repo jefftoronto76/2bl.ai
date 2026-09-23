@@ -24,7 +24,7 @@ import { SessionMemoriesPanel } from './memory/SessionMemoriesPanel';
 import { MediaGallery } from './MediaGallery';
 import { MediaPage } from './MediaPage';
 import { StoryAdminPanel } from './v2/StoryAdminPanel';
-import { StoryView } from './v2/StoryView';
+import { StoryView, DeckRail } from './v2/StoryView';
 import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
 import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
@@ -199,8 +199,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // link + social/email intents, no store, no API), so a plain boolean is all
   // this needs, same as mediaOpen. Deliberately NOT part of the third-pane
   // reciprocal-close wiring below: it's a centered modal layered over the
-  // whole drawer (z-[80], alongside BeginStory/InviteCollaborators), not a
-  // pane competing for the same slot, so it doesn't close — or get closed by —
+  // whole drawer (z-[94], alongside BeginStory/InviteCollaborators — bumped
+  // from z-[80] once SidebarV2 itself became a positioned z-[93] element,
+  // 2026-09, so this blocking tier still sits above the nav rather than
+  // under it), not a pane competing for the same slot, so it doesn't close
+  // — or get closed by —
   // anything else. Two entry points share it: ChatHeader's icon and
   // SidebarV2's nav row.
   const [shareHeirloomOpen, setShareHeirloomOpen] = useState(false);
@@ -440,17 +443,26 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // clips the pane's right edge (and with it MediaGallery's close button).
   // Reuses the memory panel's clamp math, recomputed on the same
   // open-transition-only cadence panelWidth already uses above.
+  //
+  // storyViewStory deliberately does NOT participate here (Deck panel width
+  // bug, 2026-09) — this clamp exists to protect a 260px chat floor next to
+  // the panel, but Deck is meant to REPLACE the chat column as the drawer's
+  // main content when open (full width, sidebar collapsed to its rail), not
+  // sit beside a still-visible transcript the way Media/admin/session
+  // memories do. See the chat-column-push-wrapper and third-pane-panel
+  // below for the other half of this — chat collapses to nothing and the
+  // third pane claims the rest via flexGrow instead of this fixed width.
   const [mediaPanelWidth, setMediaPanelWidth] = useState(MEDIA_PANEL_WIDTH);
   const wasMediaOpenRef = useRef(false);
 
   useEffect(() => {
-    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen || !!storyViewStory;
+    const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen;
     if (isOpen && !wasMediaOpenRef.current) {
       const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
       setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
     }
     wasMediaOpenRef.current = isOpen;
-  }, [mediaOpen, adminStory, sessionMemoriesOpen, storyViewStory]);
+  }, [mediaOpen, adminStory, sessionMemoriesOpen]);
 
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -708,6 +720,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
       showToast('Could not save description');
     }
   }, [showToast]);
+
+  // Mirrors a StoryView view-mode save into `stories` (found in review) —
+  // StoryView already owns the PATCH itself (self-contained, same posture
+  // as its own memory fetch), so unlike handleUpdateStoryDescription above
+  // this doesn't make a request of its own; it only propagates the
+  // already-confirmed result upward once StoryView's onViewModeCommit
+  // fires. Without this, `stories` never learns the save happened, so
+  // closing and reopening the Deck re-derives the same stale view mode.
+  const handleUpdateStoryViewMode = useCallback((storyId: string, mode: 'list' | 'grid') => {
+    setStories(prev => prev.map(s => (s.id === storyId ? { ...s, viewMode: mode } : s)));
+  }, []);
 
   // Invite collaborators (Phase 5 create/copy-flow + invalidation warning,
   // 2026-08-10, on top of reusable-story-invite-links the same day).
@@ -1298,15 +1321,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           <div className="absolute inset-0 z-40" role="dialog" aria-modal="true" aria-label="Story">
             <div className="hl-animate-sheet absolute inset-0 h-[100dvh] overflow-hidden">
               {storyMemory ? (
-                <StoryMemoryEditor
-                  memoryId={storyMemory.id}
-                  sessionId={storyMemory.sessionId}
-                  stories={stories}
-                  onClose={handleCloseStoryMemory}
-                  onFlash={showToast}
-                />
+                // Slides in from the right (Story Deck & Memory Panel
+                // handover, 2026-09), same as the desktop branch below —
+                // the outer hl-animate-sheet above only plays once, when
+                // this whole overlay first mounts, and doesn't retrigger on
+                // the StoryView -> StoryMemoryEditor swap inside it without
+                // this. Keyed by memory id so a different row re-triggers it.
+                <div key={storyMemory.id} className="h-full hl-animate-slide-right">
+                  <StoryMemoryEditor
+                    memoryId={storyMemory.id}
+                    sessionId={storyMemory.sessionId}
+                    stories={stories}
+                    onClose={handleCloseStoryMemory}
+                    onFlash={showToast}
+                  />
+                </div>
               ) : (
-                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} onViewModeCommit={(mode) => handleUpdateStoryViewMode(storyViewStory.id, mode)} />
               )}
             </div>
           </div>
@@ -1320,12 +1351,34 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             this column now that ChatHeader spans the full drawer). Verified
             safe against the drawer's own 680px floor — see
             memoryPanelWidth.ts's maxPanelWidth doc comment. min-w-0 on
-            mobile — chat is always flex-1 there, unaffected by any of this. */}
+            mobile — chat is always flex-1 there, unaffected by any of this.
+
+            Desktop + storyViewStory (Deck panel width bug, 2026-09) is the
+            one exception: collapses to zero width while Deck takes over as
+            the drawer's main content. The inner content div stays MOUNTED
+            (native `hidden` attribute, not a conditional-render) rather
+            than unmounting — ChatInput owns its draft text/attachments in
+            local useState (see ChatInput.tsx), so unmounting it on every
+            Deck open/close silently lost whatever the member had typed but
+            not sent. `hidden` resolves to `display:none`, which drops the
+            subtree from the tab order/accessibility tree the same as a
+            true unmount would, without destroying component state — same
+            principle the mobile overlays above already use (they cover the
+            still-mounted chat column rather than unmounting it). */}
         <div
           data-testid="chat-column-push-wrapper"
-          className={`flex flex-1 flex-col h-full min-h-0 ${isMobile ? 'min-w-0' : 'min-w-[260px]'} ${mobileSidebarPushClass}`}
+          className={`flex flex-col h-full min-h-0 ${
+            !isMobile && storyViewStory
+              ? 'flex-[0] min-w-0 w-0 overflow-hidden'
+              : isMobile
+              ? 'flex-1 min-w-0'
+              : 'flex-1 min-w-[260px]'
+          } ${mobileSidebarPushClass}`}
         >
-          <div className="flex flex-col flex-1 min-h-0">
+          <div
+            className={!isMobile && storyViewStory ? 'hidden' : 'flex flex-col flex-1 min-h-0'}
+            hidden={!isMobile && !!storyViewStory}
+          >
             {isGated ? (
               <GateView />
             ) : (
@@ -1379,16 +1432,23 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             handleOpenMemory/handleOpenSessionMemories above, adminStoryId's
             own setter in handleRowAction, and handleOpenStoryView). Real
             drag-resizable pixel width now (Stage C) for memory; media,
-            admin, session memories, and story view all get the same clamped
+            admin, and session memories all get the same clamped
             mediaPanelWidth instead (none of them need resize — the admin
             panel's own spec calls for a fixed width, same 400px media
-            prefers, and session memories/story view (Phase 1a) both follow
-            the same precedent rather than inventing their own — but all
-            four are clamped down via mediaPanelWidth, above, when the row
-            doesn't have 400px to spare) — flexBasis is inline style either
-            way since Tailwind can't express a runtime-computed value as a
-            static class; min-w-[280px] stays a class-based floor, redundant
-            with the JS clamp on purpose (defense in depth, costs nothing).
+            prefers, and session memories follows the same precedent rather
+            than inventing its own — but all three are clamped down via
+            mediaPanelWidth, above, when the row doesn't have 400px to
+            spare) — flexBasis is inline style either way since Tailwind
+            can't express a runtime-computed value as a static class;
+            min-w-[280px] stays a class-based floor, redundant with the JS
+            clamp on purpose (defense in depth, costs nothing).
+
+            story view is deliberately NOT part of that clamped group (Deck
+            panel width bug, 2026-09) — it gets flexGrow:1 instead of a
+            fixed flexBasis, claiming the whole width the (now-collapsed)
+            chat column vacated above, since Deck replaces the transcript as
+            the drawer's main content rather than sitting beside it.
+
             Transition suppressed while actively dragging so a live resize
             tracks the cursor instead of animating 300ms behind it. The
             wrapper stays mounted whenever !isMobile so open/close can still
@@ -1408,7 +1468,9 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             style={
               openMemory
                 ? { flexBasis: panelWidth, flexGrow: 0, flexShrink: 0 }
-                : mediaOpen || adminStory || sessionMemoriesOpen || storyViewStory
+                : storyViewStory
+                ? { flexGrow: 1, flexShrink: 1, flexBasis: 0 }
+                : mediaOpen || adminStory || sessionMemoriesOpen
                 ? { flexBasis: mediaPanelWidth, flexGrow: 0, flexShrink: 0 }
                 : undefined
             }
@@ -1446,16 +1508,31 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               />
             )}
             {storyViewStory && storyMemory && (
-              <StoryMemoryEditor
-                memoryId={storyMemory.id}
-                sessionId={storyMemory.sessionId}
-                stories={stories}
-                onClose={handleCloseStoryMemory}
-                onFlash={showToast}
-              />
+              // Story-to-memory rail collapse (2026-09, desktop only — the
+              // mobile dialog below stays a full swap, no room concept
+              // there): the Deck collapses to DeckRail's 48px rail instead
+              // of fully unmounting, so its place doesn't disappear entirely
+              // while a memory is open. onExpand reuses handleCloseStoryMemory
+              // verbatim — it already means exactly "go back to the full
+              // Deck without closing the whole pane", already wired as
+              // StoryMemoryEditor's own onClose below. The rail itself
+              // doesn't slide — only the editor keeps its existing
+              // slide-from-right treatment.
+              <div className="flex h-full min-w-0">
+                <DeckRail story={storyViewStory} onExpand={handleCloseStoryMemory} />
+                <div key={storyMemory.id} className="flex-1 min-w-0 hl-animate-slide-right">
+                  <StoryMemoryEditor
+                    memoryId={storyMemory.id}
+                    sessionId={storyMemory.sessionId}
+                    stories={stories}
+                    onClose={handleCloseStoryMemory}
+                    onFlash={showToast}
+                  />
+                </div>
+              </div>
             )}
             {storyViewStory && !storyMemory && (
-              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} onViewModeCommit={(mode) => handleUpdateStoryViewMode(storyViewStory.id, mode)} />
             )}
           </div>
         )}
@@ -1516,12 +1593,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           setPendingDelete(null);
         }}
       />
-      {/* Same z-[80] modal layer as BeginStory/InviteCollaborators above —
+      {/* Same z-[94] modal layer as BeginStory/InviteCollaborators above —
           clears every overlay it can coexist with (mobile sheets and
-          MediaPage at z-40, the mobile sidebar at z-30). The only things
-          above it are ConfirmDeleteModal (z-[85]) and the toast (z-[100]),
-          neither of which can be up at the same time as this. Defaults on
-          shareUrl/shareMessage/channels — no per-tenant customization yet. */}
+          MediaPage at z-40, the mobile sidebar at z-30, and — since
+          SidebarV2 became a positioned z-[93] element, 2026-09 — the docked
+          desktop sidebar too). The only things above it are ConfirmDeleteModal
+          (z-[96]) and the toast (z-[100]), neither of which can be up at the
+          same time as this. Defaults on shareUrl/shareMessage/channels — no
+          per-tenant customization yet. */}
       <ShareHeirloomModal
         open={shareHeirloomOpen}
         onClose={() => setShareHeirloomOpen(false)}

@@ -1,17 +1,25 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest, getCurrentUserId } from '@/services/auth'
-import { discardStory, updateStoryDescription } from '@/services/crm/stories'
+import { discardStory, updateStoryDescription, updateStoryViewMode } from '@/services/crm/stories'
+import type { StoryRow } from '@/services/crm/stories'
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
 
 /**
  * PATCH /api/stories/[id] — updates a story's description (StoryAdminPanel's
- * one editable field, story-admin-panel 2026-08-13). Body: { description:
- * string }. Same tenant_id + user_id ownership scoping as DELETE below
- * (updateStoryDescription, services/crm/stories.ts) — 404s whether the id
- * doesn't resolve or belongs to someone else, never distinguishing the two.
- * Response is shaped to the client's Story type (id/name/description),
- * matching GET/POST /api/stories's own relabeling.
+ * one editable field, story-admin-panel 2026-08-13) and/or its Deck List/
+ * Grid view preference (Story Deck & Memory Panel handover, Phase 3,
+ * 2026-09). Body: { description?: string, view_mode?: 'list' | 'grid' } —
+ * at least one of the two. The two real callers today (StoryAdminPanel's
+ * description field, StoryView.tsx's view toggle) only ever send one or the
+ * other, never both, but nothing stops a future caller sending both in one
+ * request, so both are applied when present rather than picking just one.
+ * Same tenant_id + user_id ownership scoping as DELETE below
+ * (updateStoryDescription/updateStoryViewMode, services/crm/stories.ts) —
+ * 404s whether the id doesn't resolve or belongs to someone else, never
+ * distinguishing the two. Response is shaped to the client's Story type
+ * (id/name/description/viewMode), matching GET/POST /api/stories's own
+ * relabeling.
  */
 export async function PATCH(
   req: Request,
@@ -35,31 +43,67 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { description } = body as { description?: unknown }
-  if (typeof description !== 'string') {
+  const { description, view_mode: viewMode } = body as { description?: unknown; view_mode?: unknown }
+  if (description === undefined && viewMode === undefined) {
+    return NextResponse.json({ error: 'description or view_mode is required' }, { status: 400 })
+  }
+  if (description !== undefined && typeof description !== 'string') {
     return NextResponse.json({ error: 'description must be a string' }, { status: 400 })
   }
-
-  const result = await updateStoryDescription(tenantId, userId, id, description.trim())
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status })
+  if (viewMode !== undefined && viewMode !== 'list' && viewMode !== 'grid') {
+    return NextResponse.json({ error: "view_mode must be 'list' or 'grid'" }, { status: 400 })
   }
 
-  void logEvent({
-    action: AuditAction.STORY_DESCRIPTION_UPDATED,
-    tenant_id: tenantId,
-    actor_id: userId,
-    actor_type: 'user',
-    target_type: 'story',
-    target_id: id,
-    outcome: 'success',
-  })
+  let latest: StoryRow | null = null
+
+  if (typeof description === 'string') {
+    const result = await updateStoryDescription(tenantId, userId, id, description.trim())
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    latest = result.data
+    void logEvent({
+      action: AuditAction.STORY_DESCRIPTION_UPDATED,
+      tenant_id: tenantId,
+      actor_id: userId,
+      actor_type: 'user',
+      target_type: 'story',
+      target_id: id,
+      outcome: 'success',
+    })
+  }
+
+  if (viewMode === 'list' || viewMode === 'grid') {
+    const result = await updateStoryViewMode(tenantId, userId, id, viewMode)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    latest = result.data
+    void logEvent({
+      action: AuditAction.STORY_VIEW_MODE_UPDATED,
+      tenant_id: tenantId,
+      actor_id: userId,
+      actor_type: 'user',
+      target_type: 'story',
+      target_id: id,
+      outcome: 'success',
+      metadata: { view_mode: viewMode },
+    })
+  }
+
+  if (!latest) {
+    // Unreachable: the check above requires description or view_mode to be
+    // present, and every valid value for either assigns `latest` before
+    // falling through here.
+    return NextResponse.json({ error: 'description or view_mode is required' }, { status: 400 })
+  }
 
   return NextResponse.json({
     story: {
-      id: result.data.id,
-      name: result.data.title,
-      description: result.data.body || undefined,
+      id: latest.id,
+      name: latest.title,
+      description: latest.body || undefined,
+      viewMode: latest.viewMode,
     },
   })
 }
