@@ -866,3 +866,31 @@ describe('StoryView — mobile Preview gating (Phase 6)', () => {
     expect(onFlash).not.toHaveBeenCalled();
   });
 });
+
+// Story-deck workspace fixes item 6 (2026-09): list rows cap their TEXT
+// column at 780px (the prototype's own content-column width,
+// chat-widget-canvas.jsx maxWidth: 780); the row itself stays full-width.
+describe('StoryView — list view reading width', () => {
+  it('caps the text column of memory rows and cover/back rows at 780px, not the row itself', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [{ id: 'mem-1', title: 'The Lake House', body: 'A quiet summer.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    const title = await screen.findByText('The Lake House');
+
+    const textColumn = title.parentElement!;
+    expect(textColumn.className).toContain('max-w-[780px]');
+    const rowButton = title.closest('button')!;
+    expect(rowButton.className).not.toContain('max-w-[780px]');
+    expect(rowButton.className).toContain('flex-1');
+
+    const coverLabel = screen.getByText('Cover');
+    expect(coverLabel.parentElement!.className).toContain('max-w-[780px]');
+  });
+});

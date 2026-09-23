@@ -216,7 +216,11 @@ function DeckRow({
             <Icon size={16} aria-hidden />
           </span>
         )}
-        <div className="min-w-0 flex-1">
+        {/* Reading-width cap (2026-09) — 780px matches the prototype's own
+            content column (chat-widget-canvas.jsx, maxWidth: 780). Only the
+            text is capped; the row's hover background, border, and move
+            buttons still span the full width. */}
+        <div className="min-w-0 flex-1 max-w-[780px]">
           <p className="font-body text-sm font-semibold text-text-primary truncate">{memory.title}</p>
           {memory.body && (
             <p className="font-body text-[13px] text-text-muted line-clamp-2 mt-0.5">{memory.body}</p>
@@ -329,7 +333,7 @@ function DeckEndRow({
         <span className="flex-shrink-0 w-10 h-10 rounded-full bg-background border border-border flex items-center justify-center text-text-muted">
           {kind === 'cover' ? <BookOpen size={16} aria-hidden /> : <Bookmark size={16} aria-hidden />}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-w-[780px]">
           <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</p>
           <p className="font-display text-[15px] font-medium text-text-primary truncate mt-0.5">
             {data ? data.heading || 'Untitled' : 'Not added yet'}
