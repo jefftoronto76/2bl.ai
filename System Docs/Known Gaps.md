@@ -1805,6 +1805,16 @@ numbered because CLAUDE.md and other docs cross-reference them.
   Chat plus panel keeps exactly the 624px it had before.
   **Not verifiable in happy-dom:** real pixel widths and whether the
   animations stay in sync. Check on the Vercel preview.
+  **Preview full screen (item 4, same round):** `PreviewModal`'s header has
+  an Expand/Exit full screen button (`Maximize2`/`Minimize2`, same labels
+  as the drawer's own toggle). It calls the drawer's `onToggleFullScreen`
+  through `useWorkspace()`, because Preview fills the Workspace and so a
+  full-screen Workspace is a full-screen Preview. If Preview's own button
+  turned full screen on, closing Preview (close button, Escape, backdrop
+  click or unmount) toggles it back off. If the Workspace was already full
+  screen when Preview opened, it stays that way. The button is hidden when
+  there is no toggle to reuse (outside a drawer; on mobile Preview is gated
+  off anyway).
 
 - **Memory panel width doesn't reseed if the whole chat drawer closes while
   a memory is still open — found during Stage C live-preview review,
