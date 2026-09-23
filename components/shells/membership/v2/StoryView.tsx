@@ -102,6 +102,14 @@ export interface StoryViewProps {
    *  used for a move failure; the initial load already has its own inline
    *  error state below. */
   onFlash: (message: string) => void;
+  /** Fired once a view-mode PATCH actually succeeds (never on failure/
+   *  revert) — mirrors the confirmed value into ChatHero's own `stories`
+   *  array, the same handoff `onDescriptionCommit`/`handleUpdateStoryDescription`
+   *  already use for the admin panel's description edits. Without this,
+   *  `stories` (which supplies `story.viewMode` to every fresh StoryView
+   *  mount, via the re-sync effect below) never learns about the save, so
+   *  closing and reopening the Deck shows the stale mode again. */
+  onViewModeCommit?: (mode: 'list' | 'grid') => void;
 }
 
 interface StoryMemoryRow {
@@ -457,7 +465,7 @@ function AddMenu({
   );
 }
 
-export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewProps) {
+export function StoryView({ story, onClose, onOpenMemory, onFlash, onViewModeCommit }: StoryViewProps) {
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
   const [memories, setMemories] = useState<StoryMemoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -473,6 +481,13 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(story.viewMode ?? 'list');
+  // Guards against out-of-order PATCH responses (found in review): without
+  // this, clicking List then Grid before the first request resolves fires
+  // two overlapping PATCHes whose responses can land in either order,
+  // leaving the persisted value mismatched from the last click. Mirrors
+  // `moving`'s own disable-the-control-while-in-flight pattern above rather
+  // than a request-queueing/epoch mechanism.
+  const [savingViewMode, setSavingViewMode] = useState(false);
   // Cover/back pages (Phase 4) — STUB ONLY, local state, never persisted:
   // no schema/API work this round (see CoverBackPanel.tsx's header
   // comment). `editingEnd` is which panel is open, if any; `null` means
@@ -582,11 +597,17 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
 
   /** Optimistic — flips immediately, PATCHes in the background, reverts on
    *  failure. A no-op if it's already the current mode (avoids a pointless
-   *  request when the segmented control re-fires its own active state). */
+   *  request when the segmented control re-fires its own active state).
+   *  Disables the List/Grid buttons for the duration (savingViewMode) so a
+   *  second click can't fire an overlapping PATCH whose response might land
+   *  before the first's — see the buttons' own `disabled` prop below. Calls
+   *  onViewModeCommit only once the PATCH is confirmed, never on revert, so
+   *  ChatHero's `stories` only ever mirrors an actually-persisted value. */
   const handleSetViewMode = async (mode: 'list' | 'grid') => {
-    if (mode === viewMode) return;
+    if (mode === viewMode || savingViewMode) return;
     const previous = viewMode;
     setViewMode(mode);
+    setSavingViewMode(true);
     try {
       const res = await fetch(`/api/stories/${encodeURIComponent(story.id)}`, {
         method: 'PATCH',
@@ -597,11 +618,15 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
         console.error('[StoryView] view mode update failed:', res.status);
         setViewMode(previous);
         onFlash('Could not save view preference');
+        return;
       }
+      onViewModeCommit?.(mode);
     } catch (err) {
       console.error('[StoryView] view mode update threw:', err);
       setViewMode(previous);
       onFlash('Could not save view preference');
+    } finally {
+      setSavingViewMode(false);
     }
   };
 
@@ -642,8 +667,9 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
               type="button"
               aria-label="List view"
               aria-pressed={viewMode === 'list'}
+              disabled={savingViewMode}
               onClick={() => handleSetViewMode('list')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
                 viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
               }`}
             >
@@ -653,8 +679,9 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash }: StoryViewPr
               type="button"
               aria-label="Grid view"
               aria-pressed={viewMode === 'grid'}
+              disabled={savingViewMode}
               onClick={() => handleSetViewMode('grid')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
                 viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
               }`}
             >

@@ -482,6 +482,55 @@ describe('StoryView — List/Grid toggle, persisted per-story (Phase 3)', () => 
     expect(fetchMock).toHaveBeenCalledTimes(1); // just the initial GET, no PATCH
   });
 
+  it('disables both buttons while a PATCH is in flight, so a second click can\'t fire an overlapping request (found in review)', async () => {
+    // A controllable, not-yet-resolved PATCH response — lets the test
+    // observe the disabled state DURING the request, not just before/after.
+    let resolvePatch!: (value: ReturnType<typeof jsonResponse>) => void;
+    const patchPromise = new Promise<ReturnType<typeof jsonResponse>>((resolve) => { resolvePatch = resolve; });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES })) // initial GET
+      .mockReturnValueOnce(patchPromise); // PATCH — held open
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('A');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+    expect(screen.getByRole('button', { name: 'List view' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Grid view' })).toBeDisabled();
+
+    // A click while disabled must not fire a second PATCH.
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    expect(fetchMock).toHaveBeenCalledTimes(2); // still just GET + the one held-open PATCH
+
+    resolvePatch(jsonResponse({ story: { id: 'story-1', name: 'A Life in Full', viewMode: 'grid' } }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'List view' })).not.toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Grid view' })).not.toBeDisabled();
+    // The one click that landed (Grid) is still what's shown as active.
+    expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('reports a successful save to onViewModeCommit, but never on a failed/reverted one (found in review)', async () => {
+    const onViewModeCommit = vi.fn();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ memories: THREE_MEMORIES }))
+      .mockResolvedValueOnce(jsonResponse({ story: { id: 'story-1', name: 'A Life in Full', viewMode: 'grid' } }))
+      .mockResolvedValueOnce(jsonResponse({ error: 'nope' }, false, 500));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} onViewModeCommit={onViewModeCommit} />);
+    await screen.findByText('A');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grid view' }));
+    await waitFor(() => expect(onViewModeCommit).toHaveBeenCalledWith('grid'));
+    expect(onViewModeCommit).toHaveBeenCalledTimes(1);
+
+    onViewModeCommit.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'List view' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Grid view' })).toHaveAttribute('aria-pressed', 'true')); // reverted
+    expect(onViewModeCommit).not.toHaveBeenCalled();
+  });
+
   it('grid view has no up/down buttons but keeps the thumbnail rule and opens memories the same way', async () => {
     const gridStory: Story = { ...story, viewMode: 'grid' };
     vi.stubGlobal(

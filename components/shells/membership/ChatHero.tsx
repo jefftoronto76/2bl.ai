@@ -721,6 +721,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     }
   }, [showToast]);
 
+  // Mirrors a StoryView view-mode save into `stories` (found in review) —
+  // StoryView already owns the PATCH itself (self-contained, same posture
+  // as its own memory fetch), so unlike handleUpdateStoryDescription above
+  // this doesn't make a request of its own; it only propagates the
+  // already-confirmed result upward once StoryView's onViewModeCommit
+  // fires. Without this, `stories` never learns the save happened, so
+  // closing and reopening the Deck re-derives the same stale view mode.
+  const handleUpdateStoryViewMode = useCallback((storyId: string, mode: 'list' | 'grid') => {
+    setStories(prev => prev.map(s => (s.id === storyId ? { ...s, viewMode: mode } : s)));
+  }, []);
+
   // Invite collaborators (Phase 5 create/copy-flow + invalidation warning,
   // 2026-08-10, on top of reusable-story-invite-links the same day).
   // `invite` tracks which story row triggered the modal; `inviteLink` holds
@@ -1326,7 +1337,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                   />
                 </div>
               ) : (
-                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+                <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} onViewModeCommit={(mode) => handleUpdateStoryViewMode(storyViewStory.id, mode)} />
               )}
             </div>
           </div>
@@ -1521,7 +1532,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
               </div>
             )}
             {storyViewStory && !storyMemory && (
-              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} />
+              <StoryView story={storyViewStory} onClose={closeStoryPane} onOpenMemory={handleOpenStoryMemory} onFlash={showToast} onViewModeCommit={(mode) => handleUpdateStoryViewMode(storyViewStory.id, mode)} />
             )}
           </div>
         )}
