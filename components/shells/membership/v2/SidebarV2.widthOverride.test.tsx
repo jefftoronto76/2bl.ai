@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Same store stub the other SidebarV2 unit tests use — width is pure
 // presentation, so the real store buys nothing here.
@@ -134,5 +136,42 @@ describe('SidebarV2 — stacks above PreviewModal (z-[92]) and below the kebab-d
     render(<SidebarV2 stories={[]} writingPrompts={[]} onClose={vi.fn()} expandedWidthClassName="w-full" />);
     expect(sidebar().className).toContain('relative');
     expect(sidebar().className).toContain('z-[93]');
+  });
+});
+
+// Found in review, 2026-09: the z-[93] bump above ALSO floated the nav above
+// several genuinely blocking, "confirm before you do anything else" modals
+// that were never meant to be escapable — a different category from the
+// panel-replacement overlays (Preview, MediaPage) z-[93] is actually for.
+// Reads each modal's source directly rather than fully rendering it (each
+// needs its own mocked props/stores just to reach this one className) —
+// same convention as this codebase's other CSS-only regression tests (e.g.
+// the .hl-animate-slide-right fill-mode test reads globals.css as text).
+// Pins the INVARIANT (must clear the sidebar), not one-off numbers, so a
+// future sidebar z-index change can't silently reintroduce this gap.
+describe('SidebarV2 — the blocking-modal tier stays above the sidebar (z-[93])', () => {
+  function zIndexOf(file: string): number {
+    const source = readFileSync(join(__dirname, file), 'utf-8');
+    const match = source.match(/z-\[(\d+)\]/);
+    if (!match) throw new Error(`No z-[...] class found in ${file}`);
+    return Number(match[1]);
+  }
+
+  it.each([
+    'BeginStoryModal.tsx',
+    'ShareHeirloomModal.tsx',
+    'ConfirmDeleteModal.tsx',
+    'CoverBackPanel.tsx',
+  ])('%s\'s backdrop sits above the sidebar', (file) => {
+    expect(zIndexOf(file)).toBeGreaterThan(93);
+  });
+
+  it('both of InviteCollaboratorsModal\'s backdrops (outer + nested warning) sit above the sidebar', () => {
+    const source = readFileSync(join(__dirname, 'InviteCollaboratorsModal.tsx'), 'utf-8');
+    const matches = [...source.matchAll(/z-\[(\d+)\]/g)].map((m) => Number(m[1]));
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+    for (const z of matches) {
+      expect(z).toBeGreaterThan(93);
+    }
   });
 });

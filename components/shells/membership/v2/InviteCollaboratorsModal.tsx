@@ -159,7 +159,7 @@ export function InviteCollaboratorsModal({
   return (
     <div
       onClick={onClose}
-      className="absolute inset-0 z-[80] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
+      className="absolute inset-0 z-[94] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
       role="presentation"
     >
       <div
@@ -353,7 +353,7 @@ export function InviteCollaboratorsModal({
         <div
           onClick={(e) => { e.stopPropagation(); setPendingEdit(null); }}
           role="presentation"
-          className="absolute inset-0 z-[90] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
+          className="absolute inset-0 z-[98] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
         >
           <div
             onClick={(e) => e.stopPropagation()}

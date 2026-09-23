@@ -191,7 +191,7 @@ describe('Share Heirloom — dismissal', () => {
     expect(shareDialog()).toBeInTheDocument();
 
     const backdrop = shareDialog().parentElement as HTMLElement;
-    expect(backdrop.className).toContain('z-[80]');
+    expect(backdrop.className).toContain('z-[94]');
     fireEvent.click(backdrop);
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Share Heirloom' })).toBeNull());

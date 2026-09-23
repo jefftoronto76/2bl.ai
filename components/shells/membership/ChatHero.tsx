@@ -199,8 +199,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // link + social/email intents, no store, no API), so a plain boolean is all
   // this needs, same as mediaOpen. Deliberately NOT part of the third-pane
   // reciprocal-close wiring below: it's a centered modal layered over the
-  // whole drawer (z-[80], alongside BeginStory/InviteCollaborators), not a
-  // pane competing for the same slot, so it doesn't close — or get closed by —
+  // whole drawer (z-[94], alongside BeginStory/InviteCollaborators — bumped
+  // from z-[80] once SidebarV2 itself became a positioned z-[93] element,
+  // 2026-09, so this blocking tier still sits above the nav rather than
+  // under it), not a pane competing for the same slot, so it doesn't close
+  // — or get closed by —
   // anything else. Two entry points share it: ChatHeader's icon and
   // SidebarV2's nav row.
   const [shareHeirloomOpen, setShareHeirloomOpen] = useState(false);
@@ -1579,12 +1582,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
           setPendingDelete(null);
         }}
       />
-      {/* Same z-[80] modal layer as BeginStory/InviteCollaborators above —
+      {/* Same z-[94] modal layer as BeginStory/InviteCollaborators above —
           clears every overlay it can coexist with (mobile sheets and
-          MediaPage at z-40, the mobile sidebar at z-30). The only things
-          above it are ConfirmDeleteModal (z-[85]) and the toast (z-[100]),
-          neither of which can be up at the same time as this. Defaults on
-          shareUrl/shareMessage/channels — no per-tenant customization yet. */}
+          MediaPage at z-40, the mobile sidebar at z-30, and — since
+          SidebarV2 became a positioned z-[93] element, 2026-09 — the docked
+          desktop sidebar too). The only things above it are ConfirmDeleteModal
+          (z-[96]) and the toast (z-[100]), neither of which can be up at the
+          same time as this. Defaults on shareUrl/shareMessage/channels — no
+          per-tenant customization yet. */}
       <ShareHeirloomModal
         open={shareHeirloomOpen}
         onClose={() => setShareHeirloomOpen(false)}

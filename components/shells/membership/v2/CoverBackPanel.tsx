@@ -107,7 +107,7 @@ export function CoverBackPanel({ kind, open, initial, onClose, onSave, onRemove 
   return (
     <div
       onClick={onClose}
-      className="absolute inset-0 z-[80] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
+      className="absolute inset-0 z-[94] flex items-center justify-center p-5 bg-black/55 backdrop-blur-sm"
       role="presentation"
     >
       <div

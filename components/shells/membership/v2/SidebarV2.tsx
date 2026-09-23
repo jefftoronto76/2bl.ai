@@ -649,15 +649,23 @@ export function SidebarV2({
       // z-index is inert regardless of value — PreviewModal (fixed inset-0
       // z-[92]) always painted over it, sidenav toggle included, since both
       // share ChatDrawerV2's one stacking context with nothing isolating
-      // them. z-[93] is the first free slot above z-[92] and below the
-      // z-[100] kebab-delete toast (ChatHero.tsx) — confirmed against every
-      // z-index in components/shells/membership/. This also incidentally
-      // fixes the identical (previously unnoticed) case with MediaPage
-      // (absolute inset-0 z-40), which already covered this sidebar today
-      // for the same reason. Applied unconditionally since the mobile
-      // overlay usage already sits inside its own positioned z-30 wrapper —
-      // this only affects paint order among that wrapper's own children
-      // (there are none), so it's inert there.
+      // them. z-[93] is the first free slot above z-[92]. This also
+      // incidentally fixes the identical (previously unnoticed) case with
+      // MediaPage (absolute inset-0 z-40), which already covered this
+      // sidebar today for the same reason. Applied unconditionally since
+      // the mobile overlay usage already sits inside its own positioned
+      // z-30 wrapper — this only affects paint order among that wrapper's
+      // own children (there are none), so it's inert there.
+      //
+      // NOTE (found in review, corrected same day): this bump also floated
+      // the sidebar above the "centered modal blocks the whole drawer"
+      // tier (BeginStoryModal/ShareHeirloomModal/InviteCollaboratorsModal/
+      // CoverBackPanel, ConfirmDeleteModal) — those are genuinely blocking
+      // dialogs, not panel-replacement surfaces like Preview/MediaPage, so
+      // the nav should NOT be reachable over them. That tier was bumped to
+      // z-[94]/z-[96]/z-[98] (see each file) to sit back above z-[93] and
+      // restore that invariant — z-[93] here is correct precisely because
+      // it's ABOVE panel-replacement overlays and BELOW blocking dialogs.
       className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         isExpanded ? expandedWidthClassName : 'w-12'
       }`}
