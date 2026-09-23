@@ -68,54 +68,82 @@ describe('SidebarV2 — expandedWidthClassName', () => {
   });
 });
 
-// Sidenav Expand toggle fix, 2026-09-22 — see Known Gaps.md's corrected
-// entry. A prior pass concluded the toggle was correctly hidden while
-// forceCollapsed; that was wrong per the Sept 2026 handover's own item 43
-// ("manually re-expand" must keep working throughout, not just resolve
-// correctly once the panel closes). These pin the corrected behavior.
-describe('SidebarV2 — Expand/Collapse toggle stays available under forceCollapsed', () => {
-  it('renders and is clickable while forceCollapsed is true', () => {
+// forceCollapsed is a default, not a lock (story-deck workspace fixes
+// item 1, 2026-09). Expanding the Nav grows the Workspace itself instead of
+// squeezing an open panel, so a manual expand clicked while a panel is open
+// takes effect immediately. Opening a panel (forceCollapsed false→true)
+// still auto-collapses to the rail. This supersedes the 2026-09-22 fix,
+// which kept the toggle clickable but deferred its visual effect until the
+// panel closed.
+describe('SidebarV2 — manual expand wins over forceCollapsed', () => {
+  it('auto-collapses to the rail when forceCollapsed is set, with a clickable Expand toggle', () => {
     render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
 
-    // Label reflects the member's own `expanded` preference (default true),
-    // not the panel's visual override — same as the still-w-64-under-the-
-    // hood behavior `isExpanded`'s formula already relied on.
-    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' });
-    expect(toggle).toBeInTheDocument();
+    expect(sidebar().className).toContain('w-12');
+    // Label/rotation now track the RENDERED state, not the stored preference.
+    const toggle = screen.getByRole('button', { name: 'Expand sidebar' });
     expect(toggle).toBeEnabled();
   });
 
-  it('clicking the toggle while forceCollapsed does not change the rendered width — the panel still wins visually', () => {
+  it('a manual expand while forceCollapsed takes effect immediately', () => {
     render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-
-    expect(sidebar().className).toContain('w-12');
-    expect(sidebar().className).not.toContain('w-64');
-  });
-
-  it('a manual re-expand clicked while forceCollapsed takes effect the moment forceCollapsed clears', () => {
-    // `expanded` is internal state (defaults to true), not a prop — so this
-    // first collapses it via the toggle itself (a real "Collapse sidebar"
-    // click, same as a member would do before any panel ever opens), THEN
-    // forces the panel open, confirming the toggle is still there and
-    // reflects the member's own last choice, then manually re-expands it
-    // (the handover's item 43 scenario) and confirms that choice is honored
-    // the instant the panel closes — not stuck at whatever it was when the
-    // panel opened.
-    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
-    expect(sidebar().className).toContain('w-12');
-
-    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
-    expect(sidebar().className).toContain('w-12');
     fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
-    // Still visually collapsed — the panel's override wins while it's open.
-    expect(sidebar().className).toContain('w-12');
-
-    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} />);
     expect(sidebar().className).toContain('w-64');
     expect(sidebar().className).not.toContain('w-12');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(sidebar().className).toContain('w-12');
+  });
+
+  it('re-collapses to the rail each time a panel opens (forceCollapsed false→true)', () => {
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(sidebar().className).toContain('w-64');
+
+    // Panel closes, then a new one opens.
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} />);
+    expect(sidebar().className).toContain('w-64');
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    expect(sidebar().className).toContain('w-12');
+  });
+
+  it('keeps the member\'s last explicit choice once the panel closes', () => {
+    // Collapsed before any panel, expanded manually while one is open →
+    // stays expanded after it closes.
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} />);
+    expect(sidebar().className).toContain('w-64');
+
+    // Expanded before, left at the auto-rail during the panel → back to
+    // expanded after (the auto-collapse never touched the preference).
+    cleanup();
+    const second = render(<SidebarV2 stories={[]} writingPrompts={[]} />);
+    second.rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    expect(sidebar().className).toContain('w-12');
+    second.rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} />);
+    expect(sidebar().className).toContain('w-64');
+  });
+
+  it('reports its rendered state through onRenderedExpandedChange', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} onRenderedExpandedChange={onChange} />);
+    expect(onChange).toHaveBeenLastCalledWith(true);
+
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed onRenderedExpandedChange={onChange} />);
+    expect(onChange).toHaveBeenLastCalledWith(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(onChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('animates width on the drawer\'s own curve so Chat holds steady while both move', () => {
+    render(<SidebarV2 stories={[]} writingPrompts={[]} />);
+    expect(sidebar().className).toContain('duration-500');
+    expect(sidebar().className).toContain('ease-[cubic-bezier(.22,1,.36,1)]');
   });
 });
 

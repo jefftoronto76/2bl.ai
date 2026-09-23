@@ -22,6 +22,7 @@ import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Upload, X } from 'lucide
 import type { CoverBackData } from './CoverBackPanel';
 import { memoryKindOf } from '../memory/memoryKinds';
 import { useModalA11y } from './useModalA11y';
+import { useWorkspaceWidthRequest } from './WorkspaceContext';
 
 export interface PreviewMemory {
   id: string;
@@ -110,6 +111,14 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
   // NOT handled in the page-navigation listener below; the hook already
   // owns it.
   useModalA11y(open, dialogRef, onClose, closeButtonRef);
+
+  // This dialog is `fixed inset-0` inside ChatDrawerV2, whose transform
+  // makes the drawer its containing block — so Preview is exactly
+  // Workspace-sized. Landscape's page is wider than the default Workspace,
+  // so while it's showing, ask the drawer to grow to fit it rather than
+  // squeezing the page (story-deck workspace fixes item 3, 2026-09).
+  // Cleared automatically on Novel, close, or unmount.
+  useWorkspaceWidthRequest('landscapePreview', open && format === 'landscape');
 
   useEffect(() => {
     if (!open) return;

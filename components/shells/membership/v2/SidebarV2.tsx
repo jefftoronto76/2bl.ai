@@ -140,15 +140,21 @@ export interface SidebarV2Props {
   onRenameCommit?: (id: string, newTitle: string) => void;
 
   /**
-   * Forces the collapsed icon rail (w-12) regardless of the user's own
-   * expand/collapse preference — used while the memory panel is open
-   * (memory-panel-layout Stage B), where there isn't room for both the full
-   * sidebar and the panel inside the drawer's capped width. Deliberately
-   * does not touch the internal `expanded` state, so the user's own
-   * preference is exactly what they left it at once the panel closes.
-   * Default false.
+   * Auto-collapses to the icon rail (w-12) while a panel is open
+   * (memory-panel-layout Stage B). Since 2026-09 (story-deck workspace fixes
+   * item 1) this is a DEFAULT, not a lock: expanding the Nav grows the
+   * Workspace itself rather than squeezing the panel, so a manual expand
+   * clicked while this is true takes effect immediately. Each false→true
+   * transition (a panel opening) re-collapses to the rail. Default false.
    */
   forceCollapsed?: boolean;
+
+  /**
+   * Reports whether the Nav is RENDERED expanded (w-64) or as the rail —
+   * after forceCollapsed and any manual override are applied. ChatHero uses
+   * this to grow the Workspace by the Nav's delta and to size panels.
+   */
+  onRenderedExpandedChange?: (isExpanded: boolean) => void;
 
   /**
    * Tailwind width class applied to the <aside> in its EXPANDED state, in
@@ -432,6 +438,7 @@ export function SidebarV2({
   renamingId,
   onRenameCommit,
   forceCollapsed = false,
+  onRenderedExpandedChange,
   activeStoryId,
   expandedWidthClassName = 'w-64',
 }: SidebarV2Props) {
@@ -458,7 +465,31 @@ export function SidebarV2({
   // Stage B: every render decision below reads isExpanded, not expanded
   // directly — forceCollapsed overrides the visible state without touching
   // the user's own stored preference.
-  const isExpanded = forceCollapsed ? false : expanded;
+  //
+  // Manual override (2026-09): a chevron click while forceCollapsed is true
+  // expands the Nav right away — the Workspace grows to fit it, so there's
+  // no longer a room reason to hold it at the rail. forcedOverride is reset
+  // on every false→true edge of forceCollapsed (a panel opening), adjusted
+  // during render rather than in an effect so there's no one-frame flash of
+  // a stale override when a new panel opens.
+  const [forcedOverride, setForcedOverride] = useState(false);
+  const [prevForceCollapsed, setPrevForceCollapsed] = useState(forceCollapsed);
+  if (prevForceCollapsed !== forceCollapsed) {
+    setPrevForceCollapsed(forceCollapsed);
+    if (forceCollapsed) setForcedOverride(false);
+  }
+  const isExpanded = forceCollapsed ? forcedOverride : expanded;
+  // The click also updates the stored preference, so once the panel closes
+  // the Nav stays wherever the member last put it.
+  const toggleExpanded = () => {
+    const next = !isExpanded;
+    if (forceCollapsed) setForcedOverride(next);
+    setExpanded(next);
+  };
+
+  useEffect(() => {
+    onRenderedExpandedChange?.(isExpanded);
+  }, [isExpanded, onRenderedExpandedChange]);
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [storiesOpen, setStoriesOpen] = useState(true);
@@ -629,7 +660,12 @@ export function SidebarV2({
       // z-[94]/z-[96]/z-[98] (see each file) to sit back above z-[93] and
       // restore that invariant — z-[93] here is correct precisely because
       // it's ABOVE panel-replacement overlays and BELOW blocking dialogs.
-      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
+      //
+      // Width transition matches ChatDrawerV2's own (duration-500, same
+      // cubic-bezier) on purpose: when the Nav expands, the drawer grows by
+      // the same 208px at the same rate, so Chat/panels hold their width
+      // through the animation instead of wobbling (2026-09).
+      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-500 ease-[cubic-bezier(.22,1,.36,1)] overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
@@ -639,11 +675,9 @@ export function SidebarV2({
           of forceCollapsed — see the sidenav-toggle fix, 2026-09: the Sept
           2026 handover's own items 9/43 are explicit that "manually
           re-expand" must keep working no matter what panel is open, not
-          just be hidden as a stand-in for "broken". Clicking it here only
-          ever touches `expanded` (below); `isExpanded`'s existing formula
-          already defers the visual effect until forceCollapsed clears, so
-          nothing about that formula needed to change — only removing this
-          gate. Search itself keeps rendering (degraded to its icon-only
+          just be hidden as a stand-in for "broken". Since 2026-09 the
+          click takes effect immediately even while forceCollapsed (see
+          toggleExpanded above) — the Workspace grows to fit the Nav. Search itself keeps rendering (degraded to its icon-only
           form) since forceCollapsed only ever affects width, not whether
           search should exist. */}
       <div
@@ -662,9 +696,9 @@ export function SidebarV2({
           </IconButton>
         ) : (
           <IconButton
-            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-            onClick={() => setExpanded((v) => !v)}
-            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+            label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={toggleExpanded}
+            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${isExpanded ? 'rotate-180' : ''}`}
           >
             <ChevronRight size={16} />
           </IconButton>
