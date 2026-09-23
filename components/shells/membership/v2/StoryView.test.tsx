@@ -894,3 +894,48 @@ describe('StoryView — list view reading width', () => {
     expect(coverLabel.parentElement!.className).toContain('max-w-[780px]');
   });
 });
+
+// Story-deck workspace fixes item 5 (2026-09): every Grid card is the same
+// fixed size regardless of content; overflow scrolls inside the card.
+describe('StoryView — grid cards are one universal size', () => {
+  it('gives memory, cover, and back tiles the same fixed height, with an internally scrolling content area and no line clamp', async () => {
+    const gridStory: Story = { ...story, viewMode: 'grid' };
+    const longBody = 'word '.repeat(400).trim();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', session_id: 'sess-1', title: 'Short one', body: 'Brief.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', session_id: 'sess-1', title: 'Long one', body: longBody, source_kind: 'photo', created_at: '2026-08-02T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+
+    render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('Short one');
+
+    const cards = [
+      screen.getByText('Short one').closest('button')!,
+      screen.getByText('Long one').closest('button')!,
+      screen.getByText('Cover').closest('button')!,
+      screen.getByText('Back page').closest('button')!,
+    ];
+    for (const card of cards) {
+      expect(card.className).toContain('h-72');
+      expect(card.className).toContain('overflow-hidden');
+      expect(card.className).not.toMatch(/aspect-/);
+    }
+
+    const contents = screen.getAllByTestId('grid-card-content');
+    expect(contents).toHaveLength(4);
+    for (const c of contents) {
+      expect(c.className).toContain('overflow-y-auto');
+      expect(c.className).toContain('min-h-0');
+    }
+
+    const longText = screen.getByText(longBody);
+    expect(longText.className).not.toMatch(/line-clamp/);
+  });
+});

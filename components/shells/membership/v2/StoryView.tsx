@@ -252,6 +252,18 @@ function DeckRow({
   );
 }
 
+/** Grid cards are one universal size (2026-09, story-deck workspace fixes
+ *  item 5): every tile — memory, cover, back — is a fixed h-72 (288px)
+ *  regardless of content, with a fixed h-28 media band (not aspect-ratio,
+ *  which would make band height depend on column width). Text that doesn't
+ *  fit scrolls inside the card's own content area; the card never grows.
+ *  Widths already match within a row via the grid's shared 1fr tracks. The
+ *  full text is always reachable by opening the memory. */
+const GRID_CARD_CLASS =
+  'w-full h-72 flex flex-col text-left overflow-hidden transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+const GRID_CARD_BAND_CLASS = 'flex flex-shrink-0 h-28 items-center justify-center';
+const GRID_CARD_CONTENT_CLASS = 'block flex-1 min-h-0 overflow-y-auto p-3';
+
 /** Grid-view counterpart to DeckRow — same drag-and-drop, same thumbnail
  *  rule, no up/down buttons (a tile has no natural place for them the way
  *  a full-width row does; drag plus the row view's buttons already cover
@@ -282,19 +294,19 @@ function DeckGridTile({
       <button
         type="button"
         onClick={onOpen}
-        className={`w-full text-left rounded-xl border overflow-hidden bg-surface hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        className={`${GRID_CARD_CLASS} rounded-xl border bg-surface hover:bg-text-primary/[0.02] ${
           drag.overIndex === drag.index && drag.dragIndex !== null && drag.dragIndex !== drag.index ? 'border-accent' : 'border-border'
         }`}
       >
         {hasThumbnail && (
-          <span className="flex aspect-[16/10] items-center justify-center bg-accent/15 text-accent">
+          <span className={`${GRID_CARD_BAND_CLASS} bg-accent/15 text-accent`}>
             <Icon size={22} aria-hidden />
           </span>
         )}
-        <span className="block p-3">
+        <span data-testid="grid-card-content" className={GRID_CARD_CONTENT_CLASS}>
           <span className="block font-body text-sm font-semibold text-text-primary truncate">{memory.title}</span>
           {memory.body && (
-            <span className={`block font-body text-[12.5px] text-text-muted mt-1 ${hasThumbnail ? 'line-clamp-2' : 'line-clamp-4'}`}>
+            <span className="block font-body text-[12.5px] text-text-muted mt-1">
               {memory.body}
             </span>
           )}
@@ -374,12 +386,12 @@ function DeckEndTile({
       <button
         type="button"
         onClick={onEdit}
-        className="w-full text-left rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 overflow-hidden hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className={`${GRID_CARD_CLASS} rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 hover:bg-text-primary/[0.02]`}
       >
-        <span className="flex aspect-[16/10] items-center justify-center bg-background text-text-muted">
+        <span className={`${GRID_CARD_BAND_CLASS} bg-background text-text-muted`}>
           {kind === 'cover' ? <BookOpen size={22} aria-hidden /> : <Bookmark size={22} aria-hidden />}
         </span>
-        <span className="block p-3">
+        <span data-testid="grid-card-content" className={GRID_CARD_CONTENT_CLASS}>
           <span className="block font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</span>
           <span className="block font-display text-sm font-medium text-text-primary truncate mt-0.5">
             {data ? data.heading || 'Untitled' : 'Not added yet'}
