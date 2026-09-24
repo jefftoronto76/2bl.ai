@@ -122,7 +122,7 @@ describe('Mobile sidebar overlay — drawer width (390px)', () => {
     await openSidebar();
 
     const drawer = screen.getByTestId('mobile-sidebar-drawer');
-    expect(drawer.className).toContain('w-[86%]');
+    expect(drawer.className).toContain('w-[75%]');
     // The regression itself: the overlay must not be sized by the docked
     // sidebar's persistent-column width.
     expect(drawer.className).not.toContain('w-64');
@@ -133,7 +133,7 @@ describe('Mobile sidebar overlay — drawer width (390px)', () => {
     await openSidebar();
 
     // A wider wrapper alone would not help: the <aside> is flex-shrink-0, so at
-    // w-64 it would just leave 86%-minus-256px of empty wrapper behind it.
+    // w-64 it would just leave 75%-minus-256px of empty wrapper behind it.
     const aside = screen.getByRole('complementary');
     expect(aside.className).toContain('w-full');
     expect(aside.className).not.toContain('w-64');

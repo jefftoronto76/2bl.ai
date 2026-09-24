@@ -1007,9 +1007,11 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   See the `ChatHero` row in `System Docs/Public Site.md`.
   **The catcher now depends on the drawer NOT being full-bleed —
   2026-08-16 (`mobile-sidebar-drawer-width`), same day.** That change
-  widened the mobile drawer from `w-64` to `w-[86%]`, so the catcher is
-  `inset-0` but only its uncovered ~14% strip is actually reachable (it
-  sits at `z-20`, under the drawer's `z-30`). The remaining strip is
+  widened the mobile drawer from `w-64` to `w-[86%]` (since narrowed to
+  `w-[75%]`, 2026-09-24, to make the strip a deliberate ~25% peek at the
+  chat), so the catcher is `inset-0` but only its uncovered ~25% strip is
+  actually reachable (it sits at `z-20`, under the drawer's `z-30`). The
+  remaining strip is
   therefore load-bearing, not slack: taking the drawer to 100% would
   leave the catcher fully covered and silently re-open this same
   regression, with no test failing on width alone — which is why

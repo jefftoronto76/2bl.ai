@@ -1087,8 +1087,12 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // width, so it scales with viewport rather than a fixed px): dramatic enough
   // to read clearly as a push, but the sidebar already overlays on top (z-30)
   // regardless of how far content shifts, so the push doesn't need to match
-  // its 86% width to look connected — 30% keeps the message list mostly on
-  // screen and legible instead of shoving it out of view.
+  // its 75% width to look connected. The push is what makes the drawer's ~25%
+  // strip a deliberate peek at the chat: the conversation slides over with
+  // the drawer so a glimpse of it stays visible alongside the nav, rather than
+  // the strip being just a tap-to-close target. It is a peek for context, not
+  // a fully legible reading column — 30% keeps the message list on screen
+  // instead of shoving it out of view.
   //
   // ease-in-out, not the drawer's own exit curve (cubic-bezier(0.64,0,0.78,0)):
   // that curve stays nearly flat then accelerates hard all the way to the
@@ -1267,14 +1271,17 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 mobile drawer. Before this, both shared w-64, so the drawer
                 covered a 256px sliver of a ~390px viewport.
 
-                86% (not a fixed px width) keeps the uncovered strip
-                proportional across phone widths, and the strip is the whole
-                reason it isn't 100%: the invisible tap-catcher above sits at
-                z-20 UNDER this z-30 drawer, so tap-outside-to-close only works
-                if a real strip of it stays reachable. 14% is ≥44px (the
-                minimum touch target) at any viewport ≥315px — 54.6px at
-                390px, 94px at the 672px drawer cap — so the catcher always
-                has room to receive a tap.
+                75% (not a fixed px width) keeps the uncovered strip
+                proportional across phone widths. The strip is a deliberate
+                ~25% peek at the chat: enough of the conversation stays in
+                view that the drawer reads as sitting over it rather than
+                replacing it — but it is a glimpse for context, not a fully
+                legible reading column. It also carries tap-outside-to-close:
+                the invisible tap-catcher above sits at z-20 UNDER this z-30
+                drawer, so it only works while a real strip of it stays
+                reachable. 25% is well over 44px (the minimum touch target)
+                across phone widths — 78.75px at the 315px viewport floor,
+                97.5px at 390px.
 
                 The width is on this wrapper rather than passed straight to the
                 aside because the wrapper is absolutely positioned with `left-0`
@@ -1292,7 +1299,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 isMobileSidebarExiting
                   ? 'hl-animate-sheet-left-out pointer-events-none'
                   : 'hl-animate-sheet-left'
-              } absolute inset-y-0 left-0 z-30 w-[86%]`}
+              } absolute inset-y-0 left-0 z-30 w-[75%]`}
             >
               <SidebarV2
                 expandedWidthClassName="w-full"
