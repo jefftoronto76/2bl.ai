@@ -81,6 +81,16 @@ has real data, jefflougheed.ca has none yet.
   effect implementing it. Needs an actual on-device test to confirm
   either way before treating as done or redoing the fix.
 
+## Nav / workspace
+
+- Nav shouldn't force-collapse when a panel opens (Stories, Media, memory,
+  admin). Currently `isNavForceCollapsed` in ChatHero.tsx includes
+  `storyViewId` alongside `openMemory`, `mediaOpen`, `adminStoryId`, and
+  `sessionMemoriesOpen` -- any of them force the Nav to its rail
+  unconditionally. Wanted instead: everything shifts/compresses left,
+  Nav only collapses as a last resort once the workspace is genuinely
+  out of room. Found 2026-09-24, not fixed.
+
 ## Mobile
 
 - Nav drawer visible-strip width, 86% to 75% — built on
