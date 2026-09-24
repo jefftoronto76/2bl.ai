@@ -15,11 +15,15 @@ import type { AuditAction } from './types'
  *
  * Metadata stays PII-free by construction: callers only ever pass static
  * labels, durations, counts, and an HTTP status — never ids, titles, or
- * request data.
+ * request data. The tenant goes in the event's tenant_id column, like every
+ * other audit row, not in metadata.
  */
 export interface PhaseTimer {
   time<T>(name: string, fn: () => PromiseLike<T>): Promise<T>
-  log(action: AuditAction, base: PhaseTimerLogBase): void
+  /** Returns the insert's promise so a route can hand it to Next's
+   *  `after()` — a bare fire-and-forget can be cut off when a serverless
+   *  function stops after sending its response. logEvent never rejects. */
+  log(action: AuditAction, base: PhaseTimerLogBase): Promise<void>
   /** Snapshot for tests/inspection — not needed by callers. */
   readonly phases: Readonly<Record<string, number>>
   readonly counts: Readonly<Record<string, number>>
@@ -32,6 +36,10 @@ export interface PhaseTimerLogBase {
   status: number
   /** Number of rows returned, when meaningful. A count, not content. */
   rowCount?: number
+  /** Written to the `tenant_id` COLUMN (not metadata), per Audit.md's
+   *  convention that every logEvent call site passes tenant_id — lets
+   *  timing rows be split per tenant. Null/omitted when unresolved. */
+  tenantId?: string | null
 }
 
 export function createPhaseTimer(now: () => number = Date.now): PhaseTimer {
@@ -52,8 +60,9 @@ export function createPhaseTimer(now: () => number = Date.now): PhaseTimer {
       }
     },
     log(action, base) {
-      void logEvent({
+      return logEvent({
         action,
+        tenant_id: base.tenantId ?? null,
         outcome: base.status < 400 ? 'success' : 'failure',
         metadata: {
           path: base.path,

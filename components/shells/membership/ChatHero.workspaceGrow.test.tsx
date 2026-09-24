@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import { ChatProvider } from './chatStore';
 import { ChatHero } from './ChatHero';
 import { ChatDrawerV2 } from './v2/ChatDrawerV2';
@@ -152,5 +152,86 @@ describe('Workspace grows with the docked Nav', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
     expect(drawer().className).toContain('w-screen');
     expect(drawer().className).not.toContain('max-w');
+  });
+});
+
+// Re-clamp on real resize (found in review, PR #494): a panel's width is
+// seeded when it opens, but the Workspace can still be mid-transition then
+// (Nav auto-collapsing 880 → 672px, leaving full screen, a window resize).
+// A ResizeObserver on the row (and the Nav inside it) re-clamps against
+// the MEASURED Nav width. happy-dom has no layout, so widths are stubbed
+// and the observer is driven by hand.
+describe('Open panels re-clamp when the Workspace actually resizes', () => {
+  type ROCallback = () => void;
+  let observers: ROCallback[] = [];
+  class FakeResizeObserver {
+    constructor(private cb: ROCallback) { observers.push(cb); }
+    observe() {}
+    disconnect() { observers = observers.filter((o) => o !== this.cb); }
+  }
+  function fireResize() { observers.forEach((cb) => cb()); }
+
+  function stubWidths(rowPx: number, navPx: number) {
+    const row = screen.getByTestId('memory-panel-row');
+    Object.defineProperty(row, 'clientWidth', { configurable: true, value: rowPx });
+    const nav = Array.from(row.children).find((el) => el.tagName === 'ASIDE') as HTMLElement;
+    Object.defineProperty(nav, 'offsetWidth', { configurable: true, value: navPx });
+  }
+
+  it('shrinks a panel seeded at a wider Workspace once the row settles narrower, keeping Chat above its floor', async () => {
+    observers = [];
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    renderWorkspace();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+
+    // Seeded while the row is still 1400px wide (e.g. just leaving full
+    // screen): 55% of 1400 = 770px.
+    stubWidths(1400, 48);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    await waitFor(() => expect(parseFloat(panel.style.flexBasis)).toBe(770));
+
+    // The drawer finishes its transition at 672px.
+    stubWidths(672, 48);
+    act(() => fireResize());
+    // 672 − 48 rail − 9 divider − 260 chat floor = 355.
+    await waitFor(() => expect(parseFloat(panel.style.flexBasis)).toBe(355));
+  });
+
+  it('does not squeeze the panel when the Nav expands and the Workspace grows with it', async () => {
+    observers = [];
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    renderWorkspace();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+
+    stubWidths(672, 48);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    await waitFor(() => expect(parseFloat(panel.style.flexBasis)).toBe(355));
+
+    // Manual expand: Nav 48 → 256 and the Workspace 672 → 880, together.
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    stubWidths(880, 256);
+    act(() => fireResize());
+    expect(parseFloat(panel.style.flexBasis)).toBe(355);
+  });
+
+  it('ignores a zero-width (not laid out) row instead of collapsing the panel to its floor', async () => {
+    observers = [];
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    renderWorkspace();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /The Lake House/i }).length).toBeGreaterThan(0));
+
+    stubWidths(1400, 48);
+    fireEvent.click(screen.getAllByRole('button', { name: /The Lake House/i })[0]);
+    const divider = await screen.findByRole('separator', { name: 'Resize the memory panel' });
+    const panel = divider.nextElementSibling as HTMLElement;
+    await waitFor(() => expect(parseFloat(panel.style.flexBasis)).toBe(770));
+
+    stubWidths(0, 0);
+    act(() => fireResize());
+    expect(parseFloat(panel.style.flexBasis)).toBe(770);
   });
 });

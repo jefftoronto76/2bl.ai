@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { getTenantFromRequest, getCurrentUserId } from '@/services/auth'
 import { listStories, createStory } from '@/services/crm/stories'
 import { resolveMemberId } from '@/services/crm/feedback'
@@ -23,7 +23,8 @@ const TIMING_PATH = 'app/api/stories/route.ts'
 export async function GET(req: Request) {
   const timer = createPhaseTimer()
   const done = (res: NextResponse, rowCount?: number) => {
-    timer.log(AuditAction.STORY_ROUTE_TIMING, { path: TIMING_PATH, method: 'GET', status: res.status, rowCount })
+    // after(): keep the insert alive past the response on serverless.
+    after(() => timer.log(AuditAction.STORY_ROUTE_TIMING, { path: TIMING_PATH, method: 'GET', status: res.status, rowCount, tenantId }))
     return res
   }
 

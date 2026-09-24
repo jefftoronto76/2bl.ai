@@ -53,13 +53,16 @@ describe('createPhaseTimer', () => {
   it('logs exactly one event with path/method/status/totalMs/phases/queryCounts/rowCount — and nothing else', async () => {
     const timer = createPhaseTimer(fakeClock(0, 1, 4, 100))
     await timer.time('auth', async () => 'user-secret-id')
-    timer.log(AuditAction.STORY_ROUTE_TIMING, { path: 'app/api/x/route.ts', method: 'GET', status: 200, rowCount: 3 })
+    await timer.log(AuditAction.STORY_ROUTE_TIMING, { path: 'app/api/x/route.ts', method: 'GET', status: 200, rowCount: 3, tenantId: 'tenant-1' })
 
     expect(mockLogEvent).toHaveBeenCalledTimes(1)
     const event = mockLogEvent.mock.calls[0][0]
     expect(event.action).toBe('story.route_timing')
     expect(event.outcome).toBe('success')
-    expect(Object.keys(event).sort()).toEqual(['action', 'metadata', 'outcome'])
+    expect(Object.keys(event).sort()).toEqual(['action', 'metadata', 'outcome', 'tenant_id'])
+    // Tenant goes in the column, never in metadata.
+    expect(event.tenant_id).toBe('tenant-1')
+    expect(JSON.stringify(event.metadata)).not.toContain('tenant-1')
     expect(event.metadata).toEqual({
       path: 'app/api/x/route.ts',
       method: 'GET',
@@ -79,7 +82,16 @@ describe('createPhaseTimer', () => {
     const event = mockLogEvent.mock.calls[0][0]
     expect(event.outcome).toBe('failure')
     expect(event.metadata).not.toHaveProperty('rowCount')
+    expect(event.tenant_id).toBeNull()
   })
+})
+
+it('log() returns the insert promise so a route can pass it to after()', async () => {
+  mockLogEvent.mockResolvedValue(undefined)
+  const timer = createPhaseTimer()
+  const result = timer.log(AuditAction.STORY_ROUTE_TIMING, { path: 'p', method: 'GET', status: 200 })
+  expect(result).toBeInstanceOf(Promise)
+  await expect(result).resolves.toBeUndefined()
 })
 
 describe('timePhase', () => {

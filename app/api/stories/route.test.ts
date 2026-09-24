@@ -18,6 +18,11 @@ vi.mock('@/services/crm/stories', () => ({
   createStory: vi.fn(),
 }))
 vi.mock('@/services/crm/feedback', () => ({ resolveMemberId: vi.fn() }))
+const mockAfter = vi.fn((task: () => unknown) => { void task() })
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: (task: () => unknown) => mockAfter(task),
+}))
 vi.mock('@/services/audit/audit', () => ({ logEvent: (...args: unknown[]) => mockLogEvent(...args) }))
 
 import { GET } from './route'
@@ -33,6 +38,7 @@ beforeEach(() => {
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockListStories.mockReset()
   mockLogEvent.mockReset()
+  mockAfter.mockClear()
 })
 
 describe('GET /api/stories — timing instrumentation', () => {
@@ -50,8 +56,10 @@ describe('GET /api/stories — timing instrumentation', () => {
     expect(events).toHaveLength(1)
     expect(events[0].metadata).toMatchObject({ path: 'app/api/stories/route.ts', method: 'GET', status: 200, rowCount: 1 })
     expect(Object.keys(events[0].metadata.phases).sort()).toEqual(['auth', 'tenant'])
-    const serialized = JSON.stringify(events[0])
+    expect(events[0].tenant_id).toBe('tenant-1')
+    const serialized = JSON.stringify(events[0].metadata)
     for (const s of ['tenant-1', 'user-1', 'story-1', 'A Life']) expect(serialized).not.toContain(s)
+    expect(mockAfter).toHaveBeenCalledTimes(1)
   })
 
   it('logs one event for the anonymous empty-list path (status 200, rowCount 0)', async () => {

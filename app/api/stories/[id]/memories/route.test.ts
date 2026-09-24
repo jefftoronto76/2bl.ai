@@ -17,6 +17,11 @@ vi.mock('@/services/auth', () => ({
 }))
 
 const mockLogEvent = vi.fn()
+const mockAfter = vi.fn((task: () => unknown) => { void task() })
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: (task: () => unknown) => mockAfter(task),
+}))
 vi.mock('@/services/audit/audit', () => ({ logEvent: (...args: unknown[]) => mockLogEvent(...args) }))
 
 vi.mock('@/services/crm/story-containments', () => ({
@@ -46,6 +51,7 @@ beforeEach(() => {
   mockGetMemoriesForStory.mockReset()
   mockMoveMemoryInStory.mockReset()
   mockLogEvent.mockReset()
+  mockAfter.mockClear()
 })
 
 describe('GET /api/stories/[id]/memories', () => {
@@ -195,9 +201,12 @@ describe('GET /api/stories/[id]/memories — timing instrumentation', () => {
     })
     expect(Object.keys(events[0].metadata.phases).sort()).toEqual(['auth', 'tenant'])
     expect(typeof events[0].metadata.totalMs).toBe('number')
-    // No ids anywhere in what's logged.
-    const serialized = JSON.stringify(events[0])
+    // Tenant goes in the tenant_id column; no ids anywhere in metadata.
+    expect(events[0].tenant_id).toBe('tenant-1')
+    const serialized = JSON.stringify(events[0].metadata)
     for (const id of ['tenant-1', 'user-1', 'story-1', 'mem-1']) expect(serialized).not.toContain(id)
+    // Handed to next/server's after() so it survives the response.
+    expect(mockAfter).toHaveBeenCalledTimes(1)
   })
 
   it('logs one failure event on 401, with only the phases that actually ran', async () => {
@@ -217,6 +226,7 @@ describe('GET /api/stories/[id]/memories — timing instrumentation', () => {
     await GET(makeRequest(), makeParams('story-1'))
     expect(timingEvents()).toHaveLength(1)
     expect(timingEvents()[0].metadata.status).toBe(400)
+    expect(timingEvents()[0].tenant_id).toBeNull()
 
     mockLogEvent.mockReset()
     mockGetTenantFromRequest.mockResolvedValue('tenant-1')
