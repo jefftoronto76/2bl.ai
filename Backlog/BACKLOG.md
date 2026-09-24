@@ -1,3 +1,44 @@
+
+# Eval loop — orphaned item, found Sept 24 2026
+
+The eval loop was explicitly deferred to August in the July master doc
+("deferred to August, by agreement") and never picked back up — it isn't
+in the punch list, week-plan, or bugs list either. Not lost on purpose,
+just fell out of every tracking document once August passed.
+
+Real correctness safety net for business-critical markers (ACCOUNT_CREATE,
+STORY_SAVED per the marker architecture field guide). Without it, a
+missed marker after a visitor shares something emotionally significant
+means they lose both the story and the account-creation moment
+simultaneously, with nothing catching it.
+
+Priority: real, not urgent — worth scheduling deliberately rather than
+losing again.
+Discovered: September 24, 2026
+
+---
+
+# session_type doesn't reflect member status
+
+chat_sessions.session_type (prospect / composer / client) defaults to
+'prospect' on every new session and nothing ever updates it based on the
+member's actual state. Confirmed live: a Heirloom member's real 31-message
+chat session still shows session_type = 'prospect', which appears to just
+be the unset default rather than a meaningful classification for that
+context.
+
+Fix direction: derive session_type from the member's actual status at
+creation (or on sign-in) instead of leaving the default. Paired fix: the
+Inbound Chats dashboard (services/crm/inbound.ts) currently hard-filters
+to session_type = 'prospect' only — once the values are meaningful, it
+needs to select multiple types, or it will start silently hiding real
+conversations the moment session_type actually varies.
+
+Priority: low-medium — not user-facing, but the dashboard filter becomes
+actively misleading once this is half-fixed and not the other half.
+Discovered: September 24, 2026
+
+
 # Tenant-managed share images, Sept 16 2026
 
 Idea: let a tenant owner set/change their own social share image without a
