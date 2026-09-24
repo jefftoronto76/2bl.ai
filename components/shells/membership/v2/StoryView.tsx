@@ -684,61 +684,67 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash, onViewModeCom
             </p>
           </div>
         </div>
-        <AddMenu hasCover={!!cover} hasBack={!!backPage} onPick={(kind) => setEditingEnd(kind)} />
-        {!isMobile && (
-          <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
-            <button
-              type="button"
-              aria-label="List view"
-              aria-pressed={viewMode === 'list'}
-              disabled={savingViewMode}
-              onClick={() => handleSetViewMode('list')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <List size={14} aria-hidden />
-            </button>
-            <button
-              type="button"
-              aria-label="Grid view"
-              aria-pressed={viewMode === 'grid'}
-              disabled={savingViewMode}
-              onClick={() => handleSetViewMode('grid')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <LayoutGrid size={14} aria-hidden />
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          aria-label="Preview this story"
-          title="Preview this story"
-          onClick={handleOpenPreview}
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Eye size={15} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="Share this story — coming soon"
-          title="Sharing is coming soon"
-          disabled
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted opacity-40 cursor-not-allowed flex-shrink-0"
-        >
-          <Upload size={15} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="Close story"
-          onClick={onClose}
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <X size={15} />
-        </button>
+        {/* Every action in ONE group (2026-09) — justify-between spaces
+            exactly two things, the title and this group, matching
+            ChatDrawerV2's own header. With each button as its own direct
+            child, justify-between spread them across the full row width. */}
+        <div data-testid="story-header-actions" className="flex items-center gap-1 flex-shrink-0">
+          <AddMenu hasCover={!!cover} hasBack={!!backPage} onPick={(kind) => setEditingEnd(kind)} />
+          {!isMobile && (
+            <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
+              <button
+                type="button"
+                aria-label="List view"
+                aria-pressed={viewMode === 'list'}
+                disabled={savingViewMode}
+                onClick={() => handleSetViewMode('list')}
+                className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
+                  viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <List size={14} aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label="Grid view"
+                aria-pressed={viewMode === 'grid'}
+                disabled={savingViewMode}
+                onClick={() => handleSetViewMode('grid')}
+                className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
+                  viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <LayoutGrid size={14} aria-hidden />
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            aria-label="Preview this story"
+            title="Preview this story"
+            onClick={handleOpenPreview}
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Eye size={15} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="Share this story — coming soon"
+            title="Sharing is coming soon"
+            disabled
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted opacity-40 cursor-not-allowed flex-shrink-0"
+          >
+            <Upload size={15} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="Close story"
+            onClick={onClose}
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X size={15} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">

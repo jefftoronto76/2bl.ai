@@ -939,3 +939,30 @@ describe('StoryView — grid cards are one universal size', () => {
     expect(longText.className).not.toMatch(/line-clamp/);
   });
 });
+
+// Deck header grouping (2026-09): justify-between must space exactly TWO
+// children — the title block and one grouped actions container — matching
+// ChatDrawerV2's header. With every button as its own direct child (6 on
+// desktop: title, Add, List/Grid toggle, Preview, Share, Close), the
+// buttons spread across the full row width at any panel size.
+describe('StoryView — header actions are grouped', () => {
+  it('has exactly two direct children under justify-between: the title block and one actions group holding every button', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    const heading = screen.getByRole('heading', { name: 'A Life in Full' });
+    const header = heading.closest('.justify-between') as HTMLElement;
+    expect(header).not.toBeNull();
+    expect(header.children).toHaveLength(2);
+
+    const group = screen.getByTestId('story-header-actions');
+    expect(group.parentElement).toBe(header);
+    expect(group.className).toContain('flex items-center gap-1');
+    for (const name of [/Add/i, 'List view', 'Grid view', 'Preview this story', /Share this story/, 'Close story']) {
+      expect(within(group).getByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(within(group).getByRole('button', { name: /Share this story/ })).toBeDisabled();
+  });
+});
