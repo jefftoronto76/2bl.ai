@@ -31,6 +31,7 @@
 
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
+import { timePhase, type PhaseTimer } from '@/services/audit/phase-timer'
 import { AuditAction } from '@/services/audit/types'
 
 type AdminClient = ReturnType<typeof getAdminClient>
@@ -54,15 +55,19 @@ async function hasStoryAccess(
   tenantId: string,
   userId: string,
   storyId: string,
+  timer?: PhaseTimer,
 ): Promise<StoryContainmentResult<boolean>> {
-  const { data: storyRow, error: storyErr } = await supabase
+  // Each of the (up to three) sequential queries below is timed into the
+  // same 'access' phase; the timer's queryCounts.access records how many
+  // actually ran (1 for an owner, 3 for a subscriber).
+  const { data: storyRow, error: storyErr } = await timePhase(timer, 'access', () => supabase
     .from('artifacts')
     .select('id, user_id')
     .eq('id', storyId)
     .eq('tenant_id', tenantId)
     .eq('type', 'story')
     .is('discarded_at', null)
-    .maybeSingle()
+    .maybeSingle())
 
   if (storyErr) {
     console.error('[story-containments] hasStoryAccess — story lookup failed:', storyErr.message)
@@ -73,13 +78,13 @@ async function hasStoryAccess(
 
   // Not the owner — check for a subscriber grant. artifact_subscribers is
   // keyed by member_id, not user_id (same resolution listStories does).
-  const { data: memberRow, error: memberErr } = await supabase
+  const { data: memberRow, error: memberErr } = await timePhase(timer, 'access', () => supabase
     .from('members')
     .select('id')
     .eq('tenant_id', tenantId)
     .eq('user_id', userId)
     .eq('status', 'active')
-    .maybeSingle()
+    .maybeSingle())
 
   if (memberErr) {
     console.error('[story-containments] hasStoryAccess — member lookup failed:', memberErr.message)
@@ -87,12 +92,12 @@ async function hasStoryAccess(
   }
   if (!memberRow) return { ok: true, data: false }
 
-  const { data: subRow, error: subErr } = await supabase
+  const { data: subRow, error: subErr } = await timePhase(timer, 'access', () => supabase
     .from('artifact_subscribers')
     .select('id')
     .eq('artifact_id', storyId)
     .eq('member_id', (memberRow as { id: string }).id)
-    .maybeSingle()
+    .maybeSingle())
 
   if (subErr) {
     console.error('[story-containments] hasStoryAccess — subscriber lookup failed:', subErr.message)
@@ -369,22 +374,25 @@ export async function getMemoriesForStory(
   tenantId: string,
   userId: string,
   storyId: string,
+  /** Optional per-request phase timer (GET /api/stories/[id]/memories) —
+   *  measurement only; omitting it changes nothing. */
+  timer?: PhaseTimer,
 ): Promise<StoryContainmentResult<StoryMemoryRow[]>> {
   const supabase = getAdminClient()
 
-  const storyAccess = await hasStoryAccess(supabase, tenantId, userId, storyId)
+  const storyAccess = await hasStoryAccess(supabase, tenantId, userId, storyId, timer)
   if (!storyAccess.ok) return storyAccess
   if (!storyAccess.data) {
     return { ok: false, status: 404, error: 'Story not found' }
   }
 
-  const { data: containments, error: containmentErr } = await supabase
+  const { data: containments, error: containmentErr } = await timePhase(timer, 'containments', () => supabase
     .from('artifact_containments')
     .select('child_artifact_id, position, created_at')
     .eq('tenant_id', tenantId)
     .eq('parent_artifact_id', storyId)
     .order('position', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: true }))
 
   if (containmentErr) {
     console.error('[story-containments] getMemoriesForStory — containment lookup failed:', containmentErr.message)
@@ -396,13 +404,13 @@ export async function getMemoriesForStory(
 
   const orderedIds = containments.map(row => row.child_artifact_id as string)
 
-  const { data: memoryRows, error: memoryErr } = await supabase
+  const { data: memoryRows, error: memoryErr } = await timePhase(timer, 'memories', () => supabase
     .from('artifacts')
     .select('id, session_id, title, body, source_kind, created_at')
     .eq('tenant_id', tenantId)
     .eq('type', 'memory')
     .is('discarded_at', null)
-    .in('id', orderedIds)
+    .in('id', orderedIds))
 
   if (memoryErr) {
     console.error('[story-containments] getMemoriesForStory — memory lookup failed:', memoryErr.message)

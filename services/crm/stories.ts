@@ -29,6 +29,7 @@ import { getAdminClient } from '@/services/auth/supabase-admin'
 import { resolveUserIdForMember } from '@/services/crm/memories'
 import { getMemoryCountsForStories } from '@/services/crm/story-containments'
 import { logEvent } from '@/services/audit'
+import { timePhase, type PhaseTimer } from '@/services/audit/phase-timer'
 import { AuditAction } from '@/services/audit/types'
 
 export type StoryResult<T> =
@@ -112,19 +113,22 @@ function toStoryRow(row: Record<string, unknown>): StoryRow {
 export async function listStories(
   tenantId: string,
   userId: string,
+  /** Optional per-request phase timer (GET /api/stories) — measurement
+   *  only; omitting it changes nothing. */
+  timer?: PhaseTimer,
 ): Promise<StoryResult<StoryRow[]>> {
   const supabase = getAdminClient()
 
   // Resolve this user's members.id — artifact_subscribers grants are keyed
   // by member_id, not user_id. No active members row (shouldn't happen for
   // a signed-in caller, but defensive) just means no subscribed stories.
-  const { data: memberRow, error: memberErr } = await supabase
+  const { data: memberRow, error: memberErr } = await timePhase(timer, 'member', () => supabase
     .from('members')
     .select('id')
     .eq('tenant_id', tenantId)
     .eq('user_id', userId)
     .eq('status', 'active')
-    .maybeSingle()
+    .maybeSingle())
 
   if (memberErr) {
     console.error('[stories] list member lookup error:', JSON.stringify(memberErr))
@@ -133,10 +137,10 @@ export async function listStories(
 
   let subscribedStoryIds: string[] = []
   if (memberRow) {
-    const { data: subRows, error: subErr } = await supabase
+    const { data: subRows, error: subErr } = await timePhase(timer, 'subscriptions', () => supabase
       .from('artifact_subscribers')
       .select('artifact_id')
-      .eq('member_id', (memberRow as { id: string }).id)
+      .eq('member_id', (memberRow as { id: string }).id))
 
     if (subErr) {
       console.error('[stories] list subscriber lookup error:', JSON.stringify(subErr))
@@ -149,14 +153,14 @@ export async function listStories(
     ? `user_id.eq.${userId},id.in.(${subscribedStoryIds.join(',')})`
     : `user_id.eq.${userId}`
 
-  const { data, error } = await supabase
+  const { data, error } = await timePhase(timer, 'stories', () => supabase
     .from('artifacts')
     .select(STORY_ROW_COLUMNS)
     .eq('tenant_id', tenantId)
     .eq('type', ARTIFACT_TYPE)
     .is('discarded_at', null)
     .or(orFilter)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false }))
 
   if (error) {
     console.error('[stories] list error:', JSON.stringify(error))
@@ -170,11 +174,13 @@ export async function listStories(
   let idsWithSubscribers = new Set<string>()
   let memoryCounts: Record<string, number> = {}
   if (storyIds.length > 0) {
-    const [linkResult, subscriberResult, memoryCountResult] = await Promise.all([
+    // Timed as one 'enrichment' phase — the three run in parallel, so
+    // their wall-clock cost is the slowest of them, not the sum.
+    const [linkResult, subscriberResult, memoryCountResult] = await timePhase(timer, 'enrichment', () => Promise.all([
       supabase.from('story_invite_links').select('story_id').in('story_id', storyIds).is('revoked_at', null),
       supabase.from('artifact_subscribers').select('artifact_id').in('artifact_id', storyIds),
       getMemoryCountsForStories(tenantId, storyIds),
-    ])
+    ]))
     if (linkResult.error) {
       console.error('[stories] active-link lookup error (non-fatal):', JSON.stringify(linkResult.error))
     }

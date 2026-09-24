@@ -196,6 +196,14 @@ export const AuditAction = {
   // attempted. metadata: { path, durationMs, source: 'clerk_call' } — no
   // PII, no identity fields, no behavior change to the wrapped call.
   AUTH_CURRENT_USER_TIMING: 'auth.current_user_timing',
+  // Story loading — per-request phase timing for GET /api/stories and
+  // GET /api/stories/[id]/memories (September 2026, measurement only — see
+  // services/audit/phase-timer.ts). One row per request, fire-and-forget,
+  // so real latency data accumulates before any fix is attempted.
+  // metadata: { path, method, status, totalMs, phases: {name: ms},
+  // queryCounts: {name: n}, rowCount? } — static labels, durations and
+  // counts only; no ids, titles, or other PII.
+  STORY_ROUTE_TIMING: 'story.route_timing',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]

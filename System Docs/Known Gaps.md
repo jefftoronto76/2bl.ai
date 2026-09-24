@@ -29,6 +29,47 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   reads through a client that respects RLS) is a separate, unscheduled
   architectural project, not a quick fix.
 
+- **Story loading latency — instrumentation only, no fix attempted
+  (2026-09).** `/api/stories*` had no timing visibility; it's the same gap
+  the media-route investigation above found and fixed for auth, never
+  extended to story loading. `GET /api/stories` (sidebar list) and
+  `GET /api/stories/[id]/memories` (opening the Deck) now each log one
+  `AuditAction.STORY_ROUTE_TIMING` (`story.route_timing`) row per request,
+  on every return path (200/400/401/404/500).
+  **Helper:** `services/audit/phase-timer.ts` (`createPhaseTimer`,
+  `timePhase`), the same measurement-only posture as
+  `getCurrentUserTimed`.
+  **Metadata:** `{ path, method, status, totalMs, phases: {name: ms},
+  queryCounts: {name: n}, rowCount? }`. Static labels, durations and
+  counts only; no ids, titles or PII.
+  **Phases, `/memories`:**
+  - `tenant` (`getTenantFromRequest`);
+  - `auth` (`getCurrentUserId`: Clerk `auth()` plus a `users` lookup);
+  - `access` (`hasStoryAccess`, summed across its 1–3 sequential queries,
+    with `queryCounts.access` showing 1 for an owner and 3 for a
+    subscriber);
+  - `containments`;
+  - `memories`.
+
+  **Phases, `/api/stories`:**
+  - `tenant`;
+  - `auth`;
+  - `member`;
+  - `subscriptions` (only when a member row exists);
+  - `stories`;
+  - `enrichment` (invite links, subscribers and memory counts in
+    parallel, so wall-clock is the slowest of the three, not their sum).
+
+  Services take the timer as an optional last argument; without it,
+  behaviour is identical.
+  **Not instrumented:** POST/PATCH/DELETE (writes, not loading).
+  **Observed while reading the code, not yet measured or changed:** opening
+  a non-empty story fetches `/api/stories/[id]/memories` **twice**. The
+  first fetch is `ChatHero.handleSelectStory`'s has-memories probe; the
+  second is `StoryView`'s own load. The timing rows will show whether that
+  matters. Diagnosis and any fix are a separate task, once there's real
+  data.
+
 - **`getCurrentUser()` latency — 10 of ~40 call sites moved to the cheap
   `getSession()` path 2026-09-17; the other ~30 are a separate, unsolved
   problem.** Instrumentation landed 2026-09-15 (`getCurrentUserTimed(path)`,

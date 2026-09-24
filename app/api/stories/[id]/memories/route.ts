@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getTenantFromRequest, getCurrentUserId } from '@/services/auth'
 import { getMemoriesForStory, moveMemoryInStory } from '@/services/crm/story-containments'
+import { createPhaseTimer, AuditAction } from '@/services/audit'
+
+const TIMING_PATH = 'app/api/stories/[id]/memories/route.ts'
 
 /**
  * GET /api/stories/[id]/memories — a story's memories in display order
@@ -10,30 +13,41 @@ import { getMemoriesForStory, moveMemoryInStory } from '@/services/crm/story-con
  * /api/stories/[id] — access is owned-OR-subscribed (getMemoriesForStory's
  * own hasStoryAccess check), not owner-only, since a collaborator invited
  * into a story should be able to view it too.
+ *
+ * Timing instrumentation (2026-09, measurement only): one STORY_ROUTE_TIMING
+ * audit event per request, on every return path, with per-phase durations —
+ * tenant, auth, access (1–3 queries), containments, memories. Nothing about
+ * the handler's behavior changes. See System Docs/Known Gaps.md.
  */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const timer = createPhaseTimer()
+  const done = (res: NextResponse, rowCount?: number) => {
+    timer.log(AuditAction.STORY_ROUTE_TIMING, { path: TIMING_PATH, method: 'GET', status: res.status, rowCount })
+    return res
+  }
+
   const { id } = await params
 
-  const tenantId = await getTenantFromRequest(req)
+  const tenantId = await timer.time('tenant', () => getTenantFromRequest(req))
   if (!tenantId) {
     console.error('[stories/[id]/memories] tenant resolution failed for host:', req.headers.get('host'))
-    return NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 })
+    return done(NextResponse.json({ error: 'Unable to resolve tenant for this domain' }, { status: 400 }))
   }
 
-  const userId = await getCurrentUserId()
+  const userId = await timer.time('auth', () => getCurrentUserId())
   if (!userId) {
-    return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
+    return done(NextResponse.json({ error: 'Not signed in' }, { status: 401 }))
   }
 
-  const result = await getMemoriesForStory(tenantId, userId, id)
+  const result = await getMemoriesForStory(tenantId, userId, id, timer)
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status })
+    return done(NextResponse.json({ error: result.error }, { status: result.status }))
   }
 
-  return NextResponse.json({ memories: result.data })
+  return done(NextResponse.json({ memories: result.data }), result.data.length)
 }
 
 /**
