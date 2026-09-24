@@ -203,3 +203,27 @@ describe('SidebarV2 — the blocking-modal tier stays above the sidebar (z-[93])
     }
   });
 });
+
+// Narrow-desktop guard (found in review, PR #494): below
+// MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL an expanded Nav can't fit beside
+// a panel, so ChatHero passes allowForcedExpand={false} and the Nav keeps
+// the pre-override behavior — the click only sets the stored preference.
+describe('SidebarV2 — allowForcedExpand={false}', () => {
+  it('keeps the rail while forced; the click applies once the panel closes', () => {
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed allowForcedExpand={false} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(sidebar().className).toContain('w-12');
+
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed={false} allowForcedExpand={false} />);
+    expect(sidebar().className).toContain('w-64');
+  });
+
+  it('drops an active override back to the rail if the viewport becomes too narrow', () => {
+    const { rerender } = render(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+    expect(sidebar().className).toContain('w-64');
+
+    rerender(<SidebarV2 stories={[]} writingPrompts={[]} forceCollapsed allowForcedExpand={false} />);
+    expect(sidebar().className).toContain('w-12');
+  });
+});

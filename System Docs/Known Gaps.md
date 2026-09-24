@@ -1840,6 +1840,14 @@ numbered because CLAUDE.md and other docs cross-reference them.
   `ChatHero` re-clamps open panels. This only bites at 100vw (or a
   viewport-capped drawer), where the Workspace can't grow and the panel
   shrinks to keep Chat's 260px floor.
+  **Narrow desktops (found in review, PR #494):** between 769px and 804px
+  wide, an expanded Nav (256) + divider (9) + chat floor (260) + panel
+  floor (280) = 805px can't fit in a 100vw Workspace. Below
+  `MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL`, `ChatHero` therefore passes
+  `allowForcedExpand={false}`: the Nav stays on its rail while a panel is
+  open, and a click only updates the stored preference, which takes effect
+  when the panel closes (the pre-override behaviour). An active override
+  also drops back to the rail if the window is resized below 805px.
   **Trade-off:** the Workspace now opens at 880px (Nav expanded) rather
   than 672px, since 672px is defined as the rail state. Opening a panel
   collapses the Nav and, with it, shrinks the Workspace back to 672px.

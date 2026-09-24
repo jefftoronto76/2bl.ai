@@ -27,7 +27,7 @@ import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import { StoryView, DeckRail } from './v2/StoryView';
 import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
-import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH, NAV_EXPANDED_WIDTH, RAIL_WIDTH } from './memoryPanelWidth';
+import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH, NAV_EXPANDED_WIDTH, RAIL_WIDTH, MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL } from './memoryPanelWidth';
 import { useWorkspaceWidthRequest } from './v2/WorkspaceContext';
 import { useAnimatedPresence } from './useAnimatedPresence';
 
@@ -429,7 +429,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // it — which is why this dispatches only on the branch that actually opens
   // StoryView, not unconditionally for every story tap. On desktop this
   // dispatch is inert: nothing here reads state.isSidebarExpanded.
+  // Latest-click-wins guard (found in review, PR #494): handleSelectStory
+  // awaits a network check before opening the Deck or starting a story
+  // chat. A session/New Chat click (handleSessionNavigate, below) or a
+  // newer story click bumps this, so a slow, stale check can't resolve
+  // afterward and override the member's more recent navigation.
+  const storySelectSeqRef = useRef(0);
+
   const handleSelectStory = useCallback(async (storyId: string) => {
+    const seq = ++storySelectSeqRef.current;
     let hasMemories = true;
     try {
       const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/memories`);
@@ -440,6 +448,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     } catch (err) {
       console.error('[ChatHero] select story — memory check failed, opening story view as a fallback:', err);
     }
+
+    if (seq !== storySelectSeqRef.current) return;
 
     if (hasMemories) {
       dispatch({ type: 'SET_SIDEBAR', payload: false });
@@ -950,6 +960,18 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
+  // Room for an expanded Nav beside an open panel — see
+  // MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL. Defaults true before the
+  // media query resolves, matching SidebarV2's own default.
+  const canExpandNavBesidePanel =
+    useMediaQuery(`(min-width: ${MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL}px)`) ?? true;
+
+  // Session-row / New Chat click: close any open Story and invalidate any
+  // in-flight story selection so it can't reopen the Deck afterward.
+  const handleSessionNavigate = useCallback(() => {
+    storySelectSeqRef.current++;
+    closeStoryPane();
+  }, [closeStoryPane]);
 
   // Grow the Workspace by the docked Nav's rail→expanded delta while it's
   // expanded, so Chat and any open panel keep their exact widths
@@ -1172,12 +1194,13 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             onMedia={handleOpenMediaPage}
             onShareHeirloom={() => setShareHeirloomOpen(true)}
             forceCollapsed={isNavForceCollapsed}
+            allowForcedExpand={canExpandNavBesidePanel}
             onRenderedExpandedChange={setIsNavExpanded}
             // Selecting a session (or New Chat) closes an open Story view,
             // so the chat just navigated to is what's visible — see
             // SidebarV2's onSessionNavigate doc for why this is an event,
             // not an effect on state.sessionId.
-            onSessionNavigate={closeStoryPane}
+            onSessionNavigate={handleSessionNavigate}
             activeStoryId={storyViewId ?? undefined}
           />
         )}
@@ -1262,7 +1285,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
                 onClose={closeMobileSidebar}
-                onSessionNavigate={closeStoryPane}
+                onSessionNavigate={handleSessionNavigate}
                 onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
                 // Closes the drawer on the way, same as onMedia above and as
                 // handleSelectStory's own non-empty-story branch: unlike a

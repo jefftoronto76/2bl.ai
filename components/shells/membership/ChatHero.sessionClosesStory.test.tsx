@@ -112,6 +112,11 @@ const OTHER_SESSION = {
   memory_count: 0,
 };
 
+// When set, the story-full memories check hangs until the test resolves it —
+// simulates a slow has-memories check racing a later session navigation.
+let deferStoryFull: { resolve: () => void } | null = null;
+let holdStoryFull = false;
+
 let capturedSessionsPostBody: string | null | undefined;
 let memoriesRouteShouldFail = false;
 
@@ -130,6 +135,11 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Pr
     return jsonResponse({ memories: [] });
   }
   if (url === '/api/stories/story-full/memories' && method === 'GET') {
+    if (holdStoryFull) {
+      return new Promise<Response>((resolve) => {
+        deferStoryFull = { resolve: () => resolve(jsonResponse({ memories: [FULL_STORY_MEMORY] })) };
+      });
+    }
     return jsonResponse({ memories: [FULL_STORY_MEMORY] });
   }
   if (url === '/api/sage' && method === 'POST') return streamResponse('ok');
@@ -150,6 +160,8 @@ beforeEach(async () => {
   fetchMock.mockClear();
   capturedSessionsPostBody = undefined;
   memoriesRouteShouldFail = false;
+  holdStoryFull = false;
+  deferStoryFull = null;
   __clearSingletonRegistry();
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -214,5 +226,27 @@ describe('Selecting a session closes an open Story view', () => {
 
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument());
     expect(await screen.findByText(/What.s a story worth keeping/)).toBeVisible();
+  });
+});
+
+// Latest click wins (found in review, PR #494): a story click awaits a
+// has-memories check before opening the Deck. A session/New Chat click made
+// while that check is still in flight must not be undone when it resolves.
+describe('A slow story check cannot override a later session navigation', () => {
+  it('New Chat clicked while the story check is pending — the Deck never opens when it resolves', async () => {
+    holdStoryFull = true;
+    await renderReady();
+
+    fireEvent.click(screen.getByRole('button', { name: STORY_FULL.name }));
+    await waitFor(() => expect(deferStoryFull).not.toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+    await screen.findByText(/What.s a story worth keeping/);
+
+    deferStoryFull!.resolve();
+    // Give the stale check a chance to (wrongly) open the Deck.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('button', { name: 'Close story' })).not.toBeInTheDocument();
+    expect(screen.getByText(/What.s a story worth keeping/)).toBeInTheDocument();
   });
 });

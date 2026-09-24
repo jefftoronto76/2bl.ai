@@ -168,6 +168,15 @@ export interface SidebarV2Props {
   onRenderedExpandedChange?: (isExpanded: boolean) => void;
 
   /**
+   * Whether a manual expand may override forceCollapsed. ChatHero passes
+   * false on desktops too narrow to fit an expanded Nav beside a panel
+   * (MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL) — there the Nav stays on its
+   * rail while a panel is open and a click only updates the stored
+   * preference, taking effect once the panel closes. Default true.
+   */
+  allowForcedExpand?: boolean;
+
+  /**
    * Tailwind width class applied to the <aside> in its EXPANDED state, in
    * place of the default `w-64`. The collapsed icon rail (`w-12`) is never
    * affected — it is a fixed rail by definition.
@@ -450,6 +459,7 @@ export function SidebarV2({
   renamingId,
   onRenameCommit,
   forceCollapsed = false,
+  allowForcedExpand = true,
   onRenderedExpandedChange,
   activeStoryId,
   expandedWidthClassName = 'w-64',
@@ -490,12 +500,12 @@ export function SidebarV2({
     setPrevForceCollapsed(forceCollapsed);
     if (forceCollapsed) setForcedOverride(false);
   }
-  const isExpanded = forceCollapsed ? forcedOverride : expanded;
+  const isExpanded = forceCollapsed ? forcedOverride && allowForcedExpand : expanded;
   // The click also updates the stored preference, so once the panel closes
   // the Nav stays wherever the member last put it.
   const toggleExpanded = () => {
     const next = !isExpanded;
-    if (forceCollapsed) setForcedOverride(next);
+    if (forceCollapsed && allowForcedExpand) setForcedOverride(next);
     setExpanded(next);
   };
 

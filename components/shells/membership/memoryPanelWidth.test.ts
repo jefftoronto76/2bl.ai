@@ -109,3 +109,13 @@ describe('panel math with an expanded Nav', () => {
     expect(seedPanelWidth(900)).toBe(seedPanelWidth(900, RAIL_WIDTH));
   });
 });
+
+describe('MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL', () => {
+  it('is the sum of every floor that must fit beside an expanded Nav (805px)', async () => {
+    const { MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL } = await import('./memoryPanelWidth')
+    expect(MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL).toBe(NAV_EXPANDED_WIDTH + DIVIDER_WIDTH + MIN_CHAT_WIDTH + MIN_PANEL_WIDTH)
+    expect(MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL).toBe(805)
+    // At that width, the panel still gets its floor beside an expanded Nav.
+    expect(maxPanelWidth(805, NAV_EXPANDED_WIDTH)).toBe(MIN_PANEL_WIDTH)
+  })
+})

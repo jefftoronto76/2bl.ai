@@ -63,3 +63,14 @@ export function maxPanelWidth(total: number, navWidth: number = RAIL_WIDTH): num
 export function seedPanelWidth(total: number, navWidth: number = RAIL_WIDTH): number {
   return clampWidth(Math.round((total - navWidth + RAIL_WIDTH) * DEFAULT_PANEL_FRACTION), MIN_PANEL_WIDTH, maxPanelWidth(total, navWidth));
 }
+
+/**
+ * Narrowest viewport at which the Nav may be manually EXPANDED beside an
+ * open panel: expanded Nav + divider + chat floor + panel floor
+ * (256 + 9 + 260 + 280 = 805). Below this the Workspace is already capped
+ * at 100vw, those floors can't all fit, and the row would clip the chat or
+ * the panel's controls (found in review, PR #494) — so the Nav stays on
+ * its rail there, same as before manual override existed.
+ */
+export const MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL =
+  NAV_EXPANDED_WIDTH + DIVIDER_WIDTH + MIN_CHAT_WIDTH + MIN_PANEL_WIDTH;
