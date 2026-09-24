@@ -86,3 +86,33 @@ describe('SidebarV2 — search filters without reordering', () => {
     expect(renderedTitles()).toEqual(['Session B']);
   });
 });
+
+// onSessionNavigate (2026-09): fires on deliberate chat navigation — a
+// session-row click (including the active one) and New Chat — so ChatHero
+// can close an open Story view.
+describe('SidebarV2 — onSessionNavigate', () => {
+  it('fires on a session-row click, including re-clicking the active session', () => {
+    mockSessionId = 'session-a';
+    const onSessionNavigate = vi.fn();
+    render(<SidebarV2 stories={[]} writingPrompts={[]} onSessionNavigate={onSessionNavigate} />);
+
+    fireEvent.click(rowButton('Session B'));
+    expect(onSessionNavigate).toHaveBeenCalledTimes(1);
+    fireEvent.click(rowButton('Session A'));
+    expect(onSessionNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it('fires on New Chat', () => {
+    const onSessionNavigate = vi.fn();
+    render(<SidebarV2 stories={[]} writingPrompts={[]} onSessionNavigate={onSessionNavigate} />);
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+    expect(onSessionNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire on a story-row click', () => {
+    const onSessionNavigate = vi.fn();
+    render(<SidebarV2 stories={[{ id: 's1', name: 'Story One' }]} writingPrompts={[]} onSessionNavigate={onSessionNavigate} />);
+    fireEvent.click(screen.getByText('Story One').closest('button')!);
+    expect(onSessionNavigate).not.toHaveBeenCalled();
+  });
+});

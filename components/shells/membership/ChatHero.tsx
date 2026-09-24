@@ -1173,6 +1173,11 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             onShareHeirloom={() => setShareHeirloomOpen(true)}
             forceCollapsed={isNavForceCollapsed}
             onRenderedExpandedChange={setIsNavExpanded}
+            // Selecting a session (or New Chat) closes an open Story view,
+            // so the chat just navigated to is what's visible — see
+            // SidebarV2's onSessionNavigate doc for why this is an event,
+            // not an effect on state.sessionId.
+            onSessionNavigate={closeStoryPane}
             activeStoryId={storyViewId ?? undefined}
           />
         )}
@@ -1257,6 +1262,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
                 onClose={closeMobileSidebar}
+                onSessionNavigate={closeStoryPane}
                 onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
                 // Closes the drawer on the way, same as onMedia above and as
                 // handleSelectStory's own non-empty-story branch: unlike a

@@ -129,6 +129,17 @@ export interface SidebarV2Props {
   // Per-row kebab menu
   onRowAction?: (target: RowTarget, id: string, action: RowAction) => void;
 
+  /**
+   * Fires on a deliberate chat navigation — a session-row click (including
+   * re-clicking the active one) or New Chat. ChatHero uses it to close an
+   * open Story view so the chat it just navigated to is what's visible
+   * (2026-09). An event, not an effect on state.sessionId: that would miss
+   * a re-click or a New Chat from an already-empty chat, and would fire on
+   * background session changes (mount-time recovery, first server id, the
+   * auto-greet) the member never asked for.
+   */
+  onSessionNavigate?: () => void;
+
   // Mobile overlay close callback — called after New Chat or session selection
   // so the parent can dismiss the overlay. No-op when undefined (desktop).
   onClose?: () => void;
@@ -435,6 +446,7 @@ export function SidebarV2({
   onSelectPrompt,
   onRowAction,
   onClose,
+  onSessionNavigate,
   renamingId,
   onRenameCommit,
   forceCollapsed = false,
@@ -710,7 +722,7 @@ export function SidebarV2({
         <button
           type="button"
           aria-label="New Chat"
-          onClick={() => { newChat(); onClose?.(); }}
+          onClick={() => { newChat(); onSessionNavigate?.(); onClose?.(); }}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={18} className="flex-shrink-0" />
@@ -802,6 +814,7 @@ export function SidebarV2({
                               return;
                             }
                             loadSession(session.id);
+                            onSessionNavigate?.();
                           }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-base truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
