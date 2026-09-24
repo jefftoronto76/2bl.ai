@@ -399,7 +399,7 @@ The panel's width is real, drag-resizable state, not a fixed split: `panelWidth`
 Tapping it opens `MemoryCardView` (own row below) as a full-screen overlay — `absolute inset-0 z-40`, an inner `hl-animate-sheet` wrapper at `h-[100dvh]`, no rounding, no `border-t` — deliberately distinct from the Media pane's partial `85vh` sheet (immediately below) since there's no exposed background around a true `inset-0` overlay to round off.
 
 **No scrim**, also unlike Media's: a scrim earns its keep dimming the visible strip above Media's 85vh sheet and catching a dismiss-tap there, but a fully opaque `inset-0` overlay leaves nothing exposed to dim or tap outside of — dismissal is the panel's own existing close button only, same as desktop.
-Reuses `hl-animate-sheet` at its existing 0.24s duration rather than a slower one-off timing, keeping one motion system app-wide.
+Reuses `hl-animate-sheet` at its shared duration rather than a one-off timing, keeping one motion system app-wide (0.24s when this shipped; slowed to 0.32s for every bottom sheet 2026-09-24, `mobile-drawer-and-timing`, since the full-height slide read as a snap at 0.24s on mobile — the sidebar drawer's `hl-animate-sheet-left`/`-out` stay at 0.24s).
 Uses the same `z-40` tier Media uses (not a new one) since the two panes are mutually exclusive by construction and never need to out-rank each other.
 
 **The mobile `SidebarV2` drawer is a third no-scrim case, as of 2026-08-12** (`sidebar_uploads_scrim_stories_2006` handover) — for a different reason than either: it isn't a modal at all, just a wider panel sitting on top of the chat undimmed — no *dimming* tap-outside catcher, unlike either of those (see the `SidebarV2` row below).

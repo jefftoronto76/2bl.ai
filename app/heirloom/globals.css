@@ -72,7 +72,12 @@
 .hl-animate-modal { animation: hl-modal-in 0.26s cubic-bezier(.22, 1, .36, 1) both; }
 
 @keyframes hl-sheet-up { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
-.hl-animate-sheet { animation: hl-sheet-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* 0.32s, deliberately slower than the 0.24s sidebar/slide timings below: a
+   bottom sheet travels the full viewport height (translateY(100%)), so at
+   0.24s it read as a snap on mobile rather than a sheet rising. Entrance-only
+   — nothing holds an unmount for this duration, so no JS constant to keep in
+   step. */
+.hl-animate-sheet { animation: hl-sheet-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 @keyframes hl-sheet-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 .hl-animate-sheet-left { animation: hl-sheet-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
