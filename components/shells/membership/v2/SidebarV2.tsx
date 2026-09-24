@@ -51,7 +51,7 @@
 // doesn't also fire the row's own tap-to-select (#25a) or get closed by
 // RowMenu's own outside-click listener the instant it opens.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -98,11 +98,11 @@ export interface SidebarV2Props {
    *  header. The section stays visible. Default false. */
   storiesDisabled?: boolean;
   /** The story id whose StoryView pane is currently open (ChatHero's
-   *  `storyViewId`, real-story-view Phase 1a/1b) — moved to the top of the
-   *  Stories list, same spirit as the active session. Unlike `sessionId`
-   *  this isn't chat-store state (a story pane isn't a chat session), so it
-   *  arrives as a prop rather than being read off useChatStore() the way
-   *  orderedSessions reads state.sessionId below. Undefined when no story
+   *  `storyViewId`, real-story-view Phase 1a/1b) — highlighted in place in
+   *  the Stories list (aria-current + bg), same treatment as the active
+   *  session row; never reordered. Unlike `sessionId` this isn't chat-store
+   *  state (a story pane isn't a chat session), so it arrives as a prop
+   *  rather than being read off useChatStore(). Undefined when no story
    *  pane is open. */
   activeStoryId?: string;
 
@@ -129,6 +129,17 @@ export interface SidebarV2Props {
   // Per-row kebab menu
   onRowAction?: (target: RowTarget, id: string, action: RowAction) => void;
 
+  /**
+   * Fires on a deliberate chat navigation — a session-row click (including
+   * re-clicking the active one) or New Chat. ChatHero uses it to close an
+   * open Story view so the chat it just navigated to is what's visible
+   * (2026-09). An event, not an effect on state.sessionId: that would miss
+   * a re-click or a New Chat from an already-empty chat, and would fire on
+   * background session changes (mount-time recovery, first server id, the
+   * auto-greet) the member never asked for.
+   */
+  onSessionNavigate?: () => void;
+
   // Mobile overlay close callback — called after New Chat or session selection
   // so the parent can dismiss the overlay. No-op when undefined (desktop).
   onClose?: () => void;
@@ -140,15 +151,30 @@ export interface SidebarV2Props {
   onRenameCommit?: (id: string, newTitle: string) => void;
 
   /**
-   * Forces the collapsed icon rail (w-12) regardless of the user's own
-   * expand/collapse preference — used while the memory panel is open
-   * (memory-panel-layout Stage B), where there isn't room for both the full
-   * sidebar and the panel inside the drawer's capped width. Deliberately
-   * does not touch the internal `expanded` state, so the user's own
-   * preference is exactly what they left it at once the panel closes.
-   * Default false.
+   * Auto-collapses to the icon rail (w-12) while a panel is open
+   * (memory-panel-layout Stage B). Since 2026-09 (story-deck workspace fixes
+   * item 1) this is a DEFAULT, not a lock: expanding the Nav grows the
+   * Workspace itself rather than squeezing the panel, so a manual expand
+   * clicked while this is true takes effect immediately. Each false→true
+   * transition (a panel opening) re-collapses to the rail. Default false.
    */
   forceCollapsed?: boolean;
+
+  /**
+   * Reports whether the Nav is RENDERED expanded (w-64) or as the rail —
+   * after forceCollapsed and any manual override are applied. ChatHero uses
+   * this to grow the Workspace by the Nav's delta and to size panels.
+   */
+  onRenderedExpandedChange?: (isExpanded: boolean) => void;
+
+  /**
+   * Whether a manual expand may override forceCollapsed. ChatHero passes
+   * false on desktops too narrow to fit an expanded Nav beside a panel
+   * (MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL) — there the Nav stays on its
+   * rail while a panel is open and a click only updates the stored
+   * preference, taking effect once the panel closes. Default true.
+   */
+  allowForcedExpand?: boolean;
 
   /**
    * Tailwind width class applied to the <aside> in its EXPANDED state, in
@@ -429,9 +455,12 @@ export function SidebarV2({
   onSelectPrompt,
   onRowAction,
   onClose,
+  onSessionNavigate,
   renamingId,
   onRenameCommit,
   forceCollapsed = false,
+  allowForcedExpand = true,
+  onRenderedExpandedChange,
   activeStoryId,
   expandedWidthClassName = 'w-64',
 }: SidebarV2Props) {
@@ -442,39 +471,6 @@ export function SidebarV2({
   // branches — long-press only attaches on touch-sized viewports; desktop
   // keeps pure hover.
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
-
-  // Active-session-to-top (2026-08-13) — recentSessions arrives server-sorted
-  // by updated_at DESC (services/crm/sessions.ts) and just switching to an
-  // older session (no new message sent) never touches updated_at, so without
-  // this the active row stays wherever it naturally falls instead of
-  // surfacing at the top. Derived, not mutated in place — recentSessions
-  // itself stays server-order; only totalMemoryCount below reads it directly,
-  // and a sum doesn't care about order. filteredSessions (search+collapse
-  // redesign, merged same day) is derived from orderedSessions, not
-  // recentSessions, specifically so the active row stays first under a live
-  // search too — see that definition below. No match (or already first)
-  // returns the original array as-is, so nothing downstream that relies on
-  // referential stability sees a needless new array.
-  const orderedSessions = useMemo(() => {
-    const activeIndex = recentSessions.findIndex((s) => s.id === state.sessionId);
-    if (activeIndex <= 0) return recentSessions;
-    const active = recentSessions[activeIndex];
-    return [active, ...recentSessions.slice(0, activeIndex), ...recentSessions.slice(activeIndex + 1)];
-  }, [recentSessions, state.sessionId]);
-
-  // Active-story-to-top (2026-08-14, closing the other half of
-  // active_item_to_top) — same pattern as orderedSessions above: derived,
-  // not a mutation of the `stories` prop, stable sort, no-op (same array
-  // reference) when there's no active story or it's already first.
-  // `activeStoryId` is a prop (ChatHero's storyViewId) rather than store
-  // state, since a story pane isn't a chat session the way sessionId is.
-  const orderedStories = useMemo(() => {
-    if (!activeStoryId) return stories;
-    const activeIndex = stories.findIndex((s) => s.id === activeStoryId);
-    if (activeIndex <= 0) return stories;
-    const active = stories[activeIndex];
-    return [active, ...stories.slice(0, activeIndex), ...stories.slice(activeIndex + 1)];
-  }, [stories, activeStoryId]);
 
   // Whether this docked/overlay instance shows full labels + lists
   // (expandedWidthClassName, w-64 by default) or just the icon rail (w-12).
@@ -491,7 +487,31 @@ export function SidebarV2({
   // Stage B: every render decision below reads isExpanded, not expanded
   // directly — forceCollapsed overrides the visible state without touching
   // the user's own stored preference.
-  const isExpanded = forceCollapsed ? false : expanded;
+  //
+  // Manual override (2026-09): a chevron click while forceCollapsed is true
+  // expands the Nav right away — the Workspace grows to fit it, so there's
+  // no longer a room reason to hold it at the rail. forcedOverride is reset
+  // on every false→true edge of forceCollapsed (a panel opening), adjusted
+  // during render rather than in an effect so there's no one-frame flash of
+  // a stale override when a new panel opens.
+  const [forcedOverride, setForcedOverride] = useState(false);
+  const [prevForceCollapsed, setPrevForceCollapsed] = useState(forceCollapsed);
+  if (prevForceCollapsed !== forceCollapsed) {
+    setPrevForceCollapsed(forceCollapsed);
+    if (forceCollapsed) setForcedOverride(false);
+  }
+  const isExpanded = forceCollapsed ? forcedOverride && allowForcedExpand : expanded;
+  // The click also updates the stored preference, so once the panel closes
+  // the Nav stays wherever the member last put it.
+  const toggleExpanded = () => {
+    const next = !isExpanded;
+    if (forceCollapsed && allowForcedExpand) setForcedOverride(next);
+    setExpanded(next);
+  };
+
+  useEffect(() => {
+    onRenderedExpandedChange?.(isExpanded);
+  }, [isExpanded, onRenderedExpandedChange]);
 
   const [convosOpen, setConvosOpen] = useState(conversationsDefaultOpen);
   const [storiesOpen, setStoriesOpen] = useState(true);
@@ -510,20 +530,16 @@ export function SidebarV2({
     onSearch?.(q);
   }, [onSearch]);
   const trimmedQuery = query.trim().toLowerCase();
-  // Filters orderedSessions (active-first), not recentSessions directly —
-  // Array.filter preserves relative order, so the active session (already
-  // moved to front by orderedSessions above) stays at the front of the
-  // filtered results too when it matches the query, instead of the
-  // pre-reorder server order resurfacing under search.
+  // Filters in server/prop order — the active session/story is highlighted
+  // in place (aria-current + bg), never moved (2026-09: the old
+  // active-to-top reorder was dropped as distracting; search covers finding
+  // a specific older row).
   const filteredSessions = trimmedQuery
-    ? orderedSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
-    : orderedSessions;
-  // Filters orderedStories (active-first), not stories directly — same
-  // ordering of operations as filteredSessions above (sort, then filter) so
-  // the active story stays first among search results too.
+    ? recentSessions.filter((s) => s.title.toLowerCase().includes(trimmedQuery))
+    : recentSessions;
   const filteredStories = trimmedQuery
-    ? orderedStories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
-    : orderedStories;
+    ? stories.filter((s) => s.name.toLowerCase().includes(trimmedQuery))
+    : stories;
 
   // Stable reference so RowMenu's [open, onClose] effect doesn't re-register
   // its window listener on every SidebarV2 render.
@@ -666,7 +682,12 @@ export function SidebarV2({
       // z-[94]/z-[96]/z-[98] (see each file) to sit back above z-[93] and
       // restore that invariant — z-[93] here is correct precisely because
       // it's ABOVE panel-replacement overlays and BELOW blocking dialogs.
-      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-300 ease-in-out overflow-x-hidden overflow-y-auto flex-shrink-0 ${
+      //
+      // Width transition matches ChatDrawerV2's own (duration-500, same
+      // cubic-bezier) on purpose: when the Nav expands, the drawer grows by
+      // the same 208px at the same rate, so Chat/panels hold their width
+      // through the animation instead of wobbling (2026-09).
+      className={`relative z-[93] flex flex-col h-full bg-background border-r border-border transition-all duration-500 ease-[cubic-bezier(.22,1,.36,1)] overflow-x-hidden overflow-y-auto flex-shrink-0 ${
         isExpanded ? expandedWidthClassName : 'w-12'
       }`}
     >
@@ -676,11 +697,9 @@ export function SidebarV2({
           of forceCollapsed — see the sidenav-toggle fix, 2026-09: the Sept
           2026 handover's own items 9/43 are explicit that "manually
           re-expand" must keep working no matter what panel is open, not
-          just be hidden as a stand-in for "broken". Clicking it here only
-          ever touches `expanded` (below); `isExpanded`'s existing formula
-          already defers the visual effect until forceCollapsed clears, so
-          nothing about that formula needed to change — only removing this
-          gate. Search itself keeps rendering (degraded to its icon-only
+          just be hidden as a stand-in for "broken". Since 2026-09 the
+          click takes effect immediately even while forceCollapsed (see
+          toggleExpanded above) — the Workspace grows to fit the Nav. Search itself keeps rendering (degraded to its icon-only
           form) since forceCollapsed only ever affects width, not whether
           search should exist. */}
       <div
@@ -699,9 +718,9 @@ export function SidebarV2({
           </IconButton>
         ) : (
           <IconButton
-            label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-            onClick={() => setExpanded((v) => !v)}
-            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${expanded ? 'rotate-180' : ''}`}
+            label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={toggleExpanded}
+            className={`relative flex-shrink-0 transition-transform duration-300 before:absolute before:inset-[-4px] before:content-[''] ${isExpanded ? 'rotate-180' : ''}`}
           >
             <ChevronRight size={16} />
           </IconButton>
@@ -713,7 +732,7 @@ export function SidebarV2({
         <button
           type="button"
           aria-label="New Chat"
-          onClick={() => { newChat(); onClose?.(); }}
+          onClick={() => { newChat(); onSessionNavigate?.(); onClose?.(); }}
           className={`${navBtn} ${isExpanded ? 'w-full px-2 py-2' : 'w-9 h-9 justify-center'}`}
         >
           <SquarePen size={18} className="flex-shrink-0" />
@@ -805,6 +824,7 @@ export function SidebarV2({
                               return;
                             }
                             loadSession(session.id);
+                            onSessionNavigate?.();
                           }}
                           aria-current={state.sessionId === session.id ? 'true' : undefined}
                           className={`flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg font-body text-base truncate transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
@@ -944,7 +964,12 @@ export function SidebarV2({
                           onSelectStory?.(story.id);
                         }}
                         disabled={storiesDisabled}
-                        className="flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary [@media(hover:hover)]:hover:bg-text-primary/[0.05] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent"
+                        aria-current={activeStoryId === story.id ? 'true' : undefined}
+                        className={`flex-1 min-w-0 flex items-center gap-2.5 text-left px-2.5 py-2 rounded-lg text-text-primary transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed [@media(hover:hover)]:disabled:hover:bg-transparent ${
+                          activeStoryId === story.id
+                            ? 'bg-text-primary/10'
+                            : '[@media(hover:hover)]:hover:bg-text-primary/[0.05]'
+                        }`}
                       >
                         <span className="flex-shrink-0 w-[5px] h-[5px] rounded-full bg-accent/60" />
                         <span className="flex-1 min-w-0 font-display text-lg truncate">

@@ -728,3 +728,47 @@ describe('moveMemoryInStory', () => {
     )
   })
 })
+
+// Story-route timing (2026-09, measurement only): an optional PhaseTimer
+// records per-phase durations and query counts without changing results.
+describe('getMemoriesForStory — optional phase timer', () => {
+  it('records access (1 query for an owner), containments, and memories — same result as without a timer', async () => {
+    const { createPhaseTimer } = await vi.importActual<typeof import('@/services/audit/phase-timer')>('@/services/audit/phase-timer')
+    const queues = {
+      artifacts: [
+        OWNED_STORY_ROW,
+        { data: [{ id: 'mem-1', session_id: 's1', title: 'T', body: 'B', source_kind: 'conversation', created_at: '2026-08-01' }], error: null },
+      ],
+      artifact_containments: [{ data: [{ child_artifact_id: 'mem-1', position: 0, created_at: '2026-08-01' }], error: null }],
+    }
+
+    adminHolder.client = makeClient(queues).client
+    const untimed = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1')
+
+    adminHolder.client = makeClient(queues).client
+    const timer = createPhaseTimer()
+    const timed = await getMemoriesForStory('tenant-1', 'user-owner', 'story-1', timer)
+
+    expect(timed).toEqual(untimed)
+    expect(timer.counts).toEqual({ access: 1, containments: 1, memories: 1 })
+    expect(Object.keys(timer.phases).sort()).toEqual(['access', 'containments', 'memories'])
+  })
+
+  it('counts all three access queries for a subscriber (not owner)', async () => {
+    const { createPhaseTimer } = await vi.importActual<typeof import('@/services/audit/phase-timer')>('@/services/audit/phase-timer')
+    adminHolder.client = makeClient({
+      artifacts: [{ data: { id: 'story-1', user_id: 'the-owner' }, error: null }],
+      members: [{ data: { id: 'member-1' }, error: null }],
+      artifact_subscribers: [{ data: { id: 'sub-1' }, error: null }],
+      artifact_containments: [{ data: [], error: null }],
+    }).client
+    const timer = createPhaseTimer()
+
+    const result = await getMemoriesForStory('tenant-1', 'subscriber-user', 'story-1', timer)
+
+    expect(result).toEqual({ ok: true, data: [] })
+    expect(timer.counts.access).toBe(3)
+    expect(timer.counts.containments).toBe(1)
+    expect(timer.counts.memories).toBeUndefined()
+  })
+});

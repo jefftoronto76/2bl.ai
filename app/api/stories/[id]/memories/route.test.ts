@@ -16,6 +16,14 @@ vi.mock('@/services/auth', () => ({
   getCurrentUserId: (...args: unknown[]) => mockGetCurrentUserId(...args),
 }))
 
+const mockLogEvent = vi.fn()
+const mockAfter = vi.fn((task: () => unknown) => { void task() })
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: (task: () => unknown) => mockAfter(task),
+}))
+vi.mock('@/services/audit/audit', () => ({ logEvent: (...args: unknown[]) => mockLogEvent(...args) }))
+
 vi.mock('@/services/crm/story-containments', () => ({
   getMemoriesForStory: (...args: unknown[]) => mockGetMemoriesForStory(...args),
   moveMemoryInStory: (...args: unknown[]) => mockMoveMemoryInStory(...args),
@@ -42,6 +50,8 @@ beforeEach(() => {
   mockGetCurrentUserId.mockReset().mockResolvedValue('user-1')
   mockGetMemoriesForStory.mockReset()
   mockMoveMemoryInStory.mockReset()
+  mockLogEvent.mockReset()
+  mockAfter.mockClear()
 })
 
 describe('GET /api/stories/[id]/memories', () => {
@@ -74,7 +84,7 @@ describe('GET /api/stories/[id]/memories', () => {
 
     expect(res.status).toBe(200)
     expect(body).toEqual({ memories })
-    expect(mockGetMemoriesForStory).toHaveBeenCalledWith('tenant-1', 'user-1', 'story-1')
+    expect(mockGetMemoriesForStory).toHaveBeenCalledWith('tenant-1', 'user-1', 'story-1', expect.objectContaining({ time: expect.any(Function) }))
   })
 
   it('propagates a service-layer 404 (no access, or story does not exist) as-is', async () => {
@@ -166,5 +176,69 @@ describe('PATCH /api/stories/[id]/memories', () => {
     const res = await PATCH(makeRequest({ memoryId: 'mem-1', direction: 'up' }), makeParams('story-1'))
 
     expect(res.status).toBe(404)
+  })
+})
+
+// Story-route timing (2026-09, measurement only): exactly one
+// STORY_ROUTE_TIMING event per GET, on every return path, PII-free.
+describe('GET /api/stories/[id]/memories — timing instrumentation', () => {
+  function timingEvents() {
+    return mockLogEvent.mock.calls.map(c => c[0]).filter(e => e.action === 'story.route_timing')
+  }
+
+  it('logs one event on success with tenant/auth phases, status 200 and the row count', async () => {
+    mockGetMemoriesForStory.mockResolvedValue({ ok: true, data: [{ id: 'mem-1' }, { id: 'mem-2' }] })
+
+    await GET(makeRequest(), makeParams('story-1'))
+
+    const events = timingEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0].metadata).toMatchObject({
+      path: 'app/api/stories/[id]/memories/route.ts',
+      method: 'GET',
+      status: 200,
+      rowCount: 2,
+    })
+    expect(Object.keys(events[0].metadata.phases).sort()).toEqual(['auth', 'tenant'])
+    expect(typeof events[0].metadata.totalMs).toBe('number')
+    // Tenant goes in the tenant_id column; no ids anywhere in metadata.
+    expect(events[0].tenant_id).toBe('tenant-1')
+    const serialized = JSON.stringify(events[0].metadata)
+    for (const id of ['tenant-1', 'user-1', 'story-1', 'mem-1']) expect(serialized).not.toContain(id)
+    // Handed to next/server's after() so it survives the response.
+    expect(mockAfter).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs one failure event on 401, with only the phases that actually ran', async () => {
+    mockGetCurrentUserId.mockResolvedValue(null)
+
+    await GET(makeRequest(), makeParams('story-1'))
+
+    const events = timingEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0].outcome).toBe('failure')
+    expect(events[0].metadata.status).toBe(401)
+    expect(Object.keys(events[0].metadata.phases).sort()).toEqual(['auth', 'tenant'])
+  })
+
+  it('logs one event on 400 (tenant) and on a service 404', async () => {
+    mockGetTenantFromRequest.mockResolvedValue(null)
+    await GET(makeRequest(), makeParams('story-1'))
+    expect(timingEvents()).toHaveLength(1)
+    expect(timingEvents()[0].metadata.status).toBe(400)
+    expect(timingEvents()[0].tenant_id).toBeNull()
+
+    mockLogEvent.mockReset()
+    mockGetTenantFromRequest.mockResolvedValue('tenant-1')
+    mockGetMemoriesForStory.mockResolvedValue({ ok: false, status: 404, error: 'Story not found' })
+    await GET(makeRequest(), makeParams('story-1'))
+    expect(timingEvents()).toHaveLength(1)
+    expect(timingEvents()[0].metadata.status).toBe(404)
+  })
+
+  it('does not instrument PATCH (a write, not loading)', async () => {
+    mockMoveMemoryInStory.mockResolvedValue({ ok: true, data: undefined })
+    await PATCH(makeRequest({ memoryId: 'mem-1', direction: 'down' }), makeParams('story-1'))
+    expect(timingEvents()).toHaveLength(0)
   })
 })

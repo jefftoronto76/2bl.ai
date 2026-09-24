@@ -19,11 +19,24 @@
 // also publishes itself as the overlay host (ChatOverlayProvider) so
 // descendants (e.g. ChatInput's VoiceImmersive portal) can use `absolute
 // inset-0` overlays that are transform-safe and drawer-relative.
+//
+// Workspace sizing (story-deck workspace fixes, 2026-09): the body also
+// provides WorkspaceContext, so descendants can ask the drawer itself to
+// grow instead of squeezing what shares its row:
+//   • 'navExpanded'      → `navExpandedWidthClassName` in place of the
+//                          default width (the docked Nav's rail→expanded
+//                          delta), so Chat/panels keep their exact widths.
+//   • 'landscapePreview' → a min-width wide enough for PreviewModal's
+//                          Landscape page (min-width beats width, so this
+//                          reads as max(current width, landscape width)).
+// Full screen (100vw) ignores both — there's no room left to grow, so the
+// content inside absorbs the difference in that case only.
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import { ChevronDown, Maximize2, Minimize2, X } from 'lucide-react';
 import { IconButton } from '../ui/IconButton';
 import { ChatOverlayProvider } from './ChatOverlayHost';
+import { WorkspaceProvider, type WorkspaceContextValue, type WorkspaceWidthRequest } from './WorkspaceContext';
 
 export interface ChatDrawerV2Props {
   /** Slide the drawer in (true) or off-screen (false). Default true. */
@@ -49,6 +62,13 @@ export interface ChatDrawerV2Props {
    * Default: w-[clamp(680px,50vw,1120px)].
    */
   defaultWidthClassName?: string;
+  /**
+   * Tailwind width class used instead of `defaultWidthClassName` while a
+   * descendant reports the docked Nav as expanded (WorkspaceContext
+   * 'navExpanded'). Should equal the default width plus the Nav's
+   * rail→expanded delta. Omit it and the Nav never grows the drawer.
+   */
+  navExpandedWidthClassName?: string;
   /** Drawer body — typically <Sidebar/> + header content + transcript. */
   children: ReactNode;
 }
@@ -61,18 +81,46 @@ export function ChatDrawerV2({
   title = 'Your Story',
   showHeader = true,
   defaultWidthClassName = 'w-[clamp(680px,50vw,1120px)]',
+  navExpandedWidthClassName,
   children,
 }: ChatDrawerV2Props) {
   // Published to descendants so they can portal overlays into this body.
   const [overlayHost, setOverlayHost] = useState<HTMLDivElement | null>(null);
+
+  const [requests, setRequests] = useState<Record<WorkspaceWidthRequest, boolean>>({
+    navExpanded: false,
+    landscapePreview: false,
+  });
+  const setWidthRequest = useCallback((key: WorkspaceWidthRequest, active: boolean) => {
+    setRequests((prev) => (prev[key] === active ? prev : { ...prev, [key]: active }));
+  }, []);
+  const workspace = useMemo<WorkspaceContextValue>(
+    () => ({ isFullScreen, onToggleFullScreen, setWidthRequest }),
+    [isFullScreen, onToggleFullScreen, setWidthRequest],
+  );
+
+  const widthClassName = isFullScreen
+    ? 'w-screen'
+    : requests.navExpanded && navExpandedWidthClassName
+    ? navExpandedWidthClassName
+    : defaultWidthClassName;
+  // Static arbitrary value so Tailwind can see it. 1.286 and 660px/74vh
+  // are PreviewModal's own Landscape ratio and desktop page-height cap;
+  // +232px = ~136px for its arrows/gaps/padding plus 2×48px so the Nav
+  // rail (z-[93], above Preview) never covers the left arrow.
+  const landscapeClassName =
+    !isFullScreen && requests.landscapePreview
+      ? 'min-w-[min(100vw,calc(min(74vh,660px)*1.286+232px))]'
+      : '';
 
   return (
     <div
       className={[
         'fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-background',
         'shadow-[-30px_0_80px_-30px_rgba(0,0,0,0.7)]',
-        'transition-[transform,width] duration-500 ease-[cubic-bezier(.22,1,.36,1)]',
-        isFullScreen ? 'w-screen' : defaultWidthClassName,
+        'transition-[transform,width,min-width] duration-500 ease-[cubic-bezier(.22,1,.36,1)]',
+        widthClassName,
+        landscapeClassName,
         isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none',
       ].join(' ')}
       role="dialog"
@@ -115,7 +163,9 @@ export function ChatDrawerV2({
 
       {/* Body — `relative`; the V2 modals AND the VoiceImmersive overlay scope here. */}
       <div ref={setOverlayHost} className="relative flex flex-1 min-h-0">
-        <ChatOverlayProvider value={overlayHost}>{children}</ChatOverlayProvider>
+        <ChatOverlayProvider value={overlayHost}>
+          <WorkspaceProvider value={workspace}>{children}</WorkspaceProvider>
+        </ChatOverlayProvider>
       </div>
     </div>
   );

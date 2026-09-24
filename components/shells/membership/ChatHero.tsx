@@ -27,7 +27,8 @@ import { StoryAdminPanel } from './v2/StoryAdminPanel';
 import { StoryView, DeckRail } from './v2/StoryView';
 import { StoryMemoryEditor } from './v2/StoryMemoryEditor';
 import type { SessionImage } from './memory/BlockCanvas';
-import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH } from './memoryPanelWidth';
+import { clampWidth, maxPanelWidth, seedPanelWidth, MIN_PANEL_WIDTH, NAV_EXPANDED_WIDTH, RAIL_WIDTH, MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL } from './memoryPanelWidth';
+import { useWorkspaceWidthRequest } from './v2/WorkspaceContext';
 import { useAnimatedPresence } from './useAnimatedPresence';
 
 // How long the mobile drawer stays mounted after it is closed, so its exit
@@ -79,6 +80,13 @@ export interface ChatHeroProps {
   /** Drawer width state — passed through to ChatHeader's expand toggle. */
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
+}
+
+/** The docked SidebarV2 — the panel row's direct <aside> child (desktop
+ *  only; the mobile overlay sidebar is nested in its own wrapper). */
+function findDockedNav(row: HTMLElement | null): HTMLElement | null {
+  if (!row) return null;
+  return (Array.from(row.children).find((el) => el.tagName === 'ASIDE') as HTMLElement | undefined) ?? null;
 }
 
 export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
@@ -279,6 +287,22 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // 300ms behind it.
   const panelRowRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState(MIN_PANEL_WIDTH);
+
+  // The docked Nav's RENDERED state (SidebarV2's onRenderedExpandedChange,
+  // after forceCollapsed and any manual override). Drives the Workspace's
+  // own width (the 'navExpanded' request, below isMobile) and the panel
+  // clamp math: a panel no longer locks the Nav to its rail (story-deck
+  // workspace fixes item 1, 2026-09), so the math uses the Nav's real width.
+  const [isNavExpanded, setIsNavExpanded] = useState(false);
+  const navWidth = isNavExpanded ? NAV_EXPANDED_WIDTH : RAIL_WIDTH;
+  // The docked Nav's actual rendered width (it's the row's direct <aside>
+  // child), falling back to the state-derived width when it can't be
+  // measured (not laid out, or happy-dom's zero offsetWidth). Measuring
+  // matters mid-transition: the Nav's CSS width lags its state by up to
+  // 500ms, and the row's width lags by the same amount.
+  const measureNavWidth = useCallback(() => {
+    return findDockedNav(panelRowRef.current)?.offsetWidth || navWidth;
+  }, [navWidth]);
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
   const wasMemoryOpenRef = useRef(false);
 
@@ -289,8 +313,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // new size, not whatever it was when the panel first opened.
   const resetPanelWidth = useCallback(() => {
     const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
-    setPanelWidth(seedPanelWidth(total));
-  }, []);
+    setPanelWidth(seedPanelWidth(total, measureNavWidth()));
+  }, [measureNavWidth]);
 
   useEffect(() => {
     const isOpen = !!openMemory;
@@ -357,6 +381,19 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // be opened through this component's own session-scoped `memories` hook.
   const [storyMemory, setStoryMemory] = useState<{ id: string; sessionId: string } | null>(null);
 
+  // Any third pane open → the docked Nav auto-collapses to its rail
+  // (SidebarV2's forceCollapsed). Mirrors SidebarV2's own false→true reset
+  // HERE, during render, so `navWidth` is already the rail's in the same
+  // commit a panel opens — otherwise the panel's open-seed effect would
+  // run against the stale expanded width (SidebarV2's report only lands a
+  // render later) and seed a narrower panel than the rail layout warrants.
+  const isNavForceCollapsed = !!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId;
+  const [prevNavForceCollapsed, setPrevNavForceCollapsed] = useState(isNavForceCollapsed);
+  if (prevNavForceCollapsed !== isNavForceCollapsed) {
+    setPrevNavForceCollapsed(isNavForceCollapsed);
+    if (isNavForceCollapsed) setIsNavExpanded(false);
+  }
+
   const handleOpenStoryMemory = useCallback((memoryId: string, sessionId: string) => {
     setStoryMemory({ id: memoryId, sessionId });
   }, []);
@@ -407,7 +444,15 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
   // it — which is why this dispatches only on the branch that actually opens
   // StoryView, not unconditionally for every story tap. On desktop this
   // dispatch is inert: nothing here reads state.isSidebarExpanded.
+  // Latest-click-wins guard (found in review, PR #494): handleSelectStory
+  // awaits a network check before opening the Deck or starting a story
+  // chat. A session/New Chat click (handleSessionNavigate, below) or a
+  // newer story click bumps this, so a slow, stale check can't resolve
+  // afterward and override the member's more recent navigation.
+  const storySelectSeqRef = useRef(0);
+
   const handleSelectStory = useCallback(async (storyId: string) => {
+    const seq = ++storySelectSeqRef.current;
     let hasMemories = true;
     try {
       const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/memories`);
@@ -418,6 +463,8 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     } catch (err) {
       console.error('[ChatHero] select story — memory check failed, opening story view as a fallback:', err);
     }
+
+    if (seq !== storySelectSeqRef.current) return;
 
     if (hasMemories) {
       dispatch({ type: 'SET_SIDEBAR', payload: false });
@@ -459,10 +506,41 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     const isOpen = mediaOpen || !!adminStory || sessionMemoriesOpen;
     if (isOpen && !wasMediaOpenRef.current) {
       const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
-      setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+      setMediaPanelWidth(clampWidth(MEDIA_PANEL_WIDTH, MIN_PANEL_WIDTH, maxPanelWidth(total, measureNavWidth())));
     }
     wasMediaOpenRef.current = isOpen;
+    // measureNavWidth deliberately omitted: this seeds on the open
+    // transition only; later size changes are the ResizeObserver's job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaOpen, adminStory, sessionMemoriesOpen]);
+
+  // Re-clamp open panels whenever the row (or the Nav inside it) actually
+  // resizes (found in review, PR #494). A panel's width is seeded when it
+  // opens, but the Workspace may still be mid-transition then — e.g. the
+  // Nav auto-collapsing (880 → 672px) as the panel opens, leaving full
+  // screen, or a window resize — and nothing re-checked afterwards, so a
+  // too-wide panel could push Chat below its floor and clip under the
+  // row's overflow-hidden. Measures the Nav's RENDERED width
+  // (measureNavWidth) rather than trusting `navWidth` state: the Nav and
+  // the drawer animate the same delta on the same curve, so row − Nav
+  // stays constant mid-animation and an expanding Nav never squeezes the
+  // panel. Skips a zero-width row (not laid out) so a hidden row can't
+  // collapse the panel to its floor.
+  useEffect(() => {
+    const row = panelRowRef.current;
+    if (!row || typeof ResizeObserver === 'undefined') return;
+    const reclamp = () => {
+      if (row.clientWidth === 0) return;
+      const max = maxPanelWidth(row.clientWidth, measureNavWidth());
+      setPanelWidth((w) => clampWidth(w, MIN_PANEL_WIDTH, max));
+      setMediaPanelWidth((w) => clampWidth(w, MIN_PANEL_WIDTH, max));
+    };
+    const ro = new ResizeObserver(reclamp);
+    ro.observe(row);
+    const nav = findDockedNav(row);
+    if (nav) ro.observe(nav);
+    return () => ro.disconnect();
+  }, [measureNavWidth]);
 
   const [toast, setToast] = useState<{ message: string; key: number } | null>(null);
   const toastKeyRef = useRef(0);
@@ -904,6 +982,24 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
     keyboardOpen && height != null ? { height: `${height}px` } : undefined;
 
   const isMobile = useMediaQuery('(max-width: 768px)') ?? false;
+  // Room for an expanded Nav beside an open panel — see
+  // MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL. Defaults true before the
+  // media query resolves, matching SidebarV2's own default.
+  const canExpandNavBesidePanel =
+    useMediaQuery(`(min-width: ${MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL}px)`) ?? true;
+
+  // Session-row / New Chat click: close any open Story and invalidate any
+  // in-flight story selection so it can't reopen the Deck afterward.
+  const handleSessionNavigate = useCallback(() => {
+    storySelectSeqRef.current++;
+    closeStoryPane();
+  }, [closeStoryPane]);
+
+  // Grow the Workspace by the docked Nav's rail→expanded delta while it's
+  // expanded, so Chat and any open panel keep their exact widths
+  // (ChatDrawerV2's navExpandedWidthClassName). Desktop only — the mobile
+  // overlay sidebar sits ON the chat and never reports its state here.
+  useWorkspaceWidthRequest('navExpanded', !isMobile && isNavExpanded);
 
   // Mobile chat header (2026-08-16 redesign). Desktop is untouched — it keeps
   // Media, Memories, Share and Fullscreen exactly as they were. On mobile the
@@ -1119,7 +1215,14 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             onRenameCommit={handleRenameCommit}
             onMedia={handleOpenMediaPage}
             onShareHeirloom={() => setShareHeirloomOpen(true)}
-            forceCollapsed={!!openMemory || mediaOpen || !!adminStoryId || sessionMemoriesOpen || !!storyViewId}
+            forceCollapsed={isNavForceCollapsed}
+            allowForcedExpand={canExpandNavBesidePanel}
+            onRenderedExpandedChange={setIsNavExpanded}
+            // Selecting a session (or New Chat) closes an open Story view,
+            // so the chat just navigated to is what's visible — see
+            // SidebarV2's onSessionNavigate doc for why this is an event,
+            // not an effect on state.sessionId.
+            onSessionNavigate={handleSessionNavigate}
             activeStoryId={storyViewId ?? undefined}
           />
         )}
@@ -1204,6 +1307,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
                 renamingId={renamingId ?? undefined}
                 onRenameCommit={handleRenameCommit}
                 onClose={closeMobileSidebar}
+                onSessionNavigate={handleSessionNavigate}
                 onMedia={() => { closeMobileSidebar(); handleOpenMediaPage(); }}
                 // Closes the drawer on the way, same as onMedia above and as
                 // handleSelectStory's own non-empty-story branch: unlike a
@@ -1418,7 +1522,7 @@ export function ChatHero({ isFullScreen, onToggleFullScreen }: ChatHeroProps) {
             onStart={() => panelWidth}
             onMove={(base, delta) => {
               const total = panelRowRef.current?.clientWidth ?? window.innerWidth;
-              setPanelWidth(clampWidth(base - delta, MIN_PANEL_WIDTH, maxPanelWidth(total)));
+              setPanelWidth(clampWidth(base - delta, MIN_PANEL_WIDTH, maxPanelWidth(total, measureNavWidth())));
             }}
             onReset={resetPanelWidth}
             onDragStateChange={setIsDraggingPanel}

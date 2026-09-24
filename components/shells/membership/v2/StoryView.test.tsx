@@ -866,3 +866,103 @@ describe('StoryView — mobile Preview gating (Phase 6)', () => {
     expect(onFlash).not.toHaveBeenCalled();
   });
 });
+
+// Story-deck workspace fixes item 6 (2026-09): list rows cap their TEXT
+// column at 780px (the prototype's own content-column width,
+// chat-widget-canvas.jsx maxWidth: 780); the row itself stays full-width.
+describe('StoryView — list view reading width', () => {
+  it('caps the text column of memory rows and cover/back rows at 780px, not the row itself', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [{ id: 'mem-1', title: 'The Lake House', body: 'A quiet summer.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' }],
+        }),
+      ),
+    );
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    const title = await screen.findByText('The Lake House');
+
+    const textColumn = title.parentElement!;
+    expect(textColumn.className).toContain('max-w-[780px]');
+    const rowButton = title.closest('button')!;
+    expect(rowButton.className).not.toContain('max-w-[780px]');
+    expect(rowButton.className).toContain('flex-1');
+
+    const coverLabel = screen.getByText('Cover');
+    expect(coverLabel.parentElement!.className).toContain('max-w-[780px]');
+  });
+});
+
+// Story-deck workspace fixes item 5 (2026-09): every Grid card is the same
+// fixed size regardless of content; overflow scrolls inside the card.
+describe('StoryView — grid cards are one universal size', () => {
+  it('gives memory, cover, and back tiles the same fixed height, with an internally scrolling content area and no line clamp', async () => {
+    const gridStory: Story = { ...story, viewMode: 'grid' };
+    const longBody = 'word '.repeat(400).trim();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          memories: [
+            { id: 'mem-1', session_id: 'sess-1', title: 'Short one', body: 'Brief.', source_kind: 'conversation', created_at: '2026-08-01T00:00:00Z' },
+            { id: 'mem-2', session_id: 'sess-1', title: 'Long one', body: longBody, source_kind: 'photo', created_at: '2026-08-02T00:00:00Z' },
+          ],
+        }),
+      ),
+    );
+
+    render(<StoryView story={gridStory} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText('Short one');
+
+    const cards = [
+      screen.getByText('Short one').closest('button')!,
+      screen.getByText('Long one').closest('button')!,
+      screen.getByText('Cover').closest('button')!,
+      screen.getByText('Back page').closest('button')!,
+    ];
+    for (const card of cards) {
+      expect(card.className).toContain('h-72');
+      expect(card.className).toContain('overflow-hidden');
+      expect(card.className).not.toMatch(/aspect-/);
+    }
+
+    const contents = screen.getAllByTestId('grid-card-content');
+    expect(contents).toHaveLength(4);
+    for (const c of contents) {
+      expect(c.className).toContain('overflow-y-auto');
+      expect(c.className).toContain('min-h-0');
+    }
+
+    const longText = screen.getByText(longBody);
+    expect(longText.className).not.toMatch(/line-clamp/);
+  });
+});
+
+// Deck header grouping (2026-09): justify-between must space exactly TWO
+// children — the title block and one grouped actions container — matching
+// ChatDrawerV2's header. With every button as its own direct child (6 on
+// desktop: title, Add, List/Grid toggle, Preview, Share, Close), the
+// buttons spread across the full row width at any panel size.
+describe('StoryView — header actions are grouped', () => {
+  it('has exactly two direct children under justify-between: the title block and one actions group holding every button', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ memories: [] })));
+
+    render(<StoryView story={story} onClose={vi.fn()} onOpenMemory={vi.fn()} onFlash={vi.fn()} />);
+    await screen.findByText(/0 memories/);
+
+    const heading = screen.getByRole('heading', { name: 'A Life in Full' });
+    const header = heading.closest('.justify-between') as HTMLElement;
+    expect(header).not.toBeNull();
+    expect(header.children).toHaveLength(2);
+
+    const group = screen.getByTestId('story-header-actions');
+    expect(group.parentElement).toBe(header);
+    expect(group.className).toContain('flex items-center gap-1');
+    for (const name of [/Add/i, 'List view', 'Grid view', 'Preview this story', /Share this story/, 'Close story']) {
+      expect(within(group).getByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(within(group).getByRole('button', { name: /Share this story/ })).toBeDisabled();
+  });
+});

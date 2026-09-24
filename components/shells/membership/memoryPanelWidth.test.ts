@@ -10,6 +10,7 @@ import {
   DIVIDER_WIDTH,
   MIN_CHAT_WIDTH,
   MIN_PANEL_WIDTH,
+  NAV_EXPANDED_WIDTH,
 } from './memoryPanelWidth';
 
 describe('clampWidth', () => {
@@ -49,10 +50,10 @@ describe('maxPanelWidth', () => {
     expect(maxPanelWidth(100)).toBe(MIN_PANEL_WIDTH);
   });
 
-  it('holds with real numbers at the drawer\'s own narrowest width (680px, ChatDrawerV2\'s clamp floor)', () => {
-    const max = maxPanelWidth(680);
-    // Verified safe: 83px of slack over the combined floors at this exact width.
-    expect(max).toBe(680 - RAIL_WIDTH - DIVIDER_WIDTH - MIN_CHAT_WIDTH);
+  it('holds with real numbers at the Heirloom Workspace\'s rail width (672px, max-w-2xl)', () => {
+    const max = maxPanelWidth(672);
+    // Verified safe: 75px of slack over the combined floors at this exact width.
+    expect(max).toBe(672 - RAIL_WIDTH - DIVIDER_WIDTH - MIN_CHAT_WIDTH);
     expect(max).toBeGreaterThan(MIN_PANEL_WIDTH);
   });
 });
@@ -77,3 +78,44 @@ describe('seedPanelWidth', () => {
     expect(seedPanelWidth(900)).not.toBe(seedPanelWidth(1400));
   });
 });
+
+// Story-deck workspace fixes item 1 (2026-09): a panel no longer locks the
+// Nav to its rail. An expanded Nav grows the Workspace by its own 208px
+// delta, so the panel math takes the Nav's actual width.
+describe('panel math with an expanded Nav', () => {
+  const DELTA = NAV_EXPANDED_WIDTH - RAIL_WIDTH;
+
+  it('maxPanelWidth subtracts the Nav\'s actual width', () => {
+    expect(maxPanelWidth(1000, NAV_EXPANDED_WIDTH)).toBe(1000 - NAV_EXPANDED_WIDTH - DIVIDER_WIDTH - MIN_CHAT_WIDTH);
+  });
+
+  it('gives the same panel headroom at 880px expanded as at 672px rail — the Workspace grew by exactly the Nav delta', () => {
+    expect(maxPanelWidth(672 + DELTA, NAV_EXPANDED_WIDTH)).toBe(maxPanelWidth(672));
+  });
+
+  it('seeds the same panel width expanded as rail when the Workspace grew by the delta', () => {
+    expect(seedPanelWidth(672 + DELTA, NAV_EXPANDED_WIDTH)).toBe(seedPanelWidth(672));
+    expect(seedPanelWidth(1200 + DELTA, NAV_EXPANDED_WIDTH)).toBe(seedPanelWidth(1200));
+  });
+
+  it('at a fixed total (100vw, no room to grow) an expanded Nav shrinks the headroom by the delta, keeping the chat floor', () => {
+    const total = 1280;
+    expect(maxPanelWidth(total, NAV_EXPANDED_WIDTH)).toBe(maxPanelWidth(total) - DELTA);
+    expect(seedPanelWidth(total, NAV_EXPANDED_WIDTH)).toBeLessThanOrEqual(maxPanelWidth(total, NAV_EXPANDED_WIDTH));
+  });
+
+  it('defaults navWidth to the rail, so existing callers are unchanged', () => {
+    expect(maxPanelWidth(900)).toBe(maxPanelWidth(900, RAIL_WIDTH));
+    expect(seedPanelWidth(900)).toBe(seedPanelWidth(900, RAIL_WIDTH));
+  });
+});
+
+describe('MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL', () => {
+  it('is the sum of every floor that must fit beside an expanded Nav (805px)', async () => {
+    const { MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL } = await import('./memoryPanelWidth')
+    expect(MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL).toBe(NAV_EXPANDED_WIDTH + DIVIDER_WIDTH + MIN_CHAT_WIDTH + MIN_PANEL_WIDTH)
+    expect(MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL).toBe(805)
+    // At that width, the panel still gets its floor beside an expanded Nav.
+    expect(maxPanelWidth(805, NAV_EXPANDED_WIDTH)).toBe(MIN_PANEL_WIDTH)
+  })
+})

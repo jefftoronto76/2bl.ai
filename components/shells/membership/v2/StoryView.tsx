@@ -216,7 +216,11 @@ function DeckRow({
             <Icon size={16} aria-hidden />
           </span>
         )}
-        <div className="min-w-0 flex-1">
+        {/* Reading-width cap (2026-09) — 780px matches the prototype's own
+            content column (chat-widget-canvas.jsx, maxWidth: 780). Only the
+            text is capped; the row's hover background, border, and move
+            buttons still span the full width. */}
+        <div className="min-w-0 flex-1 max-w-[780px]">
           <p className="font-body text-sm font-semibold text-text-primary truncate">{memory.title}</p>
           {memory.body && (
             <p className="font-body text-[13px] text-text-muted line-clamp-2 mt-0.5">{memory.body}</p>
@@ -248,6 +252,18 @@ function DeckRow({
   );
 }
 
+/** Grid cards are one universal size (2026-09, story-deck workspace fixes
+ *  item 5): every tile — memory, cover, back — is a fixed h-72 (288px)
+ *  regardless of content, with a fixed h-28 media band (not aspect-ratio,
+ *  which would make band height depend on column width). Text that doesn't
+ *  fit scrolls inside the card's own content area; the card never grows.
+ *  Widths already match within a row via the grid's shared 1fr tracks. The
+ *  full text is always reachable by opening the memory. */
+const GRID_CARD_CLASS =
+  'w-full h-72 flex flex-col text-left overflow-hidden transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+const GRID_CARD_BAND_CLASS = 'flex flex-shrink-0 h-28 items-center justify-center';
+const GRID_CARD_CONTENT_CLASS = 'block flex-1 min-h-0 overflow-y-auto p-3';
+
 /** Grid-view counterpart to DeckRow — same drag-and-drop, same thumbnail
  *  rule, no up/down buttons (a tile has no natural place for them the way
  *  a full-width row does; drag plus the row view's buttons already cover
@@ -278,19 +294,19 @@ function DeckGridTile({
       <button
         type="button"
         onClick={onOpen}
-        className={`w-full text-left rounded-xl border overflow-hidden bg-surface hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        className={`${GRID_CARD_CLASS} rounded-xl border bg-surface hover:bg-text-primary/[0.02] ${
           drag.overIndex === drag.index && drag.dragIndex !== null && drag.dragIndex !== drag.index ? 'border-accent' : 'border-border'
         }`}
       >
         {hasThumbnail && (
-          <span className="flex aspect-[16/10] items-center justify-center bg-accent/15 text-accent">
+          <span className={`${GRID_CARD_BAND_CLASS} bg-accent/15 text-accent`}>
             <Icon size={22} aria-hidden />
           </span>
         )}
-        <span className="block p-3">
+        <span data-testid="grid-card-content" className={GRID_CARD_CONTENT_CLASS}>
           <span className="block font-body text-sm font-semibold text-text-primary truncate">{memory.title}</span>
           {memory.body && (
-            <span className={`block font-body text-[12.5px] text-text-muted mt-1 ${hasThumbnail ? 'line-clamp-2' : 'line-clamp-4'}`}>
+            <span className="block font-body text-[12.5px] text-text-muted mt-1">
               {memory.body}
             </span>
           )}
@@ -329,7 +345,7 @@ function DeckEndRow({
         <span className="flex-shrink-0 w-10 h-10 rounded-full bg-background border border-border flex items-center justify-center text-text-muted">
           {kind === 'cover' ? <BookOpen size={16} aria-hidden /> : <Bookmark size={16} aria-hidden />}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-w-[780px]">
           <p className="font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</p>
           <p className="font-display text-[15px] font-medium text-text-primary truncate mt-0.5">
             {data ? data.heading || 'Untitled' : 'Not added yet'}
@@ -370,12 +386,12 @@ function DeckEndTile({
       <button
         type="button"
         onClick={onEdit}
-        className="w-full text-left rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 overflow-hidden hover:bg-text-primary/[0.02] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className={`${GRID_CARD_CLASS} rounded-xl border-[1.5px] border-dashed border-border bg-surface-2 hover:bg-text-primary/[0.02]`}
       >
-        <span className="flex aspect-[16/10] items-center justify-center bg-background text-text-muted">
+        <span className={`${GRID_CARD_BAND_CLASS} bg-background text-text-muted`}>
           {kind === 'cover' ? <BookOpen size={22} aria-hidden /> : <Bookmark size={22} aria-hidden />}
         </span>
-        <span className="block p-3">
+        <span data-testid="grid-card-content" className={GRID_CARD_CONTENT_CLASS}>
           <span className="block font-mono text-[10px] tracking-[0.12em] uppercase text-accent">{label}</span>
           <span className="block font-display text-sm font-medium text-text-primary truncate mt-0.5">
             {data ? data.heading || 'Untitled' : 'Not added yet'}
@@ -668,61 +684,67 @@ export function StoryView({ story, onClose, onOpenMemory, onFlash, onViewModeCom
             </p>
           </div>
         </div>
-        <AddMenu hasCover={!!cover} hasBack={!!backPage} onPick={(kind) => setEditingEnd(kind)} />
-        {!isMobile && (
-          <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
-            <button
-              type="button"
-              aria-label="List view"
-              aria-pressed={viewMode === 'list'}
-              disabled={savingViewMode}
-              onClick={() => handleSetViewMode('list')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <List size={14} aria-hidden />
-            </button>
-            <button
-              type="button"
-              aria-label="Grid view"
-              aria-pressed={viewMode === 'grid'}
-              disabled={savingViewMode}
-              onClick={() => handleSetViewMode('grid')}
-              className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
-                viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
-              }`}
-            >
-              <LayoutGrid size={14} aria-hidden />
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          aria-label="Preview this story"
-          title="Preview this story"
-          onClick={handleOpenPreview}
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Eye size={15} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="Share this story — coming soon"
-          title="Sharing is coming soon"
-          disabled
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted opacity-40 cursor-not-allowed flex-shrink-0"
-        >
-          <Upload size={15} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="Close story"
-          onClick={onClose}
-          className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <X size={15} />
-        </button>
+        {/* Every action in ONE group (2026-09) — justify-between spaces
+            exactly two things, the title and this group, matching
+            ChatDrawerV2's own header. With each button as its own direct
+            child, justify-between spread them across the full row width. */}
+        <div data-testid="story-header-actions" className="flex items-center gap-1 flex-shrink-0">
+          <AddMenu hasCover={!!cover} hasBack={!!backPage} onPick={(kind) => setEditingEnd(kind)} />
+          {!isMobile && (
+            <div role="group" aria-label="Deck layout" className="flex items-center gap-0.5 p-0.5 rounded-lg bg-text-primary/5 border border-border flex-shrink-0">
+              <button
+                type="button"
+                aria-label="List view"
+                aria-pressed={viewMode === 'list'}
+                disabled={savingViewMode}
+                onClick={() => handleSetViewMode('list')}
+                className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
+                  viewMode === 'list' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <List size={14} aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label="Grid view"
+                aria-pressed={viewMode === 'grid'}
+                disabled={savingViewMode}
+                onClick={() => handleSetViewMode('grid')}
+                className={`grid place-items-center w-7 h-7 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed ${
+                  viewMode === 'grid' ? 'bg-accent text-background' : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <LayoutGrid size={14} aria-hidden />
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            aria-label="Preview this story"
+            title="Preview this story"
+            onClick={handleOpenPreview}
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Eye size={15} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="Share this story — coming soon"
+            title="Sharing is coming soon"
+            disabled
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted opacity-40 cursor-not-allowed flex-shrink-0"
+          >
+            <Upload size={15} aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label="Close story"
+            onClick={onClose}
+            className="grid place-items-center w-8 h-8 rounded-lg text-text-muted hover:text-text-primary hover:bg-text-primary/10 transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X size={15} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">

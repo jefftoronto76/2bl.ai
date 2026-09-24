@@ -18,10 +18,11 @@
 // staged plan's own phasing.
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Upload, X } from 'lucide-react';
+import { BookOpen, Bookmark, ChevronLeft, ChevronRight, Maximize2, Minimize2, Upload, X } from 'lucide-react';
 import type { CoverBackData } from './CoverBackPanel';
 import { memoryKindOf } from '../memory/memoryKinds';
 import { useModalA11y } from './useModalA11y';
+import { useWorkspace, useWorkspaceWidthRequest } from './WorkspaceContext';
 
 export interface PreviewMemory {
   id: string;
@@ -111,6 +112,49 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
   // owns it.
   useModalA11y(open, dialogRef, onClose, closeButtonRef);
 
+  // This dialog is `fixed inset-0` inside ChatDrawerV2, whose transform
+  // makes the drawer its containing block — so Preview is exactly
+  // Workspace-sized. Landscape's page is wider than the default Workspace,
+  // so while it's showing, ask the drawer to grow to fit it rather than
+  // squeezing the page (story-deck workspace fixes item 3, 2026-09).
+  // Cleared automatically on Novel, close, or unmount.
+  useWorkspaceWidthRequest('landscapePreview', open && format === 'landscape');
+
+  // Expand to 100% (story-deck workspace fixes item 4, 2026-09). Preview
+  // fills the Workspace, so "full-screen Preview" IS "full-screen
+  // Workspace" — this reuses ChatDrawerV2's own isFullScreen toggle
+  // (republished through WorkspaceContext) rather than a second mechanism.
+  // If Preview's own button is what turned full screen on, closing Preview
+  // turns it back off; if the Workspace was already full screen before
+  // Preview opened, it's left alone. Hidden when the mount provides no
+  // toggle (mobile, where Preview is gated off anyway, or outside a drawer).
+  const workspace = useWorkspace();
+  const canToggleFullScreen = !!workspace?.onToggleFullScreen;
+  const isFullScreen = workspace?.isFullScreen ?? false;
+  const enteredFullScreenRef = useRef(false);
+  const workspaceRef = useRef(workspace);
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
+
+  const handleToggleFullScreen = () => {
+    if (!workspace?.onToggleFullScreen) return;
+    enteredFullScreenRef.current = !workspace.isFullScreen;
+    workspace.onToggleFullScreen();
+  };
+
+  // Runs when `open` goes false or the modal unmounts. The ref still holds
+  // the last rendered workspace, whose isFullScreen is current: nothing
+  // else can change it while Preview covers the drawer's own header.
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      const ws = workspaceRef.current;
+      if (enteredFullScreenRef.current && ws?.isFullScreen) ws.onToggleFullScreen?.();
+      enteredFullScreenRef.current = false;
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -161,6 +205,17 @@ export function PreviewModal({ open, storyName, cover, backPage, memories, onClo
               </button>
             ))}
           </div>
+          {canToggleFullScreen && (
+            <button
+              type="button"
+              aria-label={isFullScreen ? 'Exit full screen' : 'Expand to full screen'}
+              title={isFullScreen ? 'Exit full screen' : 'Expand to full screen'}
+              onClick={handleToggleFullScreen}
+              className="grid place-items-center w-9 h-9 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {isFullScreen ? <Minimize2 size={16} aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+            </button>
+          )}
           <button
             type="button"
             aria-label="Share this story — coming soon"

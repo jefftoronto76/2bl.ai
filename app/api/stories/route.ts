@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { getTenantFromRequest, getCurrentUserId } from '@/services/auth'
 import { listStories, createStory } from '@/services/crm/stories'
 import { resolveMemberId } from '@/services/crm/feedback'
+import { createPhaseTimer, AuditAction } from '@/services/audit'
+
+const TIMING_PATH = 'app/api/stories/route.ts'
 
 /**
  * GET /api/stories — the signed-in member's stories for this tenant, newest
@@ -10,20 +13,33 @@ import { resolveMemberId } from '@/services/crm/feedback'
  * rather than an error) — a story belongs to a member's whole account, not
  * to one conversation, so it's scoped the way the session list is, not the
  * way a session's own memories are (session_id scoped).
+ *
+ * Timing instrumentation (2026-09, measurement only): one STORY_ROUTE_TIMING
+ * audit event per request, on every return path, with per-phase durations —
+ * tenant, auth, then listStories' member, subscriptions, stories, and the
+ * parallel enrichment step. Nothing about the handler's behavior changes.
+ * See System Docs/Known Gaps.md.
  */
 export async function GET(req: Request) {
-  const tenantId = await getTenantFromRequest(req)
-  const userId = tenantId ? await getCurrentUserId() : null
+  const timer = createPhaseTimer()
+  const done = (res: NextResponse, rowCount?: number) => {
+    // after(): keep the insert alive past the response on serverless.
+    after(() => timer.log(AuditAction.STORY_ROUTE_TIMING, { path: TIMING_PATH, method: 'GET', status: res.status, rowCount, tenantId }))
+    return res
+  }
+
+  const tenantId = await timer.time('tenant', () => getTenantFromRequest(req))
+  const userId = tenantId ? await timer.time('auth', () => getCurrentUserId()) : null
   if (!tenantId || !userId) {
-    return NextResponse.json({ stories: [] })
+    return done(NextResponse.json({ stories: [] }), 0)
   }
 
-  const result = await listStories(tenantId, userId)
+  const result = await listStories(tenantId, userId, timer)
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status })
+    return done(NextResponse.json({ error: result.error }, { status: result.status }))
   }
 
-  return NextResponse.json({
+  return done(NextResponse.json({
     stories: result.data.map(s => ({
       id: s.id,
       name: s.title,
@@ -33,7 +49,7 @@ export async function GET(req: Request) {
       memoryCount: s.memoryCount,
       viewMode: s.viewMode,
     })),
-  })
+  }), result.data.length)
 }
 
 /**

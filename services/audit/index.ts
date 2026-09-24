@@ -1,3 +1,5 @@
 export { logEvent, logAuthEvent } from './audit'
 export { AuditAction, AuthEventType } from './types'
 export type { AuditEventInput, AuthEventInput } from './types'
+export { createPhaseTimer, timePhase } from './phase-timer'
+export type { PhaseTimer, PhaseTimerLogBase } from './phase-timer'

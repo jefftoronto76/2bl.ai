@@ -29,6 +29,47 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   reads through a client that respects RLS) is a separate, unscheduled
   architectural project, not a quick fix.
 
+- **Story loading latency — instrumentation only, no fix attempted
+  (2026-09).** `/api/stories*` had no timing visibility; it's the same gap
+  the media-route investigation above found and fixed for auth, never
+  extended to story loading. `GET /api/stories` (sidebar list) and
+  `GET /api/stories/[id]/memories` (opening the Deck) now each log one
+  `AuditAction.STORY_ROUTE_TIMING` (`story.route_timing`) row per request,
+  on every return path (200/400/401/404/500).
+  **Helper:** `services/audit/phase-timer.ts` (`createPhaseTimer`,
+  `timePhase`), the same measurement-only posture as
+  `getCurrentUserTimed`.
+  **Metadata:** `{ path, method, status, totalMs, phases: {name: ms},
+  queryCounts: {name: n}, rowCount? }`. Static labels, durations and
+  counts only; no ids, titles or PII.
+  **Phases, `/memories`:**
+  - `tenant` (`getTenantFromRequest`);
+  - `auth` (`getCurrentUserId`: Clerk `auth()` plus a `users` lookup);
+  - `access` (`hasStoryAccess`, summed across its 1–3 sequential queries,
+    with `queryCounts.access` showing 1 for an owner and 3 for a
+    subscriber);
+  - `containments`;
+  - `memories`.
+
+  **Phases, `/api/stories`:**
+  - `tenant`;
+  - `auth`;
+  - `member`;
+  - `subscriptions` (only when a member row exists);
+  - `stories`;
+  - `enrichment` (invite links, subscribers and memory counts in
+    parallel, so wall-clock is the slowest of the three, not their sum).
+
+  Services take the timer as an optional last argument; without it,
+  behaviour is identical.
+  **Not instrumented:** POST/PATCH/DELETE (writes, not loading).
+  **Observed while reading the code, not yet measured or changed:** opening
+  a non-empty story fetches `/api/stories/[id]/memories` **twice**. The
+  first fetch is `ChatHero.handleSelectStory`'s has-memories probe; the
+  second is `StoryView`'s own load. The timing rows will show whether that
+  matters. Diagnosis and any fix are a separate task, once there's real
+  data.
+
 - **`getCurrentUser()` latency — 10 of ~40 call sites moved to the cheap
   `getSession()` path 2026-09-17; the other ~30 are a separate, unsolved
   problem.** Instrumentation landed 2026-09-15 (`getCurrentUserTimed(path)`,
@@ -1430,6 +1471,13 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   is the chat/panel divider only — sidebar resize was explicitly ruled out
   of scope for it, repeatedly, during planning). Would need its own plan,
   likely gated on `isFullScreen` rather than applying everywhere.
+  **Partly resolved 2026-09 (story-deck workspace fixes, item 1):** the Nav
+  can now be manually expanded while a panel is open (a manual expand
+  overrides `forceCollapsed`), and the Workspace grows by the Nav's 208px
+  delta to make room — see the Workspace-sizing entry under Memory Panel &
+  Stories. Opening a panel still auto-collapses the Nav to its rail. There
+  is still no drag-resize of the Nav itself; it is either the rail or
+  `w-64`.
 
 - **Stories "Create" button rendered permanently disabled — fixed 2026-08-10
   (PR #335, branch `2026-08-10-fix-create-story-button-styling`).**
@@ -1755,6 +1803,67 @@ numbered because CLAUDE.md and other docs cross-reference them.
   click. **Lesson:** "the state resolves correctly on the far side" and "the
   control that changes that state is actually available" are two different
   claims — verifying one doesn't verify the other.
+  **Superseded 2026-09 (story-deck workspace fixes, item 1):** a click while
+  `forceCollapsed` now takes effect immediately instead of waiting until the
+  panel closes. See the next entry.
+
+- **Workspace sizing — the Nav and Preview Landscape grow the Workspace
+  instead of squeezing its content (2026-09, story-deck workspace fixes
+  items 1 + 3).** Before this, the Nav, Chat and any panel shared one
+  fixed-width row. `ChatDrawerV2`'s width came only from `HeirloomApp`
+  (672px, or 100vw at full screen), so expanding the Nav (48 → 256px) took
+  208px from Chat. Preview's Landscape page (~849px plus ~136px of arrows
+  and padding) overflowed a 672px Workspace, because `PreviewModal`'s
+  `fixed inset-0` is contained by the drawer (its transform makes it the
+  containing block).
+  **Mechanism:** `v2/WorkspaceContext.tsx` (sibling of
+  `ChatOverlayHost.tsx`) lets a drawer descendant declare a width request
+  via `useWorkspaceWidthRequest(key, active)`. `'navExpanded'` swaps the
+  drawer to `navExpandedWidthClassName` (`w-full max-w-[880px]`, i.e. 672 +
+  208). `'landscapePreview'` adds a
+  `min-w-[min(100vw,calc(min(74vh,660px)*1.286+232px))]` class, so the
+  drawer is at least as wide as the Landscape page, arrows and rail
+  clearance. Full screen ignores both requests; there is no room to grow,
+  so the content absorbs the difference in that case only. `w-full` caps
+  the drawer at the viewport, so on a narrow desktop the content also
+  absorbs any shortfall.
+  **Nav:** `SidebarV2`'s `forceCollapsed` is now a default, not a lock.
+  Each false→true edge (a panel opening) re-collapses to the rail, but a
+  manual expand clicked while a panel is open takes effect immediately.
+  The sidebar reports its rendered state via `onRenderedExpandedChange`.
+  `ChatHero` mirrors the false→true reset during render so its panel math
+  uses the rail width in the same commit a panel opens. The Nav's width
+  transition matches the drawer's (500ms, same cubic-bezier), so Chat and
+  panels hold their width through the animation.
+  **Panel math:** `maxPanelWidth`/`seedPanelWidth` take the Nav's actual
+  width (`NAV_EXPANDED_WIDTH` or `RAIL_WIDTH`). When the Nav expands,
+  `ChatHero` re-clamps open panels. This only bites at 100vw (or a
+  viewport-capped drawer), where the Workspace can't grow and the panel
+  shrinks to keep Chat's 260px floor.
+  **Narrow desktops (found in review, PR #494):** between 769px and 804px
+  wide, an expanded Nav (256) + divider (9) + chat floor (260) + panel
+  floor (280) = 805px can't fit in a 100vw Workspace. Below
+  `MIN_VIEWPORT_FOR_EXPANDED_NAV_WITH_PANEL`, `ChatHero` therefore passes
+  `allowForcedExpand={false}`: the Nav stays on its rail while a panel is
+  open, and a click only updates the stored preference, which takes effect
+  when the panel closes (the pre-override behaviour). An active override
+  also drops back to the rail if the window is resized below 805px.
+  **Trade-off:** the Workspace now opens at 880px (Nav expanded) rather
+  than 672px, since 672px is defined as the rail state. Opening a panel
+  collapses the Nav and, with it, shrinks the Workspace back to 672px.
+  Chat plus panel keeps exactly the 624px it had before.
+  **Not verifiable in happy-dom:** real pixel widths and whether the
+  animations stay in sync. Check on the Vercel preview.
+  **Preview full screen (item 4, same round):** `PreviewModal`'s header has
+  an Expand/Exit full screen button (`Maximize2`/`Minimize2`, same labels
+  as the drawer's own toggle). It calls the drawer's `onToggleFullScreen`
+  through `useWorkspace()`, because Preview fills the Workspace and so a
+  full-screen Workspace is a full-screen Preview. If Preview's own button
+  turned full screen on, closing Preview (close button, Escape, backdrop
+  click or unmount) toggles it back off. If the Workspace was already full
+  screen when Preview opened, it stays that way. The button is hidden when
+  there is no toggle to reuse (outside a drawer; on mobile Preview is gated
+  off anyway).
 
 - **Memory panel width doesn't reseed if the whole chat drawer closes while
   a memory is still open — found during Stage C live-preview review,

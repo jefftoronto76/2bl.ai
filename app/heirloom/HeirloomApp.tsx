@@ -49,6 +49,13 @@ function HeirloomInner() {
         showHeader={false}
         title="Heirloom chat"
         defaultWidthClassName="w-full max-w-2xl"
+        // 672px (max-w-2xl) is the Workspace with the Nav as its 48px rail;
+        // expanding the Nav to w-64 (256px) adds its 208px delta on top, so
+        // Chat and any open panel keep their exact widths. w-full caps both
+        // at the viewport, so on a narrow desktop the content absorbs the
+        // shortfall. Keep in sync with RAIL_WIDTH/NAV_EXPANDED_WIDTH in
+        // memoryPanelWidth.ts.
+        navExpandedWidthClassName="w-full max-w-[880px]"
       >
         <ChatHero isFullScreen={isFullScreen} onToggleFullScreen={toggleFullScreen} />
       </ChatDrawerV2>
