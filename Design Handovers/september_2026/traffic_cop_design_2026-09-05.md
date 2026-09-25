@@ -856,3 +856,45 @@ still true — no action.
 - Whether `getCompiledComposerSystem`'s missing `status` filter
   (`composer.ts:97-103`) can pick a retired row — depends on the RPC.
 - Vercel geo header availability through this deployment's middleware.
+
+
+## Appendix C — Identity taxonomy and session-context scope (added 2026-09-25)
+
+Session on 2026-09-25 worked through the situational-variables addendum's identity axis (§Identity/state, `traffic-cop-situational-variables.md`) in more depth than that document covers. Findings and decisions below extend the design; nothing here changes §5.4's existing rules or §8's freeze list.
+
+### C.1 Identity is three buckets, not two
+
+§5.4's `member-status` rule (rule 4) currently resolves member-vs-anonymous only. Real buckets, confirmed against `resolveMemberId`/`resolveMember` (`app/api/sage/route.ts`) and the `members.source` column:
+
+- **Existing member** — signed in via Clerk, has an account.
+- **Visitor, unknown** — no invite token, no Clerk session. Fully anonymous.
+- **Visitor, invited** — has a `members` row and a resolvable `memberId` (via invite token) but hasn't signed in/created an account yet. Already resolves as non-null `memberId` today, and already receives MEMBER CONTEXT (including `primer`) via the existing pre-auth fast path in `getMemberContext`.
+
+The "visitor, invited" bucket sub-types by `members.source`:
+- `'invite'` — admin-created, via `createMemberInvite`.
+- `'story_invite'` — created by an existing member's story invite, via `acceptStoryInvite`/`story_invite_links`.
+
+**Data-quality caveat, real and current:** `source` is unreliable for anything created before 2026-09-04 — 34 of 41 live rows were NULL as of a mid-August snapshot (see `Database Schema.md`'s `members.source` row). Any rule that branches on `source` needs a defined fallback for the null case, not an assumption it's always populated.
+
+### C.2 Session resumption is already automatic — no new work needed for this part
+
+Confirmed in `services/chat/ui/v1/core/useChatSession.ts`: mount-time rehydration ("no signed-in/anonymous gate, for either product") pulls the most recent thread from that browser's storage on every load, regardless of identity. A returning visitor — member, invite-holder, or fully anonymous — already resumes their prior session automatically, same session id, full history, with zero traffic-cop involvement. New-vs-resuming is a real decision *fact* worth exposing to a future provider (e.g., for personalizing a first-ever session differently — see situational-variables' "session/visit count"), but "loading the conversation" itself needs no new mechanism.
+
+### C.3 "Insert a message on arrival" is two different mechanisms, one built, one not
+
+- **Admin-invite message** — already built. `members.primer`, set at invite creation, flows through the existing `member-context` provider on every turn (not gated to first/new-session specifically — a real, minor divergence from "arrival message" framing worth knowing, not a defect).
+- **Story-invite message (invited by an existing member, via a story)** — confirmed unbuilt. `acceptStoryInvite` creates the member row, grants access, and copies the story-invite-link's own `primer` — but never calls `attachSessionContext`, the only function that populates `chat_session_context` (what the existing `session-context` provider reads). Confirmed against production data: `chat_session_context` has zero rows, ever, across the whole database. Real access works; automatic story-scoped chat context does not.
+
+### C.4 Build decision: new provider, not a change to the existing one
+
+The existing `session-context` provider is explicitly frozen by §8 ("the story provider wraps `getSessionContext` unchanged") and is also the least-exercised segment in shadow data today (zero real rows). Extending it to also handle story-invite arrival would violate that freeze and stack an unproven change on top of an already-unproven path.
+
+**Decision:** build story-invite-message injection as its own new provider, following §5.9's existing extensibility pattern — new file under `providers/`, one registry line, one colocated test — sitting alongside the existing story provider, not inside it. Precedence between the two (a person invited into a story who then also clicks that story's sidebar entry in the same session) needs a rule before build; not yet decided.
+
+### C.5 Member-context field expansion — scoped
+
+New fields, real work: session count, last visit, last session — all derivable from `chat_sessions` (nothing stored directly on `members`; computed at read time).
+
+Explicitly parked, not building now: story count (no immediate need), NPS (no table exists yet — `message_feedback` is a different, existing mechanism; NPS is unbuilt end-to-end, matches the punch list's Sprint 4).
+
+Open question, not yet decided: whether these live as new fields folded directly into the existing `member-context` provider, or as a separate provider (the doc's own §5.10 already sketches adjacent ideas — "Nth day since joining," "first conversation ever" — under a different, still-unbuilt provider called `notifications`, not member-context).
