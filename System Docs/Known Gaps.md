@@ -70,6 +70,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   matters. Diagnosis and any fix are a separate task, once there's real
   data.
 
+- **Admin page-load latency — instrumentation only, no fix attempted
+  (2026-09).** Heirloom admin loads of 20+ seconds were reported, and
+  nothing timed the full render. `app/admin/layout.tsx` and
+  `app/admin/page.tsx` now each log one `AuditAction.ADMIN_PAGE_LOAD_TIMING`
+  (`admin.page_load_timing`) row per render, telling the two apart by
+  `metadata.path`. They use the same `createPhaseTimer` helper as story
+  loading.
+  **Phases, layout:** `syncUser`, `getCurrentUser`, `tenantName` and
+  `tenantType` run concurrently, then `authContext` and `branding` run in
+  sequence. **Phases, page:** `auth`, then `inboundChats` and `ttftTrend`
+  concurrently. The page's catch still renders, so `status` is always 200;
+  a caught failure shows up as `metadata.errorPhase` (`'auth'` or
+  `'dataFetch'`, null on success).
+
 - **`getCurrentUser()` latency — 10 of ~40 call sites moved to the cheap
   `getSession()` path 2026-09-17; the other ~30 are a separate, unsolved
   problem.** Instrumentation landed 2026-09-15 (`getCurrentUserTimed(path)`,

@@ -11,13 +11,20 @@ import { AdminUserProvider } from '@/services/auth/admin-user-context';
 import { syncUser, getTenantName, getCurrentUserTimed, getTenantType, getAuthContext } from '@/services/auth';
 import { getTenantBranding } from '@/services/branding/get-tenant-branding';
 import { ALL_FONTS, type FontEntry } from '@/services/branding/font-registry';
+import { createPhaseTimer, AuditAction } from '@/services/audit';
+import { after } from 'next/server';
 
+// Timing instrumentation (2026-09, measurement only): one
+// ADMIN_PAGE_LOAD_TIMING audit event per render with per-phase durations.
+// timer.time() is a transparent pass-through — the Promise.all members
+// still run concurrently. Nothing about what's fetched or rendered changes.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const timer = createPhaseTimer();
   const [supabaseUserId, user, tenantName, tenantType] = await Promise.all([
-    syncUser(),
-    getCurrentUserTimed('app/admin/layout.tsx'),
-    getTenantName(),
-    getTenantType(),
+    timer.time('syncUser', () => syncUser()),
+    timer.time('getCurrentUser', () => getCurrentUserTimed('app/admin/layout.tsx')),
+    timer.time('tenantName', () => getTenantName()),
+    timer.time('tenantType', () => getTenantType()),
   ])
 
   // Resolve branding server-side; pass raw values to AdminThemeProvider (client).
@@ -27,9 +34,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   let brandingFontEntries: FontEntry[] = [];
   let faviconBase: string | null = null;
   try {
-    const authCtx = await getAuthContext();
+    const authCtx = await timer.time('authContext', () => getAuthContext());
     resolvedTenantId = authCtx.tenant_id;
-    const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
+    const branding = await timer.time('branding', () => getTenantBranding(authCtx.tenant_id, 'admin'));
     faviconBase = branding?.favicon_base_path ?? null;
     const useDbBranding = branding?.use_db_branding === true;
     console.log('[branding:admin]', JSON.stringify({ branding }));
@@ -55,6 +62,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   } catch (err) {
     console.error('[admin layout] branding fetch failed:', err instanceof Error ? err.message : err);
   }
+  // Registered after the try/catch so it runs on both the branding success
+  // and caught-failure paths. after(): keep the insert alive past the response.
+  after(() => timer.log(AuditAction.ADMIN_PAGE_LOAD_TIMING, { path: 'app/admin/layout.tsx', method: 'GET', status: 200, tenantId: resolvedTenantId }));
   const isPlatformAdmin = user?.isPlatformAdmin === true && tenantType === 'platform'
   console.log('[admin layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 

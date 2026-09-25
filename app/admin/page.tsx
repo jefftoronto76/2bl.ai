@@ -5,6 +5,8 @@ import { Box, Stack, Title } from '@mantine/core'
 import { Text } from '@/components/admin/primitives/Text'
 import { InboundChartsDashboard } from './InboundChartsDashboard'
 import { InboundChatsTable } from './InboundChatsTable'
+import { createPhaseTimer, AuditAction } from '@/services/audit'
+import { after } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,19 +25,36 @@ const SCROLL_AREA_STYLE: CSSProperties = {
   overflow: 'auto',
 }
 
+// Timing instrumentation (2026-09, measurement only): one
+// ADMIN_PAGE_LOAD_TIMING audit event per render with per-phase durations.
+// timer.time() is a transparent pass-through — the Promise.all members still
+// run concurrently. Nothing about what's fetched or rendered changes.
 export default async function AdminPage() {
+  const timer = createPhaseTimer()
   let rows: ChatSession[] = []
   let ttftTrend: TtftTrendPoint[] = []
+  let tenantId: string | null = null
+  // Which phase threw, if any. The catch below swallows the error and still
+  // renders the page, so the response is always a 200 — the failure is
+  // carried here rather than as a fictitious HTTP status.
+  let errorPhase: 'auth' | 'dataFetch' | null = null
 
   try {
-    const { tenant_id } = await getAuthContext()
+    const { tenant_id } = await timer.time('auth', () => getAuthContext())
+    tenantId = tenant_id
     ;[rows, ttftTrend] = await Promise.all([
-      getInboundChats(tenant_id),
-      getTtftTrend(tenant_id),
+      timer.time('inboundChats', () => getInboundChats(tenant_id)),
+      timer.time('ttftTrend', () => getTtftTrend(tenant_id)),
     ])
   } catch (err) {
+    // 'auth' when getAuthContext() itself failed (no tenant resolved),
+    // 'dataFetch' when a data fetch failed after auth succeeded.
+    errorPhase = tenantId === null ? 'auth' : 'dataFetch'
     console.error('[admin/page] auth failed:', err instanceof Error ? err.message : err)
   }
+  // Registered after the try/catch so it runs on both the success and catch
+  // paths. after(): keep the insert alive past the response.
+  after(() => timer.log(AuditAction.ADMIN_PAGE_LOAD_TIMING, { path: 'app/admin/page.tsx', method: 'GET', status: 200, rowCount: rows.length, tenantId, extra: { errorPhase } }))
 
   return (
     <Stack h="100%" gap={0}>
