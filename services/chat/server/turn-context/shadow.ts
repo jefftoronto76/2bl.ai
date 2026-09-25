@@ -31,7 +31,7 @@ import { getSessionContext } from '../session-context'
 import { resolveMediaContext } from '../media-context'
 import { deriveTurnSignals } from './index'
 import { SEGMENT_SEPARATOR, withTimeout } from './runner'
-import { recordTurnContext } from './trace'
+import { buildTurnContextMetadata, recordTurnContext } from './trace'
 import type {
   ComparisonClassification,
   ResolvedTurnPrompt,
@@ -263,6 +263,17 @@ export async function runShadowTurn(params: ShadowTurnParams): Promise<ShadowOut
     const failedStage = err instanceof ShadowStageError ? err.stage : stage
     const error = describe(err)
     console.error('[chat/turn-context] shadow run failed — real turn unaffected', { stage: failedStage, ...error })
+    // Since Phase 3a this row is the only decision record for the live turn,
+    // so it still carries the live selection/injections/budget even though
+    // the comparison could not complete. Built defensively: on a `compare`
+    // failure `resolved` itself may be malformed, and the minimal row below
+    // must still be written.
+    let liveMetadata: Record<string, unknown> = {}
+    try {
+      liveMetadata = buildTurnContextMetadata(resolved, { shadow: true, live: true })
+    } catch {
+      // Keep the minimal failure row.
+    }
     try {
       void logEvent({
         action: AuditAction.CHAT_TURN_CONTEXT_RESOLVED,
@@ -272,7 +283,7 @@ export async function runShadowTurn(params: ShadowTurnParams): Promise<ShadowOut
         target_id: ctx.sessionId,
         correlation_id: ctx.correlationId,
         outcome: 'failure',
-        metadata: { shadow: true, live: true, stage: failedStage, error },
+        metadata: { ...liveMetadata, shadow: true, live: true, stage: failedStage, error },
       })
     } catch {
       // The failure logger failing is the one thing left to swallow.

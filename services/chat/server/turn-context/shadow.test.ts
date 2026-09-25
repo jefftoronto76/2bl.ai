@@ -279,6 +279,12 @@ describe('runShadowTurn', () => {
       action: 'chat.turn_context_resolved', outcome: 'failure', target_id: 'session-1',
       metadata: { shadow: true, live: true, stage: 'resolve', error: { name: 'Error', message: 'supabase exploded' } },
     })
+    // The failure row is still the live turn's decision record.
+    expect(mockLogEvent.mock.calls[0][0].metadata).toMatchObject({
+      selection: { slotKey: 'base', compiledPromptId: 'cp-1' },
+      systemLength: live().system.length,
+    })
+    expect(mockLogEvent.mock.calls[0][0].metadata.injections).toHaveLength(6)
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
   })

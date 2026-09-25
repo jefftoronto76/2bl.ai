@@ -28,8 +28,11 @@ export interface TurnContextTraceContext {
    */
   shadow: boolean
   /**
-   * Phase 3a onward: `resolved.system` is exactly what the model received.
-   * Absent on Phase 2 rows, so the two eras stay distinguishable.
+   * Phase 3a onward: `resolved.system` is exactly the string streamChat
+   * handed to the model call. It does not attest that the call succeeded
+   * (a pre-delivery upstream error or a Stop still yields a row) — turn
+   * outcome lives on chat_sessions. Absent on Phase 2 rows, so the two eras
+   * stay distinguishable.
    */
   live?: boolean
   parity?: boolean

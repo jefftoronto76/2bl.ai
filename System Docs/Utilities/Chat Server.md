@@ -352,7 +352,9 @@ same arguments); `buildLegacySegments`/`joinLegacySegments` — now the only
 copy of the old recipe outside the golden test — rebuild the legacy string,
 and the comparison below runs legacy-vs-live instead of live-vs-shadow. Rows
 keep `shadow: true` (so every query below still works) and gain
-`live: true`, meaning `resolved.system` is what the model received; Phase 2
+`live: true`, meaning `resolved.system` is the string `streamChat` handed to
+the model call (not that the call succeeded — turn outcome lives on
+`chat_sessions`); Phase 2
 rows have no `live` key, so the two eras are distinguishable. After the
 cutover `legacyReconstructionMatch` is true by construction and kept only
 for row-shape stability. Before the cutover, `runShadowTurn(params)`
@@ -377,10 +379,13 @@ string, one verdict per provider id (`match` / `both-absent` /
 presence/length/hash and the shadow's injection status), `diffSegmentIds`,
 and a `classification` (`identical` / `whitespace-only` /
 `segment-presence` / `segment-content` / `ordering` / `unknown`).
-`buildLegacySegments` rebuilds streamChat's six segments with the same
-expressions (deliberately a copy, so the live array stays untouched) and
-`legacyReconstructionMatch` flags any turn where that copy has drifted from
-the string actually sent. Never any prompt text — hashes and lengths only
+`buildLegacySegments` rebuilds the legacy six segments with the same
+expressions. Use `parity` and `comparison` to diagnose drift between the
+reconstructed legacy prompt and the string actually sent;
+`legacyReconstructionMatch` only did that job in Phase 2 and is always true
+after the cutover. A shadow failure row (`outcome = 'failure'`) since Phase 3a
+also carries the live `selection`/`injections`/`budget`, so every live turn
+keeps a decision record even when the comparison could not complete. Never any prompt text — hashes and lengths only
 (`shadow.test.ts` asserts this against PII fixtures). **Cost during the
 window:** the six resolvers run a second time per turn, concurrently with
 streaming; `resolveMediaContext` re-fires its own
