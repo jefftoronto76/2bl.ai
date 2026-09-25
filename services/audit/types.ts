@@ -204,6 +204,14 @@ export const AuditAction = {
   // queryCounts: {name: n}, rowCount? } — static labels, durations and
   // counts only; no ids, titles, or other PII.
   STORY_ROUTE_TIMING: 'story.route_timing',
+  // Admin page load — per-request phase timing for the Heirloom admin
+  // panel's layout and top-level pages (September 2026, measurement only —
+  // see services/audit/phase-timer.ts). One row per request, fire-and-forget
+  // via after(), reused across multiple call sites distinguished by
+  // metadata.path (same pattern as AUTH_CURRENT_USER_TIMING). metadata:
+  // { path, method, status, totalMs, phases: {name: ms}, queryCounts:
+  // {name: n} } — static labels, durations and counts only; no PII.
+  ADMIN_PAGE_LOAD_TIMING: 'admin.page_load_timing',
 } as const
 
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction]
