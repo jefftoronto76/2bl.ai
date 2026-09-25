@@ -16,6 +16,7 @@ import {
 import { notifications } from '@mantine/notifications'
 import { IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import { Text } from '@/components/admin/primitives/Text'
+import { useRefetchOnWindowFocus } from './useRefetchOnWindowFocus'
 
 type OpenAs = 'new_tab' | 'popup'
 
@@ -139,9 +140,13 @@ export function SageParameters() {
     }
   }, [])
 
+  // Also refetches on window focus so a parameter changed elsewhere appears
+  // without a reload; mount and focus share one in-flight guard.
+  const loadParameters = useRefetchOnWindowFocus(fetchParameters)
+
   useEffect(() => {
-    fetchParameters()
-  }, [fetchParameters])
+    loadParameters()
+  }, [loadParameters])
 
   async function patchParameter(payload: PatchPayload): Promise<SageParameter> {
     console.log('[SageParameters] PATCH dispatch:', {
