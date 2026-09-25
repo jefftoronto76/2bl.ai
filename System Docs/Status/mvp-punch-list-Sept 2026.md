@@ -90,6 +90,9 @@ has real data, jefflougheed.ca has none yet.
   unconditionally. Wanted instead: everything shifts/compresses left,
   Nav only collapses as a last resort once the workspace is genuinely
   out of room. Found 2026-09-24, not fixed.
+- Media Page needs to be adjusted to match how the other panels/pages work (the current media page replaces the   workspace header, whereas the other pages (memory, stories, etc.) all have their own dedicated nav/header, isolated from the main workspace header
+- When you click on 'story' in the mobile experience, it should slide and overcome the side menu, a different action from the sessions - this goes for memories also.
+- Update the preview to include the page-turning animation/effects
 
 ## Mobile
 
@@ -99,6 +102,7 @@ has real data, jefflougheed.ca has none yet.
 - Bottom-sheet animation timing, 240ms to 320ms — same branch, same status.
 - Story-to-memory "pop" animation (hl-animate-slide-right) reads as
   abrupt — identified, no fix attempted, explicitly deprioritized for now.
+- Confirm media page is fixed
 
 ---
 
