@@ -32,6 +32,9 @@ vi.mock('@/services/auth/supabase-admin', () => ({
 const mockValidateMemberToken = vi.fn<(...a: unknown[]) => Promise<unknown>>()
 vi.mock('@/services/members', () => ({
   validateMemberToken: (...a: unknown[]) => mockValidateMemberToken(...a),
+  // Read at module load by turn-context/select-prompt.ts (its per-tenant
+  // DEFAULT_SLOT_RULE_CONFIG), which this route reaches via blocked-turn.ts.
+  HEIRLOOM_TENANT_ID: '20767f1d-1148-4e43-ab73-f6da88f0ac56',
 }))
 
 const mockStreamChat = vi.fn<(...a: unknown[]) => Promise<Response>>(async () => new Response('streamed', { status: 200 }))
@@ -61,9 +64,14 @@ function post(body: Record<string, unknown>) {
 }
 const turn = { messages: [{ role: 'user', content: 'Hi' }], session_id: 'session-1' }
 
+// Real tenants.id values. Heirloom is the tenant with a configured blocked
+// slot (SlotRuleConfig); jefflougheed.ca has no entry.
+const HEIRLOOM = '20767f1d-1148-4e43-ab73-f6da88f0ac56'
+const JEFF_LOUGHEED = 'e07334a0-2afd-4544-898b-edb124d2dd33'
+
 beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = 'test-key'
-  mockGetTenantFromRequest.mockReset().mockResolvedValue('tenant-1')
+  mockGetTenantFromRequest.mockReset().mockResolvedValue(HEIRLOOM)
   mockGetSession.mockReset().mockResolvedValue(null)
   mockValidateMemberToken.mockReset().mockResolvedValue(null)
   mockStreamChat.mockClear()
@@ -96,7 +104,7 @@ describe('POST /api/sage — account-status gate', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('X-Vercel-AI-Data-Stream')).toBe('v1')
     expect(await readDataStream(response, () => {})).toBe(BLOCKED_TURN_FALLBACK_TEXT)
-    expect(mockSelectCompiledPrompt).toHaveBeenCalledWith('tenant-1', 'blocked')
+    expect(mockSelectCompiledPrompt).toHaveBeenCalledWith(HEIRLOOM, 'blocked')
     expect(mockLogEvent).toHaveBeenCalledTimes(1)
     expect((mockLogEvent.mock.calls[0][0] as { metadata: Record<string, unknown> }).metadata).toMatchObject({ blocked: true, modelCalled: false, selection: { ruleId: 'account-status' } })
   })
@@ -111,17 +119,28 @@ describe('POST /api/sage — account-status gate', () => {
   })
 
   it('invite holder (status invited, not signed in): reaches streamChat via the token path', async () => {
-    mockValidateMemberToken.mockResolvedValue({ id: 'member-9', tenant_id: 'tenant-1', status: 'invited' })
+    mockValidateMemberToken.mockResolvedValue({ id: 'member-9', tenant_id: HEIRLOOM, status: 'invited' })
     const response = await POST(post({ ...turn, invite_token: 'tok' }))
     expect(await response.text()).toBe('streamed')
     expect(mockStreamChat.mock.calls[0][0]).toMatchObject({ memberId: 'member-9', memberStatus: 'invited' })
   })
 
   it('a suspended member reaching the API via a still-valid invite token is blocked too', async () => {
-    mockValidateMemberToken.mockResolvedValue({ id: 'member-9', tenant_id: 'tenant-1', status: 'suspended' })
+    mockValidateMemberToken.mockResolvedValue({ id: 'member-9', tenant_id: HEIRLOOM, status: 'suspended' })
     const response = await POST(post({ ...turn, invite_token: 'tok' }))
     expect(mockStreamChat).not.toHaveBeenCalled()
     expect(await readDataStream(response, () => {})).toBe(BLOCKED_TURN_FALLBACK_TEXT)
+  })
+
+  it('a suspended member on a tenant with no blocked-slot entry is still blocked — built-in copy, no slot read', async () => {
+    mockGetTenantFromRequest.mockResolvedValue(JEFF_LOUGHEED)
+    mockGetSession.mockResolvedValue({ providerUserId: 'user_1' })
+    memberRow = { id: 'member-1', status: 'suspended' }
+
+    const response = await POST(post(turn))
+    expect(mockStreamChat).not.toHaveBeenCalled()
+    expect(await readDataStream(response, () => {})).toBe(BLOCKED_TURN_FALLBACK_TEXT)
+    expect(mockSelectCompiledPrompt).not.toHaveBeenCalled()
   })
 
   it('blocked reply uses the editable slot copy when the tenant has published one', async () => {

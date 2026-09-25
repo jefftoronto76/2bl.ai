@@ -51,7 +51,10 @@ UI to manage (tenant, situation) -> prompt-slot mappings... needs sizing"),
 deliberately not solved here: nothing consumes the slot decision yet either
 (Phase 4), so there's nothing real for a mapping UI to manage until that
 lands. `SlotRuleConfig` is built as a clean seam specifically so this swap —
-hardcoded object to DB-backed table — stays cheap whenever it's time.
+hardcoded object to DB-backed table — stays cheap whenever it's time. Since
+2026-09-25 it is keyed by `tenant_id` (one `TenantSlotConfig` per tenant;
+see §5.4), which is already the `(tenant, situation) → slot` shape such a
+table would have.
 
 ---
 ## 0. Findings that shape the design
@@ -471,8 +474,25 @@ recording which `session_tokens` row opened the session, so the rule cannot
 fire until that link exists (Jeff, Studio — folded into §9.3's schema pass;
 the rule ships dormant until then).
 
-Rules 1–4 all resolve to `'base'` today, so **Phase 4 produces byte-identical
-prompts for every current tenant** — the only behavioural change is that a
+**Per-tenant config (2026-09-25).** The rule data (`SlotRuleConfig`) is a
+`Record<tenant_id, TenantSlotConfig>`, not one flat object: a flat config
+meant any mapping added for one tenant (Heirloom's `visitor`) was inherited
+by every other tenant whose conditions matched, pointing it at a slot it
+never published. `mode` and `member-status` consult only the turn's own
+tenant entry and decline when there is none. `account-status` is the
+deliberate exception — blocking suspended/deleted members is platform-wide;
+the tenant entry only names the slot holding that tenant's editable blocked
+copy, and a tenant without one gets the built-in copy with no slot read.
+Today only Heirloom has an entry (`blockedSlotKey: 'blocked'`,
+`memberStatusSlots: { visitor: 'visitor' }`). **Phase 4 (slot-aware
+base-prompt provider) targets this per-tenant shape** — it replaces the
+earlier plan of building Phase 4 against the flat config.
+
+Rules 1–4 resolved to `'base'` for every tenant when this was written; with
+the per-tenant config, Heirloom anonymous turns now select `visitor` (a slot
+Heirloom has published), so Phase 4 will change Heirloom's visitor prompt
+by design, while every other current tenant still selects `'base'` and
+**Phase 4 produces byte-identical prompts for them** — the only behavioural change is that a
 tenant with two live typed slots stops being decided by version number.
 
 Read: `selectCompiledPrompt(tenantId, slotKey)` → `compiled_prompts` where

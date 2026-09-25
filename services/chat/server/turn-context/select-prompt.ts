@@ -5,7 +5,7 @@
 // I/O: the *decision* costs nothing per turn; only the *fetch* of the chosen
 // slot touches the database (Phase 4, services/prompt).
 //
-// Design Handovers/traffic_cop_design_2026-09-05.md §5.4 lists five rules.
+// Design Handovers/september_2026/traffic_cop_design_2026-09-05.md §5.4 lists five rules.
 // Phase 1 shipped rules 3–5; the account-status rule (2026-09-15) sits ahead
 // of all of them. Rules 1–2 need schema that does not exist yet:
 //   1. session-token   — chat_sessions has no link to the session_tokens row
@@ -16,12 +16,28 @@
 // Both are Jeff's Studio work (design §9.3) and land as rules here, not as
 // changes to the runner or the providers.
 //
-// Rules 3 and 4 are present but have no opinion today: no tenant has
-// published a mode-specific or member/visitor-specific slot. They return
-// null so the decision record truthfully says `default-slot` rather than
-// implying a mode- or status-driven choice was made. Giving either an
-// opinion is a data change to SlotRuleConfig, not a code change.
+// Per-tenant configuration (2026-09-25). SlotRuleConfig is keyed by
+// tenant_id; each tenant gets its own TenantSlotConfig. The config was
+// previously one flat object shared by every tenant, so any slot mapping
+// added for one tenant (e.g. Heirloom's 'visitor') would have been
+// inherited by every other tenant the moment its rule conditions matched,
+// pointing them at a slot they never published. Now:
+//
+//   - mode and member-status look up input.tenantId first. No entry, or the
+//     field unset → null (no opinion) → on to default-slot. A tenant with no
+//     entry is never routed by either rule.
+//   - account-status is deliberately NOT tenant-gated (Jeff, 2026-09-25): a
+//     suspended/deleted member is blocked on every tenant — BLOCKED_MEMBER_
+//     STATUSES is a statement about what those statuses mean, not a
+//     per-tenant choice. The tenant entry only names the slot holding that
+//     tenant's editable blocked copy; blocked-turn.ts reads a slot only when
+//     the entry declares one, and serves its built-in copy otherwise.
+//
+// Giving a tenant a mode-, status- or blocked-specific slot is an edit to
+// that tenant's entry in DEFAULT_SLOT_RULE_CONFIG (and the slot must be
+// published for that tenant); it never affects any other tenant.
 
+import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import type { TurnContextInput } from './types'
 
 /** prompt_types.key of the untyped/default slot — what every tenant runs on today. */
@@ -31,28 +47,51 @@ export const DEFAULT_SLOT_KEY = 'base'
  * prompt_types.key of the slot a suspended/deleted member is routed to. Its
  * live compiled content is the fixed reply the member sees — no model call
  * (blocked-turn.ts). Created through the Prompt Sets admin UI so the copy
- * is editable; blocked-turn.ts carries a fallback until it exists.
+ * is editable; blocked-turn.ts carries a fallback for tenants without one.
  */
 export const BLOCKED_SLOT_KEY = 'blocked'
 
-/** members.status values that route to the blocked slot. Deliberately not distinguished from each other. */
+/**
+ * members.status values that are blocked on every tenant. Deliberately not
+ * distinguished from each other, and deliberately shared — what these
+ * statuses mean is not a per-tenant choice.
+ */
 export const BLOCKED_MEMBER_STATUSES: readonly string[] = ['suspended', 'deleted']
 
-export interface SlotRuleConfig {
-  /** members.status values routed to `blockedSlotKey` before any other rule runs. */
-  blockedStatuses: readonly string[]
-  blockedSlotKey: string
-  /** Mode → slot key, e.g. `{ question: 'faq' }`. Empty today. */
-  modeSlots: Partial<Record<NonNullable<TurnContextInput['mode']>, string>>
-  /** Member-status → slot key, e.g. `{ visitor: 'onboarding' }`. Empty today. */
-  memberStatusSlots: { member?: string; visitor?: string }
+/** One tenant's slot choices. Every field is optional; unset means "no opinion". */
+export interface TenantSlotConfig {
+  /**
+   * The slot holding this tenant's editable blocked-member copy. Does not
+   * decide *whether* a member is blocked (that is universal) — only which
+   * published slot blocked-turn.ts reads the reply from.
+   */
+  blockedSlotKey?: string
+  /** Mode → slot key, e.g. `{ question: 'faq' }`. */
+  modeSlots?: Partial<Record<NonNullable<TurnContextInput['mode']>, string>>
+  /** Member-or-visitor → slot key, e.g. `{ visitor: 'visitor' }`. */
+  memberStatusSlots?: { member?: string; visitor?: string }
 }
 
+/** tenant_id → that tenant's slot choices. A tenant with no entry is untouched by every tenant-scoped rule. */
+export type SlotRuleConfig = Record<string, TenantSlotConfig>
+
 export const DEFAULT_SLOT_RULE_CONFIG: SlotRuleConfig = {
-  blockedStatuses: BLOCKED_MEMBER_STATUSES,
-  blockedSlotKey: BLOCKED_SLOT_KEY,
-  modeSlots: {},
-  memberStatusSlots: {},
+  [HEIRLOOM_TENANT_ID]: {
+    blockedSlotKey: BLOCKED_SLOT_KEY,
+    memberStatusSlots: { visitor: 'visitor' },
+  },
+}
+
+/**
+ * The tenant's own entry, or null when there is none. Own-property check
+ * only, so a tenant id can never resolve to an inherited Object key.
+ */
+export function tenantSlotConfig(
+  tenantId: string | null,
+  config: SlotRuleConfig = DEFAULT_SLOT_RULE_CONFIG,
+): TenantSlotConfig | null {
+  if (tenantId === null || !Object.prototype.hasOwnProperty.call(config, tenantId)) return null
+  return config[tenantId]
 }
 
 export interface SlotRule {
@@ -64,24 +103,31 @@ export interface SlotRule {
 export function buildSlotRules(config: SlotRuleConfig = DEFAULT_SLOT_RULE_CONFIG): SlotRule[] {
   return [
     {
-      // First, and unconditional on everything else: a suspended or deleted
-      // member never reaches the tenant's normal prompt, whatever the mode
-      // or session. Anonymous (memberStatus null) and every other status
-      // fall through untouched.
+      // First, and unconditional on everything else — including tenant: a
+      // suspended or deleted member never reaches the tenant's normal
+      // prompt, whatever the mode or session. The tenant entry only picks
+      // the slot key; without one the platform key is used and
+      // blocked-turn.ts serves its built-in copy without reading any slot.
+      // Anonymous (memberStatus null) and every other status fall through.
       id: 'account-status',
       slotFor: input =>
-        input.memberStatus !== null && config.blockedStatuses.includes(input.memberStatus)
-          ? config.blockedSlotKey
+        input.memberStatus !== null && BLOCKED_MEMBER_STATUSES.includes(input.memberStatus)
+          ? tenantSlotConfig(input.tenantId, config)?.blockedSlotKey ?? BLOCKED_SLOT_KEY
           : null,
     },
     {
       id: 'mode',
-      slotFor: input => (input.mode ? config.modeSlots[input.mode] ?? null : null),
+      slotFor: input => {
+        if (!input.mode) return null
+        return tenantSlotConfig(input.tenantId, config)?.modeSlots?.[input.mode] ?? null
+      },
     },
     {
       id: 'member-status',
-      slotFor: input =>
-        (input.memberId !== null ? config.memberStatusSlots.member : config.memberStatusSlots.visitor) ?? null,
+      slotFor: input => {
+        const slots = tenantSlotConfig(input.tenantId, config)?.memberStatusSlots
+        return (input.memberId !== null ? slots?.member : slots?.visitor) ?? null
+      },
     },
     {
       id: 'default-slot',

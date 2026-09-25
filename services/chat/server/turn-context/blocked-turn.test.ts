@@ -17,12 +17,21 @@ vi.mock('@/services/prompt/select', async importOriginal => {
   return { ...actual, selectCompiledPrompt: (t: string | null, k: string) => mockSelectCompiledPrompt(t, k) }
 })
 
+import { HEIRLOOM_TENANT_ID } from '@/services/members'
 import { resolveBlockedTurn, blockedTurnResponse, BLOCKED_TURN_FALLBACK_TEXT } from './blocked-turn'
 import { readDataStream } from '../stream-utils'
 
+// Real production tenants.id values (verified 2026-09-25) — tenants with no
+// SlotRuleConfig entry and no published 'blocked' slot.
+const JEFF_LOUGHEED_TENANT_ID = 'e07334a0-2afd-4544-898b-edb124d2dd33'
+const SECOND_BRAIN_LABS_TENANT_ID = '6720ee2f-d7e3-4788-b8c7-f63cf70eb2bb'
+const UNKNOWN_TENANT_ID = '00000000-0000-4000-8000-000000000000'
+
 function request(overrides: Partial<TurnContextRequest> = {}): TurnContextRequest {
   return {
-    tenantId: 'tenant-1',
+    // Heirloom by default: the one tenant with a configured blocked slot, and
+    // the one where this path is live in production today.
+    tenantId: HEIRLOOM_TENANT_ID,
     sessionId: 'session-1',
     memberId: 'member-1',
     memberStatus: 'active',
@@ -67,12 +76,12 @@ describe('resolveBlockedTurn', () => {
       text: "You can't chat right now. Create a new account or contact support.",
       selection: { slotKey: 'blocked', ruleId: 'account-status', compiledPromptId: 'cp-blocked', version: 2, fallback: false },
     })
-    expect(mockSelectCompiledPrompt).toHaveBeenCalledWith('tenant-1', 'blocked')
+    expect(mockSelectCompiledPrompt).toHaveBeenCalledWith(HEIRLOOM_TENANT_ID, 'blocked')
 
     expect(mockLogEvent).toHaveBeenCalledTimes(1)
     const event = mockLogEvent.mock.calls[0][0]
     expect(event).toMatchObject({
-      action: 'chat.turn_context_resolved', outcome: 'success', tenant_id: 'tenant-1',
+      action: 'chat.turn_context_resolved', outcome: 'success', tenant_id: HEIRLOOM_TENANT_ID,
       target_type: 'chat_session', target_id: 'session-1', correlation_id: 'corr-1', actor_type: 'user',
     })
     expect(event.metadata).toMatchObject({
@@ -117,6 +126,38 @@ describe('resolveBlockedTurn', () => {
     const blocked = await resolveBlockedTurn(request({ memberStatus: 'suspended' }))
     expect(blocked?.text).toBe(BLOCKED_TURN_FALLBACK_TEXT)
     spy.mockRestore()
+  })
+
+  describe.each([
+    ['jefflougheed.ca', JEFF_LOUGHEED_TENANT_ID],
+    ['Second Brain Labs', SECOND_BRAIN_LABS_TENANT_ID],
+    ['an unknown tenant', UNKNOWN_TENANT_ID],
+  ])('%s — no SlotRuleConfig entry', (_label, tenantId) => {
+    it.each(['suspended', 'deleted'])('a %s member is still blocked, with the built-in copy — and no slot lookup is attempted', async status => {
+      const blocked = await resolveBlockedTurn(request({ tenantId, memberStatus: status }))
+      expect(blocked).toEqual({
+        text: BLOCKED_TURN_FALLBACK_TEXT,
+        selection: { slotKey: 'blocked', ruleId: 'account-status', compiledPromptId: null, version: null, fallback: true },
+      })
+      // The point: this tenant never published a blocked slot, so none is looked up.
+      expect(mockSelectCompiledPrompt).not.toHaveBeenCalled()
+      expect(mockLogEvent).toHaveBeenCalledTimes(1)
+      expect(mockLogEvent.mock.calls[0][0]).toMatchObject({ tenant_id: tenantId, metadata: { blocked: true, modelCalled: false } })
+    })
+
+    it.each([
+      ['an anonymous visitor', { memberId: null, memberStatus: null }],
+      ['an active member', { memberStatus: 'active' }],
+    ])('%s proceeds normally — no read, no audit row', async (_l, o) => {
+      expect(await resolveBlockedTurn(request({ tenantId, ...o }))).toBeNull()
+      expect(mockSelectCompiledPrompt).not.toHaveBeenCalled()
+      expect(mockLogEvent).not.toHaveBeenCalled()
+    })
+  })
+
+  it('Heirloom anonymous visitor (routed to the visitor slot) is not blocked — only account-status blocks', async () => {
+    expect(await resolveBlockedTurn(request({ memberId: null, memberStatus: null }))).toBeNull()
+    expect(mockSelectCompiledPrompt).not.toHaveBeenCalled()
   })
 
   it('the fallback copy invites a new account or support and never names a status', () => {
