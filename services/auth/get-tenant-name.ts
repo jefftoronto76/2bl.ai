@@ -5,13 +5,17 @@
 // which picks the tenant by request Host for multi-tenant users), then reads
 // tenants.name. Server-only. Returns null on any failure so the caller can
 // fall back; never throws.
+//
+// Pass `tenantId` when the caller has already resolved getAuthContext() (the
+// admin layout does) — the helper then skips its own auth resolution and runs
+// only the tenants lookup. Omitted, it self-resolves as before.
 
 import { getAuthContext } from './get-auth-context'
 import { getAdminClient } from './supabase-admin'
 
-export async function getTenantName(): Promise<string | null> {
+export async function getTenantName(tenantId?: string): Promise<string | null> {
   try {
-    const { tenant_id } = await getAuthContext()
+    const tenant_id = tenantId ?? (await getAuthContext()).tenant_id
 
     const { data, error } = await getAdminClient()
       .from('tenants')

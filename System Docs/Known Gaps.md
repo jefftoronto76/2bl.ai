@@ -77,9 +77,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   (`admin.page_load_timing`) row per render, telling the two apart by
   `metadata.path`. They use the same `createPhaseTimer` helper as story
   loading.
-  **Phases, layout:** `syncUser`, `getCurrentUser`, `tenantName` and
-  `tenantType` run concurrently, then `authContext` and `branding` run in
-  sequence. **Phases, page:** `auth`, then `inboundChats` and `ttftTrend`
+  **Phases, layout:** two concurrent stages. Stage 1: `syncUser`,
+  `getCurrentUser` and `authContext`. Stage 2, once stage 1 settles and only
+  when auth resolved: `tenantName`, `tenantType` and `branding`, all keyed by
+  that one `tenant_id`. (Until 2026-09-25 `tenantName`/`tenantType` each
+  re-ran the full `getAuthContext()` chain internally, alongside
+  `syncUser`/`getCurrentUser`, and `authContext` → `branding` ran afterwards
+  in sequence — three auth resolutions per render. First live rows showed
+  `tenantName`/`tenantType` at 1,400–2,000ms each vs `authContext` at 3ms.
+  The 3ms is likely Next's per-render GET-fetch memoization reusing the
+  earlier calls' responses, not the chain's real cost, so compare
+  `metadata.totalMs` across the change, not the per-phase numbers.)
+  **Not yet deduped:** `app/(platform)/layout.tsx` still calls
+  `getTenantName()`/`getTenantType()` without a `tenantId` plus its own
+  `getAuthContext()` — the same three-resolution pattern, uninstrumented. **Phases, page:** `auth`, then `inboundChats` and `ttftTrend`
   concurrently. The page's catch still renders, so `status` is always 200;
   a caught failure shows up as `metadata.errorPhase` (`'auth'` or
   `'dataFetch'`, null on success).
