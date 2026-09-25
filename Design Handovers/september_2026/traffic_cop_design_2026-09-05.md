@@ -13,6 +13,52 @@
 
 ## 0. Findings that shape the design
 
+## The decision tree — how Traffic Cop picks what to use (added 2026-09-25)
+
+Plain-language summary of what a turn actually goes through, worked out in a
+2026-09-25 session. Extends §5.4/§5.10 below rather than replacing them — see
+Appendix C for the full findings and open questions this rests on.
+
+**1. Who is this?** Three identity buckets, not two:
+
+- **Existing member** — signed in via Clerk.
+- **Visitor, unknown** — no invite token, no session. Fully anonymous.
+- **Visitor, invited** — has a resolvable `memberId` via invite token, hasn't
+  signed in yet. Sub-typed by `members.source`:
+  - invited by an existing member, via a story (`'story_invite'`)
+  - invited by a Heirloom admin (`'invite'`)
+
+**2. Is this member blocked?** Suspended or deleted members route straight to
+the `blocked` slot — no further lookup, no model call. Already built (the
+account-status rule, shipped 2026-09-15, runs first, ahead of everything
+below).
+
+**3. Otherwise, look up context and assemble:**
+
+- **Member/visitor context** — name, email, phone, primer today; expanding to
+  add session count, last visit, last session (stories and NPS explicitly
+  parked, not now).
+- **Session state — new vs. resuming.** Already automatic, no lookup needed:
+  the client rehydrates the most recent thread on load regardless of identity.
+  Worth knowing as a decision *fact* for future personalization, not something
+  that needs building.
+- **Arrival message, if any:**
+  - admin-invite primer — already built, flows through member-context
+  - story-invite message (invited by a member, via a story) — not built yet;
+    real access works today, but nothing wires it into the chat turn
+
+**4. Base prompt-set** — always included, every turn, regardless of the above.
+Today: one slot per tenant, and which slot a situation maps to is a hardcoded
+config in `select-prompt.ts` (`SlotRuleConfig`) — a code change and redeploy,
+not an admin action. Real gap, already tracked on the MVP punch list ("Admin
+UI to manage (tenant, situation) -> prompt-slot mappings... needs sizing"),
+deliberately not solved here: nothing consumes the slot decision yet either
+(Phase 4), so there's nothing real for a mapping UI to manage until that
+lands. `SlotRuleConfig` is built as a clean seam specifically so this swap —
+hardcoded object to DB-backed table — stays cheap whenever it's time.
+
+---
+
 Five things surfaced while grounding this that materially change the size and
 shape of the work.
 
