@@ -30,8 +30,11 @@ vi.mock('@/services/auth/supabase-admin', () => ({
   getAdminClient: () => ({ from: mockFrom }),
 }))
 
-vi.mock('./prompt', () => ({
-  getSystemPrompt: vi.fn(async () => 'system prompt'),
+// Since Traffic Cop Phase 3a the prompt is assembled by resolveTurnPrompt
+// (real, unmocked here) from these resolvers — so they are mocked at the
+// resolver level, not at the assembly level.
+vi.mock('@/services/prompt/compiler', () => ({
+  getSystemPromptRecord: vi.fn(async () => ({ content: 'system prompt', compiledPromptId: 'cp-1', version: 1, fallback: false })),
   QUESTION_MODE_CONTEXT: 'question mode context',
 }))
 vi.mock('./booking', () => ({
@@ -46,6 +49,7 @@ const mockGetMemberContext = vi.fn(
   ) => null as string | null,
 )
 vi.mock('./member-context', () => ({
+  MARKER_INSTRUCTION_LEAD: 'On your first reply, silently append',
   getMemberContext: (
     sessionId: string | null,
     tenantId: string | null,
@@ -62,7 +66,7 @@ vi.mock('@/services/crm/session', () => ({
   handleSessionFinish: (...args: unknown[]) => mockHandleSessionFinish(...args),
 }))
 
-// Traffic Cop Phase 2 shadow. Default: resolves immediately. Individual
+// Traffic Cop shadow comparison. Default: resolves immediately. Individual
 // tests swap in a never-settling or rejecting promise.
 type ShadowParams = import('./turn-context/shadow').ShadowTurnParams
 const mockRunShadowTurn = vi.fn<(p: ShadowParams) => Promise<unknown>>(async () => ({ ok: true }))
@@ -276,11 +280,11 @@ describe('streamChat — isFirstTurn computation for MEMBER CONTEXT', () => {
   })
 })
 
-describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
+describe('streamChat — Traffic Cop Phase 3a cutover + shadow comparison', () => {
   const mockRunChatStreamSystem = () =>
     (mockRunChatStream.mock.calls[0][0] as unknown as { system: string }).system
 
-  it('the model still receives the legacy assembly, and the shadow receives that exact string plus the raw segment inputs', async () => {
+  it('the model receives resolved.system, and the shadow receives that same resolution plus the request', async () => {
     mockGetMemberContext.mockResolvedValue("Member's name is Sarah.")
     const responsePromise = streamChat({
       messages: [{ role: 'user', content: 'Hi' }],
@@ -294,20 +298,14 @@ describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
     resolveRunChatStream?.(new Response('ok'))
     await responsePromise
 
-    const legacy = "system prompt\n\nMEMBER CONTEXT:\nMember's name is Sarah.\n\nquestion mode context"
-    expect(mockRunChatStreamSystem()).toBe(legacy)
+    // Byte-identical to what the retired six-segment concatenation built.
+    const expected = "system prompt\n\nMEMBER CONTEXT:\nMember's name is Sarah.\n\nquestion mode context"
+    expect(mockRunChatStreamSystem()).toBe(expected)
 
     expect(mockRunShadowTurn).toHaveBeenCalledTimes(1)
     const params = mockRunShadowTurn.mock.calls[0][0]
-    expect(params.legacySystem).toBe(legacy)
-    expect(params.legacyInputs).toEqual({
-      basePrompt: 'system prompt',
-      bookingSection: '',
-      memberContext: "Member's name is Sarah.",
-      sessionContext: null,
-      mediaContext: '',
-      questionMode: true,
-    })
+    expect(params.resolved.system).toBe(expected)
+    expect(params.resolved.blocks.map(b => b.id)).toEqual(['base-prompt', 'member-context', 'question-mode'])
     expect(params.request).toEqual({
       tenantId: 'tenant-1',
       sessionId: 'session-1',
@@ -395,7 +393,7 @@ describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
     expect(finished).toBe(true)
   })
 
-  it('is invoked exactly once per turn, after the real assembly, with the same isFirstTurn-relevant messages', async () => {
+  it('is invoked exactly once per turn, with the resolution the model actually received', async () => {
     const responsePromise = streamChat({
       messages: [
         { role: 'user', content: 'Hi' },
@@ -411,7 +409,7 @@ describe('streamChat — Traffic Cop Phase 2 shadow run', () => {
     await responsePromise
     expect(mockRunShadowTurn).toHaveBeenCalledTimes(1)
     expect(mockRunShadowTurn.mock.calls[0][0].request.messages).toHaveLength(3)
-    // The shadow call is made with the assembled string in hand — i.e. after the legacy assembly.
-    expect(mockRunShadowTurn.mock.calls[0][0].legacySystem).toBe(mockRunChatStreamSystem())
+    // The shadow compares against exactly the string the model was sent.
+    expect(mockRunShadowTurn.mock.calls[0][0].resolved.system).toBe(mockRunChatStreamSystem())
   })
 })

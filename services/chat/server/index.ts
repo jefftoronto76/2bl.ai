@@ -1,20 +1,18 @@
 // services/chat/server/index.ts
 //
-// Public server interface for the chat service. streamChat composes the
-// system prompt (base + booking + question-mode), resolves per-tenant model
-// config, and runs one streamed turn — returning the Vercel AI SDK
+// Public server interface for the chat service. streamChat resolves the
+// system prompt through the traffic cop (turn-context/, resolveTurnPrompt),
+// resolves per-tenant model config, and runs one streamed turn — returning the Vercel AI SDK
 // data-stream Response (the frozen /api/sage wire format). The HTTP route
 // adapter (app/api/sage/route.ts) and product consumers (e.g. Heirloom)
 // import from here; tenancy/auth resolution and the ANTHROPIC_API_KEY guard
 // stay in the caller.
 
 import { runChatStream, resolveModelConfig } from './stream'
-import { getSystemPrompt, QUESTION_MODE_CONTEXT } from './prompt'
-import { getBookingCardSection } from './booking'
-import { getMemberContext } from './member-context'
-import { getSessionContext } from './session-context'
-import { resolveMediaContext, stripMediaMarkers } from './media-context'
+import { stripMediaMarkers } from './media-context'
+import { resolveTurnPrompt } from './turn-context'
 import { runShadowTurn } from './turn-context/shadow'
+import type { TurnContextRequest } from './turn-context/types'
 import { handleSessionFinish } from '@/services/crm/session'
 import { getAdminClient } from '@/services/auth/supabase-admin'
 import { logEvent } from '@/services/audit'
@@ -168,27 +166,29 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
   const memberId =
     typeof req.memberId === 'string' && req.memberId.length > 0 ? req.memberId : null
 
-  // Deterministic, server-computed signal for "has Sage already replied in
-  // this conversation" — not something the model is trusted to infer from
-  // re-reading its own prior turns in the message history. A non-empty
-  // assistant turn anywhere in req.messages means this is a later turn; an
-  // empty one (a failed first-turn attempt still sitting in the stored
-  // transcript) doesn't count as a real reply, so a retry after a first-turn
-  // failure still reads as isFirstTurn.
-  const isFirstTurn = !req.messages.some(
-    m => m.role === 'assistant' && m.content.trim().length > 0,
-  )
+  // Traffic Cop Phase 3a (Design Handovers/september_2026/
+  // traffic_cop_design_2026-09-05.md §7): the system prompt is whatever
+  // resolveTurnPrompt assembles. It derives isFirstTurn from req.messages
+  // with the same rule this function used to apply inline (a non-empty
+  // assistant turn means a later turn; an empty failed-attempt placeholder
+  // does not count) and runs the same six resolvers, fail-open.
+  const turnRequest: TurnContextRequest = {
+    tenantId,
+    sessionId,
+    memberId,
+    memberStatus: req.memberStatus ?? null,
+    messages: req.messages,
+    mode: req.mode ?? null,
+    mediaItems: req.mediaItems ?? null,
+    correlationId: null,
+  }
 
-  const [basePrompt, bookingSection, config, memberContext, mediaContext, sessionContext] = await Promise.all([
-    getSystemPrompt(tenantId),
-    tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
+  const [resolved, config] = await Promise.all([
+    resolveTurnPrompt(turnRequest),
     resolveModelConfig(tenantId),
-    (sessionId || memberId)
-      ? getMemberContext(sessionId, tenantId, memberId, isFirstTurn)
-      : Promise.resolve(null),
-    resolveMediaContext(req.mediaItems, tenantId, memberId),
-    getSessionContext(sessionId, tenantId, isFirstTurn),
   ])
+
+  const mediaContext = resolved.blocks.find(b => b.id === 'media')?.body ?? ''
 
   void logEvent({
     action: AuditAction.CHAT_MEDIA_CONTEXT_RESOLVED,
@@ -206,47 +206,28 @@ export async function streamChat(req: ChatStreamRequest): Promise<Response> {
     },
   })
 
-  console.log('[chat] memberContext', memberContext !== null
-    ? `found (${memberContext.length} chars, isFirstTurn=${isFirstTurn})`
-    : 'null — not injected'
+  const memberDecision = resolved.injections.find(d => d.id === 'member-context')
+  console.log('[chat] memberContext', memberDecision?.status === 'injected'
+    ? `injected (isFirstTurn=${resolved.isFirstTurn})`
+    : `not injected (${memberDecision?.status ?? 'unregistered'}${memberDecision?.reason ? `: ${memberDecision.reason}` : ''})`
   )
 
-  const systemPrompt = [
-    basePrompt,
-    bookingSection,
-    memberContext ? `MEMBER CONTEXT:\n${memberContext}` : '',
-    sessionContext ?? '',
-    mediaContext,
-    questionMode ? QUESTION_MODE_CONTEXT : '',
-  ]
-    .filter(segment => segment.length > 0)
-    .join('\n\n')
+  const systemPrompt = resolved.system
 
   const messagesForModel = stripMediaMarkers(conversationMessages)
 
-  // Traffic Cop Phase 2 — shadow mode (Design Handovers/
-  // traffic_cop_design_2026-09-05.md §7). The traffic cop resolves the same
-  // turn in parallel and records whether its output matches `systemPrompt`
-  // byte-for-byte; `systemPrompt` above is still the only string the model
-  // ever receives. Started here, after the real assembly, so it runs
-  // concurrently with the model stream rather than ahead of it; settled in
-  // onFinish below, after the visitor already has the full reply.
-  // runShadowTurn never rejects and caps itself at SHADOW_TIMEOUT_MS — the
-  // .catch is belt-and-braces so a future edit to it still cannot reach
-  // this turn.
+  // Shadow comparison, kept past cutover for observability (retired in
+  // Phase 6). It re-runs the six legacy resolvers, rebuilds the retired
+  // concatenation, and records whether `systemPrompt` still matches it
+  // byte-for-byte — nothing it produces reaches the model. Started here so
+  // it runs concurrently with the model stream rather than ahead of it;
+  // settled in onFinish below, after the visitor already has the full
+  // reply. runShadowTurn never rejects and caps itself at
+  // SHADOW_TIMEOUT_MS — the .catch is belt-and-braces so a future edit to
+  // it still cannot reach this turn.
   const shadow = runShadowTurn({
-    request: {
-      tenantId,
-      sessionId,
-      memberId,
-      memberStatus: req.memberStatus ?? null,
-      messages: req.messages,
-      mode: req.mode ?? null,
-      mediaItems: req.mediaItems ?? null,
-      correlationId: null,
-    },
-    legacySystem: systemPrompt,
-    legacyInputs: { basePrompt, bookingSection, memberContext, sessionContext, mediaContext, questionMode },
+    request: turnRequest,
+    resolved,
     ctx: { tenantId, sessionId, memberId, correlationId: null },
   }).catch((err: unknown) => {
     console.error('[chat] shadow run rejected — contract violation, real turn unaffected:', err)

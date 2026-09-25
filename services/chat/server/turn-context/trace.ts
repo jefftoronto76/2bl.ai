@@ -21,13 +21,22 @@ export interface TurnContextTraceContext {
   memberId: string | null
   correlationId: string | null
   /**
-   * True while the traffic cop runs alongside the legacy assembly and its
-   * output is NOT what the model received (Phase 2). `parity` then says
-   * whether the two strings matched.
+   * True on rows written by the shadow comparison (shadow.ts). In Phase 2
+   * the traffic cop's output was NOT what the model received; since Phase
+   * 3a it is, and `live` says so. `parity` says whether the traffic cop's
+   * string matched the legacy assembly either way.
    */
   shadow: boolean
+  /**
+   * Phase 3a onward: `resolved.system` is exactly the string streamChat
+   * handed to the model call. It does not attest that the call succeeded
+   * (a pre-delivery upstream error or a Stop still yields a row) — turn
+   * outcome lives on chat_sessions. Absent on Phase 2 rows, so the two eras
+   * stay distinguishable.
+   */
+  live?: boolean
   parity?: boolean
-  /** Phase 2: the per-segment comparison behind `parity`. Hashes and lengths only. */
+  /** The per-segment comparison behind `parity`. Hashes and lengths only. */
   comparison?: ShadowComparison
   /**
    * True when the account-status rule routed the turn to the blocked slot
@@ -38,7 +47,7 @@ export interface TurnContextTraceContext {
 
 export function buildTurnContextMetadata(
   resolved: ResolvedTurnPrompt,
-  ctx: Pick<TurnContextTraceContext, 'shadow' | 'parity' | 'comparison' | 'blocked'>,
+  ctx: Pick<TurnContextTraceContext, 'shadow' | 'live' | 'parity' | 'comparison' | 'blocked'>,
 ): Record<string, unknown> {
   return {
     selection: resolved.selection,
@@ -48,6 +57,7 @@ export function buildTurnContextMetadata(
     turnIndex: resolved.turnIndex,
     systemLength: resolved.system.length,
     shadow: ctx.shadow,
+    ...(ctx.live ? { live: true } : {}),
     ...(ctx.parity !== undefined ? { parity: ctx.parity } : {}),
     ...(ctx.comparison ? { comparison: ctx.comparison } : {}),
     ...(ctx.blocked ? { blocked: true, modelCalled: false } : {}),

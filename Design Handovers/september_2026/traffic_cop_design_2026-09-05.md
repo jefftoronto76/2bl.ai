@@ -710,6 +710,11 @@ byte-identical to today.
 **Phase 3a — cut over assembly.** `streamChat` uses `resolved.system`. Old
 concatenation deleted. Behaviour identical by construction (Phase 2 proved it).
 `shadow: false` from here.
+*Shipped 2026-09-25, with one deliberate deviation:* the shadow comparison
+was kept (inverted — it re-runs the legacy resolvers against the live string)
+for continued observability until Phase 6, so rows stay `shadow: true` and add
+`live: true`. The `correlation_id` request-shape change was not bundled. Gate
+result and the row 1/5 exclusions: `System Docs/Utilities/Chat Server.md`.
 
 **Phase 3b — turn on delineation for `primer`.** Flip `member-context`'s
 `primer` sub-block to `trust: 'operator'`. This changes prompt text, so it
