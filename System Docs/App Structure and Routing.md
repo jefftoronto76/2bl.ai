@@ -194,9 +194,11 @@ routing in addition to Clerk auth**:
 **Multi-tenant admin:** the same `/admin` code serves every tenant; the tenant
 is resolved per-request from the Host. `getAuthContext()` picks the active
 tenant by host for multi-tenant users, and the **AdminShell banner name is
-host-derived, not hardcoded** — `app/admin/layout.tsx` calls
-`getTenantName()` (`services/auth/get-tenant-name.ts`, which resolves via
-`getAuthContext` then reads `tenants.name`) and passes it as the `tenantName`
+host-derived, not hardcoded** — `app/admin/layout.tsx` resolves
+`getAuthContext()` once, then calls `getTenantName(tenantId)`
+(`services/auth/get-tenant-name.ts`, which reads `tenants.name`; called with
+no argument it self-resolves via `getAuthContext` first, as
+`app/(platform)/layout.tsx` still does) and passes it as the `tenantName`
 prop to `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell`,
 falling back to `'Natural Resource'` only if resolution returns null). The
 `ADMIN` eyebrow is a fixed role descriptor, not a tenant
