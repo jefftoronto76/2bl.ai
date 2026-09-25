@@ -34,7 +34,10 @@ export default async function AdminPage() {
   let rows: ChatSession[] = []
   let ttftTrend: TtftTrendPoint[] = []
   let tenantId: string | null = null
-  let status = 200
+  // Which phase threw, if any. The catch below swallows the error and still
+  // renders the page, so the response is always a 200 — the failure is
+  // carried here rather than as a fictitious HTTP status.
+  let errorPhase: 'auth' | 'dataFetch' | null = null
 
   try {
     const { tenant_id } = await timer.time('auth', () => getAuthContext())
@@ -44,14 +47,14 @@ export default async function AdminPage() {
       timer.time('ttftTrend', () => getTtftTrend(tenant_id)),
     ])
   } catch (err) {
-    // 401 when getAuthContext() itself failed (no tenant resolved), 500 when
-    // a data fetch failed after auth succeeded.
-    status = tenantId === null ? 401 : 500
+    // 'auth' when getAuthContext() itself failed (no tenant resolved),
+    // 'dataFetch' when a data fetch failed after auth succeeded.
+    errorPhase = tenantId === null ? 'auth' : 'dataFetch'
     console.error('[admin/page] auth failed:', err instanceof Error ? err.message : err)
   }
   // Registered after the try/catch so it runs on both the success and catch
   // paths. after(): keep the insert alive past the response.
-  after(() => timer.log(AuditAction.ADMIN_PAGE_LOAD_TIMING, { path: 'app/admin/page.tsx', method: 'GET', status, rowCount: rows.length, tenantId }))
+  after(() => timer.log(AuditAction.ADMIN_PAGE_LOAD_TIMING, { path: 'app/admin/page.tsx', method: 'GET', status: 200, rowCount: rows.length, tenantId, extra: { errorPhase } }))
 
   return (
     <Stack h="100%" gap={0}>

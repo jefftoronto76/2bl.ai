@@ -84,6 +84,14 @@ describe('createPhaseTimer', () => {
     expect(event.metadata).not.toHaveProperty('rowCount')
     expect(event.tenant_id).toBeNull()
   })
+
+  it('merges extra fields into metadata without letting them override the core fields', () => {
+    const timer = createPhaseTimer()
+    timer.log(AuditAction.ADMIN_PAGE_LOAD_TIMING, { path: 'p', method: 'GET', status: 200, extra: { errorPhase: 'auth', status: 500 } })
+    const event = mockLogEvent.mock.calls[0][0]
+    expect(event.metadata).toMatchObject({ path: 'p', status: 200, errorPhase: 'auth' })
+    expect(event.outcome).toBe('success')
+  })
 })
 
 it('log() returns the insert promise so a route can pass it to after()', async () => {

@@ -40,6 +40,9 @@ export interface PhaseTimerLogBase {
    *  convention that every logEvent call site passes tenant_id — lets
    *  timing rows be split per tenant. Null/omitted when unresolved. */
   tenantId?: string | null
+  /** Extra caller-specific metadata fields — static labels only, same
+   *  PII-free rule as above. Can't override the core fields. */
+  extra?: Record<string, unknown>
 }
 
 export function createPhaseTimer(now: () => number = Date.now): PhaseTimer {
@@ -65,6 +68,7 @@ export function createPhaseTimer(now: () => number = Date.now): PhaseTimer {
         tenant_id: base.tenantId ?? null,
         outcome: base.status < 400 ? 'success' : 'failure',
         metadata: {
+          ...base.extra,
           path: base.path,
           method: base.method,
           status: base.status,

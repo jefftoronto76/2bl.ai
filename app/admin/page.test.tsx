@@ -1,7 +1,9 @@
 // Covers app/admin/page.tsx's timing instrumentation (admin page-load
 // timing, 2026-09, measurement only). Pins the wiring: one PII-free
 // ADMIN_PAGE_LOAD_TIMING event per render — success, auth failure, and
-// data-fetch failure — and that inboundChats/ttftTrend stay concurrent.
+// data-fetch failure — and that inboundChats/ttftTrend stay concurrent. The
+// catch swallows errors and still renders, so status is always 200; which
+// phase failed is carried in metadata.errorPhase.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGetAuthContext = vi.fn()
@@ -48,7 +50,7 @@ describe('AdminPage — timing instrumentation', () => {
 
     const events = timingEvents()
     expect(events).toHaveLength(1)
-    expect(events[0].metadata).toMatchObject({ path: 'app/admin/page.tsx', method: 'GET', status: 200, rowCount: 2 })
+    expect(events[0].metadata).toMatchObject({ path: 'app/admin/page.tsx', method: 'GET', status: 200, rowCount: 2, errorPhase: null })
     expect(Object.keys(events[0].metadata.phases).sort()).toEqual(['auth', 'inboundChats', 'ttftTrend'])
     expect(events[0].tenant_id).toBe('tenant-1')
     expect(events[0].outcome).toBe('success')
@@ -57,30 +59,30 @@ describe('AdminPage — timing instrumentation', () => {
     expect(mockAfter).toHaveBeenCalledTimes(1)
   })
 
-  it('logs one 401 event with a null tenant when getAuthContext throws', async () => {
+  it('logs one 200 event with errorPhase auth and a null tenant when getAuthContext throws', async () => {
     mockGetAuthContext.mockRejectedValue(new Error('no auth'))
 
     await AdminPage()
 
     const events = timingEvents()
     expect(events).toHaveLength(1)
-    expect(events[0].metadata).toMatchObject({ status: 401, rowCount: 0 })
+    expect(events[0].metadata).toMatchObject({ status: 200, rowCount: 0, errorPhase: 'auth' })
     expect(events[0].tenant_id).toBeNull()
-    expect(events[0].outcome).toBe('failure')
+    expect(events[0].outcome).toBe('success')
     expect(Object.keys(events[0].metadata.phases)).toEqual(['auth'])
     expect(mockGetInboundChats).not.toHaveBeenCalled()
   })
 
-  it('logs one 500 event with the tenant when a data fetch throws after auth', async () => {
+  it('logs one 200 event with errorPhase dataFetch and the tenant when a data fetch throws after auth', async () => {
     mockGetTtftTrend.mockRejectedValue(new Error('db down'))
 
     await AdminPage()
 
     const events = timingEvents()
     expect(events).toHaveLength(1)
-    expect(events[0].metadata).toMatchObject({ status: 500, rowCount: 0 })
+    expect(events[0].metadata).toMatchObject({ status: 200, rowCount: 0, errorPhase: 'dataFetch' })
     expect(events[0].tenant_id).toBe('tenant-1')
-    expect(events[0].outcome).toBe('failure')
+    expect(events[0].outcome).toBe('success')
   })
 
   it('keeps inboundChats and ttftTrend concurrent — both start before either resolves', async () => {
