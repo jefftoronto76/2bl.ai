@@ -590,6 +590,36 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   `update members m set user_id = u.id from users u where m.clerk_id = u.clerk_id
   and m.user_id is null and m.status not in ('invited', 'waitlist');`.
 
+- **Invited-row orphaning — real, current, deliberately parked (2026-09-25).**
+  Extends the `syncMember` user_id entry above: that fix closed the missing-
+  `user_id` symptom, not the underlying cause. Two distinct trigger cases,
+  both real:
+  1. **Invite ignored.** Someone is invited (a `members` row exists,
+     `clerk_id: null`) but signs up independently instead of using the
+     invite link, same email or phone. `syncMember` has no email/token
+     matching logic of its own — it only checks for a row already matching
+     the new `clerk_id`, which the invited row doesn't have — so it creates
+     a second row every time, guaranteed.
+  2. **Webhook-timing race.** Someone *does* use the invite link correctly.
+     The client's own sync call (`POST /api/members/sync` → `syncMember`)
+     can still land before Clerk's `user.created` webhook does, creating the
+     real account row first. When the webhook then tries `linkInvitedMember`,
+     the update fails (the slot's taken) and falls back to `syncMember`
+     again — orphaning the original invited row even though the person did
+     everything right.
+
+  Two real, current instances beyond the already-known Allie case, found
+  2026-09-25 while grounding the Traffic Cop identity work: one Heirloom
+  member with an orphaned `invited` row (`user_id: null`) sitting alongside
+  a separate `active` row for the same email; one jefflougheed.ca email with
+  two separate `invited` rows, neither ever linked — a distinct bug in
+  `createMemberInvite`, which doesn't check for an existing unconsumed
+  invite before creating another. Which of the two triggers produced either
+  specific case isn't known — the database only shows the end state, not
+  which path was taken.
+
+
+
 - **`/api/heirloom/members/claim` (`claimMembership`) is effectively
   orphaned — expired-invite chat-first signup pass, 2026-08-14.** The
   invalid/expired `?invite=` token branch of `GateView.tsx` (previously:
