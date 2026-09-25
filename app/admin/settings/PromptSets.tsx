@@ -27,6 +27,7 @@ import { Text } from '@/components/admin/primitives/Text'
 import { CompiledPromptModal } from '@/components/admin/settings/CompiledPromptModal'
 import { PromptSetMetaStrip, PromptSetViewCard, StatusBadge } from '@/components/admin/settings/PromptSetCard'
 import { type PromptSet, type PromptSetStatus } from '@/lib/promptSet'
+import { useRefetchOnWindowFocus } from './useRefetchOnWindowFocus'
 
 interface PromptType {
   id: string
@@ -109,10 +110,14 @@ export function PromptSets() {
     }
   }, [])
 
+  // Also refetches on window focus so a set created elsewhere (another tab, the
+  // Composer) appears without a reload; mount and focus share one in-flight guard.
+  const loadSets = useRefetchOnWindowFocus(fetchSets)
+
   useEffect(() => {
-    fetchSets()
+    loadSets()
     fetchTypes()
-  }, [fetchSets, fetchTypes])
+  }, [loadSets, fetchTypes])
 
   const typeNameById = useCallback(
     (id: string | null): string | null => (id ? promptTypes.find((t) => t.id === id)?.name ?? id : null),
