@@ -150,11 +150,16 @@ export default createAuthMiddleware(async (auth, req) => {
     if (previewTenant === 'jefflougheed') {
       // No rewrite or brand header — root layout's default (data-brand="jefflougheed")
       // applies when no brand header is set.
+      // Alias spelling: the real tenants.slug is 'jeff-lougheed' (hyphenated),
+      // and getTenantFromRequest resolves x-preview-tenant by slug. Forwarding
+      // the raw param here silently missed that lookup and fell through to
+      // PREVIEW_TENANT_ID, so both the header and the cookie carry the real
+      // slug — making this branch identical in effect to the one below.
       const requestHeaders = new Headers(req.headers)
-      requestHeaders.set('x-preview-tenant', previewTenant)
+      requestHeaders.set('x-preview-tenant', 'jeff-lougheed')
       requestHeaders.set('x-correlation-id', correlationId)
       const res = NextResponse.next({ request: { headers: requestHeaders } })
-      res.cookies.set('hl-preview', 'jefflougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      res.cookies.set('hl-preview', 'jeff-lougheed', { path: '/', sameSite: 'lax', maxAge: 3600 })
       return res
     }
 
