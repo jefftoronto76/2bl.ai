@@ -855,7 +855,10 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
  `app/api/sage/route.ts` before `streamChat`, with a fixed reply from the
  `blocked` slot — see `Chat Server.md`'s turn-context section for the
  mechanism and the admin steps to create that slot (until created, the
- built-in fallback copy is used). This closes the "suspended/deleted
+ built-in fallback copy is used). Blocking is platform-wide; since
+ 2026-09-25 only the *copy* is per-tenant — `SlotRuleConfig` is keyed by
+ tenant, only Heirloom has an entry, and a tenant without one gets the
+ built-in copy with no slot read attempted. This closes the "suspended/deleted
  member still gets MEMBER CONTEXT and a model reply" half of the
  `resolveMemberId` status-filter finding (design §9.7); the read side —
  `member-context.ts`'s own lookup still has no `status` filter, which now

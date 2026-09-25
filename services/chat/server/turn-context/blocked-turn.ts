@@ -1,16 +1,19 @@
 // services/chat/server/turn-context/blocked-turn.ts
 //
 // The account-status rule's action. select-prompt.ts decides — synchronously,
-// with no I/O — that a suspended or deleted member's turn belongs to the
-// 'blocked' slot; this module turns that decision into a fixed reply, before
+// with no I/O — that a suspended or deleted member's turn is blocked (on
+// every tenant); this module turns that decision into a fixed reply, before
 // any model call, and records it the same way every other turn is recorded.
 //
-// The reply text is the live compiled prompt in the tenant's 'blocked' slot
-// (a real prompt_types / prompt_set / Compile & Publish entry, so the copy is
-// editable in the admin UI), with the compile-time section tags stripped.
-// Until that slot exists — or if reading it fails — BLOCKED_TURN_FALLBACK_TEXT
-// is used: a blocked member is still blocked, never let through because the
-// copy could not be loaded.
+// The reply text is the live compiled prompt in the slot the tenant's own
+// SlotRuleConfig entry names as its `blockedSlotKey` (a real prompt_types /
+// prompt_set / Compile & Publish entry, so the copy is editable in the admin
+// UI), with the compile-time section tags stripped. A tenant with no such
+// entry never has a slot read on its behalf — it gets
+// BLOCKED_TURN_FALLBACK_TEXT directly, rather than a lookup for a slot it
+// never published. The same copy is used if the configured slot has no live
+// row or the read fails: a blocked member is still blocked, never let
+// through because the copy could not be loaded.
 //
 // Wire format: the same Vercel AI SDK data stream /api/sage always returns,
 // so the client (services/chat/ui/v1/useChatTurn.ts → readDataStream) renders
@@ -22,7 +25,7 @@ import { AuditAction } from '@/services/audit/types'
 import { compiledContentToPlainText, selectCompiledPrompt } from '@/services/prompt/select'
 import { tokensFor } from '@/services/prompt/tokenize'
 import { deriveTurnSignals } from './index'
-import { BLOCKED_SLOT_KEY, selectPromptSlot } from './select-prompt'
+import { selectPromptSlot, tenantSlotConfig } from './select-prompt'
 import { buildTurnContextMetadata } from './trace'
 import type { PromptSelection, ResolvedTurnPrompt, TurnContextInput, TurnContextRequest } from './types'
 
@@ -50,7 +53,8 @@ export interface BlockedTurn {
 export async function resolveBlockedTurn(request: TurnContextRequest): Promise<BlockedTurn | null> {
   const input: TurnContextInput = { ...request, ...deriveTurnSignals(request.messages) }
   const slot = selectPromptSlot(input)
-  if (slot.slotKey !== BLOCKED_SLOT_KEY) return null
+  // Keyed on the rule, not the slot key: a tenant may name its own blocked slot.
+  if (slot.ruleId !== 'account-status') return null
 
   let text = BLOCKED_TURN_FALLBACK_TEXT
   let selection: PromptSelection = {
@@ -60,8 +64,11 @@ export async function resolveBlockedTurn(request: TurnContextRequest): Promise<B
     version: null,
     fallback: true,
   }
+  // Only a tenant that declared a blocked slot gets a read; everyone else
+  // keeps the built-in copy with no lookup attempted.
+  const configuredSlot = tenantSlotConfig(request.tenantId)?.blockedSlotKey ?? null
   try {
-    const compiled = await selectCompiledPrompt(request.tenantId, BLOCKED_SLOT_KEY)
+    const compiled = configuredSlot ? await selectCompiledPrompt(request.tenantId, configuredSlot) : null
     if (compiled) {
       const plain = compiledContentToPlainText(compiled.content)
       if (plain.length > 0) {

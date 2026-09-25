@@ -244,18 +244,21 @@ turn is rescued with `DEFAULT_SYSTEM_PROMPT` and the record says so
 first non-null answer wins; a rule that throws is skipped. Phase 1 ships
 rules 3–5 of the design's five: `mode`, `member-status`, `default-slot`.
 **`account-status` (added 2026-09-15) runs first**, ahead of all of them: a
-member whose `members.status` is `suspended` or `deleted` routes to the
-`blocked` slot (`BLOCKED_SLOT_KEY`, `BLOCKED_MEMBER_STATUSES` — config on
-`SlotRuleConfig`), whatever the mode or session; `active`, `invited`,
+member whose `members.status` is `suspended` or `deleted` is blocked —
+**on every tenant**, whatever the mode or session (`BLOCKED_MEMBER_STATUSES`
+is a shared constant, not per-tenant config: what those statuses mean is not
+a tenant choice; decided 2026-09-25); `active`, `invited`,
 `waitlist`, `pending`, and anonymous (`memberStatus: null`) fall through
 untouched. It is the only rule whose slot is *acted on* today (the others are
 recorded but wait for Phase 4): `blocked-turn.ts`'s `resolveBlockedTurn`
 runs in `app/api/sage/route.ts` **before `streamChat`**, and when the rules
-choose `blocked` it returns a fixed reply — the tenant's live compiled
-prompt in the `blocked` slot (`selectCompiledPrompt` +
-`compiledContentToPlainText`, `services/prompt/select.ts`), or
-`BLOCKED_TURN_FALLBACK_TEXT` when the slot has no live row or the read
-fails — as a hand-built AI SDK data-stream `Response`
+pick `account-status` it returns a fixed reply — the live compiled prompt
+in the slot the tenant's own `SlotRuleConfig` entry names as its
+`blockedSlotKey` (`selectCompiledPrompt` + `compiledContentToPlainText`,
+`services/prompt/select.ts`), or `BLOCKED_TURN_FALLBACK_TEXT` when the
+slot has no live row or the read fails. **A tenant with no entry never has
+a slot read on its behalf** — it gets `BLOCKED_TURN_FALLBACK_TEXT` directly
+(only Heirloom has an entry today) — as a hand-built AI SDK data-stream `Response`
 (`blockedTurnResponse`: one `0:` text part, one `d:` finish part, the same
 headers `toDataStreamResponse()` sets), so the client renders it with no
 change. No prompt assembly, no model call, no `handleSessionFinish`; the
@@ -276,14 +279,30 @@ Heirloom tenant's Prompt Sets, create a set on that type, add one
 `identity` block whose body is the reply text (start from
 `BLOCKED_TURN_FALLBACK_TEXT` in `blocked-turn.ts` so the editable and
 fallback copies begin identical), then Compile & Publish. Only Heirloom
-needs it today — jefflougheed.ca has no members to block. The compiled
-row's `<identity>` wrapper is stripped at read time.
+needs it today — jefflougheed.ca has no members to block. Any other
+tenant that wants editable blocked copy needs **both** a published slot and
+a `blockedSlotKey` in its own `SlotRuleConfig` entry (`select-prompt.ts`) —
+without the entry the slot is never read. The compiled row's `<identity>`
+wrapper is stripped at read time.
 
-Rules 3 and 4 hold no opinion today — their mapping tables
-(`SlotRuleConfig.modeSlots` / `.memberStatusSlots`) are empty because no
-tenant has published a mode- or status-specific slot — so every turn
-records `ruleId: 'default-slot'`, `slotKey: 'base'`, truthfully. Enabling
-either is a config change. Rules 1–2 (`session-token`,
+**`SlotRuleConfig` is per-tenant (2026-09-25):** a `Record<tenant_id,
+TenantSlotConfig>` where each tenant's `TenantSlotConfig` optionally sets
+`blockedSlotKey`, `modeSlots`, and `memberStatusSlots` (`{ member?,
+visitor? }`). It was previously one flat object shared by every tenant, so a
+mapping added for one tenant would have silently applied to every other
+tenant whose rule conditions matched, pointing it at a slot it never
+published. Now `mode` and `member-status` look up `input.tenantId` first
+(`tenantSlotConfig`, an own-property check) and return `null` — no opinion,
+on to `default-slot` — when the tenant has no entry or the field is unset,
+so a tenant with no entry is untouched by both rules. `DEFAULT_SLOT_RULE_CONFIG`
+has exactly one entry: Heirloom (`HEIRLOOM_TENANT_ID` from
+`@/services/members`) with `blockedSlotKey: 'blocked'` and
+`memberStatusSlots: { visitor: 'visitor' }` — so an anonymous Heirloom turn
+records `ruleId: 'member-status'`, `slotKey: 'visitor'` (Heirloom's
+`visitor` slot is already published). jefflougheed.ca, Second Brain Labs,
+and every other tenant record `ruleId: 'default-slot'`, `slotKey: 'base'`.
+Giving a tenant a slot is an edit to that tenant's entry only; it cannot
+affect another tenant. Rules 1–2 (`session-token`,
 `session-context-type`) wait on schema Jeff owns (§9.3). The slot is
 **recorded, not yet acted on**: the base-prompt provider still uses the
 "highest-version live row per tenant" read until Phase 4 makes it
