@@ -1,13 +1,15 @@
 // services/chat/server/turn-context/assembly.golden.test.ts
 //
-// The Phase 2 parity oracle in test form. `legacyAssemble` below is a
-// verbatim copy of streamChat's concatenation (services/chat/server/index.ts,
-// the `systemPrompt` array) — if that recipe ever changes, this file must
-// change with it, and the resulting diff is the review signal.
+// The parity oracle in test form. `legacyAssemble` below is a verbatim copy
+// of streamChat's pre-Phase-3a concatenation (the `systemPrompt` array
+// deleted from services/chat/server/index.ts on 2026-09-25) — it is the
+// frozen definition of "no behaviour change" for the cutover.
 //
 // Every scenario mocks the six underlying resolvers with realistic output and
-// asserts resolveTurnPrompt's `system` is byte-identical to what streamChat
-// would have built from the same resolver results.
+// asserts resolveTurnPrompt's `system` is byte-identical to what the legacy
+// recipe builds from the same resolver results. The Phase 3a block at the
+// bottom runs the same scenarios through streamChat itself and asserts the
+// string actually handed to the model is that same byte-identical string.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SystemPromptRecord } from '@/services/prompt/compiler'
@@ -40,14 +42,36 @@ const mockSession = vi.fn<(...a: unknown[]) => Promise<string | null>>()
 vi.mock('../session-context', () => ({ getSessionContext: (...a: unknown[]) => mockSession(...a) }))
 
 const mockMedia = vi.fn<(...a: unknown[]) => Promise<string>>()
-vi.mock('../media-context', () => ({ resolveMediaContext: (...a: unknown[]) => mockMedia(...a) }))
+vi.mock('../media-context', () => ({
+  resolveMediaContext: (...a: unknown[]) => mockMedia(...a),
+  stripMediaMarkers: <T,>(m: T) => m,
+}))
 
 vi.mock('@/services/auth/supabase-admin', () => ({ getAdminClient: () => ({}) }))
 
+// Only reached by the Phase 3a streamChat block below. runChatStream is
+// captured and finishes immediately (onFinish stops the stop-poll); the
+// shadow comparison has its own suite (shadow.test.ts).
+const mockRunChatStream = vi.fn<(opts: { system: string; onFinish: (a: { text: string; usage: null }) => Promise<void> }) => Promise<Response>>(
+  async opts => {
+    await opts.onFinish({ text: 'reply', usage: null })
+    return new Response('ok')
+  },
+)
+vi.mock('../stream', () => ({
+  runChatStream: (opts: Parameters<typeof mockRunChatStream>[0]) => mockRunChatStream(opts),
+  resolveModelConfig: async () => ({ provider: 'anthropic', chatModel: 'm', fallbackModel: 'f', maxTokens: 1, rateLimitRequestsPerHour: 1 }),
+}))
+vi.mock('./shadow', () => ({ runShadowTurn: async () => ({ ok: true }) }))
+vi.mock('@/services/crm/session', () => ({ handleSessionFinish: async () => undefined }))
+vi.mock('@/services/audit', () => ({ logEvent: () => undefined }))
+
 import { resolveTurnPrompt } from './index'
+import { streamChat } from '../index'
+import type { ChatStreamRequest } from '../types'
 import type { TurnContextRequest } from './types'
 
-// ── Verbatim from services/chat/server/index.ts (streamChat) ────────────
+// ── Verbatim from streamChat's pre-3a concatenation (services/chat/server/index.ts) ──
 interface LegacyInputs {
   basePrompt: string
   bookingSection: string
@@ -103,6 +127,7 @@ const laterTurn = [
 ]
 
 beforeEach(() => {
+  mockRunChatStream.mockClear()
   mockRecord.mockReset().mockResolvedValue({ content: LIVE_PROMPT, compiledPromptId: 'cp-1', version: 23, fallback: false })
   mockBooking.mockReset().mockResolvedValue('')
   mockMember.mockReset().mockResolvedValue(null)
@@ -217,5 +242,57 @@ describe('resolveTurnPrompt — decision record', () => {
 
     expect(resolved.system).toBe(`${LIVE_PROMPT}\n\nMEMBER CONTEXT:\n${MEMBER_LATER}`)
     expect(resolved.injections.find(d => d.id === 'booking')).toMatchObject({ status: 'failed', error: { message: 'sage_parameters timeout' } })
+  })
+})
+
+describe('Phase 3a — streamChat sends resolved.system, byte-identical to the retired concatenation', () => {
+  const sentSystem = () => {
+    expect(mockRunChatStream).toHaveBeenCalledTimes(1)
+    return mockRunChatStream.mock.calls[0][0].system
+  }
+  const chat = (overrides: Partial<ChatStreamRequest> = {}): ChatStreamRequest => ({
+    messages: [{ role: 'user', content: 'Hi' }],
+    tenant: { tenantId: 'tenant-1' },
+    sessionId: null,
+    ...overrides,
+  })
+  const none: LegacyInputs = { basePrompt: LIVE_PROMPT, bookingSection: '', memberContext: null, sessionContext: null, mediaContext: '', questionMode: false }
+
+  it('(a) Sage anonymous visitor', async () => {
+    mockBooking.mockResolvedValue(BOOKING)
+    await streamChat(chat({ sessionId: 'session-1' }))
+    expect(sentSystem()).toBe(legacyAssemble({ ...none, bookingSection: BOOKING }))
+  })
+
+  it('(a2) Sage visitor in ?mode=question', async () => {
+    mockBooking.mockResolvedValue(BOOKING)
+    await streamChat(chat({ mode: 'question' }))
+    expect(sentSystem()).toBe(legacyAssemble({ ...none, bookingSection: BOOKING, questionMode: true }))
+  })
+
+  it('(b) Heirloom member, first turn', async () => {
+    mockMember.mockResolvedValue(MEMBER_FIRST)
+    await streamChat(chat({ sessionId: 'session-1', memberId: 'member-1', memberStatus: 'active' }))
+    expect(sentSystem()).toBe(legacyAssemble({ ...none, memberContext: MEMBER_FIRST }))
+    expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
+  })
+
+  it('(c) Heirloom member, story-scoped later turn with attachments', async () => {
+    mockMember.mockResolvedValue(MEMBER_LATER)
+    mockSession.mockResolvedValue(STORY)
+    mockMedia.mockResolvedValue(MEDIA)
+    await streamChat(chat({ sessionId: 'session-1', memberId: 'member-1', memberStatus: 'active', messages: laterTurn, mediaItems }))
+    expect(sentSystem()).toBe(legacyAssemble({ ...none, memberContext: MEMBER_LATER, sessionContext: STORY, mediaContext: MEDIA }))
+  })
+
+  it('(d) no tenant resolved', async () => {
+    mockRecord.mockResolvedValue({ content: DEFAULT_SYSTEM_PROMPT, compiledPromptId: null, version: null, fallback: true, fallbackReason: 'no-tenant' })
+    await streamChat(chat({ tenant: { tenantId: null } }))
+    expect(sentSystem()).toBe(legacyAssemble({ ...none, basePrompt: DEFAULT_SYSTEM_PROMPT }))
+  })
+
+  it('(e) media items from an anonymous visitor are ignored', async () => {
+    await streamChat(chat({ mediaItems }))
+    expect(sentSystem()).toBe(legacyAssemble(none))
   })
 })

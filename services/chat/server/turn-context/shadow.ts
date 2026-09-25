@@ -1,9 +1,14 @@
 // services/chat/server/turn-context/shadow.ts
 //
-// Phase 2 — shadow mode. streamChat keeps building and sending its own
-// prompt; this module runs resolveTurnPrompt alongside it, compares the two
-// strings byte-for-byte, and writes the decision record with `shadow: true`
-// and a comparison summary. Nothing here ever influences the model input.
+// Shadow mode. Phase 2 (2026-09-14): streamChat sent its own six-segment
+// assembly and this module ran resolveTurnPrompt alongside it. Phase 3a
+// (2026-09-25) inverted the roles: streamChat now sends `resolved.system`
+// from resolveTurnPrompt, and this module re-runs the six legacy resolvers,
+// rebuilds the retired concatenation (buildLegacySegments — the only copy
+// of that recipe left in the codebase), compares the two strings
+// byte-for-byte, and writes the decision record with `shadow: true`,
+// `live: true`, and a comparison summary. Kept for continued observability
+// until Phase 6 retires it. Nothing here ever influences the model input.
 //
 // Two hard rules, enforced in code rather than by convention:
 //   1. runShadowTurn never rejects. Any failure at any stage — resolve,
@@ -14,13 +19,17 @@
 //      carries lengths, first-diff index, contentHash prefixes, and
 //      per-segment verdicts only.
 //
-// Design: Design Handovers/traffic_cop_design_2026-09-05.md §7 Phase 2.
+// Design: Design Handovers/september_2026/traffic_cop_design_2026-09-05.md §7.
 
 import { logEvent } from '@/services/audit'
 import { AuditAction } from '@/services/audit/types'
-import { QUESTION_MODE_CONTEXT } from '@/services/prompt/compiler'
+import { getSystemPrompt, QUESTION_MODE_CONTEXT } from '@/services/prompt/compiler'
 import { contentHash } from '@/services/shared/log-safe'
-import { resolveTurnPrompt } from './index'
+import { getBookingCardSection } from '../booking'
+import { getMemberContext } from '../member-context'
+import { getSessionContext } from '../session-context'
+import { resolveMediaContext } from '../media-context'
+import { deriveTurnSignals } from './index'
 import { SEGMENT_SEPARATOR, withTimeout } from './runner'
 import { recordTurnContext } from './trace'
 import type {
@@ -47,7 +56,7 @@ export const LEGACY_SEGMENT_IDS = [
 ] as const
 export type LegacySegmentId = (typeof LEGACY_SEGMENT_IDS)[number]
 
-/** The six locals streamChat has in hand when it builds `systemPrompt`. */
+/** The six values streamChat's pre-3a assembly was built from. */
 export interface LegacySegmentInputs {
   basePrompt: string
   bookingSection: string
@@ -58,11 +67,29 @@ export interface LegacySegmentInputs {
 }
 
 /**
- * Rebuilds the legacy segments with the exact expressions streamChat uses
- * (the MEMBER CONTEXT header, the `?? ''`, the question-mode ternary).
- * Deliberately a duplicate of that array rather than a refactor of it: the
- * live path stays literally untouched, and `compareAssembly`'s
- * `legacyReconstructionMatch` reports if this copy ever drifts from it.
+ * Re-runs the six resolvers exactly as streamChat's pre-3a `Promise.all` did
+ * — same gates, same arguments, same isFirstTurn rule. Any rejection
+ * propagates (the caller records it as stage `resolve`).
+ */
+export async function resolveLegacyInputs(request: TurnContextRequest): Promise<LegacySegmentInputs> {
+  const { tenantId, sessionId, memberId } = request
+  const { isFirstTurn } = deriveTurnSignals(request.messages)
+  const [basePrompt, bookingSection, memberContext, mediaContext, sessionContext] = await Promise.all([
+    getSystemPrompt(tenantId),
+    tenantId ? getBookingCardSection(tenantId) : Promise.resolve(''),
+    (sessionId || memberId)
+      ? getMemberContext(sessionId, tenantId, memberId, isFirstTurn)
+      : Promise.resolve(null),
+    resolveMediaContext(request.mediaItems, tenantId, memberId),
+    getSessionContext(sessionId, tenantId, isFirstTurn),
+  ])
+  return { basePrompt, bookingSection, memberContext, sessionContext, mediaContext, questionMode: request.mode === 'question' }
+}
+
+/**
+ * Rebuilds the legacy segments with the exact expressions streamChat used
+ * before Phase 3a (the MEMBER CONTEXT header, the `?? ''`, the
+ * question-mode ternary). assembly.golden.test.ts pins the same recipe.
  */
 export function buildLegacySegments(inputs: LegacySegmentInputs): Record<LegacySegmentId, string> {
   return {
@@ -106,8 +133,11 @@ function firstDifference(a: string, b: string): number | null {
 const collapseWhitespace = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 /**
- * Pure. Compares what streamChat sent (`legacySystem`, plus its rebuilt
- * segments) against what the traffic cop would have sent.
+ * Pure. Compares the legacy assembly (`legacySystem`, plus its segments)
+ * against the traffic cop's. Since Phase 3a the traffic cop's is the string
+ * the model received; `legacyReconstructionMatch` is then true by
+ * construction (legacySystem is joined from legacySegments) and is kept
+ * only so the row shape does not change.
  */
 export function compareAssembly(
   legacySystem: string,
@@ -179,9 +209,8 @@ export type ShadowOutcome =
 
 export interface ShadowTurnParams {
   request: TurnContextRequest
-  /** Exactly what streamChat handed to runChatStream. */
-  legacySystem: string
-  legacyInputs: LegacySegmentInputs
+  /** The live resolution — `resolved.system` is exactly what streamChat handed to runChatStream. */
+  resolved: ResolvedTurnPrompt
   ctx: {
     tenantId: string | null
     sessionId: string | null
@@ -204,17 +233,17 @@ function describe(err: unknown): { name: string; message: string } {
 }
 
 /**
- * Run the traffic cop in the shadow of a real turn. Never rejects; never
- * throws synchronously. Safe to `void` and safe to `await`.
+ * Run the legacy assembly in the shadow of a real (traffic-cop) turn. Never
+ * rejects; never throws synchronously. Safe to `void` and safe to `await`.
  */
 export async function runShadowTurn(params: ShadowTurnParams): Promise<ShadowOutcome> {
-  const { request, legacySystem, legacyInputs, ctx } = params
+  const { request, resolved, ctx } = params
   const timeoutMs = params.timeoutMs ?? SHADOW_TIMEOUT_MS
   let stage: ShadowStage = 'resolve'
 
   try {
-    const resolved = await withTimeout(
-      Promise.resolve().then(() => resolveTurnPrompt(request)),
+    const legacyInputs = await withTimeout(
+      Promise.resolve().then(() => resolveLegacyInputs(request)),
       timeoutMs,
       'shadow',
     ).catch(err => {
@@ -223,10 +252,11 @@ export async function runShadowTurn(params: ShadowTurnParams): Promise<ShadowOut
     })
 
     stage = 'compare'
-    const comparison = compareAssembly(legacySystem, buildLegacySegments(legacyInputs), resolved)
+    const legacySegments = buildLegacySegments(legacyInputs)
+    const comparison = compareAssembly(joinLegacySegments(legacySegments), legacySegments, resolved)
 
     stage = 'record'
-    recordTurnContext(resolved, { ...ctx, shadow: true, parity: comparison.match, comparison })
+    recordTurnContext(resolved, { ...ctx, shadow: true, live: true, parity: comparison.match, comparison })
 
     return { ok: true, comparison }
   } catch (err) {
@@ -242,7 +272,7 @@ export async function runShadowTurn(params: ShadowTurnParams): Promise<ShadowOut
         target_id: ctx.sessionId,
         correlation_id: ctx.correlationId,
         outcome: 'failure',
-        metadata: { shadow: true, stage: failedStage, error },
+        metadata: { shadow: true, live: true, stage: failedStage, error },
       })
     } catch {
       // The failure logger failing is the one thing left to swallow.

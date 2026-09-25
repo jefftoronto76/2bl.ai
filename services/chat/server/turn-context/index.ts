@@ -4,11 +4,13 @@
 // { system, selection, injections, budget }. Job #1 (which prompt slot) and
 // Job #2 (which context blocks) in one call, with one decision record.
 //
-// Phase 1: built, tested, called by nothing. streamChat (../index.ts) still
-// builds its own prompt. Phase 2 calls this alongside that assembly and
-// compares (`shadow: true`); Phase 3a hands `system` to runChatStream.
+// Phase 3a (2026-09-25): streamChat (../index.ts) calls this on every turn
+// and hands `system` to runChatStream — it is the only prompt assembly on
+// the live path. shadow.ts still rebuilds the retired legacy concatenation
+// alongside it and records parity (`shadow: true, live: true`) until
+// Phase 6.
 //
-// Design: Design Handovers/traffic_cop_design_2026-09-05.md §5.
+// Design: Design Handovers/september_2026/traffic_cop_design_2026-09-05.md §5.
 
 import { DEFAULT_SYSTEM_PROMPT } from '@/services/prompt/sage-prompt'
 import { tokensFor } from '@/services/prompt/tokenize'

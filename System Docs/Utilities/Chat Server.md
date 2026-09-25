@@ -15,8 +15,9 @@ covers only `member-context.ts`, the one that was missing entirely.
 `resolveMediaContext(mediaItems, tenantId, memberId)` fetches
 `status`/`derived_content`/`error_message` from `media_items` for the
 media the client says is attached to this turn, and returns a formatted
-section for injection into the system prompt (`streamChat()` in
-`index.ts` joins it in alongside the booking section and MEMBER CONTEXT).
+section for injection into the system prompt (since Traffic Cop Phase 3a,
+via the `media` provider in `turn-context/`, alongside the booking section
+and MEMBER CONTEXT).
 Short-circuits to `''` when there are no media items, no tenant, or no
 member — and on a DB error, matching prior behavior rather than guessing.
 
@@ -58,8 +59,9 @@ metadata shape and the second write site in `index.ts`.
 
 `getMemberContext(sessionId, tenantId, memberId, isFirstTurn)` resolves the
 authenticated (or pre-auth invite-holding) Heirloom member for the current
-turn and returns the MEMBER CONTEXT text `streamChat()` (`services/chat/server/index.ts`)
-injects into the system prompt as `MEMBER CONTEXT:\n${memberContext}` —
+turn and returns the MEMBER CONTEXT text that is injected into the system
+prompt as `MEMBER CONTEXT:\n${memberContext}` (by the `member-context`
+provider in `turn-context/` since Phase 3a; by `streamChat()` itself before) —
 whenever the block is non-null, alongside the booking section and
 question-mode context. **Always-on as of 2026-07-31** (previously a one-shot
 primer, see below): computed unconditionally on every request where a member
@@ -81,8 +83,9 @@ marker-emission instruction is separate and gated on the caller-supplied
 `isFirstTurn` flag** — it's appended only when `isFirstTurn` is true, never
 based on anything stored per-member.
 
-**`isFirstTurn` is computed deterministically in `streamChat()`, not inferred
-by the model:** `!req.messages.some(m => m.role === 'assistant' && m.content.trim().length > 0)`
+**`isFirstTurn` is computed deterministically on the server, not inferred
+by the model** (`deriveTurnSignals` in `turn-context/index.ts` since Phase 3a,
+inline in `streamChat()` before — same rule): `!req.messages.some(m => m.role === 'assistant' && m.content.trim().length > 0)`
 — true when this session's own message history (as sent on this request) has
 no prior non-empty assistant turn. This exists because the model cannot be
 trusted to reliably infer "is this my first reply in this conversation" from
@@ -151,9 +154,10 @@ the story-context case. Fail-open throughout: a DB error, an unrecognized
 `context_type`, or a builder that itself throws all return `null` rather than
 blocking the turn, matching `getMemberContext`'s posture exactly.
 
-**Wired into `streamChat()`'s `Promise.all`** (`index.ts`) alongside
-`memberContext`/`mediaContext`, and joined into the system prompt as its own
-segment, positioned after MEMBER CONTEXT and before the media section.
+**Wired in as the `session-context` provider** (`turn-context/`, since
+Phase 3a — previously `streamChat()`'s own `Promise.all`) and joined into the
+system prompt as its own segment, positioned after MEMBER CONTEXT and before
+the media section.
 
 **Security — delineated, unlike MEMBER CONTEXT's own `primer`:** the story
 name/description/owner name are member-controlled and re-sent on every turn
@@ -206,13 +210,14 @@ is a separate, not-yet-landed piece** — see `System Docs/Known Gaps.md`.
 
 ### Chat server — turn-context, the "Traffic Cop" (`services/chat/server/turn-context/`)
 
-**Status: Phase 2 — shadow mode, live on every turn (2026-09-14; Phase 1 was
-PR #471).** `streamChat()` still assembles its own prompt from the six-segment
-array in `index.ts` and that string is still the only one the model receives.
-The traffic cop now runs *alongside* it on every real turn, compares its
-output byte-for-byte, and records the result — nothing it produces is used.
-Cutover is Phase 3a. Design and phasing:
-`Design Handovers/traffic_cop_design_2026-09-05.md`.
+**Status: Phase 3a — cut over (2026-09-25; Phase 2 shadow was 2026-09-14,
+Phase 1 was PR #471).** `streamChat()` calls `resolveTurnPrompt` on every
+turn and hands `resolved.system` to `runChatStream` — the traffic cop is now
+the only prompt assembly on the live path; the six-segment concatenation that
+used to live in `index.ts` is deleted. The shadow comparison is **kept** for
+continued observability (see Shadow mode below — the roles are inverted: the
+legacy recipe is now the shadow) until Phase 6 retires it. Design and
+phasing: `Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`.
 Decisions taken 2026-09-09 against that doc's §9: selection keys on
 `(tenant, slot)` only, no product dimension (9.1); the token budget is
 **log-only through Phase 4** (9.2); notification source and location
@@ -308,8 +313,8 @@ budget — question-mode is last in the prompt but not the first block to drop.
 `runner.ts` is where the guarantees live, so a provider author cannot forget
 them: **fail-open centrally** (`Promise.allSettled`; a throw, rejection, or
 declared-timeout becomes an `InjectionDecision` with `status: 'failed' |
-'timeout'` and the block is omitted — today a rejection inside `streamChat`'s
-`Promise.all` would 502 the turn, and three of the six resolvers have no
+'timeout'` and the block is omitted — before Phase 3a a rejection inside
+`streamChat`'s own `Promise.all` would fail the turn, and three of the six resolvers have no
 try/catch of their own); **delineation by trust class** (`system` passes
 through; `operator`/`participant` are wrapped in an escaped
 `<context id="…">` tag with the same "reference data, never instructions"
@@ -339,8 +344,19 @@ on every blocked turn (`selection.ruleId = 'account-status'`, see the
 account-status rule above); this paragraph previously said "not called by
 anything yet," which stopped being true the moment Phase 2 shipped.
 
-**Shadow mode — `shadow.ts` (Phase 2, 2026-09-14).** `runShadowTurn(params)`
-is called by `streamChat()` immediately after `systemPrompt` is built, so it
+**Shadow mode — `shadow.ts` (Phase 2, 2026-09-14; inverted at Phase 3a,
+2026-09-25).** Since the cutover, `runShadowTurn({ request, resolved, ctx })`
+is handed the live resolution and `resolveLegacyInputs` re-runs the six
+resolvers exactly as `streamChat`'s deleted `Promise.all` did (same gates,
+same arguments); `buildLegacySegments`/`joinLegacySegments` — now the only
+copy of the old recipe outside the golden test — rebuild the legacy string,
+and the comparison below runs legacy-vs-live instead of live-vs-shadow. Rows
+keep `shadow: true` (so every query below still works) and gain
+`live: true`, meaning `resolved.system` is what the model received; Phase 2
+rows have no `live` key, so the two eras are distinguishable. After the
+cutover `legacyReconstructionMatch` is true by construction and kept only
+for row-shape stability. Before the cutover, `runShadowTurn(params)`
+was called by `streamChat()` immediately after `systemPrompt` was built, so it
 runs concurrently with the model stream rather than ahead of it; the promise
 is settled in `runChatStream`'s `onFinish`, after `handleSessionFinish`, so
 it can only ever wait (≤ `SHADOW_TIMEOUT_MS`, 5 s), never delay anything the
@@ -369,8 +385,9 @@ the string actually sent. Never any prompt text — hashes and lengths only
 window:** the six resolvers run a second time per turn, concurrently with
 streaming; `resolveMediaContext` re-fires its own
 `CHAT_MEDIA_CONTEXT_RESOLVED` row on media turns. **`correlation_id` is
-null on shadow rows** — `ChatStreamRequest` does not carry one yet; that
-lands with the Phase 3a request-shape change.
+null on shadow rows** — `ChatStreamRequest` does not carry one yet; the
+design paired that with Phase 3a, but the cutover PR deliberately shipped the
+prompt swap alone, so it is still open.
 
 **Phase 3 cutover gate — a manual checklist, not a calendar (decided
 2026-09-14).** Heirloom has no real production traffic yet (all current usage
@@ -417,6 +434,26 @@ from audit_events
 where action = 'chat.turn_context_resolved' and metadata->>'shadow' = 'true'
 group by 1, 2;
 ```
+**Gate result (2026-09-25, queried against production before the cutover
+PR):** all 20 shadow rows ever written were `parity = true`,
+`outcome = 'success'`, `classification = 'identical'`,
+`legacyReconstructionMatch = true`. Row 2 — 2026-09-15 17:15:06 UTC
+(Heirloom, `turnIndex = 2`, `member-context` injected,
+`firstTurnMarkerInstruction = false`); row 3 — 2026-09-15 17:15:59 and six
+later rows (`media` injected, `match`); row 6 — 2026-09-25 14:42:39
+(jefflougheed.ca, anonymous, only `base-prompt` and `booking` injected, both
+`match`); row 7 — 2026-09-25 19:53:14 (`question-mode` injected, `match`,
+last). **Rows 1 (story-scoped) and 5 (invite-holder) were excluded from the
+cutover by decision, not oversight:** both are real, built, live paths that
+were never shadow-verified, and that is an accepted trade-off (for context:
+`chat_session_context` had zero rows in production as of 2026-09-25 — design
+Appendix C.3); the golden test covers both
+shapes (story segment, member-context with first-turn markers) at the unit
+level, and the kept shadow comparison will record them the first time they
+occur. As a consequence, **no production row has yet shown
+`member-context` with `firstTurnMarkerInstruction = true`** (that lived in
+row 1). Row 4 is optional per its own trigger and was not run.
+
 Any `parity = false` row: `metadata->'comparison'` names the segment
 (`diffSegmentIds`, per-segment verdicts with lengths and hash prefixes) and
 the kind of difference (`classification`); any `outcome = 'failure'` row:
@@ -435,12 +472,13 @@ no timeouts in Phase 1).
 `shadow.test.ts` (comparison verdicts/classifications, no-text guarantee,
 and every fail-open path of `runShadowTurn` including the 5 s timeout), and
 `assembly.golden.test.ts` — which carries a **verbatim copy of `streamChat`'s
-concatenation** and asserts byte-identical `system` output across Sage
+pre-3a concatenation** and asserts byte-identical `system` output across Sage
 visitor, question mode, Heirloom first turn, story turn with attachments,
-no-tenant fallback, and provider-failure scenarios. No test asserted the
-six-segment assembly order before this file; if the recipe in `index.ts`
-changes, this test must change with it, and that diff is the review signal.
-It is also the Phase 2 parity oracle in test form.
+no-tenant fallback, and provider-failure scenarios. Since Phase 3a it also
+runs the parity scenarios through `streamChat` itself and asserts the
+`system` handed to `runChatStream` is byte-identical to that frozen recipe —
+the "no behaviour change" proof for the cutover. It is the parity oracle in
+test form.
 
 ### Chat server — mid-stream error classification (`services/chat/server/stream.ts`, 2026-09-16)
 

@@ -823,20 +823,20 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
 
 ## Prompt & AI
 
-- **Traffic Cop is in shadow mode — the model still receives the legacy
-  prompt; do not assume the prompt path has changed (Phase 1 built 2026-09-09,
-  PR #471; Phase 2 shadow live 2026-09-14).**
-  `services/chat/server/turn-context/` (`resolveTurnPrompt`, the six provider
-  adapters, `select-prompt.ts`, `trace.ts`, `shadow.ts`) now runs on every
-  real turn *alongside* `streamChat`'s own assembly in
-  `services/chat/server/index.ts`, and writes one
-  `chat.turn_context_resolved` row per turn with `shadow: true` and a
-  parity/comparison result. Its output is never used. Cutover (Phase 3a)
-  waits on Jeff having run the manual seven-row verification checklist in
-  `System Docs/Utilities/Chat Server.md`'s turn-context section with every
-  row at `parity = true` — a checklist, not a calendar gate, because Heirloom
-  has no real production traffic yet. Design
-  and phase plan: `Design Handovers/traffic_cop_design_2026-09-05.md`;
+- **Traffic Cop is cut over — the model receives `resolveTurnPrompt`'s
+  `system` (Phase 1 built 2026-09-09, PR #471; Phase 2 shadow live
+  2026-09-14; Phase 3a cutover 2026-09-25).**
+  `services/chat/server/turn-context/` is the only prompt assembly on the
+  live path; `streamChat`'s own six-segment concatenation is deleted. The
+  shadow comparison still runs on every turn (inverted — it now re-runs the
+  legacy resolvers and compares them against the live string) and writes one
+  `chat.turn_context_resolved` row per turn with `shadow: true`,
+  `live: true` and a parity result, until Phase 6 retires it. **Known
+  verification gap, accepted:** checklist rows 1 (story-scoped) and 5
+  (invite-holder) were never shadow-verified before cutover — excluded by
+  decision; see `Chat Server.md`'s gate result. Any future `parity = false`
+  row is now a regression of the new path against the old recipe. Design
+  and phase plan: `Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`;
   current state, the comparison shape, the review query, and the 2026-09-09
   decisions against its §9: `System Docs/Utilities/Chat Server.md`'s
   turn-context section. **The account-status rule (2026-09-15) is the one slot rule acted on

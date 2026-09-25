@@ -3,7 +3,9 @@
 // The two things the Phase 2 brief singles out: the comparison logic (can a
 // mismatch be triaged from the audit row alone, with no prompt text in it?)
 // and the fail-open guarantee (can anything the shadow does reach the real
-// turn?).
+// turn?). Since Phase 3a the shadow side is the legacy assembly: runShadowTurn
+// is handed the live resolution and re-runs the six legacy resolvers itself,
+// so those resolvers are what these tests mock.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ResolvedTurnPrompt, TurnContextRequest } from './types'
@@ -12,20 +14,44 @@ import type { LegacySegmentInputs } from './shadow'
 const { QUESTION_MODE_CONTEXT } = vi.hoisted(() => ({
   QUESTION_MODE_CONTEXT: 'CONTEXT: This visitor arrived with a specific question in mind. …',
 }))
-vi.mock('@/services/prompt/compiler', () => ({ QUESTION_MODE_CONTEXT }))
+const mockBase = vi.fn<(t: string | null) => Promise<string>>()
+vi.mock('@/services/prompt/compiler', () => ({
+  QUESTION_MODE_CONTEXT,
+  getSystemPrompt: (t: string | null) => mockBase(t),
+  getSystemPromptRecord: vi.fn(),
+}))
 vi.mock('@/services/auth/supabase-admin', () => ({ getAdminClient: () => ({}) }))
 
 const mockLogEvent = vi.fn()
 vi.mock('@/services/audit', () => ({ logEvent: (...a: unknown[]) => mockLogEvent(...a) }))
 
-const mockResolve = vi.fn<(r: TurnContextRequest) => Promise<ResolvedTurnPrompt>>()
-vi.mock('./index', () => ({ resolveTurnPrompt: (r: TurnContextRequest) => mockResolve(r) }))
+const mockBooking = vi.fn<(t: string) => Promise<string>>()
+vi.mock('../booking', () => ({ getBookingCardSection: (t: string) => mockBooking(t) }))
+const mockMember = vi.fn<(...a: unknown[]) => Promise<string | null>>()
+vi.mock('../member-context', () => ({
+  MARKER_INSTRUCTION_LEAD: 'On your first reply, silently append',
+  getMemberContext: (...a: unknown[]) => mockMember(...a),
+}))
+const mockSession = vi.fn<(...a: unknown[]) => Promise<string | null>>()
+vi.mock('../session-context', () => ({ getSessionContext: (...a: unknown[]) => mockSession(...a) }))
+const mockMedia = vi.fn<(...a: unknown[]) => Promise<string>>()
+vi.mock('../media-context', () => ({ resolveMediaContext: (...a: unknown[]) => mockMedia(...a) }))
+
+/** Make the six legacy resolvers return exactly `i`. */
+function legacyResolversReturn(i: LegacySegmentInputs) {
+  mockBase.mockResolvedValue(i.basePrompt)
+  mockBooking.mockResolvedValue(i.bookingSection)
+  mockMember.mockResolvedValue(i.memberContext)
+  mockSession.mockResolvedValue(i.sessionContext)
+  mockMedia.mockResolvedValue(i.mediaContext)
+}
 
 import {
   buildLegacySegments,
   joinLegacySegments,
   compareAssembly,
   runShadowTurn,
+  resolveLegacyInputs,
   SHADOW_TIMEOUT_MS,
   LEGACY_SEGMENT_IDS,
 } from './shadow'
@@ -80,12 +106,13 @@ const ctx = { tenantId: 'tenant-1', sessionId: 'session-1', memberId: 'member-1'
 
 beforeEach(() => {
   mockLogEvent.mockReset()
-  mockResolve.mockReset()
+  for (const m of [mockBase, mockBooking, mockMember, mockSession, mockMedia]) m.mockReset()
+  legacyResolversReturn(inputs)
 })
 
 // ── Legacy reconstruction ───────────────────────────────────────────────
 describe('buildLegacySegments / joinLegacySegments', () => {
-  // Verbatim from services/chat/server/index.ts (streamChat) — same recipe
+  // Verbatim from streamChat's pre-Phase-3a concatenation — same recipe
   // assembly.golden.test.ts pins.
   function streamChatRecipe(i: LegacySegmentInputs): string {
     return [
@@ -205,49 +232,61 @@ describe('compareAssembly', () => {
 
 // ── The shadow run: fail-open ───────────────────────────────────────────
 describe('runShadowTurn', () => {
-  const legacySegments = buildLegacySegments(inputs)
-  const legacySystem = joinLegacySegments(legacySegments)
+  const live = () => resolvedFrom(identicalBlocks)
 
-  it('on success writes one shadow:true record with parity and the comparison, and resolves ok', async () => {
-    mockResolve.mockResolvedValue(resolvedFrom(identicalBlocks))
-    const outcome = await runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })
+  it('re-runs the legacy resolvers with streamChat\'s old gates and arguments', async () => {
+    await runShadowTurn({ request, resolved: live(), ctx })
+    expect(mockBase).toHaveBeenCalledWith('tenant-1')
+    expect(mockBooking).toHaveBeenCalledWith('tenant-1')
+    expect(mockMember).toHaveBeenCalledWith('session-1', 'tenant-1', 'member-1', true)
+    expect(mockSession).toHaveBeenCalledWith('session-1', 'tenant-1', true)
+    expect(mockMedia).toHaveBeenCalledWith(null, 'tenant-1', 'member-1')
+  })
 
-    expect(outcome).toMatchObject({ ok: true, comparison: { match: true } })
-    expect(mockResolve).toHaveBeenCalledWith(request)
+  it('resolveLegacyInputs mirrors the old gates: no tenant → no booking; no session or member → no member context', async () => {
+    const got = await resolveLegacyInputs({ ...request, tenantId: null, sessionId: null, memberId: null, mode: 'question' })
+    expect(mockBooking).not.toHaveBeenCalled()
+    expect(mockMember).not.toHaveBeenCalled()
+    expect(got).toMatchObject({ bookingSection: '', memberContext: null, questionMode: true })
+  })
+
+  it('on success writes one shadow:true, live:true record with parity and the comparison, and resolves ok', async () => {
+    const outcome = await runShadowTurn({ request, resolved: live(), ctx })
+
+    expect(outcome).toMatchObject({ ok: true, comparison: { match: true, legacyReconstructionMatch: true } })
     expect(mockLogEvent).toHaveBeenCalledTimes(1)
     const event = mockLogEvent.mock.calls[0][0]
     expect(event).toMatchObject({
       action: 'chat.turn_context_resolved', outcome: 'success', tenant_id: 'tenant-1',
       target_type: 'chat_session', target_id: 'session-1', correlation_id: 'corr-1', actor_type: 'user',
     })
-    expect(event.metadata).toMatchObject({ shadow: true, parity: true, comparison: { match: true, classification: 'identical' } })
+    expect(event.metadata).toMatchObject({ shadow: true, live: true, parity: true, comparison: { match: true, classification: 'identical' } })
   })
 
   it('records parity:false with the comparison on a mismatch', async () => {
-    mockResolve.mockResolvedValue(resolvedFrom(identicalBlocks.filter(b => b.id !== 'media')))
-    const outcome = await runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })
+    const outcome = await runShadowTurn({ request, resolved: resolvedFrom(identicalBlocks.filter(b => b.id !== 'media')), ctx })
     expect(outcome.ok).toBe(true)
-    expect(mockLogEvent.mock.calls[0][0].metadata).toMatchObject({ shadow: true, parity: false, comparison: { classification: 'segment-presence', diffSegmentIds: ['media'] } })
+    expect(mockLogEvent.mock.calls[0][0].metadata).toMatchObject({ shadow: true, live: true, parity: false, comparison: { classification: 'segment-presence', diffSegmentIds: ['media'] } })
   })
 
-  it('resolve throws: resolves (never rejects) with stage resolve and writes a failure-outcome row', async () => {
+  it('a legacy resolver rejects: resolves (never rejects) with stage resolve and writes a failure-outcome row', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockResolve.mockRejectedValue(new Error('supabase exploded'))
+    mockBase.mockRejectedValue(new Error('supabase exploded'))
 
-    await expect(runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })).resolves.toEqual({ ok: false, stage: 'resolve' })
+    await expect(runShadowTurn({ request, resolved: live(), ctx })).resolves.toEqual({ ok: false, stage: 'resolve' })
     expect(mockLogEvent).toHaveBeenCalledTimes(1)
     expect(mockLogEvent.mock.calls[0][0]).toMatchObject({
       action: 'chat.turn_context_resolved', outcome: 'failure', target_id: 'session-1',
-      metadata: { shadow: true, stage: 'resolve', error: { name: 'Error', message: 'supabase exploded' } },
+      metadata: { shadow: true, live: true, stage: 'resolve', error: { name: 'Error', message: 'supabase exploded' } },
     })
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
   })
 
-  it('resolve throws synchronously: still stage resolve, still resolves', async () => {
+  it('a legacy resolver throws synchronously: still stage resolve, still resolves', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockResolve.mockImplementation(() => { throw new TypeError('sync bug') })
-    await expect(runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })).resolves.toEqual({ ok: false, stage: 'resolve' })
+    mockBooking.mockImplementation(() => { throw new TypeError('sync bug') })
+    await expect(runShadowTurn({ request, resolved: live(), ctx })).resolves.toEqual({ ok: false, stage: 'resolve' })
     expect(mockLogEvent.mock.calls[0][0].metadata.error).toEqual({ name: 'TypeError', message: 'sync bug' })
     vi.restoreAllMocks()
   })
@@ -256,11 +295,11 @@ describe('runShadowTurn', () => {
     beforeEach(() => vi.useFakeTimers())
     afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
-    it('a resolve that never settles is cut off at timeoutMs with stage timeout', async () => {
+    it('a legacy resolver that never settles is cut off at timeoutMs with stage timeout', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockResolve.mockImplementation(() => new Promise(() => {}))
+      mockSession.mockImplementation(() => new Promise(() => {}))
 
-      const pending = runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx, timeoutMs: 100 })
+      const pending = runShadowTurn({ request, resolved: live(), ctx, timeoutMs: 100 })
       await vi.advanceTimersByTimeAsync(101)
 
       await expect(pending).resolves.toEqual({ ok: false, stage: 'timeout' })
@@ -269,8 +308,8 @@ describe('runShadowTurn', () => {
 
     it('defaults to SHADOW_TIMEOUT_MS (5 s)', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockResolve.mockImplementation(() => new Promise(() => {}))
-      const pending = runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })
+      mockSession.mockImplementation(() => new Promise(() => {}))
+      const pending = runShadowTurn({ request, resolved: live(), ctx })
       await vi.advanceTimersByTimeAsync(SHADOW_TIMEOUT_MS - 1)
       let settled = false
       void pending.then(() => { settled = true })
@@ -284,23 +323,22 @@ describe('runShadowTurn', () => {
 
   it('compare throws (malformed resolved shape): stage compare, resolves', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockResolve.mockResolvedValue({ system: 'x' } as unknown as ResolvedTurnPrompt) // no blocks/injections
-    await expect(runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })).resolves.toEqual({ ok: false, stage: 'compare' })
+    const malformed = { system: 'x' } as unknown as ResolvedTurnPrompt // no blocks/injections
+    await expect(runShadowTurn({ request, resolved: malformed, ctx })).resolves.toEqual({ ok: false, stage: 'compare' })
     expect(mockLogEvent.mock.calls[0][0].metadata.stage).toBe('compare')
     vi.restoreAllMocks()
   })
 
   it('the audit logger itself throwing cannot escape', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockResolve.mockResolvedValue(resolvedFrom(identicalBlocks))
     mockLogEvent.mockImplementation(() => { throw new Error('audit down') })
-    await expect(runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })).resolves.toEqual({ ok: false, stage: 'record' })
+    await expect(runShadowTurn({ request, resolved: live(), ctx })).resolves.toEqual({ ok: false, stage: 'record' })
     vi.restoreAllMocks()
   })
 
   it('never puts prompt text or identity values into the audit row', async () => {
-    mockResolve.mockResolvedValue(resolvedFrom(identicalBlocks.map(b => b.id === 'media' ? { ...b, body: MEDIA + ' extra' } : b)))
-    await runShadowTurn({ request, legacySystem, legacyInputs: inputs, ctx })
+    const drifted = resolvedFrom(identicalBlocks.map(b => b.id === 'media' ? { ...b, body: MEDIA + ' extra' } : b))
+    await runShadowTurn({ request, resolved: drifted, ctx })
     const serialized = JSON.stringify(mockLogEvent.mock.calls[0][0])
     for (const text of [BASE, MEMBER, STORY, MEDIA, PII.name, PII.email]) expect(serialized).not.toContain(text)
   })
