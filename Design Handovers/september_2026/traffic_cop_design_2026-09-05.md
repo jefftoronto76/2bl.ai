@@ -7,11 +7,7 @@
 **Builds on:** `Design Handovers/Decision_MemberContext_Jul31.md`,
 `System Docs/Utilities/Chat Server.md` (session-context-service, PR #383)
 
-
-
 ---
-
-## 0. Findings that shape the design
 
 ## The decision tree — how Traffic Cop picks what to use (added 2026-09-25)
 
@@ -58,6 +54,7 @@ lands. `SlotRuleConfig` is built as a clean seam specifically so this swap —
 hardcoded object to DB-backed table — stays cheap whenever it's time.
 
 ---
+## 0. Findings that shape the design
 
 Five things surfaced while grounding this that materially change the size and
 shape of the work.
