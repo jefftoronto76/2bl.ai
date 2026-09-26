@@ -78,7 +78,8 @@ describe('middleware — preview tenant header on page requests', () => {
 
   it.each([
     ['legacy', 'legacy'],
-    ['sbl', 'sbl'],
+    // Alias spelling — forwards the real tenants.slug, not the raw param.
+    ['sbl', 'second-brain-labs'],
     ['second-brain-labs', 'second-brain-labs'],
     // Alias spelling — forwards the real tenants.slug, not the raw param.
     ['jefflougheed', 'jeff-lougheed'],
@@ -103,6 +104,24 @@ describe('middleware — preview tenant header on page requests', () => {
     const expected = { pageHeader: 'jeff-lougheed', cookie: 'jeff-lougheed', apiHeader: 'jeff-lougheed' }
     expect(await effect('jefflougheed')).toEqual(expected)
     expect(await effect('jeff-lougheed')).toEqual(expected)
+  })
+
+  it('?preview=sbl and ?preview=second-brain-labs are indistinguishable: same header, same cookie, same API resolution', async () => {
+    const effect = async (param: string) => {
+      const page = await run(pageRequest(`/?preview=${param}`))
+      const cookie = (page as unknown as { cookies: { get: (n: string) => { value: string } | undefined } }).cookies.get('hl-preview')?.value
+      // The follow-on API call carries only the cookie the page set.
+      const api = await run(pageRequest('/api/sage', { 'hl-preview': cookie ?? '' }))
+      return {
+        pageHeader: forwardedHeader(page, 'x-preview-tenant'),
+        brandHeader: forwardedHeader(page, 'x-sbl'),
+        cookie,
+        apiHeader: forwardedHeader(api, 'x-preview-tenant'),
+      }
+    }
+    const expected = { pageHeader: 'second-brain-labs', brandHeader: '1', cookie: 'second-brain-labs', apiHeader: 'second-brain-labs' }
+    expect(await effect('sbl')).toEqual(expected)
+    expect(await effect('second-brain-labs')).toEqual(expected)
   })
 
   it('forwards x-preview-tenant on a direct /heirloom page request', async () => {

@@ -120,16 +120,21 @@ export default createAuthMiddleware(async (auth, req) => {
     }
 
     if (previewTenant === 'sbl') {
+      // Alias spelling: the real tenants.slug is 'second-brain-labs', and
+      // getTenantFromRequest resolves x-preview-tenant by slug. Forwarding
+      // the raw param here silently missed that lookup and fell through to
+      // PREVIEW_TENANT_ID, so both the header and the cookie carry the real
+      // slug — making this branch identical in effect to the one below.
       const requestHeaders = new Headers(req.headers)
       requestHeaders.set('x-sbl', '1')
-      requestHeaders.set('x-preview-tenant', previewTenant)
+      requestHeaders.set('x-preview-tenant', 'second-brain-labs')
       requestHeaders.set('x-correlation-id', correlationId)
       const url = req.nextUrl.clone()
       if (!isSblPath) {
         url.pathname = pathname === '/' ? '/secondbrainlabs' : `/secondbrainlabs${pathname}`
       }
       const res = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
-      res.cookies.set('hl-preview', 'sbl', { path: '/', sameSite: 'lax', maxAge: 3600 })
+      res.cookies.set('hl-preview', 'second-brain-labs', { path: '/', sameSite: 'lax', maxAge: 3600 })
       return res
     }
 
