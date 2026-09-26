@@ -197,8 +197,8 @@ tenant by host for multi-tenant users, and the **AdminShell banner name is
 host-derived, not hardcoded** — `app/admin/layout.tsx` resolves
 `getAuthContext()` once, then calls `getTenantName(tenantId)`
 (`services/auth/get-tenant-name.ts`, which reads `tenants.name`; called with
-no argument it self-resolves via `getAuthContext` first, as
-`app/(platform)/layout.tsx` still does) and passes it as the `tenantName`
+no argument it self-resolves via `getAuthContext` first;
+`app/(platform)/layout.tsx` also passes its one resolved `tenantId`) and passes it as the `tenantName`
 prop to `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell`,
 falling back to `'Natural Resource'` only if resolution returns null). The
 `ADMIN` eyebrow is a fixed role descriptor, not a tenant

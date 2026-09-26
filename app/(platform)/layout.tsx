@@ -30,38 +30,60 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     redirect('/admin');
   }
 
-  const [tenantName, tenantType] = await Promise.all([getTenantName(), getTenantType()])
-  const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
-  console.log('[platform layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
+  // Auth dedupe (2026-09, same pattern as app/admin/layout.tsx, PR #498):
+  // getAuthContext() is resolved exactly once, after the gate above. Tenant
+  // name, tenant type and branding only need its tenant_id, so they run
+  // concurrently off it. Previously getTenantName() and getTenantType() each
+  // re-ran the full auth chain internally and branding ran it a third time.
+  // An auth failure never failed the render before (the tenant helpers
+  // swallowed it, branding sat in a try) — keep it that way.
+  const authCtx = await getAuthContext().catch((err) => {
+    console.error('[platform layout] auth context failed:', err instanceof Error ? err.message : err);
+    return null;
+  });
 
   // Resolve branding server-side; pass raw values to AdminThemeProvider (client).
+  let tenantName: string | null = null;
+  let tenantType: string | null = null;
   let resolvedBranding: BrandingForTheme | null = null;
   let resolvedTenantId: string | undefined;
   let brandingFontEntries: FontEntry[] = [];
-  try {
-    const authCtx = await getAuthContext();
-    resolvedTenantId = authCtx.tenant_id;
-    const branding = await getTenantBranding(authCtx.tenant_id, 'admin');
-    console.log('[branding:platform]', JSON.stringify({ branding }));
-    resolvedBranding = branding;
-    console.log('[platform layout] branding resolved:', {
-      tenant_id: authCtx.tenant_id,
-      font_primary: branding?.font_primary,
-      font_secondary: branding?.font_secondary,
-      accent: branding?.accent,
-    });
-    const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
-    brandingFontEntries = [
-      branding?.font_primary,
-      branding?.font_secondary,
-      branding?.font_mono,
-    ]
-      .filter((v): v is string => !!v && allowedFontValues.has(v))
-      .map(v => ALL_FONTS.find(f => f.value === v)!)
-      .filter(e => !!e?.googleFamily);
-  } catch (err) {
-    console.error('[platform layout] branding fetch failed:', err instanceof Error ? err.message : err);
+  if (authCtx) {
+    const tenantId = authCtx.tenant_id;
+    resolvedTenantId = tenantId;
+    const [name, type, branding] = await Promise.all([
+      getTenantName(tenantId),
+      getTenantType(tenantId),
+      // null yields the same defaults the old catch path left in place.
+      getTenantBranding(tenantId, 'admin').catch((err) => {
+        console.error('[platform layout] branding fetch failed:', err instanceof Error ? err.message : err);
+        return null;
+      }),
+    ]);
+    tenantName = name;
+    tenantType = type;
+    if (branding) {
+      console.log('[branding:platform]', JSON.stringify({ branding }));
+      resolvedBranding = branding;
+      console.log('[platform layout] branding resolved:', {
+        tenant_id: tenantId,
+        font_primary: branding.font_primary,
+        font_secondary: branding.font_secondary,
+        accent: branding.accent,
+      });
+      const allowedFontValues = new Set(ALL_FONTS.map(f => f.value));
+      brandingFontEntries = [
+        branding.font_primary,
+        branding.font_secondary,
+        branding.font_mono,
+      ]
+        .filter((v): v is string => !!v && allowedFontValues.has(v))
+        .map(v => ALL_FONTS.find(f => f.value === v)!)
+        .filter(e => !!e?.googleFamily);
+    }
   }
+  const isPlatformAdmin = user.isPlatformAdmin === true && tenantType === 'platform'
+  console.log('[platform layout]', { isPlatformAdmin: user?.isPlatformAdmin, tenantType, computed: user?.isPlatformAdmin === true && tenantType === 'platform' })
 
   return (
     <>
