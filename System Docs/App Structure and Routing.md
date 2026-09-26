@@ -140,11 +140,17 @@ routing in addition to Clerk auth**:
   routing above), and `jefflougheed` / `jeff-lougheed` (no rewrite, no brand
   header — the root layout's default applies). Every recognized value also
   sets an `hl-preview` cookie (`path: '/'`, `sameSite: 'lax'`, `maxAge: 3600`)
-  to the raw `previewTenant` string so the choice survives subsequent
+  to the tenant's real `tenants.slug` so the choice survives subsequent
   navigations. An unrecognized `?preview=` value falls through to normal
   host-based routing. Every recognized value also sets `x-preview-tenant` on
-  the **page** request itself, straight from the `?preview=` param, so
-  `getTenantFromRequest` can resolve the tenant during server rendering.
+  the **page** request itself to that same slug, so `getTenantFromRequest`
+  can resolve the tenant during server rendering. **Alias spellings are
+  canonicalized:** `sbl` → `second-brain-labs` (PR #501) and `jefflougheed` →
+  `jeff-lougheed` (PR #497) — each alias writes the real slug to both the
+  cookie and the header, never the raw param, so both spellings of a tenant
+  are identical in effect. Forwarding the raw alias used to miss the slug
+  lookup and fall through to `PREVIEW_TENANT_ID`. The other values are
+  already the real slug and are forwarded as-is.
   **API-route forwarding:** because client-side `fetch` calls from a previewed
   page don't carry `?preview=` themselves, a second, separate block
   (non-production, `isApiPath` only) reads the `hl-preview` cookie and forwards
@@ -197,8 +203,8 @@ tenant by host for multi-tenant users, and the **AdminShell banner name is
 host-derived, not hardcoded** — `app/admin/layout.tsx` resolves
 `getAuthContext()` once, then calls `getTenantName(tenantId)`
 (`services/auth/get-tenant-name.ts`, which reads `tenants.name`; called with
-no argument it self-resolves via `getAuthContext` first, as
-`app/(platform)/layout.tsx` still does) and passes it as the `tenantName`
+no argument it self-resolves via `getAuthContext` first;
+`app/(platform)/layout.tsx` also passes its one resolved `tenantId`) and passes it as the `tenantName`
 prop to `UnifiedAdminShell` (`components/admin/shell/UnifiedAdminShell`,
 falling back to `'Natural Resource'` only if resolution returns null). The
 `ADMIN` eyebrow is a fixed role descriptor, not a tenant
