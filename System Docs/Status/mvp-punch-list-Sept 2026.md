@@ -11,39 +11,46 @@ of this list lives in System Docs/Status/.
 
 ## Traffic Cop
 
-Real Phase 2 exit criterion (Design Handovers/september_2026/traffic_cop_design_2026-09-05.md
-section 9.5): 100% shadow parity, BOTH tenants, 7 days. Not met — Heirloom
-has real data, jefflougheed.ca has none yet.
+**Live in production as of tonight (2026-09-25).** `streamChat` sends
+`resolveTurnPrompt`'s real output — this is no longer shadow-only.
+Real gate (Chat Server.md's "Phase 3 cutover gate," not the old §9.5
+calendar version, which was superseded 2026-09-14): 24 shadow turns ever
+recorded, 100% parity, zero failures. Rows 1 (story-scoped) and 5
+(invite-holder) deliberately excluded — real, live, built code, never
+shadow-verified. Accepted trade-off, full reasoning in Chat Server.md.
 
-- Shadow-mode test sheet, real status as of tonight: 1 of 7 rows solidly
-  confirmed (media-attached). Rows 1 and 2 need a real signed-in-member,
-  story-scoped test to confirm precisely. Rows 5-7 need real
-  jefflougheed.ca traffic and an invite-holder test.
-  (Earlier tracking recorded "3 of 7" — that number is superseded by this
-  one, not a separate figure to reconcile.)
-- Generate one real jefflougheed.ca conversation — the simplest unblock,
-  produces the first Sage-tenant shadow record.
-- Sprint 1 — wire member-status (guest vs. member) into rule 4 in
-  select-prompt.ts. Currently dormant/empty config. Doesn't block the
-  cutover itself, but is the cheapest real item and de-risks the pattern
-  used everywhere else.
+- Phase 4 — base-prompt becomes slot-aware. Not started. `SlotRuleConfig`
+  is now per-tenant (shipped tonight, PR #500), but `base-prompt.ts`
+  still ignores it entirely — grabs whichever compiled row is newest,
+  regardless of type. This is the next real step.
+- Sprint 1 — Heirloom's `visitor` slot is wired (PR #500); the `member`
+  slot is still unset for every tenant. Member-side personalization
+  still needs its own real content and wiring.
+- "Start Your Story" trigger — designed, not built. Fire a real hidden
+  turn via `sendHidden` the moment the panel opens, using the existing
+  "Opening Greeting" block, instead of opening an empty composer.
+- Date/time context provider — designed, not built. Needs the client to
+  send timezone; not currently wired.
+- Member-context field expansion (session count, last visit) — designed,
+  not built.
+- Story-invite → session-context wiring — confirmed unbuilt.
+  `chat_session_context` has zero rows ever, in production. Real access
+  works; automatic story-scoped chat context does not.
 - Sprint 2 — chip/visible-output shape for the ContextProvider contract.
 - Sprint 3 — Memory Review routine (deterministic checklist + prompt-chips).
 - Sprint 4 — NPS survey, traffic-cop-gated.
 - Sprint 5 — Inbound Chats visibility UI.
 - Sprint 6 — prompt caching.
-- Sprint 7 — prompt language review (MEMBER CONTEXT etc.).
-- Sprint 8 — product knowledge / documentation context. Deliberately
-  scoped down from full RAG. pgvector isn't installed, no retrieval
-  mechanism exists today. Staged plan: inject landing-page copy as a
-  provider, hand-write a real "how this works" doc once, run that
-  update process manually for a while, only then consider automating or
-  moving to real retrieval. Fully independent of everything else — can
-  start anytime, not urgent.
-- Admin UI to manage (tenant, situation) -> prompt-slot mappings — real
-  scope, currently a hardcoded code change + redeploy, not an admin
-  action. Needs sizing.
+- Sprint 7 — prompt language review (MEMBER CONTEXT, etc.).
+- Sprint 8 — product knowledge/documentation context. Unchanged, still
+  deliberately scoped down, still fully independent, not urgent.
+- Admin UI to manage (tenant, situation) -> prompt-slot mappings — still
+  real scope, still a hardcoded code change + redeploy today. The
+  per-tenant config shape shipped tonight is exactly the seam this was
+  designed to grow into — still needs sizing, now has real ground to
+  stand on.
 
+  
 ## Identity / launch readiness
 
 - Sign-up/sign-in identity test sheet, 18 rows (Google Sheet) — 0 filled in.
@@ -55,6 +62,11 @@ has real data, jefflougheed.ca has none yet.
 - Security agent / RLS posture — P0 items (record-level auth,
   cross-user isolation tests) not started; current docs overstate the
   real posture.
+-  Invited-row orphaning — real, current, documented in Known Gaps.md
+  (2026-09-25). Same underlying issue as Allie's account, confirmed as a
+  real, ongoing pattern (two more current cases found), not a one-off.
+  Deliberately parked — low volume today, real fix scoped for when
+  invite volume increases.
 
 ## Performance
 
