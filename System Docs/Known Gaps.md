@@ -88,9 +88,11 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   The 3ms is likely Next's per-render GET-fetch memoization reusing the
   earlier calls' responses, not the chain's real cost, so compare
   `metadata.totalMs` across the change, not the per-phase numbers.)
-  **Not yet deduped:** `app/(platform)/layout.tsx` still calls
-  `getTenantName()`/`getTenantType()` without a `tenantId` plus its own
-  `getAuthContext()` — the same three-resolution pattern, uninstrumented. **Phases, page:** `auth`, then `inboundChats` and `ttftTrend`
+  **Platform layout:** `app/(platform)/layout.tsx` had the same
+  three-resolution pattern; deduped 2026-09-26 the same way (one
+  `getAuthContext()` after the admin gate, then name/type/branding
+  concurrently off its `tenant_id`). It is still uninstrumented — no
+  `ADMIN_PAGE_LOAD_TIMING` row. **Phases, page:** `auth`, then `inboundChats` and `ttftTrend`
   concurrently. The page's catch still renders, so `status` is always 200;
   a caught failure shows up as `metadata.errorPhase` (`'auth'` or
   `'dataFetch'`, null on success).
