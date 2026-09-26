@@ -34,13 +34,13 @@ When the safety check flags an issue and offers a suggested rewrite, surface an 
 `safety.ts`, "Identify Opportunities", and any other hardcoded model instructions should live in prompt sets, not TypeScript files. `.ts` files become thin wrappers that call the compiled prompt. Architectural decision — plan before implementing.
 
 **Traffic cop / runtime dispatch**
-`getSystemPrompt()` in `services/prompt/compiler.ts` currently ignores `prompt_type_id`. Wire it to accept a prompt type parameter and serve the correct compiled prompt based on session context (visitor vs member, session count, surface). This is the highest-leverage gap in the system.
+The Traffic Cop is live (Phases 1–3a, cutover 2026-09-25) and records a slot every turn. The remaining gap is Phase 4: the `base-prompt` provider still reads the highest-version live row per tenant through `getSystemPromptRecord`.
 
 **Enforce rate limiting in streamChat**
 Rate limiting is configured in `tenant_model_config` but never enforced in `services/chat/server/stream.ts`. Needs to be wired before launch.
 
 **Audit traffic cop data injection**
-Before the traffic cop injects member context into sessions, confirm that injection is scoped strictly to the current session member only — no bulk member data, no cross-tenant data, no PII the model doesn't need.
+The traffic cop already injects member context. The `member-context` provider has been live since 3a. It is scoped by `sessionId`/`memberId`, which the server resolves and never takes from the client body. The decision record contains no content (`trace.test.ts`). The audit item is still worth doing — confirm that injection is scoped strictly to the current session member only (no bulk member data, no cross-tenant data, no PII the model doesn't need) — but "before" is now wrong.
 
 **Confirm user input position**
 Verify that user input never reaches the system prompt position in `streamChat` — user messages must always arrive in the messages array only.

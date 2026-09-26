@@ -13,7 +13,7 @@ finding:
 2. **Jeff has decided to build Memory and Story as real tool use cases now**,
    ahead of the eval loop. That supersedes §7.3's "build nothing yet." It is a
    sequencing decision, not a consequence of the probe — recorded in §7.4.
-**Pattern precedents:** `Design Handovers/traffic_cop_design_2026-09-05.md`,
+**Pattern precedents:** `Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`,
 `Design Handovers/identity_reconciliation_design_2026-08-16.md`
 **Builds on:** `System Docs/Utilities/Chat Server.md` (turn-context / Traffic
 Cop, Phase 2 shadow), `System Docs/Marker Syntax.md`,
@@ -178,7 +178,7 @@ Those are two different freezes and it is worth separating them, because they
 have opposite implications for this work.
 
 - **Shadow mode's oracle is the system-prompt string.**
-  `turn-context/shadow.ts:118` is `const match = legacySystem === shadowSystem`,
+  `turn-context/shadow.ts:148` is `const match = legacySystem === shadowSystem`,
   and `assembly.golden.test.ts` asserts the same equality in test form.
 - **The wire format is frozen separately**, by the `/api/sage` route contract
   (`app/api/sage/route.ts:37` — "The wire format (Vercel AI SDK data stream) is
@@ -188,9 +188,14 @@ have opposite implications for this work.
 
 So: **passing a `tools:` array is parity-neutral.** Tool definitions go to the
 provider as a separate request field and never enter `systemPrompt`. But **any
-prompt text instructing the model to use a tool breaks parity on every turn**,
-and blocks the Phase 3a cutover until explained. That single fact drives the
-sequencing in §7.
+prompt text instructing the model to use a tool breaks parity on every turn**.
+*(Corrected 2026-09-26: this originally said it "blocks the Phase 3a cutover
+until explained." Phase 3a shipped 2026-09-25, but the shadow comparison was
+kept and inverted until Phase 6 — it re-runs the frozen legacy recipe and
+compares it to the live string, and `System Docs/Known Gaps.md` states any
+future `parity = false` row is a regression. The binding gate is therefore
+Phase 6 (retiring the shadow), or a planned acceptance of expected parity
+mismatches — not Phase 3a.)* That single fact drives the sequencing in §7.
 
 ---
 
@@ -804,27 +809,39 @@ the emitted metadata is part of the test plan (§10), not a nice-to-have.
 
 ## 7. Sequencing — what must be true before any of this is built
 
-### 7.1 Traffic Cop Phase 3a must land first (if tool instructions enter the prompt)
+### 7.1 The shadow comparison must be retired (Phase 6) or its mismatches planned for (if tool instructions enter the prompt)
+
+*(Corrected 2026-09-26: this section originally gated on Traffic Cop Phase 3a.
+Phase 3a shipped 2026-09-25, but the shadow comparison was kept and inverted
+until Phase 6 — it re-runs the frozen legacy recipe and compares it to the live
+string, and `System Docs/Known Gaps.md` states any future `parity = false` row
+is a regression. So the gate is Phase 6, not Phase 3a.)*
 
 From §0.5: a `tools:` array is parity-neutral, but **prompt text instructing tool
 use is not**. Shadow mode compares `legacySystem === shadowSystem` on every turn;
-adding a tool-instruction segment to `systemPrompt` while Phase 2 is running
-flips `parity` to false universally and destroys the cutover gate.
+adding a tool-instruction segment to the live `resolved.system` while the shadow
+comparison is still running flips `parity` to false universally — every row
+would read as a regression against the frozen legacy recipe.
 
 Three ways out, in order of preference:
 
-1. **Wait for Phase 3a.** Once `streamChat` uses `resolved.system`, there is no
+1. **Wait for Phase 6.** Once the shadow comparison is retired, there is no
    second assembly to disagree with, and tool instructions are just another
-   provider.
-2. **Ship instructions as a registered `ContextProvider`**, so both assemblies
-   carry them and parity survives. Workable, but it means adding a provider
-   during shadow — the thing Phase 2 exists to hold still.
+   provider. (Originally "wait for Phase 3a" — that premise no longer holds,
+   since the legacy re-run survived the cutover.)
+2. **Ship instructions as a registered `ContextProvider` and plan for the
+   mismatch.** Since Phase 3a, a new provider reaches only the live string; the
+   legacy reconstruction is frozen at the old six segments, so every turn it
+   applies to would record `parity = false`. Workable only as a deliberate,
+   documented acceptance of those expected mismatches (e.g. a known
+   `diffSegmentIds` entry), not as a way to keep parity.
 3. **Put instructions in the tenant's `compiled_prompts` row** rather than in
    code. Parity-safe (the base provider reads the same row both ways) but pushes
    platform infrastructure into per-tenant prompt content, which is exactly what
    "generic, not tenant-specific" rules out.
 
-**Recommendation: (1).** It costs calendar time and nothing else.
+**Recommendation: (1).** It costs calendar time and nothing else — or (2), if
+the first tool must land before Phase 6 and the expected mismatch is planned for.
 
 ### 7.2 The §0.3 fix is a gate on the first `maxSteps > 1` call
 
@@ -881,7 +898,9 @@ What that does and does not settle:
   Heirloom's existing memory auto-save is correctly a marker today. A confirmed
   use case is not the same as a confirmed tool.
 - **It does not move the gates.** §7.1 (tool instructions in the prompt break
-  shadow parity until Traffic Cop Phase 3a) and §7.2 (the §0.3 fix ships with
+  shadow parity until the shadow comparison is retired in Traffic Cop Phase 6,
+  or the mismatch is deliberately planned for — corrected 2026-09-26; this
+  originally said Phase 3a) and §7.2 (the §0.3 fix ships with
   the first `maxSteps > 1` call) are unchanged, and are now the binding
   constraints on when the first tool can actually land.
 - **It does not settle §11.2–§11.6.** Those decisions are still open, and
@@ -897,7 +916,7 @@ What that does and does not settle:
 | ~~`@ai-sdk/anthropic@0.0.39` throws on a 2026-model content block~~ | **Closed 2026-09-16.** Probed against a live preview; the provider handles a `claude-sonnet-4-6` tool turn correctly. §9 row 1 |
 | A tool failure shows the visitor an error mid-turn (§0.4) | §3.5 — runner-owned never-reject wrapper + bounded reasons; not left to tool authors |
 | Contact-capture markers silently lost on multi-step turns (§0.3) | §7.2 — gated, ships in the same change |
-| Shadow parity destroyed, Phase 3a blocked (§0.5) | §7.1 — sequencing, tool instructions land after 3a |
+| Shadow parity destroyed — every row a regression against the frozen legacy recipe (§0.5) | §7.1 — sequencing, tool instructions land after Phase 6 retires the shadow, or with a planned acceptance of the expected mismatch (corrected 2026-09-26; originally "Phase 3a blocked … land after 3a") |
 | Model hallucinates a tool name → `3:` error | **Partially open.** Never describe an unavailable tool; decision §11.4 |
 | Schema validation failure → `3:` error before our code runs | §3.5 — permissive schemas, validate inside `execute` |
 | Cross-tenant tool access | `ToolTurnContext.tenantId` is passed in, never re-resolved by a tool (§3.2); `UNIQUE (key)` removes key collisions (§4.2a) |
@@ -1047,8 +1066,7 @@ with no observable effect and no way to verify on preview is harder to review
 than the same fix next to the thing that makes it matter.
 
 ### 11.6 The missing Traffic Cop design doc (Appendix A)
-Separate from this work, but it is the kind of thing that gets lost. Your call
-whether I open a small docs PR for it.
+Resolved. The design doc has been on main since 2026-09-24 (`570f4fbe`).
 
 ---
 
@@ -1080,20 +1098,13 @@ Per phase, not at the end (`CLAUDE.md`, Documentation Stays Current):
 
 ## Appendix A — a missing design doc, found while grounding this
 
-`Design Handovers/traffic_cop_design_2026-09-05.md` is cited as authoritative by
-four live references — `System Docs/Utilities/Chat Server.md:215`,
-`System Docs/Known Gaps.md:644`, `System Docs/Database Schema.md:46`, and
-`services/chat/server/turn-context/shadow.ts:17` — and **is not on `main`**. Its
-section numbers (§5.5, §5.10, §9.1–9.7) are also referenced from
-`Design Handovers/september_2026/traffic-cop-punch-list (1).md`, which is the
-only part of it that did land.
-
-It exists on the unmerged branch `claude/traffic-cop-prompt-context-czvj9i`,
-commit `0225f06` ("Add Traffic Cop design doc: shared prompt selection +
-per-turn context injection"), 812 lines. It is load-bearing for the phase plan
-currently being executed.
-
-Flagged, not fixed — out of scope for this document, and Jeff's call (§11.6).
+**Resolved. The design doc has been on main since 2026-09-24 (`570f4fbe`)**, at
+`Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`. When this
+appendix was written it was cited as authoritative by `System Docs/Utilities/Chat Server.md`,
+`System Docs/Known Gaps.md`, `System Docs/Database Schema.md`, and
+`services/chat/server/turn-context/shadow.ts`, and its section numbers
+(§5.5, §5.10, §9.1–9.7) are also referenced from
+`Design Handovers/september_2026/traffic-cop-punch-list (1).md`.
 
 ## Appendix B — unverifiable from the repo (stated, not guessed)
 

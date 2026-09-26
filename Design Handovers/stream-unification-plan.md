@@ -4,6 +4,8 @@
 **Branch:** `claude/gallant-feynman-ck8hcw`  
 **Author:** Claude Code (from read-only analysis — no implementation yet)
 
+**Update (2026-09-26): parts of this doc are stale.** §1.1 Path A's description of `streamChat` calling `getSystemPrompt` directly and joining the prompt segments itself, and Gaps 2 and 4's proposal to route prompts through a `promptType` param on `getSystemPrompt`/`ChatStreamRequest`, no longer describe the code. Since Traffic Cop Phase 3a (cut over 2026-09-25), assembly runs through `services/chat/server/turn-context/` — `streamChat` calls `resolveTurnPrompt` and passes `resolved.system` to `runChatStream`; the six-segment concatenation is deleted. Prompt routing is the Traffic Cop's slot selection in `turn-context/select-prompt.ts`. Phase 4 — making that selection actually affect output — hasn't been built yet: the `base-prompt` provider still reads the highest-version live row per tenant. See `System Docs/Utilities/Chat Server.md`'s turn-context section and `Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`. The rest of this doc is left as written, for historical record.
+
 ---
 
 ## 1. Current State
