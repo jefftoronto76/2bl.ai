@@ -8,8 +8,8 @@ Reorganized from a flat punch list into dependency-ordered sprints. Each sprint 
 
 The narrowest, highest-leverage work. Nothing else in this plan can safely proceed past Phase 2 without this.
 
-- **Kick off Phase 2 (shadow mode).** Wire `resolveTurnPrompt` alongside the existing assembly, compare outputs, log `shadow: true`. Zero user-visible risk. Runs ~7 days once started — start this as early as possible since it's calendar time, not effort, and every later phase (3a, 3b, 4, all new providers) waits on it.
-- **Decide §9.7** (suspended/deleted member status filter — bundle into 3b or ship separate). Small decision, but Phase 3b can't be scoped cleanly until it's made.
+- **Phase 2 (shadow mode).** Done. Phase 2 shadow went live 2026-09-14. The 7-day gate was replaced on 2026-09-14 by a manual checklist. Phase 3a cut over 2026-09-25 after all 20 shadow rows showed `parity = true`. Rows 1 and 5 were excluded by decision.
+- **§9.7** (suspended/deleted member status filter). Decided. It shipped separately on 2026-09-15 as the `account-status` rule.
 - **Resolve the `prompt_types.tenant_id` schema conflict** in Supabase Studio. Doesn't block Phase 2, but blocks Phase 4 — cheap to resolve now while it's fresh, expensive to rediscover later.
 
 *Unblocks: everything else in this document.*
@@ -18,7 +18,7 @@ The narrowest, highest-leverage work. Nothing else in this plan can safely proce
 
 ## Sprint 1 — Prove the situational-slot pattern (cheap, real precedent)
 
-- **Wire member-status into traffic cop rule 4.** The rung already exists, dormant. Guest vs. member picks a different slot. Cheapest real item on the whole list, and it's the first time the "a situation picks a slot" pattern gets exercised for real, not just scaffolded — de-risks every other situational rule that follows (mode, create-memory, etc.).
+- **Wire member-status into traffic cop rule 4.** Partly done. Since 2026-09-25 the config is per-tenant, and Heirloom has `memberStatusSlots: { visitor: 'visitor' }`. `memberStatusSlots.member` is still unset for every tenant. The slot is recorded only; it has no effect until Phase 4. Guest vs. member picks a different slot. Cheapest real item on the whole list, and it's the first time the "a situation picks a slot" pattern gets exercised for real, not just scaffolded — de-risks every other situational rule that follows (mode, create-memory, etc.).
 
 *Depends on: Phase 3a/4 being live enough for slot selection to matter (can be built/tested earlier, just won't do anything observable until then).*
 *Unblocks: confidence in the pattern used by Memory Review's slot switch (Sprint 3) and any future situational rule.*
@@ -69,7 +69,7 @@ Also explicitly supersedes the July 29 reversal of the original dedicated archiv
 - Add the `compiledPromptId` → human-readable `prompt_set` name lookup.
 - Show provider presence/status (checkmark-style, no PII, no full prompt text) plus which slot was used — always shown, not conditional on change (per your simplification).
 
-*Depends on: Phase 3a (real data has to be flowing through the live audit record before there's anything to show).*
+*Depends on: Phase 3a — this dependency is met. Phase 3a has been live since 2026-09-25, and every live turn writes a `chat.turn_context_resolved` row with `live: true`.*
 
 ---
 

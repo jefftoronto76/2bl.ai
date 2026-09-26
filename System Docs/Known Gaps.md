@@ -891,8 +891,8 @@ Tracked, not yet addressed. See `System Docs/ARCHITECTURE_OVERVIEW.md` and
   tenant's private type. (An earlier
   version of this entry noted a nested duplicate copy of the design doc at
   `Design Handovers/Design Handovers/…` on main; PR #471 removed it. The
-  design doc itself is on branch `claude/traffic-cop-prompt-context-czvj9i`,
-  not yet on main.)
+  design doc itself is on main, at
+  `Design Handovers/september_2026/traffic_cop_design_2026-09-05.md`.)
 
 - **The Blocks page silently substituted the Live prompt set for a real,
   not-found one — found and fixed 2026-09-15 (PR #481, commit `69c42fc`).**

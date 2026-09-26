@@ -14,7 +14,7 @@
 | 05 | AND-chained condition sequences + few-shot examples | **INFLIGHT** | Compiler | Compiler output format block template should enforce AND-chain structure. Worth investigating tightness post-cutover. |
 | 06 | Markers on their own line, silent — no surrounding prose | **TODO** | Manual | Simple one-line addition to output format block. |
 | 07 | Few-shot examples in output format block (incl. negative examples) | **TODO/INFLIGHT** | Compiler | Compiler should prompt/require operators to supply positive + negative examples per marker. |
-| 08 | ≤5 markers per compiled prompt — split by prompt type | **INFLIGHT** | Compiler | Compiler enforces marker count limit, surfaces count visibly. Sunday work — traffic cop / prompt-type split. |
+| 08 | ≤5 markers per compiled prompt — split by prompt type | **INFLIGHT** | Compiler | Compiler enforces marker count limit, surfaces count visibly. The Traffic Cop is built and live. The runtime prompt-type split is Phase 4 of `traffic_cop_design_2026-09-05.md` and hasn't been built. |
 | 09 | Buffered state machine parser (not per-chunk regex) | **TODO** | CC | May already be built — CC investigation needed before assuming new build required. |
 | 10 | Graceful degradation + fallback for business-critical markers | **INFLIGHT/PARTIAL** | CC | `ACCOUNT_CREATE`: turn-count CTA is client-side heuristic fallback — confirm still wired. `STORY_SAVED`: user-initiated save icon covers gap. Combine with Rule 09 CC investigation. |
 | 11 | Trailing salience reminder at end of output format block | **TODO** | Compiler | Not in current docs — gap identified July 11. Compiler should auto-append trailing reminder as final line of output format block. Source: arXiv:2603.23530. |
@@ -30,7 +30,7 @@
 | 03 | Replace every negative instruction with a positive one | **DONE** | Compiler | Compiler lints for negative instructions, prompts rewrite. |
 | 04 | Make every trigger objective and countable | **DONE** | Compiler | In the system prompt. Compiler should enforce objective trigger language. |
 | 05 | Treat formatting as a reliability variable — one delimiter style throughout | **INFLIGHT** | Compiler | Compiler enforces consistent delimiter style across all blocks. Needs investigation to confirm consistency across compiled output. |
-| 06 | One job per prompt | **INFLIGHT** | Compiler | Compiler enforces prompt-type separation. Traffic cop / Sunday work. |
+| 06 | One job per prompt | **INFLIGHT** | Compiler | Compiler enforces prompt-type separation. The Traffic Cop is built and live. The runtime prompt-type split is Phase 4 of `traffic_cop_design_2026-09-05.md` and hasn't been built. |
 | 07 | One block owns one behavior | **DONE** | Compiler | Compiler detects + flags when two blocks reference the same marker or behavior. |
 | 08 | Build eval loop before adding prompt complexity | **INFLIGHT/TODO** | CC + Compiler | Large task — 3+ days. Part of rubric and Admin Intelligence Phase 3 work. |
 | 09 | Use the model to audit its own prompt — with a rubric | **INFLIGHT** | Compiler | Rubric + UI work. ~0.5 days. Compiler calls audit on compile. |
@@ -68,5 +68,5 @@
 - **Chat Guideline 03:** Mobile virtual keyboard — investigate what was previously implemented, identify what broke, and fix. VisualViewport API + iOS Safari safe area. Verify on real iOS Safari at 390px.
 
 ## Sunday Dependencies
-- Marker Rule 08 + Prompt Guideline 06: Prompt-type split — traffic cop / Success agent design + implementation
+- Marker Rule 08 + Prompt Guideline 06: Prompt-type split — The Traffic Cop is built and live. The runtime prompt-type split is Phase 4 of `traffic_cop_design_2026-09-05.md` and hasn't been built.
 - Composer Prompt Set cutover → enables post-cutover audit of Marker Rules 03, 04, 05

@@ -74,7 +74,7 @@ The `getCurrentUser()` + `.eq('clerk_id', user.providerUserId)` pattern is copy-
 | `app/api/members/me/route.ts:23,31-36` | `getCurrentUser()` + `members.clerk_id`, every `NameCompletionGate` mount |
 | `app/api/members/sync/route.ts:20,46` | See #2 above |
 | `app/api/heirloom/invites/route.ts`, `story-invites/route.ts` (POST/GET/DELETE), `story-invites/collaborators/route.ts` | Each does the **triple**: `getCurrentUser()` + `members.clerk_id` + `getCurrentUserId()` — three identity resolutions per request |
-| `app/admin/layout.tsx:18,30`, `app/(platform)/layout.tsx:24,42` | `syncUser()` + `getCurrentUser()` + `getAuthContext()` per admin page load: 2 Clerk backend calls, ≥4 identity queries. Admin-only, out of scope for this pass but the same mechanism applies later |
+| `app/admin/layout.tsx`, `app/(platform)/layout.tsx:24,42` | The admin layout resolves `getAuthContext()` once per render since #498. Before that, `getTenantName`/`getTenantType` each re-ran the auth chain, so it ran three times. `(platform)/layout.tsx` still has the triple-resolution bug; it was flagged and not fixed. Admin-only, out of scope for this pass but the same mechanism applies later |
 
 A single Heirloom page load for a signed-in member therefore costs **three** independent Clerk-id→member resolutions before the first chat turn (`page.tsx`, `/api/members/me`, `/api/members/sync`).
 

@@ -113,6 +113,7 @@ services/
   chat/
     server/           ← DONE
       index.ts        ← streamChat() — orchestrates auth+prompt+crm
+      turn-context/   ← Traffic Cop — resolveTurnPrompt(), the only prompt assembly on the live path
       stream.ts
       prompt.ts
       booking.ts
